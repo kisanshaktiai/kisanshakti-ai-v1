@@ -3,6 +3,25 @@
  * Lane B — CONTEXT rule selector (zero-observation advisory)
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-09-03 — SAFETY/CONFLICT SEPARATION: gate result now carries
+ *     `safetyBlocks` (is_safety_block=true only) and `conflictBlocks`
+ *     (non-safety hard blocks). `resolveContextGateOutcome()` is the single
+ *     post-gate selection used by the orchestrator (nextMatched / nextPrimary /
+ *     safety_blocks entries / advisory lead), so tests execute the runtime path.
+ *   2026-09-03 — EXPLICIT-EDGE LEAD (deno test T5 on live rows): a CONTEXT_BLOCK
+ *     that suppressed a candidate through an authored graph edge now leads
+ *     even when is_safety_block=false; previously it was demoted to an
+ *     advisory and the suppressed candidate stayed primary_decision.
+ *     hardBlockResponses.is_safety_block now reports the row's real flag.
+ *   2026-09-03 — SERVABILITY + REGION GATES (live-DB verified). (a) Both
+ *     decision_rules reads now require is_farmer_servable OR block rows
+ *     (RICE_NUTR_ORGANIC_001 is an active, non-servable CONTEXT_SCHEDULE row
+ *     that was previously selectable). (b) New ContextRuleQuery.regionCode:
+ *     rows with a region_code must match the land's v_land_region code;
+ *     unresolved region fails closed. All 8 rice grain_filling
+ *     CONTEXT_SCHEDULE rows in the live DB are state-scoped (IN-TN/KL/JK/AS)
+ *     and were being offered to IN-MH lands. Mirrors layered-rule-evaluator
+ *     FIX 4 so Lane A and Lane B share one region semantics.
  *   2026-08-28 — FIX 7 (single context authority + strict override):
  *     (a) selectContextRules() is DISCOVERY ONLY — no condition_code
  *         suppression, no blocks-first ordering, CONTEXT_BLOCK rows never
@@ -55,7 +74,28 @@ export interface ContextRuleQuery {
   growthStage: string | null | undefined;
   das: number | null | undefined;
   cultivationMethod?: string | null;
+  /**
+   * REGION GATE (2026-09-03): land region ('IN-MH' …) resolved from
+   * v_land_region. null/undefined = unresolved → region-scoped rows are
+   * dropped (fail-closed, same semantics as layered-rule-evaluator FIX 4).
+   */
+  regionCode?: string | null;
   traceId?: string;
+}
+
+/** PostgREST `or` filter: farmer-servable rows, plus block rows (see rule-repository). */
+const SERVABILITY_OR = 'is_farmer_servable.eq.true,rule_intent.eq.block,is_safety_block.eq.true';
+
+/**
+ * REGION GATE (2026-09-03). decision_rules.region_code null/'' = global (passes);
+ * otherwise it must equal the land region. Unknown land region → region-scoped
+ * rows fail closed. No agronomy: both values are DB columns.
+ */
+function regionMatches(row: any, landRegion: string): boolean {
+  const ruleRegion = String(row?.region_code ?? '').trim().toUpperCase();
+  if (!ruleRegion) return true;
+  if (!landRegion) return false;
+  return ruleRegion === landRegion;
 }
 
 export interface ContextRuleSelection {
@@ -139,6 +179,7 @@ export async function selectContextRules(
       .from('decision_rules')
       .select('*')
       .eq('is_active', true)
+      .or(SERVABILITY_OR) // SERVABILITY GATE (2026-09-03)
       .in('trigger_class', ['CONTEXT_SCHEDULE', 'CONTEXT_BLOCK'])
       .in('crop_code', cropVariants)
       .order('priority', { ascending: false })
@@ -159,13 +200,19 @@ export async function selectContextRules(
   // while the field is at panicle_initiation. Rule: every authored dimension
   // must pass — stage when authored, DAS window when authored; a dimension the
   // author left empty does not constrain.
+  const landRegion = String(q.regionCode ?? '').trim().toUpperCase();
+  const droppedByRegion: string[] = [];
   const applicableRaw = rows.filter((r) => {
     const hasStage = !!norm(r?.growth_stage) || arr(r?.stage_applicable).length > 0;
     const hasDas = r?.crop_age_days_min != null || r?.crop_age_days_max != null;
     if (!hasStage && !hasDas) return false; // unauthored applicability never matches
     if (hasStage && !stageMatches(r, stage)) return false;
     if (hasDas && !dasMatches(r, das)) return false;
-    return cultivationMatches(r, method);
+    if (!cultivationMatches(r, method)) return false;
+    // REGION GATE (2026-09-03): a state-PoP row (IN-TN, IN-KL …) must never be
+    // offered to a land in another state; unresolved land region fails closed.
+    if (!regionMatches(r, landRegion)) { droppedByRegion.push(String(r?.rule_id ?? '')); return false; }
+    return true;
   });
 
   // FIX 7 (2026-08-28): Lane B is DISCOVERY ONLY. This selector no longer
@@ -182,7 +229,8 @@ export async function selectContextRules(
 
   console.log(
     `[LANE_B_CONTEXT_RULES] trace=${trace} crop=${crop} stage=${stage || 'null'} das=${das ?? 'null'} ` +
-    `cultivation=${method || 'null'} fetched=${rows.length} applicable=${kept.length} ` +
+    `cultivation=${method || 'null'} region=${landRegion || 'UNRESOLVED'} fetched=${rows.length} applicable=${kept.length} ` +
+    `dropped_by_region=${droppedByRegion.join(',') || 'none'} ` +
     `blocks=${blocks.map((b) => b.rule_id).join(',') || 'none'} ` +
     `suppressed=${suppressed.map((s) => s.rule_id).join(',') || 'none'} ` +
     `winner=${kept[0]?.rule_id ?? 'none'}`,
@@ -281,10 +329,87 @@ export interface ContextBlockGateResult {
   evaluations: ContextBlockEvaluation[];
   /** Anomaly counters — should trend to zero after DB remediation. */
   anomalies: Record<string, number>;
+  /**
+   * 2026-09-03 — SAFETY vs CONFLICT SEPARATION.
+   * `safetyBlocks`: the ONLY rows allowed into runtime `safety_blocks` —
+   *   hardBlocks ∪ overlays restricted to is_safety_block === true.
+   * `conflictBlocks`: hardBlocks with is_safety_block !== true — they
+   *   suppressed a candidate through an authored edge (telemetry / lead
+   *   only, never safety status).
+   */
+  safetyBlocks: any[];
+  conflictBlocks: any[];
   /** @deprecated kept for older call sites: hardBlockResponses */
   blockResponses: any[];
   /** @deprecated kept for older call sites: hardBlocks ∪ advisories */
   blocks: any[];
+}
+
+/** Runtime `safety_blocks` entry shape produced by the gate outcome (orchestrator contract). */
+export interface ContextSafetyBlockEntry {
+  rule_id: string;
+  reason: 'CONTEXT_BLOCK';
+  condition_code: string | null;
+  message: string | null;
+}
+
+export interface ContextGateOutcome {
+  nextMatched: any[];
+  nextPrimary: any | null;
+  /** is_safety_block === true rows only, projected for layeredRuleResult.safety_blocks. */
+  safetyBlockEntries: ContextSafetyBlockEntry[];
+  /** Non-safety rows that suppressed a candidate — telemetry, never safety status. */
+  conflictBlockIds: string[];
+  advisoryLead: any | null;
+  advisoryLeadReason: 'zero_candidate_lane_b' | null;
+}
+
+/**
+ * 2026-09-03 — Single selection authority for the orchestrator's post-gate
+ * merge (extracted so a test can execute the SAME code the runtime runs).
+ *
+ *   primary  = hard block (explicit conflict / standalone safety) → kept
+ *              candidate → zero-candidate Lane-B advisory lead → prior
+ *              primary unless it was suppressed → null.
+ *   safety   = is_safety_block === true rows only.
+ *   conflict = non-safety hard blocks (candidate suppression, telemetry).
+ *
+ * A safety block can never fall through to `advisoryLead` (advisories are
+ * non-safety by construction, and a safety row that suppressed or stands
+ * alone is already a hard block and wins the first branch).
+ */
+export function resolveContextGateOutcome(
+  gate: ContextBlockGateResult,
+  opts: { priorPrimary?: any | null; zeroCandidateLaneB?: boolean },
+): ContextGateOutcome {
+  const zeroCandidateLaneB = opts?.zeroCandidateLaneB === true;
+  const priorPrimary = opts?.priorPrimary ?? null;
+  const nextMatched = [
+    ...gate.hardBlockResponses, ...gate.kept, ...gate.overlayResponses, ...gate.advisoryResponses,
+  ];
+  const advisoryLead =
+    zeroCandidateLaneB && gate.kept.length === 0 && gate.hardBlockResponses.length === 0
+      ? (gate.advisoryResponses.find((r: any) => r?.is_safety_block !== true) ?? null)
+      : null;
+  const suppressedIds = new Set(gate.suppressed.map((s: any) => String(s?.rule_id ?? '')));
+  const priorId = String(priorPrimary?.rule_id ?? '');
+  const nextPrimary =
+    gate.hardBlockResponses[0] ??
+    gate.kept[0] ??
+    advisoryLead ??
+    (priorPrimary && !suppressedIds.has(priorId) ? priorPrimary : null) ??
+    null;
+  const safetyBlockEntries: ContextSafetyBlockEntry[] = gate.safetyBlocks.map((b: any) => ({
+    rule_id: String(b?.rule_id ?? ''),
+    reason: 'CONTEXT_BLOCK',
+    condition_code: b?.condition_code ?? null,
+    message: b?.action_text ?? b?.reason_text ?? null,
+  }));
+  return {
+    nextMatched, nextPrimary, safetyBlockEntries,
+    conflictBlockIds: gate.conflictBlocks.map((b: any) => String(b?.rule_id ?? '')),
+    advisoryLead, advisoryLeadReason: advisoryLead ? 'zero_candidate_lane_b' : null,
+  };
 }
 
 function strArr(v: unknown): string[] {
@@ -334,13 +459,17 @@ export async function selectContextBlocks(
       .from('decision_rules')
       .select('*')
       .eq('is_active', true)
+      .or(SERVABILITY_OR) // SERVABILITY GATE (2026-09-03) — blocks always pass
       .eq('trigger_class', 'CONTEXT_BLOCK')
       .in('crop_code', cropVariants)
       .order('priority', { ascending: false })
       .limit(100);
     if (error) throw new Error(error.message);
     const rows = Array.isArray(data) ? data : [];
+    const landRegion = String(q.regionCode ?? '').trim().toUpperCase();
     return rows.filter((r) =>
+      // REGION GATE (2026-09-03): same rule as Lane B discovery.
+      regionMatches(r, landRegion) &&
       // AUDIT FIX (2026-08-28): same authored-dimension conjunction as Lane B
       // discovery. A CONTEXT_BLOCK (e.g. RICE_NUTR_LATE_N_BLOCK_001, which
       // authors BOTH stages and DAS 75-130) must not become applicable from a
@@ -478,6 +607,7 @@ export async function applyContextBlockGate(
     context_block_not_relevant_dropped: 0,
     context_block_without_conflict_edge: 0,
     context_block_without_intent_match: 0,
+    context_block_lead_without_safety_flag: 0,
     context_block_advisory_only: 0,
     context_block_promoted_to_primary: 0,
     candidate_suppressed_by_condition_code_fallback: 0,
@@ -485,6 +615,7 @@ export async function applyContextBlockGate(
   const passthrough = (): ContextBlockGateResult => ({
     kept: list, suppressed: [], hardBlocks: [], overlays: [], advisories: [], dropped: [],
     hardBlockResponses: [], overlayResponses: [], advisoryResponses: [], evaluations: [], anomalies,
+    safetyBlocks: [], conflictBlocks: [],
     blockResponses: [], blocks: [],
   });
 
@@ -596,13 +727,18 @@ export async function applyContextBlockGate(
     // decision) — relevance alone never demotes an unrelated answer. Hard
     // blocks without an established conflict become SAFETY OVERLAYS; the
     // no-candidate case is resolved after the kept list is known.
-    if (safety_authority) {
-      if (ev.suppressed_rule_ids.length > 0) {
-        hardBlocks.push(b);
-        anomalies.context_block_promoted_to_primary++;
-      } else {
-        overlays.push(b);
-      }
+    // 2026-09-03 (deno test T5, live rows): a block that ESTABLISHED an explicit
+    // graph conflict (blocks_rule_ids / contraindications / mutually_exclusive /
+    // rule_conflict_matrix) has invalidated the candidate whether or not the
+    // row is flagged is_safety_block — the authored edge is the authority.
+    // Leaving it as an advisory let the SUPPRESSED candidate stay primary
+    // (RICE_NUTR_LATE_N_BLOCK_001 vs RICE_NUTR_LCC_001 at booting DAS 78).
+    if (ev.suppressed_rule_ids.length > 0) {
+      hardBlocks.push(b);
+      anomalies.context_block_promoted_to_primary++;
+      if (!safety_authority) anomalies.context_block_lead_without_safety_flag++;
+    } else if (safety_authority) {
+      overlays.push(b);
     } else {
       advisories.push(b);
       anomalies.context_block_advisory_only++;
@@ -625,7 +761,7 @@ export async function applyContextBlockGate(
   const notAlreadyCandidate = (b: any) =>
     !list.some((c: any) => String(c?.rule_id ?? '') === String(b?.rule_id ?? ''));
   const hardBlockResponses = hardBlocks.filter(notAlreadyCandidate).map((b) => ({
-    ...toMatchedResponse(b), lane: 'CONTEXT_HARD_BLOCK', is_safety_block: true,
+    ...toMatchedResponse(b), lane: 'CONTEXT_HARD_BLOCK', is_safety_block: b?.is_safety_block === true,
   }));
   const overlayResponses = overlays.filter(notAlreadyCandidate).map((b) => ({
     ...toMatchedResponse(b), lane: 'CONTEXT_SAFETY_OVERLAY', is_safety_block: true, advisory: true,
@@ -648,10 +784,16 @@ export async function applyContextBlockGate(
     console.log(`[CONTEXT_BLOCK_EVAL] trace=${trace} ${JSON.stringify(ev)}`);
   }
 
+  // 2026-09-03 — safety authority is the DB flag, never the conflict outcome.
+  const isSafety = (b: any) => b?.is_safety_block === true;
+  const safetyBlocks = [...hardBlocks.filter(isSafety), ...overlays.filter(isSafety)];
+  const conflictBlocks = hardBlocks.filter((b) => !isSafety(b));
+
   return {
     kept, suppressed, hardBlocks, overlays, advisories, dropped,
     hardBlockResponses, overlayResponses, advisoryResponses,
     evaluations, anomalies,
+    safetyBlocks, conflictBlocks,
     blockResponses: hardBlockResponses,
     blocks: [...hardBlocks, ...overlays, ...advisories],
   };

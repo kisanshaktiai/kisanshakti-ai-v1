@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (newest first)
+ *   2026-09-03 — SERVABILITY GATE: snapshot + version fingerprint now read only
+ *     rows that are farmer-servable OR block rows (SERVABILITY_OR). Previously
+ *     every is_active row (357 non-servable in live DB) entered the snapshot.
  *   2026-08-19 09:10 UTC — FIX 4: snapshot TTL 5min → 30min so warm invocations
  *     skip the ~15s decision_rules load.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -23,6 +26,14 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 // FIX-4 (P1-6, 2026-08-09): typed error so orchestrate() can distinguish
 // "knowledge DB unavailable" (fail CLOSED) from "no matching rules" (legitimate).
 // Name-based check mirrors the existing SafetyCacheUnavailableError pattern.
+// SERVABILITY GATE (2026-09-03): PostgREST `or` filter applied to every
+// snapshot read. decision_rules.is_farmer_servable is a GENERATED column
+// (active ∧ not deprecated ∧ regulatory not restricted/banned ∧ chemical rows
+// need dosage_per_acre + PHI (pest/disease/weed) + expert_approved). Block rows
+// are kept regardless because a banned-chemical block is non-servable by
+// construction and must still be able to block.
+export const SERVABILITY_OR = 'is_farmer_servable.eq.true,rule_intent.eq.block,is_safety_block.eq.true';
+
 export class KnowledgeLoadError extends Error {
   constructor(msg: string) {
     super(msg);
@@ -181,10 +192,11 @@ function buildSnapshot(rows: RawRuleRow[], fingerprint: string): RuleSnapshot {
 async function readVersionFingerprint(sb: any): Promise<string> {
   try {
     const [countRes, latestRes] = await Promise.all([
-      sb.from('decision_rules').select('rule_id', { count: 'exact', head: true }).eq('is_active', true),
+      sb.from('decision_rules').select('rule_id', { count: 'exact', head: true }).eq('is_active', true).or(SERVABILITY_OR),
       sb.from('decision_rules')
         .select('updated_at')
         .eq('is_active', true)
+        .or(SERVABILITY_OR)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle(),
@@ -210,6 +222,7 @@ async function fetchRows(sb: any): Promise<RawRuleRow[]> {
       .from('decision_rules')
       .select('*')
       .eq('is_active', true)
+      .or(SERVABILITY_OR) // SERVABILITY GATE (2026-09-03) — see header
       .order('rule_id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) {

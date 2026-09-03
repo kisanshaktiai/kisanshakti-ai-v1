@@ -13,6 +13,14 @@
  * - LLM is strictly prohibited from inventing treatments
  *
  * CHANGE LOG (newest first)
+ *   2026-09-03 — SERVABILITY GATE (live-DB verified): loadAuthorizedRules
+ *     previously filtered decision_rules on is_active + deprecated_at only;
+ *     254 active-but-not-farmer-servable rows (chemical rules missing dose /
+ *     PHI / expert approval, restricted/banned products) were reachable via
+ *     hypothesis_rule_mapping and the function runs on the service role, so
+ *     RLS never applied. Query now requires is_farmer_servable=true OR
+ *     rule_intent='block' OR is_safety_block=true. No agronomy added — the
+ *     predicate is the DB's own generated column.
  *   2026-08-27 — P0 FINAL PRODUCTION FIX: graph-authorized execution only.
  *     (1) AUTHORITY: `executeRules()` no longer loads/evaluates the full crop
  *         `decision_rules` corpus. It evaluates ONLY rule_ids explicitly
@@ -953,7 +961,14 @@ export class SymbolicReasoner {
         .select('*')
         .in('rule_id', chunk)
         .eq('is_active', true)
-        .is('deprecated_at', null);
+        .is('deprecated_at', null)
+        // SERVABILITY GATE (2026-09-03): the DB computes is_farmer_servable
+        // (active ∧ not deprecated ∧ not banned/restricted ∧ chemical rows
+        // need dose + PHI + expert_approved). Only servable rows may become a
+        // recommendation; block rows (rule_intent='block' / is_safety_block)
+        // stay loaded because a banned-chemical block is non-servable by
+        // construction and must still be able to block.
+        .or('is_farmer_servable.eq.true,rule_intent.eq.block,is_safety_block.eq.true');
       if (error) {
         console.error('❌ Failed to load authorized rules:', error);
         const { KnowledgeLoadError } = await import('../data/rule-repository.ts');
@@ -966,6 +981,10 @@ export class SymbolicReasoner {
     // client returned extras.
     const allowed = new Set(ruleIds.map(String));
     const rules = loaded.filter((r) => allowed.has(String(r?.rule_id)));
+    const droppedByServability = ruleIds.length - rules.length;
+    if (droppedByServability > 0) {
+      console.log(`   🔒 [SERVABILITY_GATE] ${droppedByServability} graph-authorized rule id(s) not loaded (inactive, deprecated or not farmer-servable)`);
+    }
     setCachedRules(cacheKey, rules);
     return rules;
   }

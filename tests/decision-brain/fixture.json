@@ -1,0 +1,983 @@
+{
+"decision_rules": [
+{
+"rule_id": "RICE_HARVEST_PREHARVEST_AHU_AS_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "harvest",
+"rule_intent": "recommendation",
+"region_code": "IN-AS",
+"stage_applicable": [
+"grain_filling",
+"maturity"
+],
+"growth_stage": "grain_filling",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_HARVEST_PREHARVEST_AHU_AS_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_HARVEST_TIMING_JK_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "harvest",
+"rule_intent": "recommendation",
+"region_code": "IN-JK",
+"stage_applicable": [
+"grain_filling",
+"maturity",
+"harvest"
+],
+"growth_stage": "grain_filling",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_HARVEST_TIMING_JK_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_HARVEST_TIMING_KL_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "harvest",
+"rule_intent": "recommendation",
+"region_code": "IN-KL",
+"stage_applicable": [
+"grain_filling",
+"maturity",
+"harvest"
+],
+"growth_stage": "grain_filling",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_HARVEST_TIMING_KL_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_HARVEST_TIMING_MP_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "harvest",
+"rule_intent": "recommendation",
+"region_code": "IN-MP",
+"stage_applicable": [
+"maturity",
+"harvest"
+],
+"growth_stage": "maturity",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_HARVEST_TIMING_MP_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_HARVEST_TIMING_STORAGE_PB_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "harvest",
+"rule_intent": "recommendation",
+"region_code": "IN-PB",
+"stage_applicable": [
+"maturity",
+"harvest"
+],
+"growth_stage": "maturity",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_HARVEST_TIMING_STORAGE_PB_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_HARVEST_TIMING_TN_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "harvest",
+"rule_intent": "recommendation",
+"region_code": "IN-TN",
+"stage_applicable": [
+"grain_filling",
+"maturity",
+"harvest"
+],
+"growth_stage": "grain_filling",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_HARVEST_TIMING_TN_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_IRRIG_AWD_JK_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "irrigation",
+"rule_intent": "recommendation",
+"region_code": "IN-JK",
+"stage_applicable": [
+"transplant_establishment",
+"tillering",
+"panicle_initiation",
+"booting",
+"heading",
+"flowering",
+"grain_filling",
+"maturity"
+],
+"growth_stage": "transplant_establishment",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"transplanted"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_IRRIG_AWD_JK_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_IRRIG_CRITICAL_STAGES_TN_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "irrigation",
+"rule_intent": "recommendation",
+"region_code": "IN-TN",
+"stage_applicable": [
+"panicle_initiation",
+"booting",
+"heading",
+"flowering"
+],
+"growth_stage": "panicle_initiation",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"transplanted"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_IRRIG_CRITICAL_STAGES_TN_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_IRRIG_TENSIOMETER_PB_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "irrigation",
+"rule_intent": "recommendation",
+"region_code": "IN-PB",
+"stage_applicable": [
+"transplant_establishment",
+"tillering",
+"panicle_initiation",
+"booting"
+],
+"growth_stage": "transplant_establishment",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"transplanted"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_IRRIG_TENSIOMETER_PB_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_IRRIG_WATER_MANAGEMENT_KL_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "irrigation",
+"rule_intent": "recommendation",
+"region_code": "IN-KL",
+"stage_applicable": [
+"transplanting",
+"transplant_establishment",
+"tillering",
+"panicle_initiation",
+"booting",
+"heading",
+"grain_filling",
+"maturity"
+],
+"growth_stage": "transplanting",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_IRRIG_WATER_MANAGEMENT_KL_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_MGT_TRANSPLANT_TN_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "management",
+"rule_intent": "recommendation",
+"region_code": "IN-TN",
+"stage_applicable": [
+"transplanting",
+"transplant_establishment"
+],
+"growth_stage": "transplanting",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"transplanted"
+],
+"priority": 6,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_MGT_TRANSPLANT_TN_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_MGT_SRI_TN_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "management",
+"rule_intent": "recommendation",
+"region_code": "IN-TN",
+"stage_applicable": [
+"nursery",
+"transplanting",
+"transplant_establishment",
+"tillering"
+],
+"growth_stage": "nursery",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"sri"
+],
+"priority": 6,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_MGT_SRI_TN_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_MGT_DSR_TARWATTAR_PB_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "management",
+"rule_intent": "recommendation",
+"region_code": "IN-PB",
+"stage_applicable": [
+"germination",
+"early_vegetative"
+],
+"growth_stage": "germination",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"direct_seeded",
+"direct_seeded_dry"
+],
+"priority": 6,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_MGT_DSR_TARWATTAR_PB_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_PEST_ETL_MONITOR_TN_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "pest",
+"rule_intent": "recommendation",
+"region_code": "IN-TN",
+"stage_applicable": [
+"transplant_establishment",
+"tillering",
+"panicle_initiation",
+"booting",
+"heading",
+"flowering",
+"grain_filling"
+],
+"growth_stage": "transplant_establishment",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_PEST_ETL_MONITOR_TN_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_PEST_ETL_MONITOR_KL_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "pest",
+"rule_intent": "recommendation",
+"region_code": "IN-KL",
+"stage_applicable": [
+"nursery",
+"transplant_establishment",
+"tillering",
+"panicle_initiation",
+"booting",
+"flowering",
+"grain_filling"
+],
+"growth_stage": "nursery",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_PEST_ETL_MONITOR_KL_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_FOLIAR_PI_TN_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "nutrition",
+"rule_intent": "recommendation",
+"region_code": "IN-TN",
+"stage_applicable": [
+"panicle_initiation",
+"booting"
+],
+"growth_stage": "panicle_initiation",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"transplanted"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_NUTR_FOLIAR_PI_TN_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_LATE_N_BLOCK_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_BLOCK",
+"category": "nutrition",
+"rule_intent": "block",
+"region_code": null,
+"stage_applicable": [
+"booting",
+"heading",
+"flowering",
+"grain_filling"
+],
+"growth_stage": "booting",
+"crop_age_days_min": 75,
+"crop_age_days_max": 130,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 9,
+"condition_code": "n_deficiency_rice",
+"conditions_json": {
+"observations": [
+"management_planning"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [
+"RICE_NUTR_LCC_001",
+"RICE_NUTR_N_TOP2_001",
+"RICE_NUTR_N_TOP1_001",
+"RICE_NUTR_N_BASAL_001",
+"RICE_NUTR_N_DEFICIT_001"
+],
+"input_class": "none",
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "block",
+"action_text": "RICE_NUTR_LATE_N_BLOCK_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_LCC_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "nutrition",
+"rule_intent": "recommendation",
+"region_code": null,
+"stage_applicable": [
+"tillering",
+"panicle_initiation",
+"booting"
+],
+"growth_stage": "tillering",
+"crop_age_days_min": 35,
+"crop_age_days_max": 90,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 6,
+"condition_code": "n_deficiency_rice",
+"conditions_json": {
+"observations": [
+"management_planning"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": "nutrient_synthetic",
+"dosage_per_acre": "x",
+"active_ingredient": "Urea",
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_NUTR_LCC_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_N_BASAL_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "nutrition",
+"rule_intent": "recommendation",
+"region_code": null,
+"stage_applicable": [
+"transplanting"
+],
+"growth_stage": "transplanting",
+"crop_age_days_min": 25,
+"crop_age_days_max": 35,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "n_deficiency_rice",
+"conditions_json": {
+"observations": [
+"management_planning",
+"diagnostic_uncertainty"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": "nutrient_synthetic",
+"dosage_per_acre": "x",
+"active_ingredient": "Urea + DAP + MOP + ZnSO4",
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_NUTR_N_BASAL_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_N_TOP1_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "nutrition",
+"rule_intent": "recommendation",
+"region_code": null,
+"stage_applicable": [
+"tillering"
+],
+"growth_stage": "tillering",
+"crop_age_days_min": 35,
+"crop_age_days_max": 60,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "n_deficiency_rice",
+"conditions_json": {
+"observations": [
+"management_planning",
+"diagnostic_uncertainty"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": "nutrient_synthetic",
+"dosage_per_acre": "x",
+"active_ingredient": "Urea",
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_NUTR_N_TOP1_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_N_TOP2_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "nutrition",
+"rule_intent": "recommendation",
+"region_code": null,
+"stage_applicable": [
+"panicle_initiation"
+],
+"growth_stage": "panicle_initiation",
+"crop_age_days_min": 60,
+"crop_age_days_max": 75,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "n_deficiency_rice",
+"conditions_json": {
+"observations": [
+"management_planning",
+"diagnostic_uncertainty"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": "nutrient_synthetic",
+"dosage_per_acre": "x",
+"active_ingredient": "Urea + MOP",
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_NUTR_N_TOP2_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+},
+{
+"rule_id": "RICE_NUTR_ORGANIC_001",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "nutrition",
+"rule_intent": "recommendation",
+"region_code": null,
+"stage_applicable": [
+"transplanting",
+"tillering"
+],
+"growth_stage": "transplanting",
+"crop_age_days_min": 25,
+"crop_age_days_max": 60,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 4,
+"condition_code": "n_deficiency_rice",
+"conditions_json": {
+"observations": [
+"management_planning",
+"diagnostic_uncertainty"
+]
+},
+"is_active": true,
+"is_farmer_servable": false,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": "nutrient_synthetic",
+"dosage_per_acre": "x",
+"active_ingredient": "FYM + Azolla + Azospirillum + PSB",
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "RICE_NUTR_ORGANIC_001 text",
+"contraindications": null,
+"mutually_exclusive_with": null
+}
+],
+"intent_observation_mapping": [
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "fe_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "management_planning",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "b_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "greyish_tan_necrotic_spots",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "k_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "n_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "p_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "s_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "si_deficiency_rice",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "stunted_pale_tillers",
+"is_active": true
+},
+{
+"intent_code": "FERTILIZER_SCHEDULE",
+"crop_code": "rice",
+"observation_code": "zn_deficiency_khaira",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "all",
+"observation_code": "delayed_maturity",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "all",
+"observation_code": "optimal_maturity",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "all",
+"observation_code": "harvest_method_query",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "rice",
+"observation_code": "aquatic_weed_rice",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "rice",
+"observation_code": "broadleaf_weed_rice",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "rice",
+"observation_code": "cyperus_sedge_rice",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "rice",
+"observation_code": "echinochloa_crus",
+"is_active": true
+},
+{
+"intent_code": "HARVEST_TIMING",
+"crop_code": "rice",
+"observation_code": "rice_lodging",
+"is_active": true
+}
+],
+"hypothesis_rule_mapping": [
+{
+"rule_id": "RICE_NUTR_LATE_N_BLOCK_001",
+"hypothesis_id": "HYP_RICE_N_DEFICIENCY"
+}
+],
+"rule_conflict_matrix": []
+}

@@ -1237,6 +1237,9 @@ export class AIAgentOrchestrator {
     (this as any).__farmerLanguage = options?.language || 'en';
     (this as any).__observationRequired = false;
     (this as any).__directContractNoSymptoms = false;
+    (this as any).__layer2Start = 0; // 2026-09-03 — per-request layer clocks
+    (this as any).__layer3Start = 0;
+    (this as any).__layer4Start = 0;
 
     (this as any).__observationCandidateCodes = [];
     (this as any).__observationRouterReason = null;
@@ -1488,6 +1491,18 @@ export class AIAgentOrchestrator {
     try {
       const _rt = getRuntimeTraceCollector();
       const _lt = (this as any).__layerTimings as Record<string, number> | undefined;
+      // 2026-09-03 — close layers that early-returned (clarification / photo
+      // request turns exit inside layer 2 or 4 and never reached their
+      // completion marker). Only layers that actually started are closed.
+      if (_lt) {
+        const _now = Date.now();
+        const _l2s = Number((this as any).__layer2Start ?? 0);
+        const _l3s = Number((this as any).__layer3Start ?? 0);
+        const _l4s = Number((this as any).__layer4Start ?? 0);
+        if (_l2s > 0 && !(_lt.layer2_understanding > 0)) _lt.layer2_understanding = (_l3s > 0 ? _l3s : _now) - _l2s;
+        if (_l3s > 0 && !(_lt.layer3_rules > 0)) _lt.layer3_rules = (_l4s > 0 ? _l4s : _now) - _l3s;
+        if (_l4s > 0 && !(_lt.layer4_formatting > 0)) _lt.layer4_formatting = _now - _l4s;
+      }
       if (_rt && _lt) _rt.ingestLayerTimings(_lt, 'orchestrator');
     } catch { /* trace-only */ }
 
@@ -3832,6 +3847,7 @@ export class AIAgentOrchestrator {
       
       // PHASE 1: MASTER PROMPT v3 - 5-STAGE UNDERSTANDING PIPELINE
       const layer2Start = Date.now();
+      (this as any).__layer2Start = layer2Start; // 2026-09-03 — closed at the exit fold on early returns
       console.log('\n🧠 [LAYER 2] LLM Understanding Pipeline...');
       
       // STAGE 1: LANGUAGE NORMALIZATION (LLM, FLEXIBLE)
@@ -4742,8 +4758,14 @@ export class AIAgentOrchestrator {
 
       // 2026-08-20 — LANE B eligibility: symptom-free route + zero farmer-text
       // symptoms → context-driven (crop/stage/DAS) rule selection is allowed.
+      // 2026-09-03 — DB INTENT CONTRACT: a DIRECT / 0-round advisory intent
+      // (observation_intent_master) with zero farmer-text symptoms is Lane B
+      // eligible even when the query router did not emit a symptom-free route.
+      // Live trace f3d958cb (FERTILIZER_SCHEDULE, rice grain_filling, DAS 82)
+      // never reached Lane B because eligibility keyed on the router list only.
       (this as any).__laneBEligible =
-        isSymptomFreeRoute && !hasSymptoms && Number((this as any).__textOnlySymptomCount ?? 0) === 0;
+        (isSymptomFreeRoute || (this as any).__directContractNoSymptoms === true) &&
+        !hasSymptoms && Number((this as any).__textOnlySymptomCount ?? 0) === 0;
       
       console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
@@ -5806,16 +5828,36 @@ export class AIAgentOrchestrator {
 
       // Phase H — Fix 2: ConversationState owns clarification. Sync the
       // legacy boolean so downstream gates stay consistent without recomputing.
+      // 2026-09-03 — DB INTENT CONTRACT EXEMPTION (single definition, reused by
+      // the three vetoes below). A DB-declared DIRECT/0-round advisory intent
+      // whose turn produced ZERO farmer-text symptoms keeps its contract:
+      // synthetic/inferred codes (stage, NDVI, IOM seeds) may not force the
+      // symptom-clarification loop. Same exemption the F3 preempt (EDIT 2) and
+      // BYPASS_CLARIFICATION_VETO already apply; it was missing here, on
+      // INTENT_AUTHORITY_OVERRIDE and on OBS_TO_HYP_GAP, which is exactly the
+      // path the live 2026-08-29 FERTILIZER_SCHEDULE / HARVEST_TIMING turns took
+      // (DIRECT_HARD_BYPASS → CONVERSATION_VETO → INTENT_AUTHORITY_OVERRIDE →
+      // DIAGNOSIS_FIRST → 0 hypotheses → photo request).
+      const __dbDirectContractExempt =
+        (this as any).__directContractNoSymptoms === true && __advisoryIntentForState;
       if (conversationState.clarification_required) {
-        shouldBlockDiagnosis = true;
-        if (bypassClarification) {
+        if (__dbDirectContractExempt && bypassClarification) {
           console.log(
-            `   🛑 [DIRECT_MODE_CONVERSATION_VETO] clarification_required=${conversationState.clarification_reason} ` +
-            `confirmed=${conversationState.confirmed.length}; clearing bypassClarification`
+            `   ✅ [DIRECT_CONTRACT_KEPT] intent=${intentCode} clarification_required=${conversationState.clarification_reason} ` +
+            `ignored: DB DIRECT/0 contract with zero farmer-text symptoms (mode=${conversationState.mode})`
           );
-          directModeBypass = false;
-          bypassClarification = false;
-          agentsUsed.push('DIRECT_MODE_CONVERSATION_VETO');
+          agentsUsed.push('DIRECT_CONTRACT_KEPT');
+        } else {
+          shouldBlockDiagnosis = true;
+          if (bypassClarification) {
+            console.log(
+              `   🛑 [DIRECT_MODE_CONVERSATION_VETO] clarification_required=${conversationState.clarification_reason} ` +
+              `confirmed=${conversationState.confirmed.length}; clearing bypassClarification`
+            );
+            directModeBypass = false;
+            bypassClarification = false;
+            agentsUsed.push('DIRECT_MODE_CONVERSATION_VETO');
+          }
         }
       }
       
@@ -5938,7 +5980,18 @@ export class AIAgentOrchestrator {
         mandatoryGraphRealObsCount > 0 ||
         _confirmedObsSignal ||
         (_landCropSignal && !__advisoryIntentForState);
-      if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
+      // 2026-09-03 — requiresAgronomicReasoningIntent() is
+      // observation_intent_master.routing_target='SYMBOLIC_BRAIN', which in the
+      // live DB is TRUE for every brain intent including DIRECT/0 advisory ones
+      // (FERTILIZER_SCHEDULE, HARVEST_TIMING, IRRIGATION_QUERY, PHI_SAFETY_QUERY…).
+      // The override must not discard the DB clarification contract for those.
+      if (isDiagnosticIntent && __dbDirectContractExempt && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
+        console.log(
+          `🧭 [INTENT_AUTHORITY] intent=${intentCode} is SYMBOLIC_BRAIN but DB contract is DIRECT/0 with zero ` +
+          `farmer-text symptoms → contract kept (no forced symptom clarification; Lane B / context rules own the turn)`,
+        );
+        agentsUsed.push('INTENT_AUTHORITY_CONTRACT_KEPT');
+      } else if (isDiagnosticIntent && !diagnosisOnlyModeActive && !diagnosisWithOptionalClarification) {
         console.log(
           `🧭 [INTENT_AUTHORITY] Diagnostic intent=${intentCode} confidence=${(intentConf ?? 0).toFixed(2)} ` +
           `route=${queryRoute.route} → forcing SYMBOLIC_DIAGNOSIS graph pipeline`,
@@ -6239,7 +6292,14 @@ export class AIAgentOrchestrator {
                   : 1.0,
             };
             const graphOut = await evaluateHypothesisGraph(graphInput);
-            if (graphOut.candidates.length === 0 && conversationState.clarification_required) {
+            if (graphOut.candidates.length === 0 && conversationState.clarification_required && __dbDirectContractExempt) {
+              // 2026-09-03 — zero hypotheses on a DIRECT/0 advisory turn is the
+              // expected shape (no symptom → no hypothesis); Lane B answers it.
+              console.log(
+                `[OBS_TO_HYP_GAP] trace=${traceId} intent=${intentCode} hypotheses=0 ` +
+                `action=none (DB DIRECT/0 contract kept; context lane owns the turn)`
+              );
+            } else if (graphOut.candidates.length === 0 && conversationState.clarification_required) {
               shouldBlockDiagnosis = true;
               bypassClarification = false;
               directModeBypass = false;
@@ -8786,6 +8846,8 @@ export class AIAgentOrchestrator {
               growthStage: _laneBStage,
               das: typeof _laneBDas === 'number' ? _laneBDas : Number(_laneBDas ?? NaN),
               cultivationMethod: _laneBCultivation,
+              // REGION GATE (2026-09-03): 'IN-MH' etc. from v_land_region (FIX 4); null = unresolved → fail-closed
+              regionCode: (landContext as any)?.region_code ?? null,
               traceId: traceId,
             });
 
@@ -8844,7 +8906,15 @@ export class AIAgentOrchestrator {
         try {
           const _cbCandidates = Array.isArray(layeredRuleResult?.matched_responses)
             ? layeredRuleResult.matched_responses : [];
-          if (_cbCandidates.length > 0) {
+          // 2026-09-03 — a Lane-B (zero-symptom advisory) turn with NO candidate
+          // still runs the gate: an intent-relevant CONTEXT_BLOCK (e.g.
+          // RICE_NUTR_LATE_N_BLOCK_001 for FERTILIZER_SCHEDULE at grain_filling —
+          // relevance proven through intent_observation_mapping, G2) is the only
+          // DB-authorised answer for that turn and must not be lost to a photo
+          // request. Non-Lane-B turns keep the original candidates>0 condition.
+          const _cbZeroCandidateLaneB =
+            _cbCandidates.length === 0 && (this as any).__laneBEligible === true;
+          if (_cbCandidates.length > 0 || _cbZeroCandidateLaneB) {
             const { applyContextBlockGate } =
               await import('../decision/context-rule-selector.ts');
             const _cbDasRaw =
@@ -8860,6 +8930,7 @@ export class AIAgentOrchestrator {
               cultivationMethod:
                 (this as any)._sessionSSOT?.cultivation_method ??
                 (landContext as any)?.cultivation_method ?? null,
+              regionCode: (landContext as any)?.region_code ?? null, // REGION GATE (2026-09-03)
               traceId: traceId,
             }, _cbCandidates, {
               intentCode: (this as any)._intentLock?.locked_intent ?? null,
@@ -8876,13 +8947,28 @@ export class AIAgentOrchestrator {
               // Lane contract (FIX 7): a hard block leads ONLY when it
               // established an explicit conflict or no candidate survives;
               // safety overlays and advisories trail and never own primary.
-              const nextMatched = [...gate.hardBlockResponses, ...gate.kept, ...gate.overlayResponses, ...gate.advisoryResponses];
+              // 2026-09-03 — selection + safety/conflict split live in
+              // resolveContextGateOutcome() (context-rule-selector) so the deno
+              // suite executes this exact path. `safety_blocks` receives ONLY
+              // is_safety_block=true rows; non-safety explicit conflicts still
+              // suppress (and may lead) but never change safety status.
+              const { resolveContextGateOutcome } =
+                await import('../decision/context-rule-selector.ts');
               const primaryBefore = layeredRuleResult?.primary_decision?.rule_id ?? null;
-              const nextPrimary =
-                gate.hardBlockResponses[0] ??
-                gate.kept[0] ??
-                layeredRuleResult?.primary_decision ??
-                null;
+              const _outcome = resolveContextGateOutcome(gate, {
+                priorPrimary: layeredRuleResult?.primary_decision ?? null,
+                zeroCandidateLaneB: _cbZeroCandidateLaneB,
+              });
+              const nextMatched = _outcome.nextMatched;
+              const nextPrimary = _outcome.nextPrimary;
+              const _advisoryLead = _outcome.advisoryLead;
+              if (_advisoryLead) {
+                agentsUsed.push('CONTEXT_ADVISORY_LEAD');
+                console.log(`[CONTEXT_ADVISORY_LEAD] trace=${traceId} rule=${_advisoryLead.rule_id} (zero-candidate Lane B turn)`);
+              }
+              if (_outcome.conflictBlockIds.length > 0) {
+                console.log(`[CONTEXT_CONFLICT_BLOCK] trace=${traceId} non_safety_conflict=${_outcome.conflictBlockIds.join(',')} (candidate suppression only; safety_status unaffected)`);
+              }
               layeredRuleResult = {
                 ...(layeredRuleResult ?? {}),
                 matched_responses: nextMatched,
@@ -8893,13 +8979,9 @@ export class AIAgentOrchestrator {
                 rules_suppressed_by_context_block: gate.suppressed.map((s: any) => s?.rule_id).filter(Boolean),
                 safety_blocks: [
                   ...(Array.isArray(layeredRuleResult?.safety_blocks) ? layeredRuleResult.safety_blocks : []),
-                  ...[...gate.hardBlocks, ...gate.overlays].map((b: any) => ({
-                    rule_id: b?.rule_id,
-                    reason: 'CONTEXT_BLOCK',
-                    condition_code: b?.condition_code ?? null,
-                    message: b?.action_text ?? b?.reason_text ?? null,
-                  })),
+                  ..._outcome.safetyBlockEntries, // is_safety_block=true rows only (2026-09-03)
                 ],
+                context_conflict_blocks: _outcome.conflictBlockIds, // non-safety explicit conflicts (telemetry)
                 context_block_gate: {
                   evaluations: gate.evaluations,
                   anomalies: gate.anomalies,
@@ -10025,6 +10107,11 @@ export class AIAgentOrchestrator {
       
       // LAYER 3: RULE EVALUATION (Symbolic Brain - No LLM)
       const layer3Start = Date.now();
+      // 2026-09-03 — layer2_understanding was declared but never written, so every
+      // persisted runtime_trace showed layers 2/4/5 at 0 ms (live rows 2026-08-29).
+      layerTimings.layer2_understanding = layer3Start - layer2Start;
+      (this as any).__layer3Start = layer3Start;
+      console.log(`   ✅ Layer 2 complete (${layerTimings.layer2_understanding}ms)`);
       console.log('\n⚙️ [LAYER 3] Rule Evaluation...');
       console.log(`   [${traceId}] PHASE 4: Executing Rule Engine with Decision Graph Bridge...`);
       
@@ -10845,6 +10932,7 @@ export class AIAgentOrchestrator {
       
       // PHASE 6: QUESTION CLASSIFICATION + FARMER COMMUNICATION
       const layer4Start = Date.now();
+      (this as any).__layer4Start = layer4Start;
       console.log('\n🎨 [LAYER 4] LLM Response Formatting...');
       console.log('\n📋 PHASE 6A: Classifying Question Type...');
       
@@ -10883,6 +10971,9 @@ export class AIAgentOrchestrator {
       console.log('   ✅ Message generated with', farmerCommunication.metadata?.sections_count || 'all', 'sections');
       console.log('   ✅ Sections:', farmerCommunication.metadata?.sections_included?.join(', ') || 'all');
       
+      layerTimings.layer4_formatting = Date.now() - layer4Start; // 2026-09-03
+      console.log(`   ✅ Layer 4 complete (${layerTimings.layer4_formatting}ms)`);
+
       // PHASE 7: SAVE & SCHEDULE FOLLOW-UPS (NON-BLOCKING)
       console.log('\n💾 PHASE 7: Saving Decision & Scheduling Follow-ups...');
       
