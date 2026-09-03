@@ -19,13 +19,15 @@ const localizeLandValue = (
   const slug = String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
   return t(`lands.wizard.${group}.${slug}`, { defaultValue: raw });
 };
-import { format, differenceInDays, startOfDay } from 'date-fns';
+import { format, differenceInDays, startOfDay, subDays } from 'date-fns';
+import { formatFarmerDate } from '@/lib/dateFormat';
+import { useLanguageStore } from '@/stores/languageStore';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
+import FarmingTypeDialog, { FarmingMode, FARMING_OPTIONS } from './FarmingTypeDialog';
 import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 
@@ -67,6 +69,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { currentLanguage } = useLanguageStore();
+  const appLang = currentLanguage || 'en';
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
@@ -186,8 +190,12 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       }
     }
 
-    // Open farming type dialog instead of submitting directly
-    console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
+    // The farming method is chosen inline on this screen. The dialog only opens as a
+    // fallback when nothing has been picked yet.
+    if (selectedFarmingType) {
+      handleFarmingTypeSelect(selectedFarmingType);
+      return;
+    }
     setShowFarmingTypeDialog(true);
   };
 
@@ -388,7 +396,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 <div className="flex items-center gap-2 overflow-x-auto text-xs whitespace-nowrap">
                   <span className="text-muted-foreground">{t('schedule.crop_input.crop_summary', 'Crop')}: <strong className="text-foreground">{localizedCropName || cropName}</strong></span>
                   {cropVariety && <span className="text-muted-foreground">• {t('schedule.crop_input.variety_summary', 'Variety')}: <strong className="text-foreground">{cropVariety}</strong></span>}
-                  {sowingDate && wizardStep === 'planting' && <span className="text-muted-foreground">• {format(sowingDate, 'PP')}</span>}
+                  {sowingDate && wizardStep === 'planting' && <span className="text-muted-foreground">• {formatFarmerDate(sowingDate, appLang)}</span>}
                 </div>
               </div>
 
@@ -482,7 +490,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
+                          {sowingDate ? formatFarmerDate(sowingDate, appLang) : t('schedule.crop_input.pick_date')}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
@@ -583,7 +591,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                             >
                               <CalendarIcon className="mr-2 h-4 w-4" />
                               {transplantDate
-                                ? format(transplantDate, 'PPP')
+                                ? formatFarmerDate(transplantDate, appLang)
                                 : t('schedule.crop_input.pick_date')}
                             </Button>
                           </PopoverTrigger>
