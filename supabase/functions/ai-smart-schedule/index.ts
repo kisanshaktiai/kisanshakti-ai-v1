@@ -66,7 +66,9 @@ import {
 } from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION } from "./generator/baseline-generator.ts";
 import { narrateTasks } from "./generator/narrate.ts";
-import { sanitizeTaskText } from "./generator/farmer-text.ts";
+import { sanitizeTaskText, hasFarmerText } from "./generator/farmer-text.ts";
+import { loadLandContext } from "./db/land-context.ts";
+
 
 import { attachRagEvidence, type RagEvidenceSummary } from "./db/rag-evidence.ts";
 import { isFlagEnabled } from "../_shared/featureFlags.ts";
