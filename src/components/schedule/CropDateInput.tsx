@@ -665,14 +665,21 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               {/* Mobile decision footer — one primary decision per step */}
               <div className="p-4 pt-3 border-t border-border/40 bg-background shrink-0">
                 {wizardStep === 'variety' ? (
-                  <Button
-                    type="button"
-                    disabled={!cropVariety || loading}
-                    onClick={() => setWizardStep('planting')}
-                    className="w-full h-14 rounded-2xl text-base font-semibold"
-                  >
-                    {t('schedule.crop_input.next', 'Next')}
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => setWizardStep('planting')}
+                      className="w-full h-14 rounded-2xl text-base font-semibold"
+                    >
+                      {t('schedule.crop_input.next', 'Next')}
+                    </Button>
+                    {!cropVariety && (
+                      <p className="text-xs text-center text-muted-foreground">
+                        {t('schedule.crop_input.variety_optional_hint', "Don't know the variety? You can continue without it.")}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Button

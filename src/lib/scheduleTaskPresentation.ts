@@ -32,14 +32,16 @@ export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: 
   const resources = task.resources && typeof task.resources === 'object' && !Array.isArray(task.resources) ? task.resources as Record<string, unknown> : {};
   const taskType = String(task.task_type ?? '').trim().toLowerCase();
   const rawName = cleanText(task.task_name);
-  const what = rawName && rawName.length <= 72 ? rawName : t(taskTypeLabelKey(taskType));
+  const what = rawName || t(taskTypeLabelKey(taskType));
   const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
   const instructions = asArray(task.instructions)
     .map(cleanText)
     .filter((x): x is string => Boolean(x) && !SOURCE_PREFIX.test(x) && !MACHINE_CONDITION_PREFIX.test(x) && !INTERNAL_INSTRUCTION_PREFIX.test(x));
   const desc = cleanText(task.task_description);
   const how = [...detailedSteps, ...instructions];
-  if (!how.length && desc && taskType !== 'irrigation' && taskType !== 'monitoring') how.push(desc);
+  // Fallback for every task type (incl. irrigation/monitoring): show the DB description
+  // rather than "no verified method available". Description is authoritative DB text.
+  if (!how.length && desc && desc !== what) how.push(desc);
   const howMuch: string[] = []; const seen = new Set<string>();
   const pushAmount = (labelKey: string, raw: unknown) => { const q = quantityText(raw); if (!q) return; const value = `${t(labelKey)}: ${q}`; if (!seen.has(value)) { seen.add(value); howMuch.push(value); } };
   if (taskType === 'irrigation') pushAmount('schedule.amount.water', task.water_required_liters ?? resources.water_liters ?? resources.quantity);
