@@ -887,10 +887,11 @@ export async function generateBaseline(
     }
     for (const entry of scoutByStart.values()) {
       const brief = scoutBrief(entry.task.rule_ids, entry.refs.length);
-      entry.task.task_description = brief.description;
-      entry.task.instructions = [...entry.task.instructions, ...brief.instructions];
+      entry.task.task_description = brief.description || entry.task.instructions[0] || "";
+      entry.task.technical_details = [...(entry.task.technical_details ?? []), ...brief.technical];
       entry.task.resources = brief.resources;
-      if (!brief.description && !brief.instructions.length) gaps.push("scouting_brief_empty");
+      if (!brief.description && !brief.technical.length) gaps.push("scouting_brief_empty");
+
       tasks.push(entry.task);
     }
   }
@@ -919,10 +920,14 @@ export async function generateBaseline(
     emittedLifecycle.add(spec.taskType);
     void key;
     const end = das0(stage, stage.das_max);
+    const lifecycleWindow = end != null && Number.isFinite(end)
+      ? `Window: DAS ${das} to ${end} (${stageLabel(stage)}).`
+      : null;
     tasks.push({
       task_name: spec.label,
       task_type: spec.taskType,
-      task_description: "",
+      task_description: lifecycleWindow ?? "",
+
       days_from_sowing: das,
       anchor_type: "STAGE",
       anchor_stage: stage.stage_code || stage.growth_stage,
