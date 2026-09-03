@@ -1,16 +1,22 @@
 // CHANGE LOG
+// 2026-09-03 06:25 UTC — Rate-limit resilience + per-task truth. Live evidence: both
+//   providers returned HTTP 429 and the whole Marathi schedule silently persisted as
+//   English. Now: Retry-After-aware bounded backoff, provider chain retried after the
+//   wait instead of failing instantly, chunk concurrency dropped to 1 once a 429 is
+//   seen, and the exact set of narrated task indices is returned so untranslated tasks
+//   can be marked translation-pending instead of being relabelled "en".
 // 2026-09-02 12:40 UTC — Narration is now SIMPLIFY + TRANSLATE for EVERY language
 //   (the `language === "en"` early return is gone; English gets a plain-language pass).
 //   New village-officer prompt with hard readability rules, one failed-chunk retry,
 //   and PARTIAL acceptance: tasks whose rewrite failed keep their sanitized text
 //   instead of the whole schedule falling back to raw DB English.
-// (earlier) Farmer-language narration layer.
 //
 // Agronomic selection remains deterministic/DB-backed. The model only rewrites supplied
 // facts into clear farmer language and cannot add a dose, product, timing or treatment.
 
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
+
 
 export interface NarratableTask {
   task_name: string;
