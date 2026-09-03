@@ -469,10 +469,15 @@ serve(async (req) => {
           harness: harnessTrace,
           narration: {
             requested_language: language,
-            persisted_language: narration.narrated ? language : "en",
+            persisted_language: language,
             applied: narration.narrated,
+            narrated_count: narration.narratedCount,
+            total_count: narration.totalCount,
             reason: narration.reason ?? null,
           },
+          land_context_gaps: landContext.gaps,
+          ndvi_context: landContext.ndvi,
+
         },
         metadata: {
           coverage: baseline.coverage,
