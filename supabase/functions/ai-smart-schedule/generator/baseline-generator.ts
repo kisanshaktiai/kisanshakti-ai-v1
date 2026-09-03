@@ -587,8 +587,11 @@ export async function generateBaseline(
     const width = g.dasEnd - g.dasStart;
 
     const irrigationInstructions: string[] = [];
-    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
-    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
+    // 2026-09-03: machine/provenance detail no longer sits in the farmer instruction
+    // list — it is carried as technical_details and shown only under "details".
+    const irrigationTechnical: string[] = [];
+    if (g.criticalMoisturePercent != null) irrigationTechnical.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
+    if (g.provenance.source) irrigationTechnical.push(`Source: ${g.provenance.source}`);
 
     // interval 0 is NOT an invalid row: the DB says "no irrigation in this window"
     // (rice maturity/harvest = drain the field). Emit the withdrawal advisory instead
@@ -602,6 +605,7 @@ export async function generateBaseline(
       );
       if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm`);
     }
+
 
     const expectedEvents = isWithdrawal ? 0 : Math.floor(width / step) + 1;
     const task: BaselineTask = {
