@@ -2,11 +2,27 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 20; const MAX_CONCURRENCY = 3; const NARRATION_BUDGET_MS = 110_000; const RETRY_DELAYS_MS = [2_000, 6_000, 15_000]; const MAX_RETRY_AFTER_MS = 30_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 3; const NARRATION_BUDGET_MS = 110_000; const RETRY_DELAYS_MS = [2_000, 6_000, 15_000]; const MAX_RETRY_AFTER_MS = 30_000; let rateLimited = false;
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 class RetryableError extends Error { constructor(message: string, readonly retryAfterMs: number | null) { super(message); } }
 function numbersOf(s: string): string[] { return (s.match(NUM_RE) || []).map((n) => n.replace(",", ".")); }
 export function isFaithful(source: string, translated: string): boolean { const a = numbersOf(source).sort(); const b = numbersOf(translated).sort(); return a.length === b.length && a.every((v, i) => v === b[i]); }
+// Truncated model output (max_tokens cut) yields unterminated JSON. Salvage every complete
+// object instead of discarding the whole chunk; a partial chunk is retried by the caller.
+function parseModelJson(content: string): unknown {
+  const text = String(content).replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  try { return JSON.parse(text); } catch { /* fall through to salvage */ }
+  const items: unknown[] = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") { if (depth === 0) start = i; depth++; }
+    else if (c === "}") { depth--; if (depth === 0 && start >= 0) { try { items.push(JSON.parse(text.slice(start, i + 1))); } catch { /* skip */ } start = -1; } }
+  }
+  return items;
+}
 function isProvenanceLine(s: string): boolean { return isTechnicalLine(s); }
 function farmerInstructionSource(instructions: string[] | undefined): string[] { return (instructions ?? []).map(String).map((x) => x.trim()).filter(Boolean).filter((x) => !isProvenanceLine(x)); }
 async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
@@ -16,10 +32,11 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   for (const { provider, model } of getScheduleProviderChain()) {
     const apiKey = getAPIKey(provider); if (!apiKey) continue;
     try {
-      const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer." }, { role: "user", content: prompt }], { maxTokens: 3500, temperature: 0, useJsonMode: true });
+      const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer." }, { role: "user", content: prompt }], { maxTokens: 8000, temperature: 0, useJsonMode: true });
       const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify(body), signal });
       if (!res.ok) { if (res.status === 429 || res.status >= 500) { if (res.status === 429) rateLimited = true; const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
-      const json = await res.json(); const raw = JSON.parse(json?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray(raw?.tasks) ? raw.tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
+      const json = await res.json(); const raw = parseModelJson(json?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray(raw?.tasks) ? raw.tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
+      if (parsed.length < chunk.length) throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null);
       return { items: parsed.map((p) => ({ ...p, i: offset + Number(p.i) })), provider, model };
     } catch (error) { lastError = error; }
   }
