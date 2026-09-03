@@ -83,18 +83,12 @@ export async function loadLandContext(
   const ndvi = ndviRow ? { source: "ndvi_data", ...ndviRow } : null;
   if (!ndvi) gaps.push("ndvi_context_missing");
 
-  // Agro-climatic zone: the land's declared FK resolved to its DB label. Never derived.
-  let agroClimaticZone: string | null = null;
-  const zoneId = (land as Record<string, unknown> | null)?.agro_climatic_zone_id;
-  if (zoneId) {
-    const { data: zone } = await supabase
-      .from("agro_climatic_zones")
-      .select("zone_name, zone_code")
-      .eq("id", zoneId as string)
-      .maybeSingle();
-    agroClimaticZone = (zone?.zone_name as string) || (zone?.zone_code as string) || null;
-  }
-  if (!agroClimaticZone) gaps.push("agro_climatic_zone_missing");
+  // Agro-climatic zone: public.agro_climatic_zones carries no land/state linkage in the
+  // live data (zone_code and states_covered are NULL on every row), so the zone CANNOT be
+  // resolved from the land without inventing a mapping. Recorded as an explicit gap.
+  const agroClimaticZone: string | null = null;
+  gaps.push("agro_climatic_zone_unmappable");
+
 
   return { soil, weather, coordinates, agroClimaticZone, ndvi, gaps };
 }
