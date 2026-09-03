@@ -541,6 +541,14 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       </PopoverContent>
                     </Popover>
 
+                    {sowingDate && (
+                      <p className="text-xs text-muted-foreground">
+                        {backdatedInfo.isBackdated
+                          ? t('schedule.crop_input.quick_date.days_ago_note', { days: backdatedInfo.daysAgo })
+                          : t('schedule.crop_input.quick_date.today_note')}
+                      </p>
+                    )}
+
                     {/* Backdated Warning Hint */}
                     {backdatedInfo.isBackdated && (
                       <p className="text-xs text-warning dark:text-warning flex items-center gap-1">
