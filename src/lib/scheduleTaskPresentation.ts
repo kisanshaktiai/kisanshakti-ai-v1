@@ -3,16 +3,18 @@ export interface ScheduleTaskPresentation {
   how: string[];
   howMuch: string[];
   hasVerifiedAmount: boolean;
-  /** Provenance / agronomic-audit lines. Shown only under "details", never as headline text. */
   technicalDetails: string[];
-  /** True when the edge narration could not rewrite this task into the farmer's language. */
   needsTranslation: boolean;
 }
 
 const SOURCE_PREFIX = /^(?:source|evidence)\s*:/i;
 const MACHINE_CONDITION_PREFIX = /^[a-z0-9_]+\s*:/i;
 const INTERNAL_INSTRUCTION_PREFIX = /^(?:critical\s+soil\s+moisture)\s*:/i;
-const cleanText = (value: unknown): string | null => typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'null' && value.trim().toLowerCase() !== 'undefined' ? value.trim() : null;
+const ENGLISH_TECHNICAL_PREFIX = /^(?:temperature|humidity|conditions|instructions|precautions)\s*:/i;
+
+const cleanText = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'null' && value.trim().toLowerCase() !== 'undefined'
+    ? value.trim() : null;
 const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
 function quantityText(value: unknown): string | null {
@@ -29,56 +31,58 @@ function quantityText(value: unknown): string | null {
 }
 
 function taskTypeLabelKey(taskType: string): string {
-  const key = String(taskType || '').trim().toLowerCase();
   const map: Record<string, string> = {
-    irrigation: 'schedule.task_type.irrigation', nutrition: 'schedule.task_type.nutrition', micronutrient: 'schedule.task_type.micronutrient',
-    pesticide: 'schedule.task_type.pest_management', pest_management: 'schedule.task_type.pest_management', disease_management: 'schedule.task_type.disease_management',
-    weed_management: 'schedule.task_type.weed_management', intercultural: 'schedule.task_type.intercultural', sowing: 'schedule.task_type.sowing',
-    seed_treatment: 'schedule.task_type.seed_treatment', land_preparation: 'schedule.task_type.land_preparation', monitoring: 'schedule.task_type.monitoring',
-    harvest: 'schedule.task_type.harvest', post_harvest: 'schedule.task_type.post_harvest'
+    irrigation: 'schedule.task_type.irrigation', fertilizer: 'schedule.task_type.nutrition', nutrition: 'schedule.task_type.nutrition',
+    micronutrient: 'schedule.task_type.micronutrient', pesticide: 'schedule.task_type.pest_management', pest_management: 'schedule.task_type.pest_management',
+    disease_management: 'schedule.task_type.disease_management', weed_management: 'schedule.task_type.weed_management', intercultural: 'schedule.task_type.intercultural',
+    sowing: 'schedule.task_type.sowing', seed_treatment: 'schedule.task_type.seed_treatment', land_preparation: 'schedule.task_type.land_preparation',
+    monitoring: 'schedule.task_type.monitoring', harvest: 'schedule.task_type.harvest', post_harvest: 'schedule.task_type.post_harvest'
   };
-  return map[key] || 'schedule.task_type.generic';
+  return map[String(taskType || '').trim().toLowerCase()] || 'schedule.task_type.generic';
 }
 
-/**
- * Presentation-only adapter. It uses only persisted task data and never invents agronomy.
- * Irrigation is special: the generator's `water_mm` is a field/stage depth, not a farmer
- * delivery quantity. The farmer card therefore shows litres ONLY when a litres value is
- * explicitly present in the persisted task; it never converts mm→litres without an
- * explicit DB-provided conversion/input.
- */
-export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: (key: string, fallback?: any) => string): ScheduleTaskPresentation {
+function isRawNonLocalizedText(value: string, sourceLanguage: unknown, currentLanguage: string): boolean {
+  const lang = cleanText(sourceLanguage)?.toLowerCase();
+  return currentLanguage !== 'en' && Boolean(lang) && lang !== currentLanguage.toLowerCase() && Boolean(value);
+}
+
+/** Presentation-only adapter. DB remains the agronomy SSOT; this layer only renders persisted data. */
+export function buildScheduleTaskPresentation(
+  task: Record<string, unknown>,
+  t: (key: string, fallback?: any) => string,
+  currentLanguage = 'en',
+): ScheduleTaskPresentation {
   const resources = task.resources && typeof task.resources === 'object' && !Array.isArray(task.resources) ? task.resources as Record<string, unknown> : {};
   const taskType = String(task.task_type ?? '').trim().toLowerCase();
+  const sourceLanguage = task.language ?? resources.language;
   const rawName = cleanText(task.task_name);
-  const what = rawName || t(taskTypeLabelKey(taskType));
-  const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
+  const rawDescription = cleanText(task.task_description);
+  const unsafeName = isRawNonLocalizedText(rawName ?? '', sourceLanguage, currentLanguage);
+  const localizedName = cleanText(task.localized_task_name ?? resources.localized_task_name);
+  const localizedDescription = cleanText(task.localized_task_description ?? resources.localized_task_description);
+  const what = currentLanguage === 'en' ? (rawName || t(taskTypeLabelKey(taskType))) : (localizedName || (!unsafeName ? rawName : null) || t(taskTypeLabelKey(taskType)));
+
   const technicalDetails = asArray(resources.technical_details).map(cleanText).filter((x): x is string => Boolean(x));
   const legacyTechnical: string[] = [];
-  const instructions = asArray(task.instructions)
-    .map(cleanText)
-    .filter((x): x is string => Boolean(x))
-    .filter((x) => {
-      const isTechnical = SOURCE_PREFIX.test(x) || MACHINE_CONDITION_PREFIX.test(x) || INTERNAL_INSTRUCTION_PREFIX.test(x);
-      if (isTechnical) legacyTechnical.push(x);
-      return !isTechnical;
-    });
-  const desc = cleanText(task.task_description);
-  const how = [...detailedSteps, ...instructions];
-  if (!how.length && desc && desc !== what) how.push(desc);
+  const instructions = asArray(task.instructions).map(cleanText).filter((x): x is string => Boolean(x)).filter((x) => {
+    const technical = SOURCE_PREFIX.test(x) || MACHINE_CONDITION_PREFIX.test(x) || INTERNAL_INSTRUCTION_PREFIX.test(x) || ENGLISH_TECHNICAL_PREFIX.test(x);
+    if (technical) legacyTechnical.push(x);
+    return !technical;
+  });
+  const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
+  const rawHow = [...detailedSteps, ...instructions];
+  const how = currentLanguage === 'en' ? rawHow : rawHow.filter((x) => !isRawNonLocalizedText(x, sourceLanguage, currentLanguage));
+  const safeDescription = localizedDescription || (!isRawNonLocalizedText(rawDescription ?? '', sourceLanguage, currentLanguage) ? rawDescription : null);
+  if (!how.length && safeDescription && safeDescription !== what) how.push(safeDescription);
 
   const howMuch: string[] = [];
   const seen = new Set<string>();
   const pushAmount = (labelKey: string, raw: unknown) => {
-    const q = quantityText(raw);
-    if (!q) return;
+    const q = quantityText(raw); if (!q) return;
     const value = `${t(labelKey)}: ${q}`;
     if (!seen.has(value)) { seen.add(value); howMuch.push(value); }
   };
-
-  // Farmer-facing irrigation quantity: do not display the stage-depth `mm` value as if
-  // it were a litres delivery amount. Accept only an explicit litres value from the task
-  // or its resources. The DB `water_required_liters` field is the canonical litre value.
+  // `mm` is water depth, not a farmer delivery quantity. Never display stage `water_mm`/`quantity` as litres.
   if (taskType === 'irrigation') {
     pushAmount('schedule.amount.water', task.water_required_liters ?? resources.water_required_liters ?? resources.water_liters);
   } else {
@@ -93,11 +97,8 @@ export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: 
   pushAmount('schedule.amount.seed', resources.seed_quantity_kg);
 
   return {
-    what,
-    how,
-    howMuch,
-    hasVerifiedAmount: howMuch.length > 0,
+    what, how, howMuch, hasVerifiedAmount: howMuch.length > 0,
     technicalDetails: [...new Set([...technicalDetails, ...legacyTechnical])],
-    needsTranslation: resources.needs_translation === true,
+    needsTranslation: resources.needs_translation === true || (currentLanguage !== 'en' && unsafeName && !localizedName),
   };
 }
