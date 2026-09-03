@@ -695,17 +695,21 @@ export async function generateBaseline(
       const { stage, das } = matched[0];
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
+      // 2026-09-03: ETL / dose / PHI / source are AUDIT detail — they used to be the
+      // farmer instruction list. They now ride in technical_details.
+      const ruleTechnical: string[] = [];
+      if (rule.etl_threshold) ruleTechnical.push(`ETL: ${rule.etl_threshold}`);
+      if (rule.dosage_per_acre) ruleTechnical.push(`Dose/acre: ${rule.dosage_per_acre}`);
+      if (rule.phi_days != null) ruleTechnical.push(`PHI: ${rule.phi_days} days`);
+      if (rule.scientific_source) ruleTechnical.push(`Source: ${rule.scientific_source}`);
       const ruleInstructions: string[] = [];
-      if (rule.etl_threshold) ruleInstructions.push(`ETL: ${rule.etl_threshold}`);
-      if (rule.dosage_per_acre) ruleInstructions.push(`Dose/acre: ${rule.dosage_per_acre}`);
-      if (rule.phi_days != null) ruleInstructions.push(`PHI: ${rule.phi_days} days`);
-      if (rule.scientific_source) ruleInstructions.push(`Source: ${rule.scientific_source}`);
       const rulePrecautions: string[] = Array.isArray(rule.contraindications)
         ? (rule.contraindications as unknown[]).map((c) => String(c)).filter(Boolean)
         : [];
-      if (!rule.action_text && !ruleInstructions.length && !rulePrecautions.length) {
+      if (!rule.action_text && !ruleTechnical.length && !rulePrecautions.length) {
         gaps.push("rule_task_no_detail");
       }
+
       // v1.5.0: the name is a LABEL. Previously rule.action_text (a full advisory
       // paragraph) became the task_name, so cards showed prose as a title.
       const ruleLabel = String(rule.category ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();

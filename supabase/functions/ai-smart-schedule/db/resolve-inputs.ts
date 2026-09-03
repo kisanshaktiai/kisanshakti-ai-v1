@@ -67,9 +67,12 @@ export interface ResolvedInputs {
   soilTestId: string | null;
   sowingDate: string | null;
   transplantDate: string | null;
+  /** Farmer's app language — carried so DB-backed labels are read in that language. */
+  language?: string;
   gaps: string[];
   provenance: Record<string, unknown>;
 }
+
 
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
 
