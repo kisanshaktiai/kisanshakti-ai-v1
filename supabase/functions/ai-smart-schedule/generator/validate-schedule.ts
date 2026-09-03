@@ -102,7 +102,7 @@ export function validateBaseline(
     // 2026-09-03: a task counted on the SOWING axis must not be worded on the
     // transplanting clock — the farmer reads the day number against the wrong event.
     const text = `${t.task_name ?? ""} ${(t as { task_description?: string }).task_description ?? ""}`;
-    if (/\b(?:DAT|after transplant)/i.test(text) && t.anchor_type !== "TRANSPLANT") {
+    if (/\b(?:DAT|after transplant)/i.test(text) && t.anchor_type !== "DAT") {
       cap(warnings, `W4 transplant_wording_on_sowing_axis: ${ref}`);
     }
 
