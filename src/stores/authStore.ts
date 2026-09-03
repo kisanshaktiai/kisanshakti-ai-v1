@@ -226,6 +226,12 @@ export const useAuthStore = create<AuthState>()(
         // Clear localStorage items - but NOT tenantId (it's system-level config)
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
+        // Remove the offline credential as well. A future offline login requires a fresh
+        // successful online enrollment, preventing one farmer's credential from remaining
+        // available after logout on a shared device.
+        import('@/services/offlineAuthService')
+          .then(({ offlineAuthService }) => offlineAuthService.clearCachedAuth())
+          .catch(() => { /* best effort: auth state is already cleared */ });
         
         console.log('✅ [Auth] Logout complete');
       },
