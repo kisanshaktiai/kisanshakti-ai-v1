@@ -506,7 +506,9 @@ serve(async (req) => {
       throw new Error(`Failed to save schedule: ${scheduleError.message}`);
     }
 
+    const narratedIdx = new Set(narration.appliedIndices);
     const tasksToInsert = baseline.tasks.map((t, idx) => ({
+
       schedule_id: savedSchedule.id,
       farmer_id: farmerId,
       tenant_id: tenantId,
