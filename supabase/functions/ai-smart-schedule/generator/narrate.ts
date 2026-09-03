@@ -27,7 +27,26 @@ export interface NarratableTask {
 const NUM_RE = /\d+(?:[.,]\d+)?/g;
 const CHUNK_SIZE = 20;
 const MAX_CONCURRENCY = 3;
-const NARRATION_BUDGET_MS = 45_000;
+const NARRATION_BUDGET_MS = 110_000;
+/** Bounded backoff for 429 / 5xx. Terminal statuses are never retried. */
+const RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
+const MAX_RETRY_AFTER_MS = 30_000;
+
+/** Set once a provider rate-limits, so the remaining chunks stop hammering it. */
+let rateLimited = false;
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const id = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true });
+  });
+
+class RetryableError extends Error {
+  constructor(message: string, readonly retryAfterMs: number | null) {
+    super(message);
+  }
+}
+
 
 function numbersOf(s: string): string[] {
   return (s.match(NUM_RE) || []).map((n) => n.replace(",", "."));
