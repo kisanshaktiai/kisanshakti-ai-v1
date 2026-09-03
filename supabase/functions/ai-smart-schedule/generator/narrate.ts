@@ -130,7 +130,18 @@ async function narrateChunk(
         body: JSON.stringify(body),
         signal,
       });
-      if (!res.ok) throw new Error(`llm_http_${res.status}`);
+      if (!res.ok) {
+        // 429 / 5xx are transient: honour Retry-After and let the caller back off.
+        if (res.status === 429 || res.status >= 500) {
+          if (res.status === 429) rateLimited = true;
+          const header = res.headers.get("Retry-After");
+          const retryAfterMs = header && !isNaN(Number(header))
+            ? Math.min(Number(header) * 1000, MAX_RETRY_AFTER_MS)
+            : null;
+          throw new RetryableError(`llm_http_${res.status}`, retryAfterMs);
+        }
+        throw new Error(`llm_http_${res.status}`);
+      }
       const json = await res.json();
       const text = json?.choices?.[0]?.message?.content ?? "[]";
       const raw = JSON.parse(text);
@@ -151,13 +162,27 @@ async function narrateChunkWithRetry(
   language: string,
   signal: AbortSignal,
 ) {
-  try {
-    return await narrateChunk(chunk, offset, language, signal);
-  } catch (first) {
-    if (signal.aborted) throw first;
-    return await narrateChunk(chunk, offset, language, signal);
+  let lastError: unknown = new Error("MODEL_UNAVAILABLE");
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null
+        ? lastError.retryAfterMs
+        : RETRY_DELAYS_MS[attempt - 1];
+      await sleep(wait, signal);
+      if (signal.aborted) break;
+    }
+    try {
+      return await narrateChunk(chunk, offset, language, signal);
+    } catch (error) {
+      lastError = error;
+      if (signal.aborted) break;
+      // Terminal statuses (400/401/402/403) repeat on resend — stop immediately.
+      if (!(error instanceof RetryableError)) break;
+    }
   }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
+
 
 export async function narrateTasks(
   tasks: NarratableTask[],
