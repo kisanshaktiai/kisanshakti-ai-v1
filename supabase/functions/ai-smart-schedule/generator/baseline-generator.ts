@@ -742,6 +742,8 @@ export async function generateBaseline(
         source_refs: [{ table: "decision_rules", row_id: rule.rule_id, source: rule.scientific_source ?? null }],
         instructions: ruleInstructions,
         precautions: rulePrecautions,
+        technical_details: ruleTechnical,
+
       });
     }
   }
