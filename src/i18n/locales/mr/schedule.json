@@ -499,6 +499,7 @@
   "crop_input": {
     "next": "पुढे",
     "crop_summary": "पीक",
-    "variety_summary": "वाण"
+    "variety_summary": "वाण",
+    "variety_optional_hint": "वाण माहित नाही? तुम्ही न निवडता पुढे जाऊ शकता."
   }
 }
