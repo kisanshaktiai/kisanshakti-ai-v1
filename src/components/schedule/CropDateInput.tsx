@@ -478,6 +478,35 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       )}
                     </div>
 
+                    {/* Quick-pick chips — the common cases without opening a calendar */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { key: 'today', days: 0 },
+                        { key: 'yesterday', days: 1 },
+                        { key: 'week_ago', days: 7 },
+                        { key: 'fifteen_days_ago', days: 15 },
+                        { key: 'month_ago', days: 30 },
+                      ].map((opt) => {
+                        const chipDate = startOfDay(subDays(new Date(), opt.days));
+                        const active = sowingDate && startOfDay(sowingDate).getTime() === chipDate.getTime();
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSowingDate(chipDate); }}
+                            className={cn(
+                              'min-h-[48px] rounded-xl border px-3 text-sm font-medium transition-colors active:scale-[0.98]',
+                              active
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-card border-border text-foreground',
+                            )}
+                          >
+                            {t(`schedule.crop_input.quick_date.${opt.key}`)}
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
@@ -490,7 +519,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {sowingDate ? formatFarmerDate(sowingDate, appLang) : t('schedule.crop_input.pick_date')}
+                          {sowingDate ? formatFarmerDate(sowingDate, appLang) : t('schedule.crop_input.quick_date.choose_date')}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
