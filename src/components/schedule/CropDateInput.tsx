@@ -673,6 +673,50 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     )}
                   </div>
 
+                  {/* Farming method — chosen inline (it decides which inputs the schedule uses) */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Sprout className="h-3.5 w-3.5 text-primary" />
+                      {t('schedule.method.title')}
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground -mt-1">
+                      {t('schedule.method.subtitle')}
+                    </p>
+                    <div className="space-y-2">
+                      {FARMING_OPTIONS.map((option) => {
+                        const active = selectedFarmingType === option.mode;
+                        return (
+                          <button
+                            key={option.mode}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedFarmingType(option.mode); }}
+                            className={cn(
+                              'w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left min-h-[64px] transition-colors active:scale-[0.99]',
+                              active ? option.borderColor : 'border-border',
+                              active ? option.bgColor : 'bg-card',
+                            )}
+                          >
+                            <span className={cn('shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-card border', option.borderColor, option.color)}>
+                              {option.icon}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className={cn('block font-semibold text-sm', active ? option.color : 'text-foreground')}>
+                                {t(`schedule.method.${option.mode}_title`)}
+                              </span>
+                              <span className="block text-xs text-muted-foreground mt-0.5">
+                                {t(`schedule.method.${option.mode}_subtitle`)}
+                              </span>
+                              <span className="block text-[11px] text-muted-foreground/80 mt-0.5">
+                                {t(`schedule.method.${option.mode}_tradeoff`)}
+                              </span>
+                            </span>
+                            {active && <Check className={cn('h-4 w-4 shrink-0', option.color)} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Multi-Intercrop Selector - optional, last */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
