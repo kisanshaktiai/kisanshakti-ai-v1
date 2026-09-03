@@ -39,9 +39,11 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   for (const { provider, model } of getScheduleProviderChain()) {
     const apiKey = getAPIKey(provider); if (!apiKey) continue;
     try {
+      await waitForCooldown(signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
       const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer." }, { role: "user", content: prompt }], { maxTokens: 8000, temperature: 0, useJsonMode: true });
       const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify(body), signal });
-      if (!res.ok) { if (res.status === 429 || res.status >= 500) { if (res.status === 429) rateLimited = true; const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
+      if (!res.ok) { if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
+
       const json = await res.json(); const raw = parseModelJson(json?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray(raw?.tasks) ? raw.tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
       if (parsed.length < chunk.length) throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null);
       return { items: parsed.map((p) => ({ ...p, i: offset + Number(p.i) })), provider, model };
