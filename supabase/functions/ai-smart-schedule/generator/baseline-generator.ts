@@ -141,7 +141,10 @@ export interface BaselineTask {
   source_refs: Provenance[];
   instructions: string[];
   precautions: string[];
+  /** Provenance / audit lines (ETL, dose, PHI, source, derivations). Never farmer text. */
+  technical_details?: string[];
   resources?: Record<string, unknown>;
+
   /**
    * A repeating instruction (irrigation every N days inside a stage window, weekly
    * scouting). ONE task carries the recurrence; the calendar is never expanded into
