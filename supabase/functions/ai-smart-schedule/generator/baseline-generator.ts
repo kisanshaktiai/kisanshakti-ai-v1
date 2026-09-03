@@ -520,10 +520,16 @@ export async function generateBaseline(
         continue;
       }
 
+      // 2026-09-03: the card used to read "Fertilizer application (N)" with an EMPTY
+      // description. Nutrient letters are spelled out and the farmer line is composed
+      // from the SAME DB numbers already computed above (no new agronomy).
+      const nutrientLabel = nutrient === "N" ? "Nitrogen" : nutrient === "P" ? "Phosphorus" : nutrient === "K" ? "Potassium" : nutrient;
+      const splitNote = String(split.note ?? split.description ?? "").trim();
       tasks.push({
-        task_name: `Fertilizer application (${nutrient})`,
+        task_name: `Apply ${nutrientLabel} fertilizer`,
         task_type: "nutrition",
-        task_description: String(split.note ?? split.description ?? ""),
+        task_description: splitNote || `Apply ${qty} kg of ${nutrientLabel} to this field.`,
+
         days_from_sowing: das,
         anchor_type: stage ? "STAGE" : "DAS",
         anchor_stage: stage?.stage_code || stage?.growth_stage || null,
