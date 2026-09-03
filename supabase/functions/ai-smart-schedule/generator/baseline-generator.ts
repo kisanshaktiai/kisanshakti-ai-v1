@@ -764,27 +764,53 @@ export async function generateBaseline(
   coverage.monitoring = false;
   if (observationRules.length) {
     const ruleById = new Map(observationRules.map((r) => [r.rule_id, r]));
+    // 2026-09-03: scouting briefs showed raw condition codes ("tungro yellow stunt").
+    // observation_translations is the DB authority for the farmer-readable label —
+    // in the farmer's own language, with English as the only fallback. Nothing invented:
+    // an unmapped code keeps its own text and is reported as a gap.
+    const lang = String((inputs as { language?: string }).language || "en").trim().toLowerCase();
+    const condCodes = [...new Set(
+      observationRules.map((r) => String(r.condition_code ?? "").trim()).filter(Boolean),
+    )];
+    const labelByCode = new Map<string, string>();
+    if (condCodes.length) {
+      const { data: trs } = await supabase
+        .from("observation_translations")
+        .select("observation_code, language_code, display_text")
+        .in("observation_code", condCodes)
+        .in("language_code", [lang, "en"]);
+      for (const row of (trs || []) as Array<Record<string, unknown>>) {
+        const code = String(row.observation_code);
+        const isLang = String(row.language_code).toLowerCase() === lang;
+        const text = String(row.display_text ?? "").trim();
+        if (!text) continue;
+        if (isLang || !labelByCode.has(code)) labelByCode.set(code, text);
+      }
+      const unmapped = condCodes.filter((c) => !labelByCode.has(c));
+      if (unmapped.length) gaps.push(`observation_label_missing:${unmapped.length}`);
+    }
     /** Farmer-facing scouting brief built strictly from DB rule fields. */
     const scoutBrief = (ids: string[], matchedCount: number) => {
       const conditions: string[] = [];
-      const instructions: string[] = [];
+      const technical: string[] = [];
       for (const id of ids) {
         const r = ruleById.get(id);
         if (!r) continue;
         const cc = String(r.condition_code ?? "").trim();
         if (cc) {
-          const label = cc.replace(/_/g, " ");
+          const label = labelByCode.get(cc) || cc.replace(/_/g, " ");
           if (!conditions.includes(label)) conditions.push(label);
           const etl = String(r.etl_threshold ?? "").trim();
-          if (etl && instructions.length < 6) instructions.push(`${cc}: ${etl}`);
+          if (etl && technical.length < 6) technical.push(`ETL: ${label} — ${etl}`);
         }
       }
       return {
         description: conditions.length ? `Inspect for: ${conditions.slice(0, 8).join(", ")}` : "",
-        instructions,
+        technical,
         resources: { scouting_targets: matchedCount },
       };
     };
+
     const byStage = new Map<string, { stage: StageRow; refs: Array<{ id: string; p: number | null }>; priority: number | null }>();
     for (const r of observationRules) {
       const stageList: string[] = Array.isArray(r.stage_applicable)
