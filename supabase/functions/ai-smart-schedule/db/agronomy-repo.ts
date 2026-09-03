@@ -335,6 +335,8 @@ export interface FieldActionRule {
   etl_threshold: string | null;
   dosage_per_acre: string | null;
   contraindications: unknown;
+  organic_alternative?: string | null;
+  ipm_level?: number | string | null;
 }
 
 /**
@@ -365,7 +367,7 @@ export async function getFieldActionRules(
   const FIELD_ACTION_RULE_LIMIT = 1000;
   const { data } = await supabase
     .from("decision_rules")
-    .select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code")
+    .select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level")
     .eq("is_active", true)
     .eq("requires_field_action", true)
     .eq("trigger_class", "CONTEXT_SCHEDULE")

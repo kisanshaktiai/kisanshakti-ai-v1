@@ -167,6 +167,7 @@ serve(async (req) => {
       sowingDate,
       transplantDate,
       language,
+      farmingType,
     });
     // The farmer's language travels with the resolved inputs so DB-backed labels
     // (observation_translations etc.) are read in that language, not English.
@@ -520,6 +521,7 @@ serve(async (req) => {
           total_count: narration.totalCount,
           reason: narration.reason ?? null,
         },
+        farming_policy: farmingType,
         land_context_gaps: landContext.gaps,
         ndvi_context: landContext.ndvi,
       },
@@ -565,6 +567,17 @@ serve(async (req) => {
     }
 
     const savedSchedule = { id: persisted.schedule_id };
+
+    // The farmer's declared farming policy is also the chat/advisory SSOT — keep the
+    // active land_crops row in sync. Non-fatal: the schedule is already persisted.
+    if (farmingType) {
+      const { error: fmErr } = await supabase
+        .from("land_crops")
+        .update({ farming_type: farmingType })
+        .eq("land_id", landId)
+        .eq("is_active", true);
+      if (fmErr) console.warn({ event: "farming_type_sync_failed", landId, error: fmErr.message });
+    }
 
     // Sections the agronomic database could not cover for this crop. They are returned
     // explicitly so the app can render them as "pending" instead of silently omitting them.

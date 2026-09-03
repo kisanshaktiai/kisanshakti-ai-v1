@@ -19,13 +19,15 @@ const localizeLandValue = (
   const slug = String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
   return t(`lands.wizard.${group}.${slug}`, { defaultValue: raw });
 };
-import { format, differenceInDays, startOfDay } from 'date-fns';
+import { format, differenceInDays, startOfDay, subDays } from 'date-fns';
+import { formatFarmerDate } from '@/lib/dateFormat';
+import { useLanguageStore } from '@/stores/languageStore';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
+import FarmingTypeDialog, { FarmingMode, FARMING_OPTIONS } from './FarmingTypeDialog';
 import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 
@@ -67,6 +69,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { currentLanguage } = useLanguageStore();
+  const appLang = currentLanguage || 'en';
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
@@ -186,8 +190,12 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       }
     }
 
-    // Open farming type dialog instead of submitting directly
-    console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
+    // The farming method is chosen inline on this screen. The dialog only opens as a
+    // fallback when nothing has been picked yet.
+    if (selectedFarmingType) {
+      handleFarmingTypeSelect(selectedFarmingType);
+      return;
+    }
     setShowFarmingTypeDialog(true);
   };
 
@@ -388,7 +396,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 <div className="flex items-center gap-2 overflow-x-auto text-xs whitespace-nowrap">
                   <span className="text-muted-foreground">{t('schedule.crop_input.crop_summary', 'Crop')}: <strong className="text-foreground">{localizedCropName || cropName}</strong></span>
                   {cropVariety && <span className="text-muted-foreground">• {t('schedule.crop_input.variety_summary', 'Variety')}: <strong className="text-foreground">{cropVariety}</strong></span>}
-                  {sowingDate && wizardStep === 'planting' && <span className="text-muted-foreground">• {format(sowingDate, 'PP')}</span>}
+                  {sowingDate && wizardStep === 'planting' && <span className="text-muted-foreground">• {formatFarmerDate(sowingDate, appLang)}</span>}
                 </div>
               </div>
 
@@ -470,6 +478,35 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       )}
                     </div>
 
+                    {/* Quick-pick chips — the common cases without opening a calendar */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { key: 'today', days: 0 },
+                        { key: 'yesterday', days: 1 },
+                        { key: 'week_ago', days: 7 },
+                        { key: 'fifteen_days_ago', days: 15 },
+                        { key: 'month_ago', days: 30 },
+                      ].map((opt) => {
+                        const chipDate = startOfDay(subDays(new Date(), opt.days));
+                        const active = sowingDate && startOfDay(sowingDate).getTime() === chipDate.getTime();
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSowingDate(chipDate); }}
+                            className={cn(
+                              'min-h-[48px] rounded-xl border px-3 text-sm font-medium transition-colors active:scale-[0.98]',
+                              active
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-card border-border text-foreground',
+                            )}
+                          >
+                            {t(`schedule.crop_input.quick_date.${opt.key}`)}
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
@@ -482,7 +519,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
+                          {sowingDate ? formatFarmerDate(sowingDate, appLang) : t('schedule.crop_input.quick_date.choose_date')}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
@@ -503,6 +540,14 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         />
                       </PopoverContent>
                     </Popover>
+
+                    {sowingDate && (
+                      <p className="text-xs text-muted-foreground">
+                        {backdatedInfo.isBackdated
+                          ? t('schedule.crop_input.quick_date.days_ago_note', { days: backdatedInfo.daysAgo })
+                          : t('schedule.crop_input.quick_date.today_note')}
+                      </p>
+                    )}
 
                     {/* Backdated Warning Hint */}
                     {backdatedInfo.isBackdated && (
@@ -583,7 +628,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                             >
                               <CalendarIcon className="mr-2 h-4 w-4" />
                               {transplantDate
-                                ? format(transplantDate, 'PPP')
+                                ? formatFarmerDate(transplantDate, appLang)
                                 : t('schedule.crop_input.pick_date')}
                             </Button>
                           </PopoverTrigger>
@@ -626,6 +671,50 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         </p>
                       </div>
                     )}
+                  </div>
+
+                  {/* Farming method — chosen inline (it decides which inputs the schedule uses) */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Sprout className="h-3.5 w-3.5 text-primary" />
+                      {t('schedule.method.title')}
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground -mt-1">
+                      {t('schedule.method.subtitle')}
+                    </p>
+                    <div className="space-y-2">
+                      {FARMING_OPTIONS.map((option) => {
+                        const active = selectedFarmingType === option.mode;
+                        return (
+                          <button
+                            key={option.mode}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedFarmingType(option.mode); }}
+                            className={cn(
+                              'w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left min-h-[64px] transition-colors active:scale-[0.99]',
+                              active ? option.borderColor : 'border-border',
+                              active ? option.bgColor : 'bg-card',
+                            )}
+                          >
+                            <span className={cn('shrink-0 w-10 h-10 rounded-xl flex items-center justify-center bg-card border', option.borderColor, option.color)}>
+                              {option.icon}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className={cn('block font-semibold text-sm', active ? option.color : 'text-foreground')}>
+                                {t(`schedule.method.${option.mode}_title`)}
+                              </span>
+                              <span className="block text-xs text-muted-foreground mt-0.5">
+                                {t(`schedule.method.${option.mode}_subtitle`)}
+                              </span>
+                              <span className="block text-[11px] text-muted-foreground/80 mt-0.5">
+                                {t(`schedule.method.${option.mode}_tradeoff`)}
+                              </span>
+                            </span>
+                            {active && <Check className={cn('h-4 w-4 shrink-0', option.color)} />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Multi-Intercrop Selector - optional, last */}
