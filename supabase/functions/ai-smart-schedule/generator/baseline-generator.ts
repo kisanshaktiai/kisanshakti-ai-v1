@@ -312,7 +312,7 @@ export async function generateBaseline(
   const gaps: string[] = [...inputs.gaps];
   const coverage: Record<string, boolean> = {};
   const provenance: Provenance[] = [];
-  const tasks: BaselineTask[] = [];
+  let tasks: BaselineTask[] = [];
 
   if (!inputs.cropCode) {
     return {
