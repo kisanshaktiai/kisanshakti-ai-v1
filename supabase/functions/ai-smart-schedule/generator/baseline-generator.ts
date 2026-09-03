@@ -615,8 +615,10 @@ export async function generateBaseline(
       task_type: isWithdrawal ? "advisory" : "irrigation",
       // Generic guideline notes can contain nutrition, nursery, seed-treatment or
       // other stage guidance. They are not an irrigation-specific field and must not
-      // be shown under an irrigation action.
-      task_description: "",
+      // be shown under an irrigation action. The farmer sentence is the cadence line
+      // built above, so the card is never blank.
+      task_description: irrigationInstructions[0] ?? "",
+
       days_from_sowing: g.dasStart,
       anchor_type: stage ? "STAGE" : "DAS",
       anchor_stage: stage?.stage_code || g.growthStage || null,
