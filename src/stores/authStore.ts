@@ -67,9 +67,14 @@ interface AuthState {
   clearError: () => void;
 }
 
-// Generate a session token
+// Generate a non-authoritative client flow identifier. This is never accepted by the server
+// as an authentication credential; authoritative online sessions are issued by farmer-auth.
 const generateSessionToken = () => {
-  return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `pending_${crypto.randomUUID()}`;
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `pending_${Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')}`;
 };
 
 // Session expires after 24 hours for online, 7 days for offline
