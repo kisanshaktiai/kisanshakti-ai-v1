@@ -639,6 +639,8 @@ export async function generateBaseline(
       source_refs: [g.provenance],
       instructions: [...irrigationInstructions],
       precautions: [],
+      technical_details: irrigationTechnical,
+
       recurrence: isWithdrawal
         ? null
         : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
