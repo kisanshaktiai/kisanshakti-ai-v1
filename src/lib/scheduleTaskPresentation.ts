@@ -3,6 +3,10 @@ export interface ScheduleTaskPresentation {
   how: string[];
   howMuch: string[];
   hasVerifiedAmount: boolean;
+  /** Provenance / agronomic-audit lines. Shown only under "details", never as headline text. */
+  technicalDetails: string[];
+  /** True when the edge narration could not rewrite this task into the farmer's language. */
+  needsTranslation: boolean;
 }
 
 const SOURCE_PREFIX = /^(?:source|evidence)\s*:/i;
@@ -34,9 +38,18 @@ export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: 
   const rawName = cleanText(task.task_name);
   const what = rawName || t(taskTypeLabelKey(taskType));
   const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
+  const technicalDetails = asArray(resources.technical_details).map(cleanText).filter((x): x is string => Boolean(x));
+  // Machine/provenance lines are separated by the edge sanitizer, but older rows may
+  // still carry them inline — they are routed to the details area, never dropped.
+  const legacyTechnical: string[] = [];
   const instructions = asArray(task.instructions)
     .map(cleanText)
-    .filter((x): x is string => Boolean(x) && !SOURCE_PREFIX.test(x) && !MACHINE_CONDITION_PREFIX.test(x) && !INTERNAL_INSTRUCTION_PREFIX.test(x));
+    .filter((x): x is string => Boolean(x))
+    .filter((x) => {
+      const isTechnical = SOURCE_PREFIX.test(x) || MACHINE_CONDITION_PREFIX.test(x) || INTERNAL_INSTRUCTION_PREFIX.test(x);
+      if (isTechnical) legacyTechnical.push(x);
+      return !isTechnical;
+    });
   const desc = cleanText(task.task_description);
   const how = [...detailedSteps, ...instructions];
   // Fallback for every task type (incl. irrigation/monitoring): show the DB description
@@ -53,5 +66,12 @@ export function buildScheduleTaskPresentation(task: Record<string, unknown>, t: 
   pushAmount('schedule.amount.herbicide', resources.herbicide_ml);
   pushAmount('schedule.amount.bio_pesticide', resources.bio_pesticide_ml);
   pushAmount('schedule.amount.seed', resources.seed_quantity_kg);
-  return { what, how, howMuch, hasVerifiedAmount: howMuch.length > 0 };
+  return {
+    what,
+    how,
+    howMuch,
+    hasVerifiedAmount: howMuch.length > 0,
+    technicalDetails: [...new Set([...technicalDetails, ...legacyTechnical])],
+    needsTranslation: resources.needs_translation === true,
+  };
 }

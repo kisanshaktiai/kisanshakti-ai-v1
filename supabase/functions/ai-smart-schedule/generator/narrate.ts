@@ -1,16 +1,22 @@
 // CHANGE LOG
+// 2026-09-03 06:25 UTC — Rate-limit resilience + per-task truth. Live evidence: both
+//   providers returned HTTP 429 and the whole Marathi schedule silently persisted as
+//   English. Now: Retry-After-aware bounded backoff, provider chain retried after the
+//   wait instead of failing instantly, chunk concurrency dropped to 1 once a 429 is
+//   seen, and the exact set of narrated task indices is returned so untranslated tasks
+//   can be marked translation-pending instead of being relabelled "en".
 // 2026-09-02 12:40 UTC — Narration is now SIMPLIFY + TRANSLATE for EVERY language
 //   (the `language === "en"` early return is gone; English gets a plain-language pass).
 //   New village-officer prompt with hard readability rules, one failed-chunk retry,
 //   and PARTIAL acceptance: tasks whose rewrite failed keep their sanitized text
 //   instead of the whole schedule falling back to raw DB English.
-// (earlier) Farmer-language narration layer.
 //
 // Agronomic selection remains deterministic/DB-backed. The model only rewrites supplied
 // facts into clear farmer language and cannot add a dose, product, timing or treatment.
 
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
+
 
 export interface NarratableTask {
   task_name: string;
@@ -21,7 +27,26 @@ export interface NarratableTask {
 const NUM_RE = /\d+(?:[.,]\d+)?/g;
 const CHUNK_SIZE = 20;
 const MAX_CONCURRENCY = 3;
-const NARRATION_BUDGET_MS = 45_000;
+const NARRATION_BUDGET_MS = 110_000;
+/** Bounded backoff for 429 / 5xx. Terminal statuses are never retried. */
+const RETRY_DELAYS_MS = [2_000, 6_000, 15_000];
+const MAX_RETRY_AFTER_MS = 30_000;
+
+/** Set once a provider rate-limits, so the remaining chunks stop hammering it. */
+let rateLimited = false;
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const id = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true });
+  });
+
+class RetryableError extends Error {
+  constructor(message: string, readonly retryAfterMs: number | null) {
+    super(message);
+  }
+}
+
 
 function numbersOf(s: string): string[] {
   return (s.match(NUM_RE) || []).map((n) => n.replace(",", "."));
@@ -105,7 +130,18 @@ async function narrateChunk(
         body: JSON.stringify(body),
         signal,
       });
-      if (!res.ok) throw new Error(`llm_http_${res.status}`);
+      if (!res.ok) {
+        // 429 / 5xx are transient: honour Retry-After and let the caller back off.
+        if (res.status === 429 || res.status >= 500) {
+          if (res.status === 429) rateLimited = true;
+          const header = res.headers.get("Retry-After");
+          const retryAfterMs = header && !isNaN(Number(header))
+            ? Math.min(Number(header) * 1000, MAX_RETRY_AFTER_MS)
+            : null;
+          throw new RetryableError(`llm_http_${res.status}`, retryAfterMs);
+        }
+        throw new Error(`llm_http_${res.status}`);
+      }
       const json = await res.json();
       const text = json?.choices?.[0]?.message?.content ?? "[]";
       const raw = JSON.parse(text);
@@ -126,13 +162,27 @@ async function narrateChunkWithRetry(
   language: string,
   signal: AbortSignal,
 ) {
-  try {
-    return await narrateChunk(chunk, offset, language, signal);
-  } catch (first) {
-    if (signal.aborted) throw first;
-    return await narrateChunk(chunk, offset, language, signal);
+  let lastError: unknown = new Error("MODEL_UNAVAILABLE");
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null
+        ? lastError.retryAfterMs
+        : RETRY_DELAYS_MS[attempt - 1];
+      await sleep(wait, signal);
+      if (signal.aborted) break;
+    }
+    try {
+      return await narrateChunk(chunk, offset, language, signal);
+    } catch (error) {
+      lastError = error;
+      if (signal.aborted) break;
+      // Terminal statuses (400/401/402/403) repeat on resend — stop immediately.
+      if (!(error instanceof RetryableError)) break;
+    }
   }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
+
 
 export async function narrateTasks(
   tasks: NarratableTask[],
@@ -142,19 +192,22 @@ export async function narrateTasks(
   narrated: boolean;
   narratedCount: number;
   totalCount: number;
+  /** Indices of tasks whose text was actually rewritten in the requested language. */
+  appliedIndices: number[];
   reason?: string;
   provider?: string;
   model?: string;
 }> {
   const totalCount = tasks.length;
-  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, reason: "no_tasks" };
+  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
 
   let configured: Array<{ provider: AIProvider; model: string }>;
-  try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, reason: "no_llm_key" }; }
-  if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, reason: "no_llm_key" };
+  try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" }; }
+  if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" };
   let provider: AIProvider | undefined;
   let model: string | undefined;
 
+  rateLimited = false;
   const chunks: Array<{ items: NarratableTask[]; offset: number }> = [];
   for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
 
@@ -162,18 +215,23 @@ export async function narrateTasks(
   const budgetTimer = setTimeout(() => controller.abort(), NARRATION_BUDGET_MS);
   const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) }));
   const failures: string[] = [];
-  let applied = 0;
+  const appliedIndices = new Set<number>();
 
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = [];
-    for (let i = 0; i < chunks.length; i += MAX_CONCURRENCY) {
+    let i = 0;
+    while (i < chunks.length) {
       if (controller.signal.aborted) break;
+      // Once a provider rate-limits, the whole pipeline slows to one request at a time
+      // instead of re-triggering the same 429 on every parallel chunk.
+      const width = rateLimited ? 1 : MAX_CONCURRENCY;
       const settled = await Promise.allSettled(
-        chunks.slice(i, i + MAX_CONCURRENCY).map((c) =>
+        chunks.slice(i, i + width).map((c) =>
           narrateChunkWithRetry(c.items, c.offset, language, controller.signal),
         ),
       );
       results.push(...settled);
+      i += width;
     }
 
     for (const result of results) {
@@ -197,20 +255,22 @@ export async function narrateTasks(
             touched = true;
           }
         }
-        if (touched) applied++;
+        if (touched) appliedIndices.add(item.i);
       }
     }
   } finally {
     clearTimeout(budgetTimer);
   }
 
+  const applied = appliedIndices.size;
   if (!applied) {
     return {
       tasks: out,
       narrated: false,
       narratedCount: 0,
       totalCount,
-      reason: `llm_failed:${failures.slice(0, 2).join("|") || "no_output"}`,
+      appliedIndices: [],
+      reason: `llm_failed:${[...new Set(failures)].slice(0, 2).join("|") || "no_output"}`,
       provider,
       model,
     };
@@ -223,8 +283,10 @@ export async function narrateTasks(
     narrated: true,
     narratedCount: applied,
     totalCount,
+    appliedIndices: [...appliedIndices].sort((a, b) => a - b),
     reason: applied < totalCount ? `partial:${applied}/${totalCount}` : undefined,
     provider,
     model,
+
   };
 }

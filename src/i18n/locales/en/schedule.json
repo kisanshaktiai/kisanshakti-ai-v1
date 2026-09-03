@@ -414,6 +414,8 @@
       "how": "How to do it",
       "how_much": "How much",
       "how_not_available": "The database has not provided a verified method for this task yet.",
+      "translation_pending": "This task is still in English — translation is pending.",
+      "technical_details": "Technical details",
       "amount_not_available": "The database has not provided a verified amount for this task yet."
     },
     "crop_growth": {

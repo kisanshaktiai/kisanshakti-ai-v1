@@ -94,7 +94,9 @@ Deno.test("scouting task carries a DB-derived brief", async () => {
   assert(scout.task_description.includes("STEM BORER"));
   assert(scout.task_description.includes("LEAF BLAST"));
   assert(scout.rule_ids.length <= 12);
-  assert(scout.instructions.some((i) => i.includes("5% dead hearts")));
+  // 2026-09-03: ETL is AUDIT detail — it lives in technical_details, not in the
+  // farmer instruction list.
+  assert((scout.technical_details ?? []).some((i) => i.includes("5% dead hearts")));
   assertEquals((scout.resources as Record<string, unknown>).scouting_targets, scout.rule_ids.length);
 });
 
@@ -105,20 +107,23 @@ Deno.test("scouting excludes economics/safety/management rules", async () => {
   assert(!ids.includes("OBS_SAFETY_1"));
 });
 
-Deno.test("irrigation task carries notes and critical moisture", async () => {
+Deno.test("irrigation task keeps provenance out of farmer text", async () => {
   const { tasks } = await generateBaseline(makeSupabase(), inputs());
   const irr = tasks.find((t) => t.task_type === "irrigation")!;
-  assertEquals(irr.task_description, "Maintain 5 cm standing water");
-  assert(irr.instructions.includes("Critical soil moisture: 100%"));
-  assert(irr.instructions.some((i) => i.startsWith("Source:")));
+  // The farmer line is the cadence sentence; the card is never blank.
+  assert(irr.task_description.startsWith("Irrigate about every"), irr.task_description);
+  assert(!irr.instructions.some((i) => i.startsWith("Source:")));
+  assert((irr.technical_details ?? []).includes("Critical soil moisture: 100%"));
+  assert((irr.technical_details ?? []).some((i) => i.startsWith("Source:")));
 });
 
-Deno.test("rule task surfaces ETL, dose, PHI and precautions", async () => {
+Deno.test("rule task surfaces ETL, dose, PHI and precautions as technical detail", async () => {
   const { tasks } = await generateBaseline(makeSupabase(), inputs());
   const rt = tasks.find((t) => t.rule_ids.includes("R_ACTION_1"))!;
-  assert(rt.instructions.includes("ETL: 5% dead hearts"));
-  assert(rt.instructions.includes("Dose/acre: 400 ml"));
-  assert(rt.instructions.includes("PHI: 14 days"));
+  const tech = rt.technical_details ?? [];
+  assert(tech.includes("ETL: 5% dead hearts"));
+  assert(tech.includes("Dose/acre: 400 ml"));
+  assert(tech.includes("PHI: 14 days"));
   assertEquals(rt.precautions, ["Do not spray before rain"]);
 });
 
@@ -133,6 +138,8 @@ Deno.test("content-free scouting still emits a task and pushes a gap", async () 
   const { tasks, gaps } = await generateBaseline(makeSupabase(bare), inputs());
   const scout = tasks.find((t) => t.task_type === "monitoring");
   assert(scout, "task must still be emitted");
-  assertEquals(scout!.task_description, "");
+  // No DB brief ⇒ the weekly walk sentence is the farmer text (never an empty card).
+  assert(scout!.task_description.startsWith("Walk the field"), scout!.task_description);
   assert(gaps.includes("scouting_brief_empty"));
 });
+

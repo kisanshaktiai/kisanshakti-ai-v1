@@ -66,7 +66,9 @@ import {
 } from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION } from "./generator/baseline-generator.ts";
 import { narrateTasks } from "./generator/narrate.ts";
-import { sanitizeTaskText } from "./generator/farmer-text.ts";
+import { sanitizeTaskText, hasFarmerText } from "./generator/farmer-text.ts";
+import { loadLandContext } from "./db/land-context.ts";
+
 
 import { attachRagEvidence, type RagEvidenceSummary } from "./db/rag-evidence.ts";
 import { isFlagEnabled } from "../_shared/featureFlags.ts";
@@ -166,8 +168,17 @@ serve(async (req) => {
       transplantDate,
       language,
     });
+    // The farmer's language travels with the resolved inputs so DB-backed labels
+    // (observation_translations etc.) are read in that language, not English.
+    inputs.language = language;
+
+    // Land-level SSOT context (soil / weather / NDVI / coordinates). Recorded, never
+    // used to invent agronomy; missing sources become explicit gaps.
+    const landContext = await loadLandContext(supabase, landId);
+    if (landContext.gaps.length) inputs.gaps.push(...landContext.gaps);
 
     resolvedCropCode = inputs.cropCode || null;
+
 
     // ── P0-1: crop-identity SSOT gate (fail closed, overwrite nothing) ──────
     // (a) Another ACTIVE schedule on this land for a DIFFERENT crop.
@@ -367,13 +378,20 @@ serve(async (req) => {
     // deterministically first; the model then rewrites the result into simple
     // farmer language in the farmer's app language (English included).
     const sanitized = baseline.tasks.map((t) =>
-      sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions }),
+      sanitizeTaskText({
+        task_name: t.task_name,
+        task_description: t.task_description,
+        instructions: t.instructions,
+        technical_details: t.technical_details,
+      }),
     );
     baseline.tasks.forEach((t, i) => {
       t.task_name = sanitized[i].task_name || t.task_name;
       t.task_description = sanitized[i].task_description;
       t.instructions = sanitized[i].instructions;
+      if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`);
     });
+
 
     const narration = await narrateTasks(
       baseline.tasks.map((t) => ({
@@ -420,8 +438,17 @@ serve(async (req) => {
         expected_harvest_date: harvestDateStr,
         is_active: true,
         status: "active",
-        generation_language: narration.narrated ? language : "en",
+        // 2026-09-03: NEVER silently downgrade to English. The schedule belongs to the
+        // language the farmer asked for; when narration fails the text is flagged as
+        // translation-pending instead of being relabelled "en".
+        generation_language: language,
         ai_model: narration.narrated ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (narration only)` : "none",
+        // Day-0 SSOT context actually used/observed for this land (recorded, not derived).
+        input_soil_data: landContext.soil,
+        input_weather_data: landContext.weather,
+        input_land_coordinates: landContext.coordinates,
+        agro_climatic_zone: landContext.agroClimaticZone,
+
         calculated_for_area_acres: inputs.landAreaAcres,
         total_duration_days: durationDays,
         seed_quantity_kg: baseline.totals.seed_kg,
@@ -442,10 +469,15 @@ serve(async (req) => {
           harness: harnessTrace,
           narration: {
             requested_language: language,
-            persisted_language: narration.narrated ? language : "en",
+            persisted_language: language,
             applied: narration.narrated,
+            narrated_count: narration.narratedCount,
+            total_count: narration.totalCount,
             reason: narration.reason ?? null,
           },
+          land_context_gaps: landContext.gaps,
+          ndvi_context: landContext.ndvi,
+
         },
         metadata: {
           coverage: baseline.coverage,
@@ -474,7 +506,9 @@ serve(async (req) => {
       throw new Error(`Failed to save schedule: ${scheduleError.message}`);
     }
 
+    const narratedIdx = new Set(narration.appliedIndices);
     const tasksToInsert = baseline.tasks.map((t, idx) => ({
+
       schedule_id: savedSchedule.id,
       farmer_id: farmerId,
       tenant_id: tenantId,
@@ -508,7 +542,14 @@ serve(async (req) => {
         ...(sanitized[idx]?.technical_details?.length
           ? { technical_details: sanitized[idx].technical_details }
           : {}),
+        // 2026-09-03: a task the model could not rewrite is marked translation-pending
+        // (with the language it is currently written in) instead of the whole schedule
+        // being relabelled English.
+        ...(narratedIdx.has(idx)
+          ? {}
+          : { needs_translation: true, source_language: "en", target_language: language }),
       },
+
 
 
       estimated_cost: t.estimated_cost,
@@ -517,7 +558,7 @@ serve(async (req) => {
       trigger_rule_id: t.rule_ids[0] || null,
       confidence: t.confidence,
       source_refs: t.source_refs,
-      language: narration.narrated ? language : "en",
+      language: narratedIdx.has(idx) ? language : "en",
       is_pinned: false,
     }));
 

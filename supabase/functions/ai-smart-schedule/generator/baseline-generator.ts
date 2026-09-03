@@ -141,7 +141,10 @@ export interface BaselineTask {
   source_refs: Provenance[];
   instructions: string[];
   precautions: string[];
+  /** Provenance / audit lines (ETL, dose, PHI, source, derivations). Never farmer text. */
+  technical_details?: string[];
   resources?: Record<string, unknown>;
+
   /**
    * A repeating instruction (irrigation every N days inside a stage window, weekly
    * scouting). ONE task carries the recurrence; the calendar is never expanded into
@@ -309,7 +312,7 @@ export async function generateBaseline(
   const gaps: string[] = [...inputs.gaps];
   const coverage: Record<string, boolean> = {};
   const provenance: Provenance[] = [];
-  const tasks: BaselineTask[] = [];
+  let tasks: BaselineTask[] = [];
 
   if (!inputs.cropCode) {
     return {
@@ -389,13 +392,20 @@ export async function generateBaseline(
 
   if (stages.length) {
     const sowStage = stages.find((s) => (das0(s, s.das_min) ?? 0) <= 0) || stages[0] || null;
-    const sowDescription = seed?.rationale || "";
+    // 2026-09-03: seed.rationale is a DERIVATION string ("150 plants/m2 x 18.0 g TGW,
+    // corrected for 90% germination, 98% purity …") — audit evidence, not farmer text.
+    // The farmer line is built from the same DB numbers in plain words.
+    const sowTechnical: string[] = [];
+    if (seed?.rationale) sowTechnical.push(`Derivation: ${seed.rationale}`);
+    const sowDescription = seedKg != null && areaAcres != null
+      ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
+      : "";
     const sowInstructions: string[] = [];
     if (!sowDescription) {
-      if (seedKg != null && areaAcres != null) sowInstructions.push(`Seed rate: ${seedKg} kg for ${areaAcres} acre`);
       if (sowStage?.growth_stage) sowInstructions.push(`Stage: ${sowStage.growth_stage}`);
       if (!sowInstructions.length) gaps.push("sowing_task_no_detail");
     }
+
     const sowProvenance: Provenance[] = seed
       ? [seed.provenance]
       : sowStage
@@ -423,7 +433,9 @@ export async function generateBaseline(
       source_refs: sowProvenance,
       instructions: sowInstructions,
       precautions: [],
+      technical_details: sowTechnical,
     });
+
   }
 
 
@@ -508,10 +520,16 @@ export async function generateBaseline(
         continue;
       }
 
+      // 2026-09-03: the card used to read "Fertilizer application (N)" with an EMPTY
+      // description. Nutrient letters are spelled out and the farmer line is composed
+      // from the SAME DB numbers already computed above (no new agronomy).
+      const nutrientLabel = nutrient === "N" ? "Nitrogen" : nutrient === "P" ? "Phosphorus" : nutrient === "K" ? "Potassium" : nutrient;
+      const splitNote = String(split.note ?? split.description ?? "").trim();
       tasks.push({
-        task_name: `Fertilizer application (${nutrient})`,
+        task_name: `Apply ${nutrientLabel} fertilizer`,
         task_type: "nutrition",
-        task_description: String(split.note ?? split.description ?? ""),
+        task_description: splitNote || `Apply ${qty} kg of ${nutrientLabel} to this field.`,
+
         days_from_sowing: das,
         anchor_type: stage ? "STAGE" : "DAS",
         anchor_stage: stage?.stage_code || stage?.growth_stage || null,
@@ -569,8 +587,11 @@ export async function generateBaseline(
     const width = g.dasEnd - g.dasStart;
 
     const irrigationInstructions: string[] = [];
-    if (g.criticalMoisturePercent != null) irrigationInstructions.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
-    if (g.provenance.source) irrigationInstructions.push(`Source: ${g.provenance.source}`);
+    // 2026-09-03: machine/provenance detail no longer sits in the farmer instruction
+    // list — it is carried as technical_details and shown only under "details".
+    const irrigationTechnical: string[] = [];
+    if (g.criticalMoisturePercent != null) irrigationTechnical.push(`Critical soil moisture: ${g.criticalMoisturePercent}%`);
+    if (g.provenance.source) irrigationTechnical.push(`Source: ${g.provenance.source}`);
 
     // interval 0 is NOT an invalid row: the DB says "no irrigation in this window"
     // (rice maturity/harvest = drain the field). Emit the withdrawal advisory instead
@@ -585,6 +606,7 @@ export async function generateBaseline(
       if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm`);
     }
 
+
     const expectedEvents = isWithdrawal ? 0 : Math.floor(width / step) + 1;
     const task: BaselineTask = {
       task_name: isWithdrawal
@@ -593,8 +615,10 @@ export async function generateBaseline(
       task_type: isWithdrawal ? "advisory" : "irrigation",
       // Generic guideline notes can contain nutrition, nursery, seed-treatment or
       // other stage guidance. They are not an irrigation-specific field and must not
-      // be shown under an irrigation action.
-      task_description: "",
+      // be shown under an irrigation action. The farmer sentence is the cadence line
+      // built above, so the card is never blank.
+      task_description: irrigationInstructions[0] ?? "",
+
       days_from_sowing: g.dasStart,
       anchor_type: stage ? "STAGE" : "DAS",
       anchor_stage: stage?.stage_code || g.growthStage || null,
@@ -615,6 +639,8 @@ export async function generateBaseline(
       source_refs: [g.provenance],
       instructions: [...irrigationInstructions],
       precautions: [],
+      technical_details: irrigationTechnical,
+
       recurrence: isWithdrawal
         ? null
         : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
@@ -669,17 +695,21 @@ export async function generateBaseline(
       const { stage, das } = matched[0];
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
+      // 2026-09-03: ETL / dose / PHI / source are AUDIT detail — they used to be the
+      // farmer instruction list. They now ride in technical_details.
+      const ruleTechnical: string[] = [];
+      if (rule.etl_threshold) ruleTechnical.push(`ETL: ${rule.etl_threshold}`);
+      if (rule.dosage_per_acre) ruleTechnical.push(`Dose/acre: ${rule.dosage_per_acre}`);
+      if (rule.phi_days != null) ruleTechnical.push(`PHI: ${rule.phi_days} days`);
+      if (rule.scientific_source) ruleTechnical.push(`Source: ${rule.scientific_source}`);
       const ruleInstructions: string[] = [];
-      if (rule.etl_threshold) ruleInstructions.push(`ETL: ${rule.etl_threshold}`);
-      if (rule.dosage_per_acre) ruleInstructions.push(`Dose/acre: ${rule.dosage_per_acre}`);
-      if (rule.phi_days != null) ruleInstructions.push(`PHI: ${rule.phi_days} days`);
-      if (rule.scientific_source) ruleInstructions.push(`Source: ${rule.scientific_source}`);
       const rulePrecautions: string[] = Array.isArray(rule.contraindications)
         ? (rule.contraindications as unknown[]).map((c) => String(c)).filter(Boolean)
         : [];
-      if (!rule.action_text && !ruleInstructions.length && !rulePrecautions.length) {
+      if (!rule.action_text && !ruleTechnical.length && !rulePrecautions.length) {
         gaps.push("rule_task_no_detail");
       }
+
       // v1.5.0: the name is a LABEL. Previously rule.action_text (a full advisory
       // paragraph) became the task_name, so cards showed prose as a title.
       const ruleLabel = String(rule.category ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
@@ -712,6 +742,8 @@ export async function generateBaseline(
         source_refs: [{ table: "decision_rules", row_id: rule.rule_id, source: rule.scientific_source ?? null }],
         instructions: ruleInstructions,
         precautions: rulePrecautions,
+        technical_details: ruleTechnical,
+
       });
     }
   }
@@ -732,27 +764,53 @@ export async function generateBaseline(
   coverage.monitoring = false;
   if (observationRules.length) {
     const ruleById = new Map(observationRules.map((r) => [r.rule_id, r]));
+    // 2026-09-03: scouting briefs showed raw condition codes ("tungro yellow stunt").
+    // observation_translations is the DB authority for the farmer-readable label —
+    // in the farmer's own language, with English as the only fallback. Nothing invented:
+    // an unmapped code keeps its own text and is reported as a gap.
+    const lang = String((inputs as { language?: string }).language || "en").trim().toLowerCase();
+    const condCodes = [...new Set(
+      observationRules.map((r) => String(r.condition_code ?? "").trim()).filter(Boolean),
+    )];
+    const labelByCode = new Map<string, string>();
+    if (condCodes.length) {
+      const { data: trs } = await supabase
+        .from("observation_translations")
+        .select("observation_code, language_code, display_text")
+        .in("observation_code", condCodes)
+        .in("language_code", [lang, "en"]);
+      for (const row of (trs || []) as Array<Record<string, unknown>>) {
+        const code = String(row.observation_code);
+        const isLang = String(row.language_code).toLowerCase() === lang;
+        const text = String(row.display_text ?? "").trim();
+        if (!text) continue;
+        if (isLang || !labelByCode.has(code)) labelByCode.set(code, text);
+      }
+      const unmapped = condCodes.filter((c) => !labelByCode.has(c));
+      if (unmapped.length) gaps.push(`observation_label_missing:${unmapped.length}`);
+    }
     /** Farmer-facing scouting brief built strictly from DB rule fields. */
     const scoutBrief = (ids: string[], matchedCount: number) => {
       const conditions: string[] = [];
-      const instructions: string[] = [];
+      const technical: string[] = [];
       for (const id of ids) {
         const r = ruleById.get(id);
         if (!r) continue;
         const cc = String(r.condition_code ?? "").trim();
         if (cc) {
-          const label = cc.replace(/_/g, " ");
+          const label = labelByCode.get(cc) || cc.replace(/_/g, " ");
           if (!conditions.includes(label)) conditions.push(label);
           const etl = String(r.etl_threshold ?? "").trim();
-          if (etl && instructions.length < 6) instructions.push(`${cc}: ${etl}`);
+          if (etl && technical.length < 6) technical.push(`ETL: ${label} — ${etl}`);
         }
       }
       return {
         description: conditions.length ? `Inspect for: ${conditions.slice(0, 8).join(", ")}` : "",
-        instructions,
+        technical,
         resources: { scouting_targets: matchedCount },
       };
     };
+
     const byStage = new Map<string, { stage: StageRow; refs: Array<{ id: string; p: number | null }>; priority: number | null }>();
     for (const r of observationRules) {
       const stageList: string[] = Array.isArray(r.stage_applicable)
@@ -829,10 +887,11 @@ export async function generateBaseline(
     }
     for (const entry of scoutByStart.values()) {
       const brief = scoutBrief(entry.task.rule_ids, entry.refs.length);
-      entry.task.task_description = brief.description;
-      entry.task.instructions = [...entry.task.instructions, ...brief.instructions];
+      entry.task.task_description = brief.description || entry.task.instructions[0] || "";
+      entry.task.technical_details = [...(entry.task.technical_details ?? []), ...brief.technical];
       entry.task.resources = brief.resources;
-      if (!brief.description && !brief.instructions.length) gaps.push("scouting_brief_empty");
+      if (!brief.description && !brief.technical.length) gaps.push("scouting_brief_empty");
+
       tasks.push(entry.task);
     }
   }
@@ -861,10 +920,14 @@ export async function generateBaseline(
     emittedLifecycle.add(spec.taskType);
     void key;
     const end = das0(stage, stage.das_max);
+    const lifecycleWindow = end != null && Number.isFinite(end)
+      ? `Window: DAS ${das} to ${end} (${stageLabel(stage)}).`
+      : null;
     tasks.push({
       task_name: spec.label,
       task_type: spec.taskType,
-      task_description: "",
+      task_description: lifecycleWindow ?? "",
+
       days_from_sowing: das,
       anchor_type: "STAGE",
       anchor_stage: stage.stage_code || stage.growth_stage,
@@ -906,6 +969,24 @@ export async function generateBaseline(
     gaps.push("input_price_not_authoritatively_mappable");
   }
 
+  // 2026-09-03: collapse exact duplicates (same type + same label + same day) that two
+  // DB rows can produce. Evidence is UNIONED, never dropped; different nutrients or
+  // different labels on the same day remain separate tasks (that is real agronomy).
+  const dedup = new Map<string, BaselineTask>();
+  for (const t of tasks) {
+    const key = `${t.task_type}|${t.task_name}|${t.days_from_sowing}|${t.nutrient ?? ""}`;
+    const prev = dedup.get(key);
+    if (!prev) { dedup.set(key, t); continue; }
+    prev.rule_ids = [...new Set([...prev.rule_ids, ...t.rule_ids])];
+    prev.instructions = [...new Set([...prev.instructions, ...t.instructions])];
+    prev.precautions = [...new Set([...prev.precautions, ...t.precautions])];
+    prev.technical_details = [...new Set([...(prev.technical_details ?? []), ...(t.technical_details ?? [])])];
+    prev.source_refs = [...prev.source_refs, ...t.source_refs];
+    if (!prev.task_description && t.task_description) prev.task_description = t.task_description;
+    gaps.push("duplicate_task_merged");
+  }
+  tasks = [...dedup.values()];
+
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(
     (a, b) =>
@@ -914,6 +995,7 @@ export async function generateBaseline(
       a.task_type.localeCompare(b.task_type) ||
       a.task_name.localeCompare(b.task_name),
   );
+
 
   // A task labelled with a stage that could not be resolved to a crop_stage_master
   // row is reported as a gap — the stage link is left null, never invented.
