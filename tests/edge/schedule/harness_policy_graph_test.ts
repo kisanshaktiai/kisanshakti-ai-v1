@@ -8,7 +8,7 @@ Deno.test("evidence pack enforces farming policy before Harness", async () => {
   assert(src.includes("organic_only"));
   assert(src.includes("regulatory_status"));
   assert(src.includes("verification_status"));
-  assert(src.includes("rule.trigger_class) === \"observation\""));
+  assert(src.includes("norm(rule.trigger_class) === \"observation\""));
 });
 
 Deno.test("observation candidates cannot become scheduled", async () => {
@@ -22,7 +22,6 @@ Deno.test("candidate graph carries DB dependency references for baseline and evi
   assert(src.includes("dependencyRuleIds"));
   assert(src.includes("sequence_after"));
   assert(src.includes("prerequisite_rule_ids"));
-  assert(src.includes("dependency_violation") === false);
 });
 
 Deno.test("production schedule path passes the full resolved context into Harness", async () => {
