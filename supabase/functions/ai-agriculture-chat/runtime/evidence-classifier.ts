@@ -1,6 +1,10 @@
 // EVIDENCE CLASSIFIER — Farmer-visible symptom vs metadata separator
 
-const METADATA_RE = /(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^SEVERITY_|^CONTEXT_|^PHOTO_)/i;
+// 2026-09-04 — ^AFFECTED_PART_ added: induction enrichment emits plant-part
+// descriptors (AFFECTED_PART_LEAF …) alongside SEVERITY_*; they are metadata,
+// not evidence. Live DB: 0 observation_master codes start with affected_part_.
+// (^DISTRIBUTION_ deliberately NOT added: distribution_variability is a real code.)
+const METADATA_RE = /(_UNKNOWN$|_NONE$|_NOT_PROVIDED$|^ACTION_|^CROP_IDENTIFIED$|^STAGE_IDENTIFIED$|^SEVERITY_|^AFFECTED_PART_|^CONTEXT_|^PHOTO_)/i;
 
 export interface EvidenceClassification {
   raw_count: number;

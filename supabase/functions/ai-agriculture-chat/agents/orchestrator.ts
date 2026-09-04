@@ -4763,9 +4763,22 @@ export class AIAgentOrchestrator {
       // eligible even when the query router did not emit a symptom-free route.
       // Live trace f3d958cb (FERTILIZER_SCHEDULE, rice grain_filling, DAS 82)
       // never reached Lane B because eligibility keyed on the router list only.
+      // 2026-09-04 — live trace_mtmm5w7f_fldzgc ("आता कोणते खत द्यावे", rice/booting):
+      // `hasSymptoms` is inductionResult.symptoms.length>0 evaluated AFTER induction
+      // enrichment injected AFFECTED_PART_LEAF + SEVERITY_MEDIUM (metadata), so it was
+      // true while __textOnlySymptomCount (pre-enrichment) was 0 and the DIRECT
+      // contract held. Lane B was skipped → 0 rules → PHOTO_REQUEST. Eligibility now
+      // counts REAL observations in the current (enriched) array via the same
+      // isRealObservation() classifier the contract uses.
+      const __laneBRealSymptomCount = Array.isArray((inductionResult as any)?.symptoms)
+        ? (inductionResult as any).symptoms.filter((s: any) => isRealObservation(String(s?.symbol ?? s))).length
+        : 0;
       (this as any).__laneBEligible =
         (isSymptomFreeRoute || (this as any).__directContractNoSymptoms === true) &&
-        !hasSymptoms && Number((this as any).__textOnlySymptomCount ?? 0) === 0;
+        __laneBRealSymptomCount === 0 && Number((this as any).__textOnlySymptomCount ?? 0) === 0;
+      if (hasSymptoms && __laneBRealSymptomCount === 0) {
+        console.log(`   🧭 [LANE_B_ELIGIBILITY] raw_symptoms=${(inductionResult as any).symptoms.length} real_symptoms=0 (metadata only) → Lane B eligible=${(this as any).__laneBEligible}`);
+      }
       
       console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
