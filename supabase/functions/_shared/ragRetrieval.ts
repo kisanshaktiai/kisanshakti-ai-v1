@@ -345,6 +345,33 @@ export function citedEvidenceIndexes(answer: string): number[] {
 export function stripCitationMarkers(answer: string): string {
   return answer.replace(/\s*\[(?:EVIDENCE\s+)?\d+(?:\s*,\s*\d+)*\]/gi,'').replace(/[ \t]{2,}/g,' ').trim();
 }
+/**
+ * Citation lines: ONE line per document, listing the pages actually cited.
+ * `used` = 1-based evidence indexes referenced in the answer; when empty, all
+ * evidence is listed. Only servable evidence is ever cited.
+ * RESTORED 2026-09-04: the 2026-09-04 gap-gate rewrite dropped this export while
+ * ai-general-chat/index.ts still imports it — the function failed at worker boot
+ * ("does not provide an export named 'buildCitationLines'"), taking General chat
+ * fully offline. Body is byte-identical to the pre-rewrite version (c5fe778).
+ */
+export function buildCitationLines(evidence: Evidence[], language: string, used: number[] = []): string {
+  const L = CITE_LABEL[language] ?? CITE_LABEL.en;
+  const pick = used.length ? used.map((i) => evidence[i - 1]).filter(Boolean) : evidence;
+  const byDoc = new Map<string, { ev: Evidence; pages: Set<number> }>();
+  for (const ev of pick) {
+    if (!ev.servable) continue;
+    const g = byDoc.get(ev.documentId) ?? { ev, pages: new Set<number>() };
+    if (ev.pageNumber != null) g.pages.add(ev.pageNumber);
+    byDoc.set(ev.documentId, g);
+  }
+  if (!byDoc.size) return '';
+  const lines = [...byDoc.values()].slice(0, 3).map(({ ev, pages }) => {
+    const ps = [...pages].sort((a, b) => a - b);
+    const pg = ps.length ? ` (${ps.length > 1 ? L.pages : L.page} ${ps.join(', ')})` : '';
+    return `• ${ev.title} — ${ev.publisher}${pg}`;
+  });
+  return `\n\n${L.sources}:\n${lines.join('\n')}`;
+}
 
 const HA_TO_ACRE=0.4047;
 const UNIT_WORDS: Record<string,{kg:string;q:string;acre:string;note:string}> = {
