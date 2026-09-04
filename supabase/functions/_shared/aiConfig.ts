@@ -188,6 +188,15 @@ export function getProviderFromModel(model: string): AIProvider {
   return "openai";
 }
 
+// Newer OpenAI models (gpt-5.x, and the o1/o3/o4 reasoning families) only accept
+// `max_completion_tokens`; the legacy `max_tokens` returns HTTP 400 for them.
+// Legacy chat models (gpt-4o, gpt-4, gpt-3.5) keep `max_tokens`. Matches on the
+// model string so new model IDs in the same families need no code change.
+export function requiresMaxCompletionTokens(model: string): boolean {
+  const m = (model || "").toLowerCase();
+  return /(^|[/_-])(gpt-5|o1|o3|o4)/.test(m);
+}
+
 // Get the best available provider for schedule generation
 export function getBestScheduleProvider(): { provider: AIProvider; model: string } {
   // CRITICAL FIX: OpenAI FIRST for schedule generation (reliable structured output)
@@ -259,9 +268,19 @@ export function buildAIRequest(
     messages,
   };
 
-  // Token limit handling
+  // Token limit handling.
+  // FIX (outage 2026-09-04): newer OpenAI models (gpt-5.x and o-series reasoning
+  // models) reject the legacy `max_tokens` and require `max_completion_tokens`
+  // ("Unsupported parameter: 'max_tokens' is not supported with this model. Use
+  // 'max_completion_tokens' instead."). Gemini's OpenAI-compatible endpoint still
+  // uses `max_tokens`. Choose the key by provider + model so every buildAIRequest
+  // caller is fixed centrally, with no caller-side changes.
   if (options.maxTokens) {
-    payload.max_tokens = options.maxTokens;
+    if (provider === "openai" && requiresMaxCompletionTokens(model)) {
+      payload.max_completion_tokens = options.maxTokens;
+    } else {
+      payload.max_tokens = options.maxTokens;
+    }
   }
 
   // Temperature - Gemini works better with controlled temperature
