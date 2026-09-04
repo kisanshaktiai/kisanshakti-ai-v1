@@ -39959,6 +39959,7 @@ export type Database = {
         }
         Returns: Json
       }
+      assert_rag_chunk_crop_integrity: { Args: never; Returns: undefined }
       assign_mgrs_tile_to_land:
         | { Args: never; Returns: Json }
         | { Args: { land_id_param?: string }; Returns: undefined }
