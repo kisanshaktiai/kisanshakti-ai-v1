@@ -1,5 +1,11 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-04 (b) — all PRESCRIPTION-path projections (allowed, blocked-by-graph,
+ *   gate-blocked/display-only, minimal) now carry trigger_class / DAS window /
+ *   condition_code. Live trace_mtn7mf2w_wyixre: DB category 'nutrition' →
+ *   RuleCategory.PRESCRIPTION, so RICE_NUTR_LATE_N_BLOCK_001 reached scoring via
+ *   the gate-blocked projection WITHOUT trigger_class and could never earn
+ *   context evidence → primary NULL → NEEDS_MORE_EVIDENCE.
  * 2026-09-03 — DECISION COHERENCE (rebased 2026-09-04): primary sort prefers (P0a)
  *   rules on the winning hypothesis's hypothesis_rule_mapping edge set and (P0b)
  *   rules whose decision_rules.condition_code is farmer-confirmed, after the safety
@@ -626,6 +632,11 @@ export function evaluateRulesLayered(
   }
   
   // PHASE 5: PRESCRIPTION with Graph Control, ETL, and Safety
+  // 2026-09-04 — when the observation-confidence gate blocks (always true on a
+  // zero-symptom advisory turn) the else-branch below still collects matching
+  // PRESCRIPTION rows for display; with trigger_class now carried on that
+  // projection, a CONTEXT_SCHEDULE / CONTEXT_BLOCK row can be selected as primary
+  // on stage+DAS evidence (see [CONTEXT_EVIDENCE] in scoring).
   if (result.prescription_allowed) {
     for (const rule of rulesByCategory.get(RuleCategory.PRESCRIPTION) || []) {
       result.rules_evaluated++;
@@ -729,6 +740,14 @@ export function evaluateRulesLayered(
           knowledge_text: prescriptionActionDetails.knowledge_text,
           i18n_key: prescriptionActionDetails.i18n_key,
           conditions_json: prescriptionActionDetails.conditions_json || null,
+          // 2026-09-04 — CONTEXT EVIDENCE / COHERENCE inputs (were only on the DIAGNOSIS
+          // projection; live trace_mtn7mf2w_wyixre: DB category 'nutrition' maps to
+          // RuleCategory.PRESCRIPTION, so RICE_NUTR_LATE_N_BLOCK_001 arrived here
+          // without trigger_class and could never score as a context rule)
+          trigger_class: prescriptionActionDetails.trigger_class ?? null,
+          crop_age_days_min: prescriptionActionDetails.crop_age_days_min ?? null,
+          crop_age_days_max: prescriptionActionDetails.crop_age_days_max ?? null,
+          condition_code: prescriptionActionDetails.condition_code ?? null,
           // PHASE 8: Rich agronomic fields for deterministic response builder
           active_ingredient: prescriptionActionDetails.active_ingredient,
           dosage_per_acre: prescriptionActionDetails.dosage_per_acre,
@@ -780,7 +799,11 @@ export function evaluateRulesLayered(
         result.matched_responses.push({
           rule_id: rule.id,
           cause: rule.then.possible_cause || 'TREATMENT',
-          action_type: prescriptionActionType
+          action_type: prescriptionActionType,
+          trigger_class: prescriptionActionDetails.trigger_class ?? null,
+          crop_age_days_min: prescriptionActionDetails.crop_age_days_min ?? null,
+          crop_age_days_max: prescriptionActionDetails.crop_age_days_max ?? null,
+          condition_code: prescriptionActionDetails.condition_code ?? null,
         });
       }
     }
@@ -804,6 +827,14 @@ export function evaluateRulesLayered(
             knowledge_text: blockedActionDetails.knowledge_text,
             i18n_key: blockedActionDetails.i18n_key,
             conditions_json: blockedActionDetails.conditions_json || null,
+          // 2026-09-04 — CONTEXT EVIDENCE / COHERENCE inputs (were only on the DIAGNOSIS
+            // projection; live trace_mtn7mf2w_wyixre: DB category 'nutrition' maps to
+            // RuleCategory.PRESCRIPTION, so RICE_NUTR_LATE_N_BLOCK_001 arrived here
+            // without trigger_class and could never score as a context rule)
+            trigger_class: blockedActionDetails.trigger_class ?? null,
+            crop_age_days_min: blockedActionDetails.crop_age_days_min ?? null,
+            crop_age_days_max: blockedActionDetails.crop_age_days_max ?? null,
+            condition_code: blockedActionDetails.condition_code ?? null,
             // PRODUCTION FIX: Propagate ALL rich agronomic fields (matching PRESCRIPTION path)
             active_ingredient: blockedActionDetails.active_ingredient,
             dosage_per_acre: blockedActionDetails.dosage_per_acre,

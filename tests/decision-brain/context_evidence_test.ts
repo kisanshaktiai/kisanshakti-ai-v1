@@ -45,3 +45,28 @@ Deno.test('CE4 confirmed symptom rule and context block together: symptom rule l
   assert(r.primary_decision != null);
   assert(r.rules_applied.includes('RICE_NUTR_LATE_N_BLOCK_001') && r.rules_applied.includes('RICE_NUTR_K_DEFICIT_001'));
 });
+
+// ── CE5–CE7 (2026-09-04, live trace_mtn7mf2w_wyixre): the block is category 'nutrition'
+// → RuleCategory.PRESCRIPTION. Zero symptoms + LOW confidence → prescription gate BLOCKED.
+const asPrescription = (r: any) => ({ ...r, category: RC.PRESCRIPTION });
+const LATE_N_RX = asPrescription(LATE_N);
+
+Deno.test('CE5 PRESCRIPTION-category context block, gate BLOCKED (0 symptoms, LOW confidence) → still primary', () => {
+  const r = lre.evaluateRulesLayered([LATE_N_RX], state(88), { traceId: 'ce5' }); // NO override → gate blocks
+  assertEquals(r.prescription_allowed, false);
+  assertEquals(r.primary_decision?.rule_id, 'RICE_NUTR_LATE_N_BLOCK_001');
+  assertEquals(r.primary_decision?.action_type, 'block');
+});
+Deno.test('CE6 gate BLOCKED still silences an observation-driven PRESCRIPTION (no bypass for non-context rows)', () => {
+  const K_RX = asPrescription(rule({ rule_id: 'RICE_NUTR_K_DEFICIT_001', priority: 7, action_type: 'recommend', condition_code: 'k_deficiency_rice',
+    observations: ['k_deficiency_rice'], action_text: 'Apply MOP 25 kg/acre', reason_text: 'K deficiency', cause: 'Potassium deficiency',
+    active_ingredient: 'MOP', dosage: '25 kg/acre' }));
+  const r = lre.evaluateRulesLayered([K_RX], state(88), { traceId: 'ce6' });
+  assertEquals(r.prescription_allowed, false);
+  assertEquals(r.rules_matched, 0);
+  assertEquals(r.primary_decision, null);
+});
+Deno.test('CE7 PRESCRIPTION-category context block outside its DAS window is not promoted', () => {
+  const r = lre.evaluateRulesLayered([LATE_N_RX], state(60), { traceId: 'ce7' });
+  assertEquals(r.primary_decision, null);
+});
