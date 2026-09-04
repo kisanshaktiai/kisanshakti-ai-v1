@@ -48,7 +48,7 @@ async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, la
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-function containsExpectedScript(value: string, language: string): boolean { if (language === "en") return true; const patterns: Record<string, RegExp> = { hi: /[\u0900-\u097F]/, mr: /[\u0900-\u097F]/, pa: /[\u0A00-\u0A7F]/, ta: /[\u0B80-\u0BFF]/ }; return patterns[language] ? patterns[language].test(value) : true; }
+function containsExpectedScript(value: string, language: string): boolean { if (language === "en") return true; const patterns: Record<string, RegExp> = { hi: /[\u0900-\u097F]/, mr: /[\u0900-\u097F]/, pa: /[\u0A00-\u0A7F]/, ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/, kn: /[\u0C80-\u0CFF]/, ml: /[\u0D00-\u0D7F]/ }; return patterns[language] ? patterns[language].test(value) : false; }
 export async function narrateTasks(tasks: NarratableTask[], language: string): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; reason?: string; provider?: string; model?: string }> {
   const totalCount = tasks.length; if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
   let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" }; }
