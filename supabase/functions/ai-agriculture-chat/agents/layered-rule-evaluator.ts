@@ -1,5 +1,10 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-04 — CONTEXT EVIDENCE: CONTEXT_SCHEDULE / CONTEXT_BLOCK rows
+ *   (decision_rules.trigger_class, now carried through loader → action_details
+ *   → matched response) score primary evidence on stage+DAS context instead of
+ *   observation overlap, so a stage-driven block/schedule can become primary on
+ *   a zero-symptom advisory turn. Logs [CONTEXT_EVIDENCE].
  * 2026-08-29 — FIX 2: StageGate "ontology known" now uses isKnownStage()
  *   (crop_stage_master presence) instead of family size. FIX 4: new RegionGate
  *   on decision_rules.region_code vs state.region_code (fail-closed). FIX 5:
@@ -200,6 +205,10 @@ export interface MatchedResponse {
   i18n_key?: string;
   // Fix 4: conditions_json for downstream arbitration inspection
   conditions_json?: Record<string, unknown>;
+  // 2026-09-04 — CONTEXT EVIDENCE inputs (decision_rules.trigger_class + DAS window)
+  trigger_class?: string | null;
+  crop_age_days_min?: number | null;
+  crop_age_days_max?: number | null;
   // PHASE 8: Rich agronomic fields for deterministic response builder
   active_ingredient?: string;
   dosage_per_acre?: string;
@@ -513,6 +522,10 @@ export function evaluateRulesLayered(
             knowledge_text: actionDetails.knowledge_text,
             i18n_key: actionDetails.i18n_key,
             conditions_json: actionDetails.conditions_json || null,
+            // 2026-09-04 — CONTEXT EVIDENCE inputs for primary scoring
+            trigger_class: actionDetails.trigger_class ?? null,
+            crop_age_days_min: actionDetails.crop_age_days_min ?? null,
+            crop_age_days_max: actionDetails.crop_age_days_max ?? null,
             // PRODUCTION FIX: Propagate ALL rich agronomic fields (matching PRESCRIPTION path)
             active_ingredient: actionDetails.active_ingredient,
             dosage_per_acre: actionDetails.dosage_per_acre,
@@ -938,7 +951,41 @@ export function evaluateRulesLayered(
       : (state.visual_symptoms || []);
     const currentSymptoms = primarySymptomSource.map((s: string) => canonicalObsCode(s)).filter(Boolean);
     
+    // 2026-09-04 — CONTEXT EVIDENCE. Live trace_mtn1l8je_iv4uhe ("आता कोणते खत
+    // द्यावे", rice/booting/DAS 88): RICE_NUTR_LATE_N_BLOCK_001 (CONTEXT_BLOCK)
+    // matched through the stage pre-filter, but primary scoring measured
+    // observation overlap (0/1 → 0.035), the ConfidenceGate skipped primary
+    // selection, ruleEngine emitted the NEEDS_MORE_EVIDENCE sentinel and the
+    // farmer was shown "Recommended product / FOLIAR SPRAY". A CONTEXT_SCHEDULE /
+    // CONTEXT_BLOCK row (decision_rules.trigger_class) is evidenced by crop /
+    // stage / DAS — the very predicate that admitted it — not by symptoms.
+    // Score = 1.0 when the stage pre-filter passed and the DAS window (if
+    // authored) contains the current DAS; otherwise the normal path applies.
+    const _stateDas = Number((state as any).days_since_sowing ?? (state as any).days_after_sowing_exact ?? (state as any).days_after_sowing ?? (state as any).das ?? NaN);
+    const _isContextRule = (r: any) => {
+      const tc = String(r?.trigger_class ?? r?.application_details?.trigger_class ?? '').toUpperCase();
+      return tc === 'CONTEXT_SCHEDULE' || tc === 'CONTEXT_BLOCK';
+    };
+    const _contextEvidence = (r: any): number | null => {
+      if (!_isContextRule(r)) return null;
+      const mn = r?.crop_age_days_min ?? r?.application_details?.crop_age_days_min ?? null;
+      const mx = r?.crop_age_days_max ?? r?.application_details?.crop_age_days_max ?? null;
+      const dasAuthored = mn != null || mx != null;
+      if (dasAuthored) {
+        if (!Number.isFinite(_stateDas)) return null;                // no DAS → no context claim
+        if (mn != null && _stateDas < Number(mn)) return null;
+        if (mx != null && _stateDas > Number(mx)) return null;
+      }
+      return 1.0;                                                     // stage pre-filter already passed
+    };
+
     const scored = candidatesForPrimary.map(r => {
+      const _ctx = _contextEvidence(r);
+      if (_ctx != null) {
+        const genericPenaltyCtx = ((r as any)._genericPenalty === true) ? 0.85 : 1.0;
+        console.log(`   🧭 [CONTEXT_EVIDENCE] ${r.rule_id} trigger_class=${String(r.trigger_class ?? '')} das=${Number.isFinite(_stateDas) ? _stateDas : 'n/a'} → evidence=${_ctx * genericPenaltyCtx}`);
+        return { response: r, evidenceScore: _ctx * genericPenaltyCtx, matchedConditions: 1, totalConditions: 1 };
+      }
       // LEDGER-BASED SCORING: Use condition ledger for accurate scoring
       const ledger = getConditionLedger(r.rule_id);
       // PHASE D: generic-rule penalty (set by bundled-rules/loader.ts when a rule
@@ -1531,6 +1578,8 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         // PHASE 2: Temporal Constraint Fields - CRITICAL for age-based filtering
         crop_age_days_min: bundled.crop_age_days_min,
         crop_age_days_max: bundled.crop_age_days_max,
+        // 2026-09-04 — CONTEXT EVIDENCE (see scoring): decision_rules.trigger_class
+        trigger_class: (bundled as any).trigger_class ?? null,
         
         // PHASE 3: ETL Safety Gate Fields - CRITICAL for spray decision
         etl_applicable: bundled.etl_applicable,

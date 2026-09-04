@@ -10542,7 +10542,17 @@ export class AIAgentOrchestrator {
       
       // PHASE-19: PHOTO REQUEST ON LOW CONFIDENCE + NO RULES
       const rulesAppliedCount = decisionOutput.rules_applied?.length || 0;
-      const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
+      // 2026-09-04 — the NEEDS_MORE_EVIDENCE sentinel (action_type ESCALATE_TO_EXPERT,
+      // no rule_id; see rule-engine-executor.generateNeedsMoreEvidenceDecision: "downstream
+      // must NOT render this as advice") is NOT a recommendation. Live
+      // trace_mtn1l8je_iv4uhe rendered it as "Recommended product / FOLIAR SPRAY" because
+      // rules_applied=1 (a matched-but-not-primary rule) made this predicate false.
+      const _primaryIsSentinel =
+        String(decisionOutput.primary_decision?.action_type ?? '').toUpperCase() === 'ESCALATE_TO_EXPERT' &&
+        !(decisionOutput.primary_decision as any)?.rule_id &&
+        !(decisionOutput.primary_decision as any)?.application_details?.rule_id;
+      if (_primaryIsSentinel) console.log(`   🛑 [SENTINEL_NOT_ADVICE] primary is the NEEDS_MORE_EVIDENCE sentinel (rules_applied=${rulesAppliedCount}) → treated as no recommendation`);
+      const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision || _primaryIsSentinel;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
       const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
       const observationAuthorityStillRequiresClarification =

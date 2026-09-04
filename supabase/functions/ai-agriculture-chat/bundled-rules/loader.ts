@@ -228,6 +228,10 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
 
         // PHASE C, gate #2 — preserve rule_intent so filterRulesByIntent can read it
         rule_intent: row.rule_intent ?? null,
+        // 2026-09-04 — CONTEXT EVIDENCE: decision_rules.trigger_class tells the
+        // evaluator whether a rule is evidenced by crop/stage/DAS context
+        // (CONTEXT_SCHEDULE / CONTEXT_BLOCK) rather than by observations.
+        trigger_class: row.trigger_class ?? null,
 
         is_active: row.is_active
       };
