@@ -28,11 +28,55 @@ export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycl
 
 export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance; }
 const RPC_TGW_UNVERIFIED="default_20g_UNVERIFIED";
-export async function getSeedRate(supabase:SupabaseClient,varietyId:string|null,cultivationMethod:string|null,stageClockMethod:string|null=null):Promise<SeedRateResult|null>{
-  if(!varietyId||!cultivationMethod)return null;const candidateMethods=[...new Set([cultivationMethod,stageClockMethod].filter(Boolean))] as string[];let vca:Record<string,unknown>|null=null;let vcaMethod:string|null=null;
-  for(const method of candidateMethods){const {data}=await supabase.from("variety_cultivation_agronomy").select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier").eq("variety_id",varietyId).eq("cultivation_method",method).eq("is_active",true).maybeSingle();if(data){vca=data as Record<string,unknown>;vcaMethod=method;break;}}
-  if(vca&&vca.target_plants_per_m2!=null&&vcaMethod){const {data:rpc}=await supabase.rpc("fn_calculate_seed_rate",{p_variety_id:varietyId,p_cultivation_method:vcaMethod});const r=Array.isArray(rpc)?rpc[0]:rpc;if(r?.seed_rate_kg_per_acre!=null&&typeof r.tgw_source==="string"&&r.tgw_source!==RPC_TGW_UNVERIFIED)return{kgPerAcre:Number(r.seed_rate_kg_per_acre),rationale:r.rationale??null,provenance:{table:"fn_calculate_seed_rate",source:`tgw:${r.tgw_source}; method:${vcaMethod}`};}}
-  const min=vca?.seed_rate_kg_per_acre_min!=null?Number(vca.seed_rate_kg_per_acre_min):null;const max=vca?.seed_rate_kg_per_acre_max!=null?Number(vca.seed_rate_kg_per_acre_max):null;if(min==null&&max==null)return null;return{kgPerAcre:min!=null&&max!=null?(min+max)/2:(min??max) as number,rationale:(vca?.seed_rate_rationale as string)??null,provenance:{table:"variety_cultivation_agronomy",row_id:(vca?.id as string)??null,source:`${(vca?.source as string)??""}; method:${vcaMethod??""}`}};
+export async function getSeedRate(
+  supabase: SupabaseClient,
+  varietyId: string | null,
+  cultivationMethod: string | null,
+  stageClockMethod: string | null = null
+): Promise<SeedRateResult | null> {
+  if (!varietyId || !cultivationMethod) return null;
+  const candidateMethods = [...new Set([cultivationMethod, stageClockMethod].filter(Boolean))] as string[];
+  let vca: Record<string, unknown> | null = null;
+  let vcaMethod: string | null = null;
+
+  for (const method of candidateMethods) {
+    const { data } = await supabase
+      .from("variety_cultivation_agronomy")
+      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier")
+      .eq("variety_id", varietyId)
+      .eq("cultivation_method", method)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (data) {
+      vca = data as Record<string, unknown>;
+      vcaMethod = method;
+      break;
+    }
+  }
+
+  if (vca && vca.target_plants_per_m2 != null && vcaMethod) {
+    const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", {
+      p_variety_id: varietyId,
+      p_cultivation_method: vcaMethod,
+    });
+    const r = Array.isArray(rpc) ? rpc[0] : rpc;
+    if (r?.seed_rate_kg_per_acre != null && typeof r.tgw_source === "string" && r.tgw_source !== RPC_TGW_UNVERIFIED) {
+      return {
+        kgPerAcre: Number(r.seed_rate_kg_per_acre),
+        rationale: r.rationale ?? null,
+        provenance: { table: "fn_calculate_seed_rate", source: `tgw:${r.tgw_source}; method:${vcaMethod}` },
+      };
+    }
+  }
+
+  const min = vca?.seed_rate_kg_per_acre_min != null ? Number(vca.seed_rate_kg_per_acre_min) : null;
+  const max = vca?.seed_rate_kg_per_acre_max != null ? Number(vca.seed_rate_kg_per_acre_max) : null;
+  if (min == null && max == null) return null;
+  return {
+    kgPerAcre: min != null && max != null ? (min + max) / 2 : (min ?? max) as number,
+    rationale: (vca?.seed_rate_rationale as string) ?? null,
+    provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
+  };
 }
 
 export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance; }
