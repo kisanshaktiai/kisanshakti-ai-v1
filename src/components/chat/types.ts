@@ -20,6 +20,13 @@ export function normalizeConfidencePct(v: unknown): number {
   return v <= 1 ? Math.round(v * 100) : Math.round(v);
 }
 
+export interface CitationRefs {
+  label: string;      // "Sources" in the farmer's language (from backend)
+  pageWord: string;   // "page" in the farmer's language
+  pagesWord: string;  // "pages" in the farmer's language
+  items: Array<{ documentId: string; title: string; publisher: string; pages: number[] }>;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -59,6 +66,9 @@ export interface Message {
   };
   decisionBrainResponse?: DecisionBrainResponse;
   dataAudit?: DataAudit | any;
+  /** Structured references for a RAG-grounded General-chat answer (2026-09-04).
+   *  Label/page words are already in the farmer's language (set by the backend). */
+  citations?: CitationRefs;
   diagnosticData?: {
     landName?: string;
     cropName?: string;

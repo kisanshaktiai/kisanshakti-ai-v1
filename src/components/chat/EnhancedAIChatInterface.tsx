@@ -490,6 +490,7 @@ export function EnhancedAIChatInterface() {
         analysisResult,
         orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
         dataAudit: metadata?.data_audit,
+        citations: metadata?.citations || undefined,
         traceId: metadata?.trace_id,
         status: 'synced' as MessageStatus,
         analytics: msg.response_time_ms ? {
@@ -1791,6 +1792,7 @@ export function EnhancedAIChatInterface() {
             : (data.metadata?.orchestrator_type || 'DECISION_PROVIDED')),
         traceId: data.metadata?.trace_id,
         dataAudit: isGeneralResponse ? undefined : data.dataAudit,
+        citations: isGeneralResponse ? (data.metadata?.citations || undefined) : undefined,
         clarificationOptions: isGeneralResponse ? undefined : clarificationOptions,
         structuredAdvisory: isGeneralResponse ? undefined : (data.structured_advisory || undefined),
         analytics: {
@@ -1843,6 +1845,7 @@ export function EnhancedAIChatInterface() {
             orchestrator_type: isClarification ? 'CLARIFICATION_QUESTION' : 
                               (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
             trace_id: data.metadata?.trace_id,
+            citations: isGeneralResponse ? (data.metadata?.citations || null) : null,
             clarification_options: clarificationOptions
           }
         }

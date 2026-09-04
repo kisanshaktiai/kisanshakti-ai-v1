@@ -74,6 +74,7 @@ export async function normalizeQueryForRetrieval(
   uiLanguage: string,
   traceId: string,
   corpusCrops?: string[] | null,
+  priorFarmerTurns?: string[] | null,
 ): Promise<NormalizedQuery> {
   const t0 = Date.now();
   const original = userText.trim();
@@ -83,14 +84,27 @@ export async function normalizeQueryForRetrieval(
   };
   if (!original) return fallback;
 
-  // FIX F5 (RAG audit 2026-09-04): "mi konta us pik ghevu" (Marathi ऊस = sugarcane)
-  // was normalised to crop "urad", which resolves to nothing, so 246 sugarcane
-  // chunks were reported as a corpus gap. When the caller knows which crops the
-  // corpus actually holds, tell the interpreter to map a MENTIONED crop to the
-  // closest name in that list (still never inventing a crop that was not
-  // mentioned). This only constrains the crop hint; it never changes query_en.
+  // FIX F5 (RAG audit 2026-09-04): a local-language crop word was normalised to a
+  // crop the corpus does not hold, so hundreds of relevant chunks were reported
+  // as a corpus gap. When the caller knows which crops the corpus actually holds,
+  // tell the interpreter to map a MENTIONED crop to the closest name in that list
+  // (still never inventing a crop that was not mentioned). Language-agnostic by
+  // design: no example words in any target language — the interpreter is told
+  // the rule, and it knows every supported language's crop names itself.
   const cropHintLine = (corpusCrops && corpusCrops.length)
-    ? `\nKnown crops in the knowledge base: ${corpusCrops.join(', ')}. If the farmer clearly mentions one of these crops (in any language, script, dialect, or transliteration — e.g. Marathi "ऊस"/"us" = sugarcane, "भात"/"tandul" = rice, "सोयाबीन" = soybean), set "crop" to the matching English name from this list. Do NOT force an unrelated crop onto the list.`
+    ? `\nKnown crops in the knowledge base: ${corpusCrops.join(', ')}. If the farmer clearly refers to one of these crops — in any language, script, dialect, spelling, or Latin-script transliteration of a local crop word — set "crop" to the matching English name from this list. Do NOT force an unrelated crop onto the list.`
+    : '';
+
+  // Thread context (added 2026-09-04): a farmer's short reply — a place name, a
+  // number, "yes", a detail the assistant just asked for — carries no topic on
+  // its own. Without the thread, "my district is X" became "X district farming
+  // information" with crop=null and the previous question's crop was lost.
+  // The prior farmer turns are CONTEXT ONLY: query_en still expresses what the
+  // farmer wants NOW, but resolved against that context (topic + crop carried
+  // forward when the current message is a reply to it).
+  const priorTurns = (priorFarmerTurns || []).map((s) => (s || '').trim()).filter(Boolean).slice(-2);
+  const contextLine = priorTurns.length
+    ? `\nPrevious farmer messages in this conversation, oldest first (context only): ${priorTurns.map((s, i) => `(${i + 1}) ${s.slice(0, 300)}`).join(' ')}\nIf the current message is a short reply, a place name, a number, or a detail that answers a follow-up question, interpret it as continuing the previous topic: keep that topic and its crop in "query_en" and "crop".`
     : '';
 
   try {
@@ -99,7 +113,7 @@ export async function normalizeQueryForRetrieval(
       provider, model,
       [
         { role: 'system', content: SYSTEM },
-        { role: 'user', content: `UI language: ${uiLanguage}${cropHintLine}\nFarmer message: ${original}` },
+        { role: 'user', content: `UI language: ${uiLanguage}${cropHintLine}${contextLine}\nFarmer message: ${original}` },
       ],
       { maxTokens: 200, temperature: 0, useJsonMode: true },
     );

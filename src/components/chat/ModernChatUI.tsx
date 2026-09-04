@@ -19,6 +19,7 @@ import { DataAuditCards, type DataAudit } from './DataAuditCards';
 import { ClarificationOptionsUI } from './ClarificationOptionsUI';
 import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
 import { CanonicalAdvisoryCard } from './CanonicalAdvisoryCard';
+import { CitationReferences } from './CitationReferences';
 import type { Message } from './types';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -792,6 +793,14 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 </div>
               )}
               
+              {/* References for a grounded General-chat answer: collapsed by default,
+                  one tap to expand. Label text comes with the message (farmer's language). */}
+              {!isUser && message.citations?.items?.length ? (
+                <div className="px-4 pb-3">
+                  <CitationReferences refs={message.citations} />
+                </div>
+              ) : null}
+
               {/* ✅ NEW: Data Audit Cards for debugging - shows what data was found/missing */}
               {hasDataAudit && message.dataAudit && (
                 <div className="px-3 pb-2">

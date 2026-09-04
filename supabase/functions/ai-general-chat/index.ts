@@ -83,6 +83,7 @@ import {
   ragRetrieve,
   buildEvidenceBlock,
   buildCitationLines,
+  buildCitationRefs,
   unsupportedNumbers,
   dropUnsupportedSentences,
   citedEvidenceIndexes,
@@ -90,6 +91,7 @@ import {
   acreEquivalentsLine,
   type Evidence,
   type RagResult,
+  type CitationRefs,
 } from '../_shared/ragRetrieval.ts';
 import { isFlagEnabled } from '../_shared/featureFlags.ts';
 import { normalizeQueryForRetrieval, resolveCropCode, resolveStateCode, type NormalizedQuery } from '../_shared/queryNormalizer.ts';
@@ -222,6 +224,38 @@ async function resolveStateFromLand(supabase: any, farmerId: string): Promise<st
   }
 }
 
+// ── Farmer location (added 2026-09-04). The farmer's state / district / taluka /
+//    village live on the farmer's registered LANDS (lands.state, .district,
+//    .taluka, .village; user_profiles is often absent), but General chat never
+//    read them, so the model told a registered Kolhapur farmer that it did not
+//    know his district. This reads the active lands, keeps the distinct values
+//    as stored (no invention, no translation) and skips any cell that holds an
+//    id instead of a name (some rows store the FK uuid in the text column).
+//    Best-effort: returns null when nothing usable is on file.
+interface FarmerLocation { state: string | null; districts: string[]; talukas: string[]; villages: string[]; landCrops: string[] }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+async function loadFarmerLocation(supabase: any, farmerId: string): Promise<FarmerLocation | null> {
+  if (!farmerId) return null;
+  try {
+    const { data } = await supabase
+      .from('lands')
+      .select('state, district, taluka, village, current_crop, is_active')
+      .eq('farmer_id', farmerId)
+      .limit(50);
+    const rows = ((data || []) as Array<Record<string, unknown>>).filter((r) => r.is_active !== false);
+    const clean = (v: unknown) => { const s = String(v ?? '').trim(); return s && !UUID_RE.test(s) ? s : ''; };
+    const distinct = (k: string) => [...new Set(rows.map((r) => clean(r[k])).filter(Boolean))];
+    const states = distinct('state');
+    const loc: FarmerLocation = {
+      state: states.length === 1 ? states[0] : null,
+      districts: distinct('district'), talukas: distinct('taluka'), villages: distinct('village'), landCrops: distinct('current_crop'),
+    };
+    return (loc.state || loc.districts.length || loc.villages.length) ? loc : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildSystemPrompt(
   language: string,
   landContext: any | null,
@@ -231,11 +265,21 @@ function buildSystemPrompt(
     highRisk: boolean;
     strict?: boolean;             // retry after the numeric gate failed
   } | null,
+  farmerLocation?: FarmerLocation | null,
 ): string {
   const langName = LANG_NAMES[language] || 'English';
   const landBlock = landContext
     ? `LAND_CONTEXT (authoritative — use these facts):\n${JSON.stringify(landContext, null, 2)}`
     : 'LAND_CONTEXT: none (farmer asked a general question without a specific land)';
+
+  // Farmer location from the registered lands (added 2026-09-04). Values are
+  // exactly as stored; field names are English keys, never farmer-facing text.
+  const farmerBlock = farmerLocation
+    ? `FARMER_CONTEXT (authoritative — from the farmer's registered lands):\n${JSON.stringify({
+        state: farmerLocation.state, districts: farmerLocation.districts, talukas: farmerLocation.talukas,
+        villages: farmerLocation.villages, crops_on_registered_lands: farmerLocation.landCrops,
+      }, null, 2)}`
+    : 'FARMER_CONTEXT: no registered land location on file';
 
   const addressingBlock = addressing ? `\n\n${addressing.promptDirective}\n` : '';
 
@@ -284,6 +328,10 @@ FARMER EXPLANATION STYLE (the evidence is in English; the farmer is not):
   (kg, gram, litre, acre, hectare, quintal, day) as the everyday spoken word for
   that unit in ${langName}, but NEVER convert a value to a different unit.
 - Product / chemical / variety names stay as written in the evidence.
+- Disease and pest reaction codes in the evidence keep their exact meaning:
+  R = resistant, MR = moderately resistant, MS = moderately susceptible,
+  S = susceptible, T = tolerant. A caution for the farmer is warranted only for
+  MS, S or a stated weakness — never turn a resistance into a warning.
 - Structure: one line on what to do, then how much, then when, then one caution.
   Short sentences. No English sentences.
 - NEVER transliterate an English technical or scientific term into ${langName}
@@ -348,13 +396,18 @@ HARD RULES:
   season and recent weather to ground the answer. If missing, give the best
   general guidance and briefly note ONE extra detail that would sharpen the
   answer next time.${specificityRule}
+- FARMER_CONTEXT is the farmer's registered location. When it holds a state,
+  district, taluka or village, you KNOW it: use it to make the answer local and
+  never say you do not know the farmer's district or region, and never ask for
+  a detail that is already there. Ask only for what is genuinely missing.
 - NEVER ask the farmer to "classify" their question, pick an "intent",
   upload a photo, or choose from numbered options. At most ONE short
   follow-up question if it is truly required to answer well.
 - Keep the reply under ~250 words. Use short bullets or numbered steps
   where they help readability.
 ${addressingBlock}
-${landBlock}${ragBlock}`;
+${landBlock}
+${farmerBlock}${ragBlock}`;
 }
 
 async function callLLM(
@@ -507,19 +560,27 @@ serve(async (req: Request) => {
       console.warn(`[${traceId}] user persist failed`, (e as Error).message);
     }
 
+    // ── Farmer location (registered lands) — used for addressing, the prompt's
+    //    FARMER_CONTEXT block and, below, as a state source for retrieval.
+    const farmerLocation = await loadFarmerLocation(supabase, farmerId);
+
     // ── Load farmer profile for respectful addressing (presentation-only)
     let addressing: FarmerAddressing | null = null;
     let profileState: string | null = null;
     try {
       const profile = await loadFarmerProfileLite(supabase, farmerId, language);
-      profileState = profile.state ?? null;
+      profileState = profile.state ?? farmerLocation?.state ?? null;
+      // 2026-09-04: address in the language the farmer is CHATTING in (`language`
+      // from the request), not the stored preference — a Marathi conversation
+      // was greeted from the English set because farmers.language_preference='en'.
       addressing = getFarmerAddressing({
-        language: profile.language || language,
-        state: profile.state,
+        language: language || profile.language,
+        state: profileState,
+        district: farmerLocation?.districts?.[0] ?? null,
         gender: profile.gender,
         farmer_name: profile.farmer_name,
       });
-      console.log(`👤 [${traceId}] addressing: ${addressing.primary} (${addressing.gender}/${profile.state || 'no-state'})`);
+      console.log(`👤 [${traceId}] addressing: lang=${language} region=${farmerLocation?.districts?.[0] || '-'}/${profileState || 'no-state'} gender=${addressing.gender}`);
     } catch (e) {
       console.warn(`[${traceId}] addressing build failed:`, (e as Error).message);
     }
@@ -540,7 +601,12 @@ serve(async (req: Request) => {
         // F5: give the interpreter the crops the corpus actually holds so a
         // local-language crop word maps to a real corpus crop (not a guess).
         const corpusCrops = await loadCorpusCrops(supabase);
-        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops);
+        // Thread context: the farmer's previous messages, so a short reply
+        // ("my district is X") keeps the topic and crop of the question it answers.
+        const priorFarmerTurns = (messages as Array<{ role?: string; content?: string }>)
+          .slice(0, -1).filter((m) => m && m.role === 'user' && typeof m.content === 'string')
+          .map((m) => m.content as string).slice(-2);
+        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops, priorFarmerTurns);
         highRisk = highRisk || HIGH_RISK_QUERY.test(normalized.query);
         // (6) Filters from SSOT tables: state (body → profile → land region) and crop.
         // FIX F4 (audit 2026-09-04): p_states was NULL on 100 % of logged retrievals —
@@ -615,7 +681,7 @@ serve(async (req: Request) => {
     const ragPromptCtx = ragResult
       ? { evidenceBlock: ragEvidence.length ? buildEvidenceBlock(ragEvidence) : null, highRisk }
       : null;
-    const systemPrompt = buildSystemPrompt(language, landContext, addressing, ragPromptCtx);
+    const systemPrompt = buildSystemPrompt(language, landContext, addressing, ragPromptCtx, farmerLocation);
 
     // ── Build LLM messages (filter symbolic-leakage from history)
     const history = (messages.slice(0, -1) as any[])
@@ -660,7 +726,7 @@ serve(async (req: Request) => {
         }
 
         if (bad.length && ragEvidence.length) {
-          const strictPrompt = buildSystemPrompt(language, landContext, addressing, { ...ragPromptCtx!, strict: true });
+          const strictPrompt = buildSystemPrompt(language, landContext, addressing, { ...ragPromptCtx!, strict: true }, farmerLocation);
           const retry = await callLLM(withSystem(strictPrompt), 0.1, traceId);
           let badRetry = unsupportedNumbers(retry.answer, ragEvidence, userText);
           let candidate = retry.answer;
@@ -676,7 +742,7 @@ serve(async (req: Request) => {
         if (bad.length) {
           // Final fallback: number-free informational answer; any sentence still
           // carrying a number is removed rather than masked.
-          const safePrompt = buildSystemPrompt(language, landContext, addressing, { evidenceBlock: null, highRisk });
+          const safePrompt = buildSystemPrompt(language, landContext, addressing, { evidenceBlock: null, highRisk }, farmerLocation);
           const safe = await callLLM(withSystem(safePrompt), 0.1, traceId);
           const cleaned = dropUnsupportedSentences(safe.answer, [], userText);
           answer = cleaned || safe.answer.replace(/[^\n]*[\d०-९][^\n]*\n?/g, '').trim() || safe.answer;
@@ -712,14 +778,23 @@ serve(async (req: Request) => {
     // FIX F6: honour explicit [n] markers when present; otherwise pick the
     // evidence the answer actually used (selectCitedIndexes) instead of listing
     // every retrieved page. `used` also scopes the acre-equivalent line.
+    let citationRefs: CitationRefs | null = null;
     if (ragEvidence.length > 0 && !noEvidenceMode) {
       const body = stripCitationMarkers(answer);
       const used = citedIdx.length ? citedIdx : selectCitedIndexes(body, ragEvidence);
       const acre = acreEquivalentsLine(body, used.length ? used.map((i) => ragEvidence[i - 1]).filter(Boolean) : ragEvidence, language);
-      answer = body + acre + buildCitationLines(ragEvidence, language, used);
+      // 2026-09-04: sources are no longer appended to the answer text. They are
+      // returned (and persisted) as structured `citations` so the app can show a
+      // tap-to-expand references card, and so voice playback reads the answer
+      // only. The label/page words come from the backend language table. The
+      // text form (buildCitationLines) is kept only as a fallback for a client
+      // that cannot render the card — it is sent as `citations_text`.
+      citationRefs = buildCitationRefs(ragEvidence, language, used);
+      answer = body + acre;
     } else {
       answer = stripCitationMarkers(answer);
     }
+    const citationsText = citationRefs ? buildCitationLines(ragEvidence, language, citedIdx.length ? citedIdx : selectCitedIndexes(answer, ragEvidence)).trim() : '';
 
     const orchestratorType = !ragResult
       ? 'GENERAL_LLM_DIRECT'
@@ -763,6 +838,8 @@ serve(async (req: Request) => {
           language,
           trace_id: traceId,
           land_context_used: !!landContext,
+          farmer_context_used: !!farmerLocation,
+          citations: citationRefs,
           rag: ragMeta,
         },
       });
@@ -785,9 +862,15 @@ serve(async (req: Request) => {
           land_context_used: !!landContext,
           rag_grounded: orchestratorType === 'GENERAL_RAG_GROUNDED',
           rag_mode: ragResult?.mode || null,
+          farmer_context_used: !!farmerLocation,
+          // Structured references for the app's collapsible card (null when the
+          // answer is not grounded). `citations_text` is the same list as plain
+          // text for any client that cannot render the card.
+          citations: citationRefs,
+          citations_text: citationsText || null,
           ...(orchestratorType === 'GENERAL_RAG_GROUNDED'
             ? {
-                citations: ragEvidence.map((e, i) => ({
+                evidence: ragEvidence.map((e, i) => ({
                   n: i + 1, title: e.title, publisher: e.publisher, page: e.pageNumber,
                   section: e.sectionPath, document_id: e.documentId, chunk_id: e.chunkId,
                 })),

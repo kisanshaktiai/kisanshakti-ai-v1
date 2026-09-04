@@ -202,10 +202,10 @@ function normalizeState(s?: string | null): string {
   return (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function pickSet(language: string, state?: string | null): HonorificSet {
+function pickSet(language: string, state?: string | null): { set: HonorificSet; fromState: boolean } {
   const st = normalizeState(state);
-  if (st && STATE_HONORIFICS[st]) return STATE_HONORIFICS[st];
-  return LANGUAGE_FALLBACK[language] || LANGUAGE_FALLBACK.en;
+  if (st && STATE_HONORIFICS[st]) return { set: STATE_HONORIFICS[st], fromState: true };
+  return { set: LANGUAGE_FALLBACK[language] || LANGUAGE_FALLBACK.en, fromState: false };
 }
 
 export interface FarmerAddressing {
@@ -220,15 +220,24 @@ export interface FarmerAddressing {
 }
 
 // Build the addressing payload + LLM directive.
+// Rewritten 2026-09-04: the directive is now driven by the farmer's REGION and
+// LANGUAGE, and asks the model to use the customary respectful rural form of
+// address of that region itself. Reason: when the state was unknown the old
+// directive handed the model the English fallback "farmer friend", which it then
+// transliterated into the farmer's script ("फार्मर फ्रेंड") — the exact failure
+// the no-transliteration rule exists to prevent. The honorific table is kept as
+// a SUGGESTION only when the farmer's own state matched it; a language-level
+// fallback is never presented as the farmer's word.
 export function getFarmerAddressing(p: {
   language?: string | null;
   state?: string | null;
+  district?: string | null;
   gender?: Gender | null;
   farmer_name?: string | null;
 }): FarmerAddressing {
   const language = (p.language || 'en').toLowerCase();
   const gender: Gender = (p.gender || 'unknown') as Gender;
-  const set = pickSet(language, p.state);
+  const { set, fromState } = pickSet(language, p.state);
 
   let pool: string[];
   if (gender === 'male') pool = set.male;
@@ -238,27 +247,27 @@ export function getFarmerAddressing(p: {
   const primary = pool[0];
   const alternatives = pool.slice(1);
   const nameClause = p.farmer_name
-    ? `Farmer's name is "${p.farmer_name}" — you MAY use it sparingly (max once) prefixed with the honorific (e.g. "${primary} ${p.farmer_name}"). Never overuse the name.`
-    : `Farmer's name is not available — use the honorific alone.`;
+    ? `Farmer's name is "${p.farmer_name}" — you MAY use it sparingly (max once) after the form of address. Never overuse the name.`
+    : `Farmer's name is not available — use the form of address alone.`;
+  const region = [p.district, p.state].filter(Boolean).join(', ') || 'unknown';
+  const suggestion = fromState
+    ? `- Customary forms in this state (use if they fit; pick by gender): "${primary}"${alternatives.length ? `, ${alternatives.map((a) => `"${a}"`).join(', ')}` : ''}. ${set.toneHint}`
+    : `- No verified regional form is on file. Choose the form yourself as a village extension officer of this region who speaks this language would.`;
 
   const directive = `
 ═══ FARMER ADDRESSING (PRESENTATION-LAYER ONLY) ═══
-Address the farmer using rural, culturally-respectful honorific words appropriate to their state and gender.
+Greet and address the farmer the way a respected village extension officer of the farmer's own region would, in the farmer's language.
 
-- Language: ${language}
-- State: ${p.state || 'unknown'}
-- Gender: ${gender}
-- Preferred honorific: "${primary}"
-- Acceptable alternatives: ${alternatives.length ? alternatives.map((a) => `"${a}"`).join(', ') : '(none)'}
-- Tone: ${set.toneHint}
+- Language of the conversation: ${language}
+- Farmer's region: ${region}
+- Gender: ${gender}${gender === 'unknown' ? ' (unknown — use a gender-neutral respectful form that farmers in this region use)' : ''}
+${suggestion}
 - ${nameClause}
 
 USAGE RULES (strict):
-1. Open the response with the preferred honorific (or an alternative) — naturally, like a village elder/officer greeting the farmer.
-2. You MAY reuse the honorific 1–2 more times in the body when it sounds natural; do NOT sprinkle it in every sentence.
-3. NEVER use formal/literary forms like "प्रिय किसान", "Respected farmer", "Dear farmer", "श्रीयुत", "Mr./Mrs.", or generic "farmer".
-4. NEVER translate the honorific into English or another language — keep it in the native script of ${language}.
-5. This addressing is PRESENTATION-ONLY. It MUST NOT change the diagnosis, products, dosages, timing, safety warnings, or any decision content.
+1. Open the response with that form of address — naturally, like an elder or officer greeting a farmer in the village — and you MAY reuse it 1–2 more times in the body where it sounds natural; never in every sentence.
+2. The form of address MUST be a word that farmers of this region actually use in ${language}, written in the native script of ${language}. NEVER a literal translation of an English phrase (no equivalent of "farmer friend", "dear farmer", "respected farmer"), NEVER an English word written in the local script, NEVER formal or literary honorifics, and never a generic "farmer".
+3. This addressing is PRESENTATION-ONLY. It MUST NOT change the diagnosis, products, dosages, timing, safety warnings, or any decision content.
 ═══════════════════════════════════════════════════`.trim();
 
   return {

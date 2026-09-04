@@ -372,6 +372,35 @@ export function buildCitationLines(evidence: Evidence[], language: string, used:
   });
   return `\n\n${L.sources}:\n${lines.join('\n')}`;
 }
+/**
+ * Structured form of buildCitationLines (added 2026-09-04) for the chat UI's
+ * collapsible references card. Same selection rules (one entry per document,
+ * cited pages only, servable only, max 3). `label`/`pageWord` come from the
+ * CITE_LABEL table so the app renders the farmer's language without any UI
+ * string of its own; `items` carry stable ids for future deep-links.
+ */
+export interface CitationRefs {
+  label: string;
+  pageWord: string;
+  pagesWord: string;
+  items: Array<{ documentId: string; title: string; publisher: string; pages: number[] }>;
+}
+export function buildCitationRefs(evidence: Evidence[], language: string, used: number[] = []): CitationRefs | null {
+  const L = CITE_LABEL[language] ?? CITE_LABEL.en;
+  const pick = used.length ? used.map((i) => evidence[i - 1]).filter(Boolean) : evidence;
+  const byDoc = new Map<string, { ev: Evidence; pages: Set<number> }>();
+  for (const ev of pick) {
+    if (!ev.servable) continue;
+    const g = byDoc.get(ev.documentId) ?? { ev, pages: new Set<number>() };
+    if (ev.pageNumber != null) g.pages.add(ev.pageNumber);
+    byDoc.set(ev.documentId, g);
+  }
+  if (!byDoc.size) return null;
+  const items = [...byDoc.values()].slice(0, 3).map(({ ev, pages }) => ({
+    documentId: ev.documentId, title: ev.title, publisher: ev.publisher, pages: [...pages].sort((a, b) => a - b),
+  }));
+  return { label: L.sources, pageWord: L.page, pagesWord: L.pages, items };
+}
 
 const HA_TO_ACRE=0.4047;
 const UNIT_WORDS: Record<string,{kg:string;q:string;acre:string;note:string}> = {
