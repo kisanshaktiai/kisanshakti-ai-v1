@@ -67,7 +67,7 @@ export async function narrateTasks(tasks: NarratableTask[], language: string): P
   const totalCount = tasks.length; if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
   let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" }; }
   if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" };
-  let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil = 0;
+  let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil.clear();
   const chunks: Array<{ items: NarratableTask[]; offset: number }> = []; for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
   const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), NARRATION_BUDGET_MS); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
   try {
