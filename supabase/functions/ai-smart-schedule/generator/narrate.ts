@@ -49,13 +49,14 @@ async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, la
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 function containsExpectedScript(value: string, language: string): boolean { if (language === "en") return true; const patterns: Record<string, RegExp> = { hi: /[\u0900-\u097F]/, mr: /[\u0900-\u097F]/, pa: /[\u0A00-\u0A7F]/, ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/, kn: /[\u0C80-\u0CFF]/, ml: /[\u0D00-\u0D7F]/ }; return patterns[language] ? patterns[language].test(value) : false; }
-export async function narrateTasks(tasks: NarratableTask[], language: string): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; reason?: string; provider?: string; model?: string }> {
-  const totalCount = tasks.length; if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
+export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs?: number): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; reason?: string; provider?: string; model?: string }> {
+  const totalCount = tasks.length; if (budgetMs !== undefined && budgetMs <= 2_000) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "narration_skipped_time_budget" };
+  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
   let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" }; }
   if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" };
   let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil.clear();
   const chunks: Array<{ items: NarratableTask[]; offset: number }> = []; for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
-  const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), NARRATION_BUDGET_MS); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
+  const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), Math.max(0, Math.min(NARRATION_BUDGET_MS, budgetMs ?? NARRATION_BUDGET_MS))); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = []; let i = 0;
     while (i < chunks.length) {
