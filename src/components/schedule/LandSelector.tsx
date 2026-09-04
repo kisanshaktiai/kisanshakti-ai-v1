@@ -572,21 +572,28 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('schedule.land_selector.delete_ai_dialog.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
+        <AlertDialogContent className="w-[calc(100vw-2.5rem)] max-w-sm rounded-3xl border-border/60 bg-card p-6 shadow-2xl">
+          <AlertDialogHeader className="space-y-3">
+            <div className="mx-auto h-14 w-14 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+              <Trash2 className="h-6 w-6 text-destructive" />
+            </div>
+            <AlertDialogTitle className="text-center text-lg font-bold text-foreground">
+              {t('schedule.land_selector.delete_ai_dialog.title')}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center text-sm text-muted-foreground leading-relaxed">
               {t('schedule.land_selector.delete_ai_dialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('schedule.land_selector.delete_dialog.cancel')}</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col gap-2.5 sm:flex-col sm:space-x-0 mt-2">
             <AlertDialogAction
               onClick={confirmDeleteSchedule}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="w-full h-12 rounded-full bg-destructive text-destructive-foreground font-semibold shadow-md hover:bg-destructive/90 active:scale-[0.98] transition-all"
             >
               {t('schedule.land_selector.delete_dialog.delete')}
             </AlertDialogAction>
+            <AlertDialogCancel className="w-full h-12 rounded-full border-primary/30 text-primary font-semibold hover:bg-primary/10 active:scale-[0.98] transition-all mt-0">
+              {t('schedule.land_selector.delete_dialog.cancel')}
+            </AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
