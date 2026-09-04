@@ -40,8 +40,8 @@ async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, la
   let lastError: unknown = new Error("MODEL_UNAVAILABLE");
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) {
-      // Do not retry a provider 429. Retrying immediately just creates more rate-limit
-      // traffic and delays schedule persistence. A later chunk may use the fallback provider.
+      // A 429 means the provider is unavailable for this request. Retrying the same
+      // chunk only creates more rate-limit traffic; fail this chunk open instead.
       if (lastError instanceof RetryableError && /^llm_http_429$/.test(lastError.message)) break;
       const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null ? lastError.retryAfterMs : RETRY_DELAYS_MS[attempt - 1];
       await sleep(wait, signal); if (signal.aborted) break;
@@ -61,7 +61,14 @@ export async function narrateTasks(tasks: NarratableTask[], language: string): P
   const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), NARRATION_BUDGET_MS); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = []; let i = 0;
-    while (i < chunks.length) { if (controller.signal.aborted) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal)))); i += MAX_CONCURRENCY; }
+    while (i < chunks.length) {
+      if (controller.signal.aborted) break;
+      // Once every configured provider has a cooldown, further calls cannot improve
+      // translation. Stop immediately and let the deterministic schedule persist.
+      if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break;
+      results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal))));
+      i += MAX_CONCURRENCY;
+    }
     for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const target = out[item.i]; if (!target) continue; let touched = false;
       if (item.name && isFaithful(target.task_name, item.name) && containsExpectedScript(item.name, language)) { target.task_name = item.name; touched = true; }
       if (item.desc && isFaithful(target.task_description, item.desc) && containsExpectedScript(item.desc, language)) { target.task_description = item.desc; touched = true; }
