@@ -147,7 +147,9 @@ serve(async (req) => {
 
     const sanitized = baseline.tasks.map((t) => sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details }));
     baseline.tasks.forEach((t, i) => { t.task_name = sanitized[i].task_name || t.task_name; t.task_description = sanitized[i].task_description; t.instructions = sanitized[i].instructions; if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`); });
-    const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language);
+    const HARD_DEADLINE_MS = 110_000;
+    const narrationBudgetMs = HARD_DEADLINE_MS - (Date.now() - startTime) - 20_000;
+    const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);
     const narrated = narration.tasks;
     if (!narration.narrated) { baseline.gaps.push(`narration_unavailable: ${narration.reason ?? "unknown"}`); baseline.coverage.narration = false; }
     else { if (narration.narratedCount < narration.totalCount) baseline.gaps.push(`narration_partial: ${narration.narratedCount}/${narration.totalCount}`); baseline.coverage.narration = narration.narratedCount === narration.totalCount; }
