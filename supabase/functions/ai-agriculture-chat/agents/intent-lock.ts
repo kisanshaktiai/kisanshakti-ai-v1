@@ -291,7 +291,19 @@ export function validateActionType(
   );
   
   // For non-forbidden actions, allow if in allowed list OR if it's a general informational action
-  if (isAllowed || ['INFORM', 'MONITOR', 'ADVISE'].some(a => normalizedAction.includes(a))) {
+  // 2026-09-04 — CONSTRAINT ACTIONS ARE NEVER "OUTSIDE SCOPE". Live trace
+  // trace_mtmoo4of_29uzwf: FERTILIZER_SCHEDULE at rice/booting matched
+  // RICE_NUTR_LATE_N_BLOCK_001 (action_type 'block' = "no more N now" — the
+  // agronomically correct answer to "which fertiliser now"), but 'BLOCK' is in
+  // no intent's allowed list, so P0-E filtered ALL actions and the farmer got an
+  // intent-mismatch card with untranslated codes. Live DB: 210 active block
+  // rules carry action_type 'block', 1 'no_action_required'. A prohibition,
+  // a no-action verdict, or the NEEDS_MORE_EVIDENCE sentinel cannot violate an
+  // intent's scope; they pass like INFORM/MONITOR/ADVISE. Forbidden check above
+  // still wins (e.g. an explicit forbidden 'BLOCK' on an intent would still block).
+  const CONSTRAINT_ACTIONS = ['BLOCK', 'NO_ACTION_REQUIRED', 'ESCALATE_TO_EXPERT'];
+  if (isAllowed || ['INFORM', 'MONITOR', 'ADVISE'].some(a => normalizedAction.includes(a))
+      || CONSTRAINT_ACTIONS.some(a => normalizedAction.includes(a))) {
     return { allowed: true };
   }
   

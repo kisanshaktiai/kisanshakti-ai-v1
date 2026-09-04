@@ -10840,7 +10840,16 @@ export class AIAgentOrchestrator {
               question_id: `intent_mismatch_${Date.now()}`,
               text_en: 'Could you describe your problem in more detail so I can help you better?',
               i18n_key: clarification.i18n_key,
-              options: clarification.option_codes.map(code => ({ code, label: code }))
+              // 2026-09-04 — labels from system_config `clarification_option_<CODE>_<lang>`
+              // (same convention as clarification_intro_<lang> used by
+              // generateDefaultClarification). Falls back to the code only when the
+              // key is absent (logged), so the gap is visible instead of blank cards.
+              options: clarification.option_codes.map(code => {
+                const _lang = String(options.language || 'mr').toLowerCase().split('-')[0];
+                const _l = String(getConfigRaw<string>(`clarification_option_${code}_${_lang}`, '') || getConfigRaw<string>(`clarification_option_${code}_en`, '') || '').trim();
+                if (!_l) console.warn(`[CLARIFICATION_OPTION_LABEL_MISSING] key=clarification_option_${code}_${_lang}`);
+                return { code, label: _l || code };
+              })
             },
             metadata: {
               confidence: intentConfidence,
