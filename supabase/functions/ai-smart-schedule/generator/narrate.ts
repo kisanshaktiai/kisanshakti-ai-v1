@@ -2,7 +2,7 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 90_000; const RETRY_DELAYS_MS = [2_000, 6_000, 15_000]; const MAX_RETRY_AFTER_MS = 20_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 90_000; const RETRY_DELAYS_MS = [5_000, 15_000, 30_000]; const MAX_RETRY_AFTER_MS = 30_000; let rateLimited = false;
 const cooldownUntil = new Map<AIProvider, number>();
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 function cooldownRemaining(provider: AIProvider) { return (cooldownUntil.get(provider) ?? 0) - Date.now(); }
@@ -40,9 +40,6 @@ async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, la
   let lastError: unknown = new Error("MODEL_UNAVAILABLE");
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) {
-      // A 429 means the provider is unavailable for this request. Retrying the same
-      // chunk only creates more rate-limit traffic; fail this chunk open instead.
-      if (lastError instanceof RetryableError && /^llm_http_429$/.test(lastError.message)) break;
       const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null ? lastError.retryAfterMs : RETRY_DELAYS_MS[attempt - 1];
       await sleep(wait, signal); if (signal.aborted) break;
     }
@@ -63,8 +60,6 @@ export async function narrateTasks(tasks: NarratableTask[], language: string): P
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = []; let i = 0;
     while (i < chunks.length) {
       if (controller.signal.aborted) break;
-      // Once every configured provider has a cooldown, further calls cannot improve
-      // translation. Stop immediately and let the deterministic schedule persist.
       if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break;
       results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal))));
       i += MAX_CONCURRENCY;
