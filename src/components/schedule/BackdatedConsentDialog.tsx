@@ -39,7 +39,7 @@ export default function BackdatedConsentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-[calc(100vw-2rem)] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl">
+      <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-3rem)] overflow-y-auto mobile-scroll-container p-0 gap-0 rounded-3xl border-0 shadow-2xl">
         {/* Warning Header */}
         <div className="bg-warning/10 border-b border-warning/20 p-5">
           <div className="flex items-start gap-4">
