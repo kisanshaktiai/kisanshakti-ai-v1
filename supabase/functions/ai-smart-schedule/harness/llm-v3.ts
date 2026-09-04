@@ -1,8 +1,8 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import type { PlanIntent, ScheduleHarnessContext } from "./types.ts";
 
-const TIMEOUT = 20_000;
-const RETRY_DELAYS_MS = [2_000, 6_000];
+const TIMEOUT = 12_000;
+const RETRY_DELAYS_MS = [2_000];
 
 const systemPrompt = () => [
   "You are the constrained agronomic planning model inside a high-assurance agricultural system.",
@@ -21,28 +21,11 @@ const systemPrompt = () => [
 ].join("\n");
 
 const prompt = (c: ScheduleHarnessContext, errors: string[]) => JSON.stringify({
-  crop_code: c.cropCode,
-  cultivation_method: c.cultivationMethod,
-  crop_cycle: c.cropCycle,
-  resolved_context: c.contextSnapshot,
-  known_gaps: c.gaps,
-  domain_summary: c.evidencePack.domain_summary,
-  candidates: c.graph.nodes.map((n) => ({
-    id: n.id, required: n.required, materializable: n.materializable, default_status: n.default_status,
-    domain: n.domain, task_type: n.task_type, days_from_sowing: n.days_from_sowing,
-    stage_key: n.stage_key, stage_order: n.stage_order, priority: n.priority,
-    weather_dependent: n.weather_dependent, trigger_class: n.trigger_class,
-    condition_code: n.condition_code, depends_on: n.depends_on, rule_ids: n.rule_ids,
-    evidence: n.evidence ?? null,
-  })),
-  edges: c.graph.edges,
-  previous_validation_errors: errors,
-  required_output: {
-    schema_version: "schedule_plan_intent_v3",
-    status: "READY | NEEDS_DATA | NO_VALID_PLAN",
-    sequence: [{ candidate_id: "task_0001", sequence_order: 1, status: "SCHEDULED" }],
-    uncertainties: [], reasoning_summary: "short non-authoritative planning summary",
-  },
+  crop_code: c.cropCode, cultivation_method: c.cultivationMethod, crop_cycle: c.cropCycle,
+  resolved_context: c.contextSnapshot, known_gaps: c.gaps, domain_summary: c.evidencePack.domain_summary,
+  candidates: c.graph.nodes.map((n) => ({ id:n.id, required:n.required, materializable:n.materializable, default_status:n.default_status, domain:n.domain, task_type:n.task_type, days_from_sowing:n.days_from_sowing, stage_key:n.stage_key, stage_order:n.stage_order, priority:n.priority, weather_dependent:n.weather_dependent, trigger_class:n.trigger_class, condition_code:n.condition_code, depends_on:n.depends_on, rule_ids:n.rule_ids, evidence:n.evidence ?? null })),
+  edges: c.graph.edges, previous_validation_errors: errors,
+  required_output: { schema_version:"schedule_plan_intent_v3", status:"READY | NEEDS_DATA | NO_VALID_PLAN", sequence:[{candidate_id:"task_0001",sequence_order:1,status:"SCHEDULED"}], uncertainties:[], reasoning_summary:"short non-authoritative planning summary" },
 });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -58,22 +41,13 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT);
       try {
-        const payload = buildAIRequest(
-          provider, model,
-          [{ role: "system", content: systemPrompt() }, { role: "user", content: prompt(context, repairErrors) }],
-          { maxTokens: 3500, temperature: 0, useJsonMode: true },
-        );
-        const response = await fetch(getAPIEndpoint(provider), {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-          body: JSON.stringify(payload), signal: controller.signal,
-        });
+        const payload = buildAIRequest(provider, model, [{role:"system",content:systemPrompt()},{role:"user",content:prompt(context,repairErrors)}], {maxTokens:3500,temperature:0,useJsonMode:true});
+        const response = await fetch(getAPIEndpoint(provider), {method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${key}`},body:JSON.stringify(payload),signal:controller.signal});
         if (!response.ok) {
-          const retryAfter = Number(response.headers.get("Retry-After") ?? "");
-          const error = new Error(`MODEL_HTTP_${response.status}`);
-          lastError = error;
+          lastError = new Error(`MODEL_HTTP_${response.status}`);
           if (response.status === 429 || response.status >= 500) {
-            if (Number.isFinite(retryAfter) && retryAfter > 0) await sleep(Math.min(retryAfter * 1000, 20_000));
+            const retryAfter = Number(response.headers.get("Retry-After") ?? "");
+            if (attempt < RETRY_DELAYS_MS.length && Number.isFinite(retryAfter) && retryAfter > 0) await sleep(Math.min(retryAfter * 1000, 8_000));
             continue;
           }
           break;
@@ -82,21 +56,11 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
         const content = data?.choices?.[0]?.message?.content;
         if (typeof content !== "string" || !content.trim()) { lastError = new Error("MODEL_EMPTY_RESPONSE"); break; }
         const parsed = JSON.parse(content);
-        return {
-          plan: {
-            schema_version: parsed.schema_version,
-            status: parsed.status,
-            sequence: Array.isArray(parsed.sequence) ? parsed.sequence.map((x: Record<string, unknown>) => ({
-              candidate_id: String(x.candidate_id ?? ""),
-              sequence_order: Number(x.sequence_order),
-              status: String(x.status ?? "INSUFFICIENT_DATA") as PlanIntent["sequence"][number]["status"],
-              reason: x.reason == null ? undefined : String(x.reason),
-            })) : [],
-            uncertainties: Array.isArray(parsed.uncertainties) ? parsed.uncertainties.map(String) : [],
-            reasoning_summary: String(parsed.reasoning_summary ?? ""),
-          },
-          provider, model,
-        };
+        return { plan: {
+          schema_version: parsed.schema_version, status: parsed.status,
+          sequence: Array.isArray(parsed.sequence) ? parsed.sequence.map((x: Record<string, unknown>) => ({candidate_id:String(x.candidate_id ?? ""),sequence_order:Number(x.sequence_order),status:String(x.status ?? "INSUFFICIENT_DATA") as PlanIntent["sequence"][number]["status"],reason:x.reason == null ? undefined : String(x.reason)})) : [],
+          uncertainties: Array.isArray(parsed.uncertainties) ? parsed.uncertainties.map(String) : [], reasoning_summary:String(parsed.reasoning_summary ?? "")
+        }, provider, model };
       } catch (error) {
         lastError = error;
         if (error instanceof SyntaxError) break;
