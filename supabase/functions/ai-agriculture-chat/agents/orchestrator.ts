@@ -1237,6 +1237,8 @@ export class AIAgentOrchestrator {
     (this as any).__farmerLanguage = options?.language || 'en';
     (this as any).__observationRequired = false;
     (this as any).__directContractNoSymptoms = false;
+    (this as any).__winningHypothesisId = null;       // 2026-09-03 — decision coherence inputs
+    (this as any).__winningHypothesisRuleIds = [];
     (this as any).__layer2Start = 0; // 2026-09-03 — per-request layer clocks
     (this as any).__layer3Start = 0;
     (this as any).__layer4Start = 0;
@@ -3205,7 +3207,13 @@ export class AIAgentOrchestrator {
                 ...(((options.sessionState as any)?.confirmedObservationKeys ?? []) as string[]),
               ])),
             known_observations: optionEvidence.real_codes,
-            primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
+            primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey,
+            // 2026-09-03 — DECISION COHERENCE: optionGraphResolution.hypotheses is
+            // ranked; [0] is the winner (also what rtOpt.setHypotheses reports as
+            // winner). Its candidate_rule_ids come from hypothesis_rule_mapping.
+            winning_hypothesis_id: optionGraphResolution.hypotheses[0]?.hypothesis_id ?? null,
+            winning_hypothesis_rule_ids: Array.isArray(optionGraphResolution.hypotheses[0]?.candidate_rule_ids)
+              ? [...optionGraphResolution.hypotheses[0].candidate_rule_ids] : [],
           };
           console.log(
             `   🔎 [SELECTION_TRACE] resolved_key=${stateWithQuery.primary_symptom} ` +
@@ -6305,6 +6313,17 @@ export class AIAgentOrchestrator {
                   : 1.0,
             };
             const graphOut = await evaluateHypothesisGraph(graphInput);
+            // 2026-09-03 — DECISION COHERENCE: graphOut.candidates is ranked
+            // (confidence → required_match_pct → positive matches); [0] is the
+            // winning hypothesis. Its hypothesis_rule_mapping edge set is the
+            // only set the primary rule may be served from (see
+            // layered-rule-evaluator P0a).
+            try {
+              const _winHyp = graphOut.candidates[0] ?? null;
+              (this as any).__winningHypothesisId = _winHyp?.hypothesis_id ?? null;
+              (this as any).__winningHypothesisRuleIds =
+                Array.isArray(_winHyp?.candidate_rule_ids) ? [..._winHyp.candidate_rule_ids] : [];
+            } catch { /* trace-only */ }
             if (graphOut.candidates.length === 0 && conversationState.clarification_required && __dbDirectContractExempt) {
               // 2026-09-03 — zero hypotheses on a DIRECT/0 advisory turn is the
               // expected shape (no symptom → no hypothesis); Lane B answers it.
@@ -8597,7 +8616,10 @@ export class AIAgentOrchestrator {
           user_query: queryForRuleEngine,
           // BUG 5 FIX: Pass authority-separated observations for rule evaluator
           confirmed_observations: confirmedObsCodes,
-          synthetic_observations: syntheticObsCodes
+          synthetic_observations: syntheticObsCodes,
+          // 2026-09-03 — DECISION COHERENCE inputs (winning hypothesis edge set)
+          winning_hypothesis_id: (this as any).__winningHypothesisId ?? null,
+          winning_hypothesis_rule_ids: (this as any).__winningHypothesisRuleIds ?? [],
         };
         
         // PRODUCTION FIX: Pass PrescriptionGate override signal to confidence gate

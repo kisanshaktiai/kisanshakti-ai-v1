@@ -1,0 +1,185 @@
+{
+"hypothesis_master": [
+{
+"hypothesis_id": "HYP_RICE_K_DEFICIT_001",
+"crop_code": "rice",
+"crop_group": "rice",
+"canonical_group": "05_nutrient",
+"cause_name_en": "Potassium deficiency",
+"cause_name_hi": "पोटाश की कमी",
+"cause_name_mr": "पालाश कमतरता",
+"severity_model": "SIMPLE",
+"is_active": true,
+"hypothesis_type": "DEFICIENCY"
+},
+{
+"hypothesis_id": "HYP_RICE_N_DEFICIT_001",
+"crop_code": "rice",
+"crop_group": "rice",
+"canonical_group": "05_nutrient",
+"cause_name_en": "Nitrogen deficiency in rice",
+"cause_name_hi": "नाइट्रोजन की कमी",
+"cause_name_mr": "नायट्रोजन कमतरता",
+"severity_model": "SIMPLE",
+"is_active": true,
+"hypothesis_type": "DEFICIENCY"
+}
+],
+"hypothesis_conditions": [
+{
+"hypothesis_id": "HYP_RICE_N_DEFICIT_001",
+"condition_type": "OBSERVATION",
+"condition_key": "stunted_plants",
+"operator": "CONTAINS",
+"value_json": {
+"code": "stunted_plants"
+},
+"is_required": false,
+"weight": 0.6,
+"is_discriminator": false,
+"is_quarantined": false
+},
+{
+"hypothesis_id": "HYP_RICE_N_DEFICIT_001",
+"condition_type": "OBSERVATION",
+"condition_key": "n_deficiency_rice",
+"operator": "CONTAINS",
+"value_json": {
+"code": "n_deficiency_rice"
+},
+"is_required": true,
+"weight": 1.0,
+"is_discriminator": true,
+"is_quarantined": false
+},
+{
+"hypothesis_id": "HYP_RICE_K_DEFICIT_001",
+"condition_type": "OBSERVATION",
+"condition_key": "k_deficiency_rice",
+"operator": "CONTAINS",
+"value_json": {
+"code": "k_deficiency_rice"
+},
+"is_required": true,
+"weight": 1.0,
+"is_discriminator": true,
+"is_quarantined": false
+},
+{
+"hypothesis_id": "HYP_RICE_K_DEFICIT_001",
+"condition_type": "STAGE",
+"condition_key": "growth_stage",
+"operator": "CONTAINS",
+"value_json": {
+"stages": [
+"tillering",
+"panicle_initiation",
+"booting",
+"grain_filling"
+]
+},
+"is_required": false,
+"weight": 0.5,
+"is_discriminator": false,
+"is_quarantined": false
+},
+{
+"hypothesis_id": "HYP_RICE_N_DEFICIT_001",
+"condition_type": "STAGE",
+"condition_key": "growth_stage",
+"operator": "CONTAINS",
+"value_json": {
+"stages": [
+"tillering",
+"panicle_initiation"
+]
+},
+"is_required": false,
+"weight": 0.5,
+"is_discriminator": false,
+"is_quarantined": false
+}
+],
+"hypothesis_rule_mapping": [
+{
+"hypothesis_id": "HYP_RICE_K_DEFICIT_001",
+"rule_id": "RICE_NUTR_K_DEFICIT_001"
+},
+{
+"hypothesis_id": "HYP_RICE_N_DEFICIT_001",
+"rule_id": "RICE_NUTR_LATE_N_BLOCK_001"
+},
+{
+"hypothesis_id": "HYP_RICE_N_DEFICIT_001",
+"rule_id": "RICE_NUTR_N_DEFICIT_001"
+}
+],
+"observation_master": [
+{
+"observation_code": "k_deficiency_rice"
+},
+{
+"observation_code": "n_deficiency_rice"
+},
+{
+"observation_code": "stunted_plants"
+}
+],
+"observation_aliases": [],
+"system_config": [
+{
+"config_key": "bio_stage_hard_gate_threshold",
+"config_value": 0.6
+}
+],
+"decision_rules": [
+{
+"rule_id": "RICE_NUTR_K_DEFICIT_001",
+"is_active": true,
+"deprecated_at": null,
+"is_farmer_servable": true,
+"rule_intent": "recommendation",
+"is_safety_block": false,
+"stage_applicable": [
+"tillering",
+"panicle_initiation",
+"booting"
+],
+"crop_age_days_min": 35,
+"crop_age_days_max": 90,
+"scope": null
+},
+{
+"rule_id": "RICE_NUTR_LATE_N_BLOCK_001",
+"is_active": true,
+"deprecated_at": null,
+"is_farmer_servable": true,
+"rule_intent": "block",
+"is_safety_block": false,
+"stage_applicable": [
+"booting",
+"heading",
+"flowering",
+"grain_filling"
+],
+"crop_age_days_min": 75,
+"crop_age_days_max": 130,
+"scope": null
+},
+{
+"rule_id": "RICE_NUTR_N_DEFICIT_001",
+"is_active": true,
+"deprecated_at": null,
+"is_farmer_servable": true,
+"rule_intent": "recommendation",
+"is_safety_block": false,
+"stage_applicable": [
+"tillering",
+"panicle_initiation"
+],
+"crop_age_days_min": 30,
+"crop_age_days_max": 75,
+"scope": null
+}
+]
+}

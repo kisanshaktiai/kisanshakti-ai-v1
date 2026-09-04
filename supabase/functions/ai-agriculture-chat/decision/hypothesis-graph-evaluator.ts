@@ -1,5 +1,9 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-03 — S1 biological stage gate now eliminates ONLY when the failing
+ *   STAGE condition has is_required=true (stagePassRaw.required_fail); a
+ *   non-required STAGE mismatch is logged [HYP_STAGE_SOFT] and flows to the
+ *   existing soft-penalty path. Honours hypothesis_conditions.is_required.
  * 2026-08-19 09:10 UTC — FIX 3: queryAnchorHypotheses() is crop-scoped at the
  *   source (hypothesis_master.crop_code IN crop/all/universal) — stops wheat &
  *   sugarcane hypotheses anchoring on a rice field via generic keys.
@@ -477,11 +481,23 @@ async function evaluateHypothesisGraphUncached(
     const currentStage = input.growth_stage
       ? normalizeStageForDB(String(input.growth_stage)).toLowerCase()
       : null;
+    // 2026-09-03 — S1 must honour hypothesis_conditions.is_required. A STAGE
+    // row with is_required=false is a soft preference (penalty later), not a
+    // biological impossibility. Live: HYP_RICE_N_DEFICIT_001 (STAGE
+    // is_required=false, {tillering,panicle_initiation}) was hard-eliminated
+    // at booting, so N deficiency could never be offered for a yellow crop.
     const _biologicallyImpossible =
       expectedStages.length > 0 &&
       !!currentStage &&
       !stagePassRaw.pass &&
+      stagePassRaw.required_fail &&
       stagePassRaw.reason.startsWith('expected=');
+    if (!stagePassRaw.pass && !stagePassRaw.required_fail && stagePassRaw.reason.startsWith('expected=')) {
+      console.log(
+        `[HYP_STAGE_SOFT] trace=${trace} hypothesis_id=${hid} ${stagePassRaw.reason} ` +
+        `is_required=false → soft penalty, not eliminated`,
+      );
+    }
     if (_biologicallyImpossible) {
       const reason = `REQUIRED_STAGE_FAILED(BIOLOGICALLY_IMPOSSIBLE:${stagePassRaw.reason})`;
       console.warn(

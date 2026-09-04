@@ -1,5 +1,9 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-03 — DECISION COHERENCE (rebased 2026-09-04): primary sort prefers (P0a)
+ *   rules on the winning hypothesis's hypothesis_rule_mapping edge set and (P0b)
+ *   rules whose decision_rules.condition_code is farmer-confirmed, after the safety
+ *   category override and before data_authority_rank/priority. [DECISION_COHERENCE]
  * 2026-09-04 — CONTEXT EVIDENCE: CONTEXT_SCHEDULE / CONTEXT_BLOCK rows
  *   (decision_rules.trigger_class, now carried through loader → action_details
  *   → matched response) score primary evidence on stage+DAS context instead of
@@ -205,6 +209,8 @@ export interface MatchedResponse {
   i18n_key?: string;
   // Fix 4: conditions_json for downstream arbitration inspection
   conditions_json?: Record<string, unknown>;
+  // 2026-09-03 — authored DB trigger (decision_rules.condition_code) for the coherence P0b key
+  condition_code?: string | null;
   // 2026-09-04 — CONTEXT EVIDENCE inputs (decision_rules.trigger_class + DAS window)
   trigger_class?: string | null;
   crop_age_days_min?: number | null;
@@ -522,6 +528,8 @@ export function evaluateRulesLayered(
             knowledge_text: actionDetails.knowledge_text,
             i18n_key: actionDetails.i18n_key,
             conditions_json: actionDetails.conditions_json || null,
+            // 2026-09-03 — DECISION COHERENCE P0b reads the authored trigger
+            condition_code: actionDetails.condition_code ?? null,
             // 2026-09-04 — CONTEXT EVIDENCE inputs for primary scoring
             trigger_class: actionDetails.trigger_class ?? null,
             crop_age_days_min: actionDetails.crop_age_days_min ?? null,
@@ -1056,6 +1064,29 @@ export function evaluateRulesLayered(
       'NO_ACTION_REQUIRED': 10, 'NO_ACTION': 10,
     };
 
+    // ── DECISION COHERENCE (2026-09-03, live trace_mtlqnztb_h8x51x) ──────
+    // P0a: the primary must sit on the WINNING hypothesis's hypothesis_rule_mapping
+    // edge set when that hypothesis owns ≥1 eligible candidate. P0b: a rule whose
+    // authored trigger (decision_rules.condition_code) is farmer-confirmed outranks
+    // one whose trigger was never confirmed. Both keys are DB relations; no agronomy.
+    const _ruleKey = (r: any) => String(r?.rule_id ?? r?.id ?? '').trim().toUpperCase();
+    const _winHypRuleIds = new Set(
+      (Array.isArray((state as any).winning_hypothesis_rule_ids) ? (state as any).winning_hypothesis_rule_ids : [])
+        .map((x: unknown) => String(x ?? '').trim().toUpperCase()).filter(Boolean),
+    );
+    const _confirmedSet = new Set(
+      (Array.isArray((state as any).confirmed_observations) ? (state as any).confirmed_observations : [])
+        .map((x: unknown) => canonicalObsCode(String(x ?? ''))).filter(Boolean),
+    );
+    const _inWinningHyp = (r: any) => _winHypRuleIds.size > 0 && _winHypRuleIds.has(_ruleKey(r));
+    const _triggerConfirmed = (r: any) => {
+      const cc = r?.condition_code ?? r?.action_details?.condition_code ?? null;
+      const k = cc ? canonicalObsCode(String(cc)) : '';
+      return !!k && _confirmedSet.has(k);
+    };
+    const _coherenceApplies = _winHypRuleIds.size > 0 && activeScored.some(s => _inWinningHyp(s.response));
+    const _triggerApplies = _confirmedSet.size > 0 && activeScored.some(s => _triggerConfirmed(s.response));
+
     activeScored.sort((a, b) => {
       // P0: Category priority (safety gates always win)
       const catA = CATEGORY_PRIORITY_MAP[(a.response.action_type || '').toUpperCase()] ?? 50;
@@ -1063,6 +1094,16 @@ export function evaluateRulesLayered(
       // Only apply category override for extreme differences (safety vs treatment)
       if (Math.abs(catA - catB) >= 20) {
         if (catA !== catB) return catB - catA;
+      }
+      // P0a: served rule must sit on the winning hypothesis's edge set
+      if (_coherenceApplies) {
+        const ha = _inWinningHyp(a.response) ? 1 : 0, hb = _inWinningHyp(b.response) ? 1 : 0;
+        if (ha !== hb) return hb - ha;
+      }
+      // P0b: authored trigger confirmed by the farmer beats unconfirmed trigger
+      if (_triggerApplies) {
+        const ta = _triggerConfirmed(a.response) ? 1 : 0, tb = _triggerConfirmed(b.response) ? 1 : 0;
+        if (ta !== tb) return tb - ta;
       }
       // P1: data_authority_rank (higher = better)
       const rankA = (a.response as any).data_authority_rank ?? 50;
@@ -1083,6 +1124,13 @@ export function evaluateRulesLayered(
     scored.length = 0;
     scored.push(...activeScored, ...remaining);
     const best = scored[0].response;
+    if (_coherenceApplies || _triggerApplies) {
+      console.log(
+        `[DECISION_COHERENCE] trace=${traceId} winner=${_ruleKey(best)} ` +
+        `winning_hyp=${String((state as any).winning_hypothesis_id ?? 'n/a')} ` +
+        `in_winning_hyp=${_inWinningHyp(best)} trigger_confirmed=${_triggerConfirmed(best)}`,
+      );
+    }
     
     // PRE-SELECTION CONFIDENCE GATE: If best rule score < threshold, trigger clarification
     const BASE_CONFIDENCE_GATE_THRESHOLD = 0.60;
