@@ -129,6 +129,94 @@ const SYMBOLIC_HINTS =
 const HIGH_RISK_QUERY =
   /(pesticide|insecticide|fungicide|herbicide|weedicide|spray|dose|dosage|ml per|gram per|ग्राम प्रति|मिली प्रति|छिड़काव|फवारणी|कीटनाशक|बुरशीनाशक|तणनाशक|खुराक|मात्रा|डोस|PHI|pre-?harvest interval|ETL|mix(ing)? chemical|कौन सी दवा|कोणते औषध)/i;
 
+// ── FIX F6 (audit 2026-09-04): when the model DID cite with [n], those indexes
+//    select the pages listed (existing behaviour). But in 7 of 9 grounded turns
+//    the model emitted no marker, so the code listed ALL retrieved evidence —
+//    including a cover page (trace 3880bcc6). This picks, deterministically, the
+//    evidence the answer actually leaned on: a chunk whose text/section/title
+//    shares a number, or ≥2 non-stopword terms, with the final answer. If nothing
+//    overlaps, fall back to the single best-ranked chunk (never the whole list).
+//    Returns 1-based indexes into `evidence`, matching citedEvidenceIndexes().
+const CITE_STOPWORDS = new Set([
+  'the', 'and', 'for', 'per', 'with', 'from', 'this', 'that', 'are', 'use', 'used',
+  'rice', 'crop', 'field', 'variety', 'varieties', 'yield', 'seed', 'seeds', 'soil',
+  'water', 'plant', 'plants', 'good', 'average', 'high', 'low',
+]);
+function citeTokens(s: string): Set<string> {
+  return new Set(
+    s.toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((t) => t.length >= 4 && !CITE_STOPWORDS.has(t)),
+  );
+}
+function citeNumbers(s: string): Set<string> {
+  const latin = s.replace(/[०-९]/g, (d) => String('०१२३४५६७८९'.indexOf(d)));
+  return new Set((latin.match(/\d+(?:[.,]\d+)?/g) || []).map((n) => n.replace(',', '.').replace(/\.0+$/, '')));
+}
+function selectCitedIndexes(answer: string, evidence: Evidence[]): number[] {
+  if (!evidence.length) return [];
+  const ansTokens = citeTokens(answer);
+  const ansNums = citeNumbers(answer);
+  const picked: number[] = [];
+  evidence.forEach((ev, i) => {
+    const evText = `${ev.text} ${ev.sectionPath ?? ''} ${ev.title ?? ''}`;
+    const evNums = citeNumbers(evText);
+    const numHit = [...evNums].some((n) => ansNums.has(n));
+    const evTok = citeTokens(evText);
+    let shared = 0;
+    for (const t of evTok) if (ansTokens.has(t)) shared++;
+    if (numHit || shared >= 2) picked.push(i + 1);
+  });
+  // Fallback: cite the single top-ranked chunk rather than the whole retrieved set.
+  if (!picked.length) {
+    let best = 0;
+    evidence.forEach((ev, i) => { if (ev.rankScore > evidence[best].rankScore) best = i; });
+    picked.push(best + 1);
+  }
+  return picked;
+}
+
+// ── FIX F5 (audit 2026-09-04): the distinct crop_codes present in the active
+//    corpus, handed to the query normaliser so a local-language crop word maps
+//    to a crop the corpus can actually answer. Cached briefly; best-effort.
+let corpusCropsCache: { at: number; v: string[] } | null = null;
+async function loadCorpusCrops(supabase: any): Promise<string[]> {
+  if (corpusCropsCache && Date.now() - corpusCropsCache.at < 300_000) return corpusCropsCache.v;
+  try {
+    const { data } = await supabase.from('rag_documents').select('crop_codes').eq('is_active', true);
+    const set = new Set<string>();
+    for (const d of (data || []) as Array<{ crop_codes?: string[] | null }>) {
+      for (const c of d.crop_codes || []) if (c) set.add(String(c).toLowerCase());
+    }
+    const v = [...set];
+    corpusCropsCache = { at: Date.now(), v };
+    return v;
+  } catch {
+    return corpusCropsCache?.v ?? [];
+  }
+}
+
+// ── FIX F4 (audit 2026-09-04): last-resort state resolution from the farmer's
+//    land. v_land_region exposes farmer_id → state_code (bare 'MH' etc., derived
+//    as lands.state_id → states.code). Returns the single distinct state when the
+//    farmer's lands are all in one state; NULL when absent, mixed, or on error —
+//    so a mixed-state farmer keeps the unfiltered (whole-corpus) behaviour.
+async function resolveStateFromLand(supabase: any, farmerId: string): Promise<string | null> {
+  if (!farmerId) return null;
+  try {
+    const { data } = await supabase
+      .from('v_land_region')
+      .select('state_code')
+      .eq('farmer_id', farmerId)
+      .not('state_code', 'is', null)
+      .limit(50);
+    const codes = [...new Set((data || []).map((r: { state_code?: string }) => String(r.state_code || '').toUpperCase()).filter(Boolean))];
+    return codes.length === 1 ? (codes[0] as string) : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildSystemPrompt(
   language: string,
   landContext: any | null,
@@ -436,10 +524,21 @@ serve(async (req: Request) => {
       highRisk = HIGH_RISK_QUERY.test(userText);
       try {
         // (5) Understand the question first: farmer language → English retrieval query.
-        normalized = await normalizeQueryForRetrieval(userText, language, traceId);
+        // F5: give the interpreter the crops the corpus actually holds so a
+        // local-language crop word maps to a real corpus crop (not a guess).
+        const corpusCrops = await loadCorpusCrops(supabase);
+        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops);
         highRisk = highRisk || HIGH_RISK_QUERY.test(normalized.query);
-        // (6) Filters from SSOT tables: state (body → profile) and crop (normaliser hint).
-        const resolvedState = await resolveStateCode(supabase, stateCode || profileState);
+        // (6) Filters from SSOT tables: state (body → profile → land region) and crop.
+        // FIX F4 (audit 2026-09-04): p_states was NULL on 100 % of logged retrievals —
+        // the app never sent stateCode and the test farmer had no user_profiles.state,
+        // so out-of-region variety docs (e.g. eastern-India rice) were served to a
+        // Maharashtra farmer. When body + profile give no state, derive it from the
+        // farmer's own land via the existing v_land_region view (farmer_id → state_code,
+        // bare 2-letter code, exactly what rag_documents.state_codes uses). Best-effort;
+        // no state resolved ⇒ unchanged (unfiltered) behaviour.
+        let resolvedState = await resolveStateCode(supabase, stateCode || profileState);
+        if (!resolvedState) resolvedState = await resolveStateFromLand(supabase, farmerId);
         const resolvedCrop = await resolveCropCode(supabase, normalized.cropHint);
         retrievalFilters = { stateCodes: resolvedState ? [resolvedState] : null, cropCodes: resolvedCrop ? [resolvedCrop] : null };
         console.log(`🔤 [${traceId}] normalized=${normalized.normalized} lang=${normalized.detectedLanguage} crop=${normalized.cropHint}→${resolvedCrop} state=${resolvedState} topic=${normalized.topic} q="${normalized.query.slice(0, 80)}"`);
@@ -597,9 +696,12 @@ serve(async (req: Request) => {
     // markers only SELECT which pages are listed; their absence must not suppress
     // sources on a grounded answer — gap answers already arrive here with
     // ragEvidence=[] so fabricated citations remain impossible.
+    // FIX F6: honour explicit [n] markers when present; otherwise pick the
+    // evidence the answer actually used (selectCitedIndexes) instead of listing
+    // every retrieved page. `used` also scopes the acre-equivalent line.
     if (ragEvidence.length > 0 && !noEvidenceMode) {
-      const used = citedIdx;
       const body = stripCitationMarkers(answer);
+      const used = citedIdx.length ? citedIdx : selectCitedIndexes(body, ragEvidence);
       const acre = acreEquivalentsLine(body, used.length ? used.map((i) => ragEvidence[i - 1]).filter(Boolean) : ragEvidence, language);
       answer = body + acre + buildCitationLines(ragEvidence, language, used);
     } else {

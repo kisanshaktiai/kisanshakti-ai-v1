@@ -1689,6 +1689,12 @@ export function EnhancedAIChatInterface() {
       };
       if (isGeneralTab) {
         invokeBody.landContext = landContext ?? null;
+        // FIX F4 (RAG audit 2026-09-04): send the farmer's state so General-chat
+        // retrieval can scope documents by region (rag_search_* p_states). Prefer
+        // the selected land's state, else the farmer profile state. The edge
+        // function accepts either a 2-letter code or a full state name; it further
+        // falls back to the farmer's land region when this is absent.
+        invokeBody.stateCode = land?.state || user?.state || undefined;
       } else {
         invokeBody.metadata = {
           tenantId: tenant?.id,

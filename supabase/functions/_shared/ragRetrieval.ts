@@ -317,7 +317,15 @@ export async function ragRetrieve(
   //  • a lexical-only hit must cover a meaningful share of the query terms
   //    (re-ranked score ≥ 1.0) and reach 40 % of the best lexical score.
   const semOk = (e: { sem: number | null }) => e.sem !== null && e.sem >= tun.min_semantic_score;
+  // FIX F6 (audit 2026-09-04): the lexical re-ranker already penalises a cover /
+  // contents chunk (page ≤ 1 with no section heading) by ×0.5, but the SEMANTIC
+  // leg had no equivalent guard — so CRRI page 1 (cosine 0.62) could be the top
+  // hit and get cited (trace 3880bcc6 listed page 1). A page-1 chunk with no
+  // section_path carries no answerable fact; drop it from the served set. It is
+  // still logged as a candidate (this filter runs after `ranked`, before slice).
+  const isFrontMatter = (row: RpcRow) => (row.page_number ?? 99) <= 1 && !row.section_path;
   const passing = ranked
+    .filter((e) => !isFrontMatter(e.row))
     .filter((e) => semOk(e) || (e.lex !== null && e.lex >= 1.0))
     .filter((e) => semOk(e) || (e.lex !== null && e.lex >= topLex * LEXICAL_RELATIVE_CUTOFF))
     .slice(0, maxEvidence);
@@ -514,7 +522,9 @@ export function acreEquivalentsLine(answer: string, evidence: Evidence[], langua
   const out: string[] = [];
   const seen = new Set<string>();
   for (const ev of evidence) {
-    for (const m of ev.text.matchAll(/(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(kg|kilograms?|quintals?|q)\s*(?:[a-z]+\s+)?(?:\/|per)\s*(?:ha|hectare)/gi)) {
+    // F2: scan chunk text + section heading + title so a per-hectare figure that
+    // the chunker placed in a heading still produces an acre-equivalent line.
+    for (const m of evidenceNumberText(ev).matchAll(/(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(kg|kilograms?|quintals?|q)\s*(?:[a-z]+\s+)?(?:\/|per)\s*(?:ha|hectare)/gi)) {
       const a = parseFloat(m[1]); const b = m[2] ? parseFloat(m[2]) : null;
       if (!ansNums.has(String(a)) && !(b != null && ansNums.has(String(b)))) continue;
       const unit = /^q/i.test(m[3]) ? W.q : W.kg;
@@ -541,6 +551,24 @@ function normaliseNumbers(s: string): string[] {
 }
 
 /**
+ * FIX F2 (audit 2026-09-04): the evidence the model actually SEES is the whole
+ * `[EVIDENCE n] (publisher — title — Section: … — Page …)` block built by
+ * buildEvidenceBlock(), not just the chunk body. In the tabular variety
+ * catalogues (CRRI rice, AICRP sugarcane) the ingest chunker put the variety
+ * name and its serial number in `section_path` — e.g. section "163 CR Dhan 326",
+ * chunk_text "(Panchatatva) … 6.2 t/ha". A faithful answer that names "CR Dhan
+ * 326" was then flagged because "326" is not in `ev.text`, and the fidelity gate
+ * DROPPED the naming sentence (trace 518d3700 served a yield with no variety).
+ * The number gate must therefore treat the section heading and the document
+ * title as part of the evidence text — they are on-screen for the model and are
+ * authoritative source text, not model invention. chunk_text stays first so its
+ * numbers dominate; section/title only WIDEN the allow-list, never narrow it.
+ */
+function evidenceNumberText(ev: Evidence): string {
+  return `${ev.text} ${ev.sectionPath ?? ''} ${ev.title ?? ''}`;
+}
+
+/**
  * Remove only the sentences/bullets that contain unsupported numbers; keep the rest.
  * Returns '' when nothing safe remains. Never substitutes placeholder glyphs.
  */
@@ -558,7 +586,9 @@ export function dropUnsupportedSentences(answer: string, evidence: Evidence[], q
 export function unsupportedNumbers(answer: string, evidence: Evidence[], question: string): string[] {
   const allowed = new Set<string>([
     ...normaliseNumbers(question),
-    ...evidence.flatMap((ev) => normaliseNumbers(ev.text)),
+    // F2: allow numbers from chunk text AND its section heading / document title
+    // (all three are shown to the model in buildEvidenceBlock and are source text).
+    ...evidence.flatMap((ev) => normaliseNumbers(evidenceNumberText(ev))),
   ]);
   const stripped = answer
     .replace(/\[EVIDENCE\s+\d+\]/gi, ' ')

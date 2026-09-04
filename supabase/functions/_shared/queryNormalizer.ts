@@ -73,6 +73,7 @@ export async function normalizeQueryForRetrieval(
   userText: string,
   uiLanguage: string,
   traceId: string,
+  corpusCrops?: string[] | null,
 ): Promise<NormalizedQuery> {
   const t0 = Date.now();
   const original = userText.trim();
@@ -82,13 +83,23 @@ export async function normalizeQueryForRetrieval(
   };
   if (!original) return fallback;
 
+  // FIX F5 (RAG audit 2026-09-04): "mi konta us pik ghevu" (Marathi ऊस = sugarcane)
+  // was normalised to crop "urad", which resolves to nothing, so 246 sugarcane
+  // chunks were reported as a corpus gap. When the caller knows which crops the
+  // corpus actually holds, tell the interpreter to map a MENTIONED crop to the
+  // closest name in that list (still never inventing a crop that was not
+  // mentioned). This only constrains the crop hint; it never changes query_en.
+  const cropHintLine = (corpusCrops && corpusCrops.length)
+    ? `\nKnown crops in the knowledge base: ${corpusCrops.join(', ')}. If the farmer clearly mentions one of these crops (in any language, script, dialect, or transliteration — e.g. Marathi "ऊस"/"us" = sugarcane, "भात"/"tandul" = rice, "सोयाबीन" = soybean), set "crop" to the matching English name from this list. Do NOT force an unrelated crop onto the list.`
+    : '';
+
   try {
     const { provider, model, apiKey } = getBestAvailableProvider();
     const payload = buildAIRequest(
       provider, model,
       [
         { role: 'system', content: SYSTEM },
-        { role: 'user', content: `UI language: ${uiLanguage}\nFarmer message: ${original}` },
+        { role: 'user', content: `UI language: ${uiLanguage}${cropHintLine}\nFarmer message: ${original}` },
       ],
       { maxTokens: 200, temperature: 0, useJsonMode: true },
     );
@@ -136,13 +147,22 @@ export async function normalizeQueryForRetrieval(
   }
 }
 
-/** Map a crop hint (English common name) to crops.value using the SSOT table. Best-effort. */
+/**
+ * Map a crop hint to crops.value using the SSOT table. Best-effort.
+ * FIX F5 (RAG audit 2026-09-04): also match crops.local_name, so a
+ * local-language crop word the normaliser passes through (e.g. Marathi "ऊस" /
+ * "us" for sugarcane) resolves instead of falling through to an unfiltered
+ * retrieval. value/label/local_name are all compared case-insensitively.
+ * (local_name is populated per crop in the DB; NULL rows simply don't match.)
+ */
 export async function resolveCropCode(supabase: any, cropHint: string | null): Promise<string | null> {
   if (!cropHint) return null;
+  const needle = cropHint.trim().toLowerCase();
+  if (!needle) return null;
   try {
-    const { data } = await supabase.from('crops').select('value, label').eq('is_active', true).limit(500);
-    const hit = (data || []).find((c: { value?: string; label?: string }) =>
-      [c.value, c.label].some((v) => typeof v === 'string' && v.toLowerCase() === cropHint));
+    const { data } = await supabase.from('crops').select('value, label, local_name').eq('is_active', true).limit(500);
+    const hit = (data || []).find((c: { value?: string; label?: string; local_name?: string }) =>
+      [c.value, c.label, c.local_name].some((v) => typeof v === 'string' && v.toLowerCase() === needle));
     return hit?.value ? String(hit.value) : null;
   } catch {
     return null;
