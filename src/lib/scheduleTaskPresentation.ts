@@ -35,9 +35,6 @@ function taskTypeLabelKey(taskType: string): string {
   return map[String(taskType || '').trim().toLowerCase()] || 'schedule.task_card.description';
 }
 
-// When a generated task has no source-language metadata, a Latin-only task title/body
-// is treated as untranslated for a non-English farmer. This is a display safety gate;
-// it does not change or infer agronomy.
 function looksUntranslated(value: string, currentLanguage: string): boolean {
   if (currentLanguage === 'en' || !value) return false;
   const letters = value.match(/[A-Za-z]/g) || [];
@@ -58,9 +55,13 @@ export function buildScheduleTaskPresentation(
   const localizedDescription = cleanText(task.localized_task_description ?? resources.localized_task_description);
   const sourceLanguage = cleanText(task.language ?? resources.source_language);
   const nameUnsafe = currentLanguage !== 'en' && !localizedName && (sourceLanguage ? sourceLanguage.toLowerCase() !== currentLanguage.toLowerCase() : looksUntranslated(rawName ?? '', currentLanguage));
+
+  // Prefer an authoritative localized value. If it is unavailable, retain the stored
+  // source-language value instead of deleting the task's useful content. Translation is
+  // presentation enrichment and must never make an existing schedule appear empty.
   const what = currentLanguage === 'en'
     ? (rawName || t(taskTypeLabelKey(taskType)))
-    : (localizedName || (!nameUnsafe ? rawName : null) || t(taskTypeLabelKey(taskType)));
+    : (localizedName || rawName || t(taskTypeLabelKey(taskType)));
 
   const technicalDetails = asArray(resources.technical_details).map(cleanText).filter((x): x is string => Boolean(x));
   const legacyTechnical: string[] = [];
@@ -71,9 +72,12 @@ export function buildScheduleTaskPresentation(
   });
   const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
   const rawHow = [...detailedSteps, ...instructions];
-  const how = currentLanguage === 'en' ? rawHow : rawHow.filter((x) => !(sourceLanguage ? sourceLanguage.toLowerCase() !== currentLanguage.toLowerCase() : looksUntranslated(x, currentLanguage)));
+
+  // Do not hide authoritative source-language steps. This is the safe fallback for
+  // legacy schedules and for newly generated schedules when the LLM is rate-limited.
+  const how = localizedDescription && rawHow.length === 0 ? [localizedDescription] : [...rawHow];
   const descriptionUnsafe = currentLanguage !== 'en' && !localizedDescription && (sourceLanguage ? sourceLanguage.toLowerCase() !== currentLanguage.toLowerCase() : looksUntranslated(rawDescription ?? '', currentLanguage));
-  const safeDescription = localizedDescription || (!descriptionUnsafe ? rawDescription : null);
+  const safeDescription = localizedDescription || rawDescription;
   if (!how.length && safeDescription && safeDescription !== what) how.push(safeDescription);
 
   const howMuch: string[] = [];
@@ -83,7 +87,6 @@ export function buildScheduleTaskPresentation(
     const value = `${t(labelKey)}: ${q}`;
     if (!seen.has(value)) { seen.add(value); howMuch.push(value); }
   };
-  // `mm` is a field/stage water depth, not a delivery volume. Only an explicit litres field is shown.
   if (taskType === 'irrigation') pushAmount('schedule.amount.water', task.water_required_liters ?? resources.water_required_liters ?? resources.water_liters);
   else {
     pushAmount('schedule.amount.task_quantity', task.quantity ?? resources.quantity);
