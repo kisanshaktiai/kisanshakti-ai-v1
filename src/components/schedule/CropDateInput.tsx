@@ -402,7 +402,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
               {/* Scrollable content — variety first (most critical decision) */}
               <div className="flex-1 min-h-0 overflow-y-auto mobile-scroll-container">
-                <div className="p-4 space-y-5">
+                <div className="p-4 pb-8 space-y-5">
                   {wizardStep === 'variety' && (
                   /* Variety — tap-a-card picker from master_products (SSOT), free-text fallback */
                   <div className="space-y-2">
