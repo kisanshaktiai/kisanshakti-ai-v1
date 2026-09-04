@@ -13,7 +13,7 @@ function numbersOf(s: string): string[] { return (s.match(NUM_RE) || []).map((n)
 export function isFaithful(source: string, translated: string): boolean { const a = numbersOf(source).sort(); const b = numbersOf(translated).sort(); return a.length === b.length && a.every((v, i) => v === b[i]); }
 function parseModelJson(content: string): unknown {
   const text = String(content).replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  try { return JSON.parse(text); } catch { /* salvage complete objects */ }
+  try { return JSON.parse(text); } catch {}
   const items: unknown[] = []; let depth = 0, start = -1, inStr = false, esc = false;
   for (let i = 0; i < text.length; i++) { const c = text[i]; if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; } if (c === '"') { inStr = true; continue; } if (c === "{") { if (depth === 0) start = i; depth++; } else if (c === "}") { depth--; if (depth === 0 && start >= 0) { try { items.push(JSON.parse(text.slice(start, i + 1))); } catch {} start = -1; } } }
   return items;
@@ -38,7 +38,17 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
 }
 async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal) {
   let lastError: unknown = new Error("MODEL_UNAVAILABLE");
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) { if (attempt > 0) { const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null ? lastError.retryAfterMs : RETRY_DELAYS_MS[attempt - 1]; await sleep(wait, signal); if (signal.aborted) break; } try { return await narrateChunk(chunk, offset, language, signal); } catch (error) { lastError = error; if (signal.aborted || !(error instanceof RetryableError)) break; } }
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) {
+      // Do not retry a provider 429. Retrying immediately just creates more rate-limit
+      // traffic and delays schedule persistence. A later chunk may use the fallback provider.
+      if (lastError instanceof RetryableError && /^llm_http_429$/.test(lastError.message)) break;
+      const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null ? lastError.retryAfterMs : RETRY_DELAYS_MS[attempt - 1];
+      await sleep(wait, signal); if (signal.aborted) break;
+    }
+    try { return await narrateChunk(chunk, offset, language, signal); }
+    catch (error) { lastError = error; if (signal.aborted || !(error instanceof RetryableError)) break; }
+  }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 function containsExpectedScript(value: string, language: string): boolean { if (language === "en") return true; const patterns: Record<string, RegExp> = { hi: /[\u0900-\u097F]/, mr: /[\u0900-\u097F]/, pa: /[\u0A00-\u0A7F]/, ta: /[\u0B80-\u0BFF]/ }; return patterns[language] ? patterns[language].test(value) : true; }
@@ -60,7 +70,6 @@ export async function narrateTasks(tasks: NarratableTask[], language: string): P
     } }
   } finally { clearTimeout(budgetTimer); }
   const applied = appliedIndices.size; const uniqueFailures = [...new Set(failures)].slice(0, 2);
-  // Translation is optional presentation enrichment. Never discard a valid DB-derived schedule because a language provider is rate-limited or unavailable.
   if (!applied) return { tasks: out, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: `llm_failed:${uniqueFailures.join("|") || "no_output"}`, provider, model };
   return { tasks: out, narrated: applied === totalCount, narratedCount: applied, totalCount, appliedIndices: [...appliedIndices].sort((a, b) => a - b), reason: applied < totalCount ? `partial:${applied}/${totalCount}:${uniqueFailures.join("|") || "translation_unavailable"}` : undefined, provider, model };
 }
