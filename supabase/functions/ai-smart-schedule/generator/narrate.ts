@@ -2,7 +2,7 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 90_000; const RETRY_DELAYS_MS = [5_000, 15_000, 30_000]; const MAX_RETRY_AFTER_MS = 30_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 8; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 45_000; const RETRY_DELAYS_MS = [3_000, 8_000]; const MAX_RETRY_AFTER_MS = 10_000; let rateLimited = false;
 const cooldownUntil = new Map<AIProvider, number>();
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 function cooldownRemaining(provider: AIProvider) { return (cooldownUntil.get(provider) ?? 0) - Date.now(); }
