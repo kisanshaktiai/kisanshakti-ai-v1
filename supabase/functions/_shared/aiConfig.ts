@@ -188,13 +188,23 @@ export function getProviderFromModel(model: string): AIProvider {
   return "openai";
 }
 
-// Newer OpenAI models (gpt-5.x, and the o1/o3/o4 reasoning families) only accept
-// `max_completion_tokens`; the legacy `max_tokens` returns HTTP 400 for them.
-// Legacy chat models (gpt-4o, gpt-4, gpt-3.5) keep `max_tokens`. Matches on the
-// model string so new model IDs in the same families need no code change.
-export function requiresMaxCompletionTokens(model: string): boolean {
+// Newer OpenAI models (gpt-5.x, and the o1/o3/o4 reasoning families) differ from
+// the legacy Chat Completions contract in two ways, both verified live 2026-09-04:
+//   1. they only accept `max_completion_tokens`; `max_tokens` returns HTTP 400;
+//   2. they only accept the DEFAULT temperature (1); any other value returns
+//      HTTP 400 ("'temperature' does not support 0.3 with this model").
+// Legacy chat models (gpt-4o, gpt-4, gpt-3.5) keep `max_tokens` + free temperature.
+// Matches on the model string so new model IDs in the same families need no code change.
+export function isNextGenOpenAIModel(model: string): boolean {
   const m = (model || "").toLowerCase();
   return /(^|[/_-])(gpt-5|o1|o3|o4)/.test(m);
+}
+export function requiresMaxCompletionTokens(model: string): boolean {
+  return isNextGenOpenAIModel(model);
+}
+/** true when the provider+model pair rejects a caller-supplied temperature. */
+export function rejectsCustomTemperature(provider: AIProvider, model: string): boolean {
+  return provider === "openai" && isNextGenOpenAIModel(model);
 }
 
 // Get the best available provider for schedule generation
@@ -283,8 +293,14 @@ export function buildAIRequest(
     }
   }
 
-  // Temperature - Gemini works better with controlled temperature
-  if (options.temperature !== undefined) {
+  // Temperature - Gemini works better with controlled temperature.
+  // FIX (outage 2026-09-04, second 400 after the max_tokens fix): gpt-5.x / o-series
+  // reject every non-default temperature ("Only the default (1) value is
+  // supported"). For those models the key is simply not sent — the API then uses
+  // its default. Every other provider/model keeps the existing behaviour exactly.
+  if (rejectsCustomTemperature(provider, model)) {
+    // intentionally no payload.temperature
+  } else if (options.temperature !== undefined) {
     payload.temperature = options.temperature;
   } else {
     // Lower temperature for structured outputs

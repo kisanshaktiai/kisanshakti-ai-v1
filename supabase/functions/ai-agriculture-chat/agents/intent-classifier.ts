@@ -36,7 +36,7 @@
  *   emitted code is gated through the same canonical Set before return.
  */
 
-import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
+import { getAPIEndpoint, getBestAvailableProvider, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
 import { getIntentCodesForCrop, getIntentCodesForLane } from '../utils/observation-mapping-cache.ts';
@@ -392,9 +392,15 @@ async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ int
         : 'You are an intent classifier. Return only JSON: {"intent_code": "...", "confidence": 0.0-1.0}. No prose, no markdown.' },
       { role: 'user', content: prompt }
     ],
-    temperature: strict ? 0 : 0.1,
-    max_tokens: 1024,
   };
+  // FIX (outage 2026-09-04): this payload is hand-built (not via buildAIRequest), so it
+  // did not get the shared fix. gpt-5.x / o-series reject `max_tokens` (need
+  // `max_completion_tokens`) and reject any non-default temperature — the 400 was
+  // swallowed by `if (!response.ok) return null` below, silently pushing every land-chat
+  // turn into the keyword/template fallback. Same model-family rules as aiConfig.
+  if (!rejectsCustomTemperature(provider, model)) requestBody.temperature = strict ? 0 : 0.1;
+  if (provider === 'openai' && requiresMaxCompletionTokens(model)) requestBody.max_completion_tokens = 1024;
+  else requestBody.max_tokens = 1024;
   if (!isGemini) requestBody.response_format = { type: 'json_object' };
 
   const response = await callLLMWithRetry(endpoint, {
@@ -402,7 +408,12 @@ async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ int
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify(requestBody),
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    // Was a silent null — make the failure visible in function logs (body truncated, no key echo).
+    const errTxt = await response.text().catch(() => '');
+    console.warn(`[intent-classifier] LLM ${response.status} (${provider}/${model}): ${errTxt.slice(0, 200)}`);
+    return null;
+  }
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content;
   if (!content) return null;
