@@ -13,6 +13,20 @@
  * - LLM is strictly prohibited from inventing treatments
  *
  * CHANGE LOG (newest first)
+ *   2026-09-04 — P0 F14 PRECONDITION FIX (live-trace verified, ai_decision_log land
+ *     30197c15: HYP_RICE_LODGING_001 served RICE_STRESS_CYCLONE_RECOVERY_001 whose
+ *     conditions_json.trigger='cyclone_passed' was stripped as metadata):
+ *     (a) `trigger` / `context` are no longer METADATA_KEYS. A value that is a
+ *         registered observation_master code is evaluated exactly like an
+ *         `observations:` any-of (evidence → context token → FAIL). An unregistered
+ *         value (909/962 rows live, e.g. 'cyclone_passed', 'spray_request') keeps
+ *         today's behaviour but is reported in `unresolved_preconditions` and logged
+ *         `[TRIGGER_UNREGISTERED]`.
+ *     (b) decision_rules.uncertainty_handling_mode (DB-owned, previously read by no
+ *         runtime file) is honoured when a rule matched with unresolved
+ *         preconditions: block_action / request_more_data ⇒ withheld (reported in
+ *         `precondition_blocked`); monitor_only / allow_with_warning / NULL ⇒ fires
+ *         with `unresolved_preconditions` attached. No default policy invented.
  *   2026-09-03 — SERVABILITY GATE (live-DB verified): loadAuthorizedRules
  *     previously filtered decision_rules on is_active + deprecated_at only;
  *     254 active-but-not-farmer-servable rows (chemical rules missing dose /
@@ -327,6 +341,10 @@ export interface FiredRule {
   };
   reasoning: string;
   conditions_matched: string[];
+  /** F14: precondition tokens (trigger/context) the runtime could not evaluate. */
+  unresolved_preconditions?: string[];
+  /** decision_rules.uncertainty_handling_mode as authored (lowercased) or null. */
+  uncertainty_handling_mode?: string | null;
 }
 
 export interface Hypothesis {
@@ -422,7 +440,7 @@ const OBSERVATION_CONDITION_KEYS: ReadonlySet<string> = new Set([
 ]);
 /** Rule METADATA keys — describe the rule, never conditions (verified against live decision_rules key inventory). */
 const METADATA_KEYS: ReadonlySet<string> = new Set([
-  'trigger', 'context', 'recommendation', 'action', 'diagnosis', 'trigger_keywords',
+  'recommendation', 'action', 'diagnosis', 'trigger_keywords',
   'roi_basis', 'roi_modifier', 'roi_by_region', 'roi_estimate', 'cost_benefit', 'economic_note',
   'crop_code', 'crop_type', // crop scope is graph authority (hypothesis crop_group + rule scope)
 ]);
@@ -434,6 +452,11 @@ const STATUS_KEYS: ReadonlySet<string> = new Set([
   'ndvi_level', 'ndvi_status', 'ndvi_trend', 'severity', 'soil_moisture', 'stress_level', 'water_stress',
   'soil_nitrogen', 'soil_n_status', 'soil_phosphorus', 'soil_p_status', 'soil_potassium', 'soil_k_status', 'risk_level',
 ]);
+/**
+ * Rule PRECONDITION token keys (F14). Values are evaluated as any-of observation codes
+ * when registered in observation_master; unregistered values are reported, not evaluated.
+ */
+const PRECONDITION_TOKEN_KEYS: ReadonlySet<string> = new Set(['trigger', 'context']);
 const NUMERIC_THRESHOLD_RE = /^([<>]=?|==?)\s*(-?\d+\.?\d*)$/;
 
 /**
@@ -531,6 +554,8 @@ export interface InferenceResult {
   /** Graph-authorized OBSERVATION_REQUIRED rules skipped because trusted evidence was empty
    *  (the diagnostic route that still needs farmer confirmation). */
   observation_required_skipped: string[];
+  /** F14: rules that matched but were withheld by their own uncertainty_handling_mode. */
+  precondition_blocked?: Array<{ rule_id: string; mode: string; unresolved: string[] }>;
   /** DB-taxonomy BioticGuard availability this turn. UNAVAILABLE ⇒ guard did not run. */
   taxonomy_guard: 'ACTIVE' | 'UNAVAILABLE';
   /** observation_master index availability. UNAVAILABLE ⇒ every referenced code is treated as FARMER_EVIDENCE. */
@@ -808,6 +833,9 @@ export class SymbolicReasoner {
       const _taxReady = isTaxonomyLoaded();
       const hasBioticObs = _taxReady && taxonomyHasBioticEvidence(ruleFacts.all_observations);
 
+      // F14: rules withheld by their own uncertainty_handling_mode (DB-owned policy).
+      const preconditionBlocked: Array<{ rule_id: string; mode: string; unresolved: string[] }> = [];
+
       for (const rule of stageRules) {
         // (8)/(9) DB rule contract + observation_master ontology decide what may satisfy the rule.
         const evidenceReq = classifyRuleEvidenceRequirement(rule, lookup);
@@ -844,6 +872,21 @@ export class SymbolicReasoner {
         if (needsContextToken && !match.context_anchored) {
           console.log(`   🚫 [ContextAnchor] Rule ${rule.rule_id} requires an intent CONTEXT_TOKEN but none matched (${match.matched_conditions.join(', ')}) — refusing to fire`);
           continue;
+        }
+        // UNCERTAINTY POLICY (F14) — decision_rules.uncertainty_handling_mode is the rule's own
+        // instruction for unproven context. Applied only when the match left a precondition
+        // token unresolved. No mode / other modes ⇒ fire, flagged.
+        const unresolvedPre: string[] = match.unresolved_preconditions ?? [];
+        const uncertaintyMode: string | null = typeof rule.uncertainty_handling_mode === 'string' && rule.uncertainty_handling_mode.trim().length > 0
+          ? rule.uncertainty_handling_mode.trim().toLowerCase()
+          : null;
+        if (unresolvedPre.length > 0) {
+          console.log(`   ⚠️ [TRIGGER_UNREGISTERED] ${rule.rule_id} unresolved=[${unresolvedPre.join('; ')}] uncertainty_handling_mode=${uncertaintyMode ?? 'null'}`);
+          if (uncertaintyMode === 'block_action' || uncertaintyMode === 'request_more_data') {
+            preconditionBlocked.push({ rule_id: String(rule.rule_id), mode: uncertaintyMode, unresolved: [...unresolvedPre] });
+            console.log(`   🚫 [PreconditionPolicy] ${rule.rule_id} withheld — uncertainty_handling_mode=${uncertaintyMode} with unproven precondition(s)`);
+            continue;
+          }
         }
         console.log(`   ▶ ${rule.rule_id} route=${evidenceReq.requirement}/${evidenceReq.evidence_class}`);
 
@@ -883,6 +926,8 @@ export class SymbolicReasoner {
           },
           reasoning: this.generateRuleExplanation(rule, ruleFacts, match, hypothesisId),
           conditions_matched: match.matched_conditions,
+          unresolved_preconditions: unresolvedPre.length > 0 ? [...unresolvedPre] : undefined,
+          uncertainty_handling_mode: uncertaintyMode,
         };
         firedRules.push(firedRule);
 
@@ -932,6 +977,7 @@ export class SymbolicReasoner {
         evidence_count: evidenceCount,
         clarification_only: firedRules.length === 0,
         observation_required_skipped: observationRequiredSkipped,
+        precondition_blocked: preconditionBlocked,
         taxonomy_guard: taxonomyGuard,
         observation_index: observationIndex,
         context_token_count: contextTokens.size,
@@ -1006,7 +1052,7 @@ export class SymbolicReasoner {
   evaluateConditionsJson(
     conditions: RuleCondition,
     facts: SymbolicFact,
-  ): { matches: boolean; confidence: number; reason: string; matched_conditions: string[]; evidence_anchored: boolean; context_anchored: boolean } {
+  ): { matches: boolean; confidence: number; reason: string; matched_conditions: string[]; evidence_anchored: boolean; context_anchored: boolean; unresolved_preconditions?: string[] } {
     const matchedConditions: string[] = [];
     // evidence_anchored: at least one satisfied condition was an EXACT match against
     // gated evidence (all_observations). Context-only matches (stage / DAS / NDVI /
@@ -1015,7 +1061,9 @@ export class SymbolicReasoner {
     // context_anchored: a satisfied observation condition was met by an intent-derived
     // CONTEXT_TOKEN (observation_master.is_farmer_observable=false). Never farmer evidence.
     let contextAnchored = false;
-    const FAIL = (reason: string) => ({ matches: false, confidence: 0, reason, matched_conditions: [] as string[], evidence_anchored: false, context_anchored: false });
+    // F14: trigger/context values not registered in observation_master — reported, not evaluated.
+    const unresolvedPreconditions: string[] = [];
+    const FAIL = (reason: string) => ({ matches: false, confidence: 0, reason, matched_conditions: [] as string[], evidence_anchored: false, context_anchored: false, unresolved_preconditions: [] as string[] });
 
     if (!conditions || typeof conditions !== 'object' || Array.isArray(conditions) || Object.keys(conditions).length === 0) {
       return FAIL('NO_CONDITIONS — empty/non-symbolic conditions never match');
@@ -1102,6 +1150,26 @@ export class SymbolicReasoner {
       if (METADATA_KEYS.has(key)) continue;
       if (key.startsWith('_')) continue; // authoring metadata
       const val = cond[key];
+
+      // PRECONDITION TOKEN KEYS (F14) — trigger/context. Registered observation codes are
+      // evaluated exactly like `observations:` (any-of; evidence → context token → FAIL).
+      // Unregistered values keep legacy metadata behaviour but are reported upstream.
+      if (PRECONDITION_TOKEN_KEYS.has(key)) {
+        const list = (Array.isArray(val) ? val : [val]).filter((x: unknown) => typeof x === 'string' && x.trim().length > 0) as string[];
+        if (list.length === 0) continue;
+        const registered = list.filter((x) => resolveObservationCodeClass(x) !== 'UNKNOWN');
+        if (registered.length === 0) {
+          unresolvedPreconditions.push(`${key}:${list.join('|')}`);
+          continue;
+        }
+        evaluated++;
+        const hitE = registered.find((o) => hasEvidence(o));
+        const hit = hitE !== undefined ? hitE : registered.find((o) => hasToken(o));
+        if (hit === undefined) return FAIL(`${key}: precondition [${registered.join(',')}] not in evidence or context tokens`);
+        matchedConditions.push(`${key}:${canonicalObsCode(hit)}`);
+        if (hitE !== undefined) evidenceAnchored = true; else contextAnchored = true;
+        continue;
+      }
 
       // STAGE KEYS — exact canonical stage match ('*'/'all' wildcard)
       if (STAGE_KEYS.has(key)) {
@@ -1271,6 +1339,7 @@ export class SymbolicReasoner {
       matched_conditions: matchedConditions,
       evidence_anchored: evidenceAnchored,
       context_anchored: contextAnchored,
+      unresolved_preconditions: unresolvedPreconditions,
     };
   }
 
