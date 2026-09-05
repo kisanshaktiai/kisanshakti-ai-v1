@@ -257,7 +257,7 @@ export default function Schedule() {
           toast({
             title: t('schedule.main.retrying'),
             description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
-            className: 'bg-accent/10 border-accent/20',
+            className: 'border-accent bg-accent text-accent-foreground',
           });
           // Retry after 2 seconds
           setTimeout(() => {
@@ -309,7 +309,7 @@ export default function Schedule() {
       toast({
         title: t('schedule.main.generated_success'),
         description: t('schedule.main.generated_description', { crop: cropName }),
-        className: 'bg-success/10 border-success/20',
+        className: 'border-success bg-success text-success-foreground',
       });
 
       // Move directly to schedule view
@@ -435,7 +435,7 @@ export default function Schedule() {
                 toast({
                   title: t('schedule.main.refreshing'),
                   description: t('schedule.main.syncing_latest'),
-                  className: 'bg-accent/10 border-accent/20',
+                  className: 'border-accent bg-accent text-accent-foreground',
                 });
               }}
               className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all"

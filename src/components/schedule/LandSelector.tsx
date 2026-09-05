@@ -254,7 +254,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       toast({
         title: t('schedule.land_selector.toast.deleted'),
         description: t('schedule.land_selector.toast.deleted_message'),
-        className: 'bg-success/10 border-success/20',
+        className: 'border-success bg-success text-success-foreground',
       });
 
       // Refresh schedule statuses

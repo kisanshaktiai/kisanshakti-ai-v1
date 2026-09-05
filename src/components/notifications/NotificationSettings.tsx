@@ -61,7 +61,7 @@ export default function NotificationSettings() {
           toast({
             title: '🔔 Notifications Enabled!',
             description: 'You will now receive timely alerts and reminders',
-            className: 'bg-success/10 border-success/20',
+            className: 'border-success bg-success text-success-foreground',
           });
         } else {
           toast({
