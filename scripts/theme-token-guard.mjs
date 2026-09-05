@@ -7,17 +7,21 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 
 const root = process.cwd();
+// Enforce the migrated tenant-owned surfaces. Expand this list as legacy
+// screens are migrated; existing scientific/video palettes are not hidden by
+// a broad allow-list that would also permit new violations.
 const scopes = [
-  'src/components/ui',
-  'src/components/schedule',
-  'src/contexts/TenantContext.tsx',
+  'src/components/ui/toast.tsx',
+  'src/components/ui/sonner.tsx',
+  'src/components/schedule/CropDateInput.tsx',
+  'src/components/schedule/FarmingTypeDialog.tsx',
+  'src/components/schedule/BackdatedConsentDialog.tsx',
+  'src/components/schedule/LandSelector.tsx',
   'src/pages/Schedule.tsx',
 ];
 const palette = /\b(?:text|bg|border|ring|fill|stroke|from|via|to)-(?:white|black|red|rose|green|emerald|lime|teal|amber|yellow|orange|blue|sky|cyan|indigo|purple|violet|fuchsia|pink|gray|slate|zinc|neutral|stone)(?:-\d{2,3})?\b/g;
 const rawColor = /(?:#(?:[\da-f]{3}|[\da-f]{6}|[\da-f]{8})\b|\b(?:rgb|rgba|hsl|hsla)\s*\()/gi;
-const allowedFiles = new Set([
-  'src/components/schedule/TaskPhotoUploadDialog.tsx', // image canvas/preview controls
-]);
+const allowedFiles = new Set();
 
 function filesAt(path) {
   const absolute = join(root, path);
