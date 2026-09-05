@@ -78,9 +78,19 @@ export function buildScheduleTaskPresentation(
   const descriptionUnsafe = effectiveLanguage !== 'en' && !localizedDescription &&
     (sourceLanguage ? sourceLanguage.toLowerCase() !== effectiveLanguage : looksUntranslated(rawDescription ?? '', effectiveLanguage));
   const localizedHow = localizedDescription && !descriptionUnsafe ? [localizedDescription] : [];
-  const how = effectiveLanguage === 'en'
-    ? [...rawHow]
-    : (localizedHow.length ? localizedHow : (descriptionUnsafe ? [] : [...rawHow]));
+  // Never let a task card go blank: prefer localized description, then the stored
+  // steps/instructions, then the raw description as a last resort. Steps that are
+  // merely untranslated are still shown (flagged via needsTranslation) because an
+  // actionable English step is better than an empty "How to do it" block.
+  const how: string[] = [];
+  if (effectiveLanguage !== 'en' && localizedHow.length) how.push(...localizedHow);
+  how.push(...rawHow.filter((x) => !how.includes(x)));
+  if (!how.length) {
+    const fallbackDescription = effectiveLanguage === 'en'
+      ? rawDescription
+      : (localizedDescription || (!descriptionUnsafe ? rawDescription : null));
+    if (fallbackDescription) how.push(fallbackDescription);
+  }
 
   const howMuch: string[] = [];
   const seen = new Set<string>();
