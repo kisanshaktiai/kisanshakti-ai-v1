@@ -2,7 +2,7 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 12; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 55_000; const RETRY_DELAYS_MS = [3_000, 8_000]; const MAX_RETRY_AFTER_MS = 10_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 28; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 35_000; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
 const cooldownUntil = new Map<AIProvider, number>();
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 function cooldownRemaining(provider: AIProvider) { return (cooldownUntil.get(provider) ?? 0) - Date.now(); }
@@ -51,7 +51,7 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
     `If information is missing, leave the field empty. Never fill a gap with a guess.`,
     `Use short spoken sentences and ordinary farmer words. No scientific or Latin names, jargon or abbreviations unless they are supplied facts that cannot be safely translated.`,
     `name: a short action title, 2-5 words.`,
-    `desc: 2-3 short sentences using only supplied facts.`,
+    `desc: 1-2 short sentences using only supplied facts.`,
     `instructions: rewrite each supplied line into one clear farmer action step; keep count and order.`,
     `Return STRICT JSON only: [{"i":0,"name":"...","desc":"...","instructions":["..."]}]`,
     `INPUT:`, JSON.stringify(payload)
@@ -60,7 +60,7 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   const ordered = [...chain].sort((a, b) => Math.max(0, cooldownRemaining(a.provider)) - Math.max(0, cooldownRemaining(b.provider)));
   for (const { provider, model } of ordered) { const apiKey = getAPIKey(provider); if (!apiKey) continue; try {
     await waitForCooldown(provider, signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
-    const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: 5000, temperature: 0, useJsonMode: true });
+    const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: 3000, temperature: 0, useJsonMode: true });
     const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify(body), signal });
     if (!res.ok) { if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
     const responseJson = await res.json(); const raw = parseModelJson(responseJson?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray((raw as any)?.tasks) ? (raw as any).tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
