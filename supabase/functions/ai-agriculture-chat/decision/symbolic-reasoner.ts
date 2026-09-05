@@ -27,6 +27,8 @@
  *         preconditions: block_action / request_more_data ⇒ withheld (reported in
  *         `precondition_blocked`); monitor_only / allow_with_warning / NULL ⇒ fires
  *         with `unresolved_preconditions` attached. No default policy invented.
+ *     (c) 2026-09-05 correction: block gates (rule_intent='block', is_safety_block, action_type
+ *         'block') are never withheld — under uncertainty the block is the safe outcome.
  *   2026-09-03 — SERVABILITY GATE (live-DB verified): loadAuthorizedRules
  *     previously filtered decision_rules on is_active + deprecated_at only;
  *     254 active-but-not-farmer-servable rows (chemical rules missing dose /
@@ -882,7 +884,14 @@ export class SymbolicReasoner {
           : null;
         if (unresolvedPre.length > 0) {
           console.log(`   ⚠️ [TRIGGER_UNREGISTERED] ${rule.rule_id} unresolved=[${unresolvedPre.join('; ')}] uncertainty_handling_mode=${uncertaintyMode ?? 'null'}`);
-          if (uncertaintyMode === 'block_action' || uncertaintyMode === 'request_more_data') {
+          // Block gates (rule_intent='block' / is_safety_block / action_type='block') are the fail-safe
+          // side of uncertainty: withholding them would REMOVE a spray/PHI/re-entry block, which inverts
+          // block_action. They fire as before, flagged. Live 2026-09-05: 75 of 105 withheld rules were gates.
+          const isBlockGate = rule.rule_intent === 'block' || rule.is_safety_block === true
+            || String(rule.action_type ?? '').trim().toLowerCase() === 'block';
+          if (isBlockGate) {
+            console.log(`   🛡️ [PreconditionPolicy] ${rule.rule_id} block gate — fires fail-safe despite unproven precondition(s)`);
+          } else if (uncertaintyMode === 'block_action' || uncertaintyMode === 'request_more_data') {
             preconditionBlocked.push({ rule_id: String(rule.rule_id), mode: uncertaintyMode, unresolved: [...unresolvedPre] });
             console.log(`   🚫 [PreconditionPolicy] ${rule.rule_id} withheld — uncertainty_handling_mode=${uncertaintyMode} with unproven precondition(s)`);
             continue;
