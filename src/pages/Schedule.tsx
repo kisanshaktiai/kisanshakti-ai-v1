@@ -243,6 +243,23 @@ export default function Schedule() {
         });
         return;
       }
+
+      if (data?.code === 'FARMER_LANGUAGE_PENDING' && data?.retryable) {
+        if (retryCount < 2) {
+          setRetryCount((previous) => previous + 1);
+          toast({
+            title: t('schedule.main.retrying'),
+            description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
+            className: 'border-info bg-info text-info-foreground',
+          });
+          setTimeout(() => {
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
+          }, 3000);
+          return;
+        }
+        setRetryCount(0);
+        throw new Error(data.error || t('schedule.main.generation_failed'));
+      }
       
       // Check if data contains an error response from the edge function
       if (data?.error) {
