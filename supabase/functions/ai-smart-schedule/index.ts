@@ -1,11 +1,8 @@
 // CHANGE LOG
-// 2026-09-03 — Full Agronomic Evidence Pack integration: Harness now receives the SAME
-//   ResolvedInputs, LandContext and selected stage graph used by baseline generation. No
-//   second resolver, no synthetic variety/region/soil context. The evidence pack is built
-//   once from the authoritative request-scoped context and passed into Harness explicitly.
-//   Existing DB schema, baseline generator, RAG adapter and atomic persistence are preserved.
-//
-// Existing safety/DB-SSOT changes remain unchanged below.
+// 2026-09-05 — Farmer-language root fix: non-English schedules now fail closed when
+//   narration is unavailable/partial. A schedule tagged Marathi must never persist
+//   deterministic English source text as if it were localized. Language is normalized
+//   to the base ISO code at the edge boundary.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -52,7 +49,7 @@ serve(async (req) => {
     const transplantDate = body?.transplantDate ?? null;
     const farmingType = body?.farmingType ?? null;
     const backdatedConsent = body?.backdatedConsent ?? false;
-    const language = body?.language ?? "en";
+    const language = String(body?.language ?? "en").trim().toLowerCase().split("-")[0] || "en";
     tenantId = req.headers.get("x-tenant-id") || "";
     farmerId = req.headers.get("x-farmer-id") || "";
 
@@ -66,32 +63,21 @@ serve(async (req) => {
       .maybeSingle();
     if (!ownedLand) return json({ error: "Land not found" }, 404);
     if (ownedLand.farmer_id !== farmerId || ownedLand.tenant_id !== tenantId) return json({ error: "Land does not belong to this farmer" }, 403);
-    if (ownedLand.lifecycle_status === "CROP_ACTIVE") {
-      return json({ success: false, error: "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.", code: "LAND_NOT_AVAILABLE", landId, currentCrop: ownedLand.current_crop ?? null, activeScheduleId: ownedLand.active_schedule_id ?? null }, 200);
-    }
+    if (ownedLand.lifecycle_status === "CROP_ACTIVE") return json({ success: false, error: "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.", code: "LAND_NOT_AVAILABLE", landId, currentCrop: ownedLand.current_crop ?? null, activeScheduleId: ownedLand.active_schedule_id ?? null }, 200);
 
-    const inputs = await resolveInputs(supabase, {
-      landId, cropName, cropVariety, cultivationMethod, isReadyMadePlant, cropCycle,
-      sowingDate, transplantDate, language, farmingType,
-    });
+    const inputs = await resolveInputs(supabase, { landId, cropName, cropVariety, cultivationMethod, isReadyMadePlant, cropCycle, sowingDate, transplantDate, language, farmingType });
     inputs.language = language;
     const landContext = await loadLandContext(supabase, landId);
     if (landContext.gaps.length) inputs.gaps.push(...landContext.gaps);
     resolvedCropCode = inputs.cropCode || null;
 
-    const { data: otherActive } = await supabase
-      .from("crop_schedules")
-      .select("id, crop_name, status")
-      .eq("land_id", landId)
-      .or("status.eq.active,is_active.eq.true");
+    const { data: otherActive } = await supabase.from("crop_schedules").select("id, crop_name, status").eq("land_id", landId).or("status.eq.active,is_active.eq.true");
     const normName = (s: unknown) => String(s ?? "").trim().toLowerCase();
     const requestedNames = new Set([inputs.cropLabel, cropName, inputs.cropCode].filter(Boolean).map(normName));
     const conflictingSchedules = (otherActive || []).filter((s: Record<string, unknown>) => !requestedNames.has(normName(s.crop_name)));
     let landCropConflict: string | null = null;
     if (ownedLand.current_crop_id && inputs.cropId && String(ownedLand.current_crop_id) !== String(inputs.cropId)) landCropConflict = String(ownedLand.current_crop_id);
-    if (conflictingSchedules.length || landCropConflict) {
-      return json({ success: false, error: "Land crop identity conflicts with the requested schedule. Establish the land's crop first — nothing was generated or overwritten.", code: "CROP_IDENTITY_CONFLICT", landId, requestedCropId: inputs.cropId, requestedCrop: inputs.cropLabel || cropName, landCurrentCropId: ownedLand.current_crop_id ?? null, conflictingActiveSchedules: conflictingSchedules.map((s: Record<string, unknown>) => ({ id: s.id, crop_name: s.crop_name })) }, 200);
-    }
+    if (conflictingSchedules.length || landCropConflict) return json({ success: false, error: "Land crop identity conflicts with the requested schedule. Establish the land's crop first — nothing was generated or overwritten.", code: "CROP_IDENTITY_CONFLICT", landId, requestedCropId: inputs.cropId, requestedCrop: inputs.cropLabel || cropName, landCurrentCropId: ownedLand.current_crop_id ?? null, conflictingActiveSchedules: conflictingSchedules.map((s: Record<string, unknown>) => ({ id: s.id, crop_name: s.crop_name })) }, 200);
 
     if (!inputs.cropCode) return json({ error: "Crop could not be resolved to the crop master", cropName, gaps: inputs.gaps }, 422);
     if (!inputs.sowingDate) return json({ error: "Sowing date is required and was not found", gaps: inputs.gaps }, 422);
@@ -108,24 +94,13 @@ serve(async (req) => {
     try {
       const harnessFlag = await isFlagEnabled(supabase, "crop_schedule_harness_v2", { tenantId, farmerId });
       if (harnessFlag.enabled) {
-        // FULL CONTEXT INTEGRATION: this is the same resolved request context and selected
-        // phenology graph already used by baseline generation. Harness must never reconstruct
-        // variety, region, soil, dates, method or land state from partial inputs.
         const evidencePack = await (async () => {
           const { buildAgronomicEvidencePack } = await import("./harness/evidence-pack.ts");
           const { getStages } = await import("./db/agronomy-repo.ts");
           const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
           return buildAgronomicEvidencePack(supabase, inputs, stages, baseline.tasks);
         })();
-        const harnessed = await applyScheduleHarness(baseline.tasks, {
-          cropCode: inputs.cropCode,
-          cultivationMethod: inputs.cultivationMethod,
-          cropCycle: inputs.cropCycle,
-          gaps: baseline.gaps,
-          resolvedInputs: inputs,
-          landContext,
-          evidencePack,
-        });
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;
@@ -148,11 +123,32 @@ serve(async (req) => {
     const sanitized = baseline.tasks.map((t) => sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details }));
     baseline.tasks.forEach((t, i) => { t.task_name = sanitized[i].task_name || t.task_name; t.task_description = sanitized[i].task_description; t.instructions = sanitized[i].instructions; if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`); });
     const HARD_DEADLINE_MS = 110_000;
-    const narrationBudgetMs = HARD_DEADLINE_MS - (Date.now() - startTime) - 20_000;
+    const narrationBudgetMs = HARD_DEADLINE_MS - (Date.now() - startTime) - 15_000;
     const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);
     const narrated = narration.tasks;
-    if (!narration.narrated) { baseline.gaps.push(`narration_unavailable: ${narration.reason ?? "unknown"}`); baseline.coverage.narration = false; }
-    else { if (narration.narratedCount < narration.totalCount) baseline.gaps.push(`narration_partial: ${narration.narratedCount}/${narration.totalCount}`); baseline.coverage.narration = narration.narratedCount === narration.totalCount; }
+    if (!narration.narrated) {
+      baseline.gaps.push(`narration_unavailable: ${narration.reason ?? "unknown"}`);
+      baseline.coverage.narration = false;
+      // HARD LANGUAGE INVARIANT: never persist deterministic English source text for a
+      // non-English farmer. The previous implementation marked the schedule as `mr`
+      // while storing English task_name/task_description when LLM narration failed.
+      if (language !== "en") {
+        return json({
+          error: "Farmer-language narration was not completed; no mixed-language schedule was persisted.",
+          code: "FARMER_LANGUAGE_UNAVAILABLE",
+          language,
+          narratedCount: narration.narratedCount,
+          totalCount: narration.totalCount,
+          reason: narration.reason ?? "translation_unavailable",
+          gaps: baseline.gaps,
+          coverage: baseline.coverage,
+        }, 503);
+      }
+    } else if (narration.narratedCount < narration.totalCount) {
+      baseline.gaps.push(`narration_partial: ${narration.narratedCount}/${narration.totalCount}`);
+      baseline.coverage.narration = false;
+      if (language !== "en") return json({ error: "Farmer-language narration was incomplete; no mixed-language schedule was persisted.", code: "FARMER_LANGUAGE_INCOMPLETE", language, narratedCount: narration.narratedCount, totalCount: narration.totalCount, gaps: baseline.gaps, coverage: baseline.coverage }, 503);
+    } else baseline.coverage.narration = true;
 
     const sow = new Date(inputs.sowingDate);
     const durationDays = baseline.totals.duration_days;
@@ -183,40 +179,24 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: {
-        generator_version: GENERATOR_VERSION, resolved_inputs: inputs, harness: harnessTrace,
-        narration: { requested_language: language, persisted_language: language, applied: narration.narrated, narrated_count: narration.narratedCount, total_count: narration.totalCount, reason: narration.reason ?? null },
-        farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi,
-      },
+      generation_params: { generator_version: GENERATOR_VERSION, resolved_inputs: inputs, harness: harnessTrace, narration: { requested_language: language, persisted_language: language, applied: narration.narrated, narrated_count: narration.narratedCount, total_count: narration.totalCount, reason: narration.reason ?? null }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi },
       metadata: { coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
-    const landPayload = {
-      current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate,
-      gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate,
-      current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle,
-    };
+    const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
     const { data: persisted, error: persistError } = await supabase.rpc("persist_ai_crop_schedule_atomic", { p_schedule: schedulePayload, p_tasks: tasksToPersist, p_land: landPayload }).single();
     if (persistError || !persisted?.schedule_id) throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
     if (Number(persisted.task_count) !== tasksToPersist.length) throw new Error(`Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${persisted.task_count}`);
     const savedSchedule = { id: persisted.schedule_id };
-    if (farmingType) {
-      const { error: fmErr } = await supabase.from("land_crops").update({ farming_type: farmingType }).eq("land_id", landId).eq("is_active", true);
-      if (fmErr) console.warn({ event: "farming_type_sync_failed", landId, error: fmErr.message });
-    }
+    if (farmingType) { const { error: fmErr } = await supabase.from("land_crops").update({ farming_type: farmingType }).eq("land_id", landId).eq("is_active", true); if (fmErr) console.warn({ event: "farming_type_sync_failed", landId, error: fmErr.message }); }
     const missingSections = Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([key]) => key);
     const missingSectionLabelKeys = missingSections.map((k) => `schedule.section_pending.${k}`);
-    try {
-      await supabase.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: farmerId || null, payload: { landId, cropCode: inputs.cropCode, http_status: 200, task_count: baseline.tasks.length, gaps: baseline.gaps, coverage: baseline.coverage, execution_time_ms: Date.now() - startTime } });
-    } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
+    try { await supabase.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: farmerId || null, payload: { landId, cropCode: inputs.cropCode, http_status: 200, task_count: baseline.tasks.length, gaps: baseline.gaps, coverage: baseline.coverage, execution_time_ms: Date.now() - startTime } }); } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
     return json({ success: true, scheduleId: savedSchedule.id, landId, cropCode: inputs.cropCode, cropName: inputs.cropLabel || cropName, translatedCropName: inputs.cropLabelLocal, varietyId: inputs.varietyId, cultivationMethod: inputs.cultivationMethod, sowingDate: inputs.sowingDate, language, totalTasks: baseline.tasks.length, totals: baseline.totals, coverage: baseline.coverage, missing_sections: missingSections, missing_section_label_keys: missingSectionLabelKeys, gaps: baseline.gaps, generatorVersion: GENERATOR_VERSION, harness: harnessTrace, narrationApplied: narration.narrated, executionTimeMs: Date.now() - startTime, generatedAt: new Date().toISOString() });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const landNotAvailable = errorMessage.includes("LAND_NOT_AVAILABLE");
     if (!landNotAvailable) console.error("❌ [ai-smart-schedule] Error:", error);
-    try {
-      const logClient = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
-      await logClient.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: farmerId || null, payload: { landId, cropCode: resolvedCropCode ?? cropName, http_status: landNotAvailable ? 200 : 500, domain_code: landNotAvailable ? "LAND_NOT_AVAILABLE" : null, task_count: 0, error: errorMessage, execution_time_ms: Date.now() - startTime } });
-    } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
+    try { const logClient = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""); await logClient.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: farmerId || null, payload: { landId, cropCode: resolvedCropCode ?? cropName, http_status: landNotAvailable ? 200 : 500, domain_code: landNotAvailable ? "LAND_NOT_AVAILABLE" : null, task_count: 0, error: errorMessage, execution_time_ms: Date.now() - startTime } }); } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
     if (landNotAvailable) return json({ success: false, error: "This land already has an active crop. Confirm the previous harvest before starting a new crop schedule.", code: "LAND_NOT_AVAILABLE", landId, executionTimeMs: Date.now() - startTime }, 200);
     return json({ error: errorMessage || "Schedule generation failed", executionTimeMs: Date.now() - startTime }, 500);
   }
