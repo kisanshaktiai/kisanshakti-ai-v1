@@ -39,7 +39,7 @@ export default function BackdatedConsentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-3rem)] overflow-y-auto mobile-scroll-container p-0 gap-0 rounded-3xl border-0 shadow-2xl">
+      <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-hidden p-0 gap-0 rounded-3xl border-0 shadow-2xl flex flex-col">
         {/* Warning Header */}
         <div className="bg-warning/10 border-b border-warning/20 p-5">
           <div className="flex items-start gap-4">
@@ -58,7 +58,7 @@ export default function BackdatedConsentDialog({
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 overflow-y-auto mobile-scroll-container min-h-0">
           {/* Date Info */}
           <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
             <Calendar className="h-5 w-5 text-primary" />
@@ -110,14 +110,14 @@ export default function BackdatedConsentDialog({
         </div>
 
         {/* Footer */}
-        <DialogFooter className="flex flex-col gap-2 p-5 pt-0">
+        <DialogFooter className="flex flex-col gap-2 p-4 border-t border-border bg-background shrink-0">
           <Button
             onClick={handleConfirm}
             disabled={!consentChecked}
             className={cn(
               "w-full transition-all",
               consentChecked
-                ? "bg-warning hover:bg-warning text-white"
+                ? "bg-warning hover:bg-warning text-warning-foreground"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >

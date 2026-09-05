@@ -365,11 +365,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               transition={{ duration: 0.2 }}
               className="flex-1 min-h-0 flex flex-col bg-background"
             >
-              {/* Selected-crop banner — tap "Change" to return to the picker */}
-              <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/15 shrink-0">
+              {/* One compact selection strip — crop, chosen details and change action. */}
+              <div className="px-3 py-2 bg-primary/5 border-b border-primary/15 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                    <Sprout className="h-5 w-5 text-primary" />
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <Sprout className="h-4 w-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate leading-tight">
@@ -378,6 +378,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     {localizedCropName && cropName && localizedCropName !== cropName && (
                       <p className="text-[11px] text-muted-foreground truncate leading-tight">{cropName}</p>
                     )}
+                    <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                      {[cropVariety, sowingDate && wizardStep === 'planting' ? formatFarmerDate(sowingDate, appLang) : null].filter(Boolean).join(' • ')}
+                    </p>
                   </div>
                   <Button
                     type="button"
@@ -391,18 +394,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </div>
               </div>
 
-              {/* Small persistent selection summary; values are DB/user selections, not inferred. */}
-              <div className="px-4 py-2 border-b border-border/40 bg-muted/30 shrink-0">
-                <div className="flex items-center gap-2 overflow-x-auto text-xs whitespace-nowrap">
-                  <span className="text-muted-foreground">{t('schedule.crop_input.crop_summary', 'Crop')}: <strong className="text-foreground">{localizedCropName || cropName}</strong></span>
-                  {cropVariety && <span className="text-muted-foreground">• {t('schedule.crop_input.variety_summary', 'Variety')}: <strong className="text-foreground">{cropVariety}</strong></span>}
-                  {sowingDate && wizardStep === 'planting' && <span className="text-muted-foreground">• {formatFarmerDate(sowingDate, appLang)}</span>}
-                </div>
-              </div>
-
               {/* Scrollable content — variety first (most critical decision) */}
               <div className="flex-1 min-h-0 overflow-y-auto mobile-scroll-container">
-                <div className="p-4 pb-8 space-y-5">
+                <div className="p-3 pb-5 space-y-4">
                   {wizardStep === 'variety' && (
                   /* Variety — tap-a-card picker from master_products (SSOT), free-text fallback */
                   <div className="space-y-2">
@@ -479,7 +473,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     </div>
 
                     {/* Quick-pick chips — the common cases without opening a calendar */}
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {[
                         { key: 'today', days: 0 },
                         { key: 'yesterday', days: 1 },
@@ -495,7 +489,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setSowingDate(chipDate); }}
                             className={cn(
-                              'min-h-[48px] rounded-xl border px-3 text-sm font-medium transition-colors active:scale-[0.98]',
+                               'min-h-[44px] rounded-xl border px-2 text-xs font-medium transition-colors active:scale-[0.98]',
                               active
                                 ? 'bg-primary text-primary-foreground border-primary'
                                 : 'bg-card border-border text-foreground',

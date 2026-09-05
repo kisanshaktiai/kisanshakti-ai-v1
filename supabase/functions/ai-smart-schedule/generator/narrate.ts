@@ -1,8 +1,10 @@
+// CHANGE LOG
+// 2026-09-05 15:45 UTC — Bound narration chunks and classify timeout failures for safe retry handling.
 // Farmer-language narration is a presentation step only. Agronomic selection stays DB/deterministic.
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 12; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 55_000; const RETRY_DELAYS_MS = [3_000, 8_000]; const MAX_RETRY_AFTER_MS = 10_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 5; const MAX_CONCURRENCY = 2; const NARRATION_BUDGET_MS = 60_000; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
 const cooldownUntil = new Map<AIProvider, number>();
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 function cooldownRemaining(provider: AIProvider) { return (cooldownUntil.get(provider) ?? 0) - Date.now(); }
@@ -77,11 +79,11 @@ async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, la
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs?: number): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; reason?: string; provider?: string; model?: string }> {
-  const totalCount = tasks.length; if (budgetMs !== undefined && budgetMs <= 2_000) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "narration_skipped_time_budget" };
-  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_tasks" };
-  let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" }; }
-  if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: "no_llm_key" };
+export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs?: number): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; timedOut: boolean; reason?: string; provider?: string; model?: string }> {
+  const totalCount = tasks.length; if (budgetMs !== undefined && budgetMs <= 2_000) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: true, reason: "narration_skipped_time_budget" };
+  if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_tasks" };
+  let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" }; }
+  if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" };
   let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil.clear();
   const chunks: Array<{ items: NarratableTask[]; offset: number }> = []; for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
   const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), Math.max(0, Math.min(NARRATION_BUDGET_MS, budgetMs ?? NARRATION_BUDGET_MS))); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
@@ -96,6 +98,7 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
     } }
   } finally { clearTimeout(budgetTimer); }
   const applied = appliedIndices.size; const uniqueFailures = [...new Set(failures)].slice(0, 2);
-  if (!applied) return { tasks: out, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], reason: `llm_failed:${uniqueFailures.join("|") || "no_output"}`, provider, model };
-  return { tasks: out, narrated: applied === totalCount, narratedCount: applied, totalCount, appliedIndices: [...appliedIndices].sort((a, b) => a - b), reason: applied < totalCount ? `partial:${applied}/${totalCount}:${uniqueFailures.join("|") || "translation_unavailable"}` : undefined, provider, model };
+  const timedOut = controller.signal.aborted || uniqueFailures.some((failure) => /budget_exhausted|AbortError|aborted/i.test(failure));
+  if (!applied) return { tasks: out, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut, reason: `llm_failed:${uniqueFailures.join("|") || "no_output"}`, provider, model };
+  return { tasks: out, narrated: applied === totalCount, narratedCount: applied, totalCount, appliedIndices: [...appliedIndices].sort((a, b) => a - b), timedOut, reason: applied < totalCount ? `partial:${applied}/${totalCount}:${uniqueFailures.join("|") || "translation_unavailable"}` : undefined, provider, model };
 }

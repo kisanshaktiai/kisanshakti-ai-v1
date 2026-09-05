@@ -345,14 +345,45 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
     };
 
-    /** Returns an HSL triplet ("H S% L%") for any color string. Pass-through if already triplet. */
+    const rgbToHSL = (r: number, g: number, b: number): string => {
+      const [rn, gn, bn] = [r, g, b].map((v) => Math.max(0, Math.min(255, v)) / 255);
+      const max = Math.max(rn, gn, bn);
+      const min = Math.min(rn, gn, bn);
+      const l = (max + min) / 2;
+      if (max === min) return `0 0% ${Math.round(l * 100)}%`;
+      const d = max - min;
+      const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      let h = max === rn ? (gn - bn) / d + (gn < bn ? 6 : 0) : max === gn ? (bn - rn) / d + 2 : (rn - gn) / d + 4;
+      h /= 6;
+      return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+    };
+
+    /** Normalize accepted tenant colors to the HSL triplet consumed by Tailwind. */
     const ensureHSL = (color: string): string => {
       if (!color) return '';
       const trimmed = String(color).trim();
-      if (trimmed.includes('%')) return trimmed;            // already "H S% L%" or "hsl(...)"
       if (trimmed.startsWith('#')) return hexToHSL(trimmed);
-      // hsl(...) or rgb(...) — leave as-is; CSS engine handles it (won't compose with hsl(var(--x)))
-      return trimmed;
+      const triplet = /^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/.exec(trimmed);
+      if (triplet) return `${triplet[1]} ${triplet[2]}% ${triplet[3]}%`;
+      const hsl = /^hsla?\(\s*([\d.]+)(?:deg)?[,\s]+([\d.]+)%[,\s]+([\d.]+)%(?:\s*[/,]\s*[\d.]+%?)?\s*\)$/i.exec(trimmed);
+      if (hsl) return `${hsl[1]} ${hsl[2]}% ${hsl[3]}%`;
+      const rgb = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[/,]\s*[\d.]+%?)?\s*\)$/i.exec(trimmed);
+      if (rgb) return rgbToHSL(Number(rgb[1]), Number(rgb[2]), Number(rgb[3]));
+      console.warn('[TenantProvider] Ignored invalid tenant color token');
+      return '';
+    };
+
+    const shiftLightness = (triplet: string, delta: number): string => triplet.replace(
+      /(\d+(?:\.\d+)?)%$/,
+      (_, lightness: string) => `${Math.max(0, Math.min(100, Number(lightness) + delta))}%`,
+    );
+
+    const safeEffectValue = (value: string, kind: 'gradient' | 'shadow'): string => {
+      const normalized = String(value).trim();
+      if (!normalized || /[;{}]|url\s*\(/i.test(normalized)) return '';
+      if (kind === 'gradient' && !/^(linear|radial)-gradient\([^{};]+\)$/i.test(normalized)) return '';
+      if (kind === 'shadow' && !/^-?[\d.]+(?:px|rem)\s+/.test(normalized)) return '';
+      return normalized;
     };
 
     /** Luminance-aware foreground (#fff or near-black) for a hex/HSL color. */
@@ -387,6 +418,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!value) return;
         setVar(`--${key.replace(/_/g, '-')}`, ensureHSL(value));
       });
+      if (theme.core.primary) {
+        const primary = ensureHSL(theme.core.primary);
+        setVar('--primary-hover', shiftLightness(primary, -8));
+        setVar('--primary-glow', shiftLightness(primary, 12));
+        setVar('--primary-dim', shiftLightness(primary, -16));
+      }
     }
 
     // ---- neutral (background, surface→card/popover, border→border/input)
@@ -487,7 +524,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ---- gradients (full CSS gradient strings) --------------------------
     if (theme?.gradients) {
       Object.entries(theme.gradients).forEach(([k, v]) => {
-        if (v) setVar(`--gradient-${k.replace(/_/g, '-')}`, String(v));
+        const safe = v ? safeEffectValue(String(v), 'gradient') : '';
+        if (safe) setVar(`--gradient-${k.replace(/_/g, '-')}`, safe);
       });
     }
 
@@ -509,7 +547,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // ---- shadows --------------------------------------------------------
     if (theme?.shadows) {
       Object.entries(theme.shadows).forEach(([k, v]) => {
-        if (v) setVar(`--shadow-${k}`, String(v));
+        const safe = v ? safeEffectValue(String(v), 'shadow') : '';
+        if (safe) setVar(`--shadow-${k}`, safe);
       });
     }
 
@@ -574,6 +613,17 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (branding.font_family && !theme?.typography?.font_family) {
       setVar('--font-sans', branding.font_family);
       document.body.style.fontFamily = branding.font_family;
+    }
+
+    const primary = root.style.getPropertyValue('--primary') || getComputedStyle(root).getPropertyValue('--primary');
+    if (primary.trim()) {
+      let themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+      if (!themeMeta) {
+        themeMeta = document.createElement('meta');
+        themeMeta.name = 'theme-color';
+        document.head.appendChild(themeMeta);
+      }
+      themeMeta.content = `hsl(${primary.trim()})`;
     }
 
     // ---- Favicon + title -----------------------------------------------
@@ -684,6 +734,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // OPTION 1: Try centralized API first (cleaner)
       try {
         const headers: Record<string, string> = { Accept: 'application/json' };
+        if (cachedEtag) headers['If-None-Match'] = cachedEtag;
         const tenantConfigParams = new URLSearchParams({ domain, t: Date.now().toString() });
         const tenantConfigUrl = `${getSupabaseFunctionUrl('tenant-config')}?${tenantConfigParams.toString()}`;
 
@@ -746,6 +797,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           await localDB.saveTenantConfig(config.id, {
             brand_identity: apiConfig.branding,
+            theme_colors: apiConfig.theme,
             mobile_theme: apiConfig.theme,
             pwa_config: apiConfig.pwa,
           }, { id: config.id, name: config.name, domain });

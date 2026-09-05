@@ -56,15 +56,15 @@ export default function FarmingTypeDialog({ open, onOpenChange, onSelect, cropNa
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm w-[calc(100vw-2rem)] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl">
-        <DialogHeader className="px-5 pt-5 pb-3">
+      <DialogContent className="max-w-sm w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl flex flex-col">
+        <DialogHeader className="px-5 pt-5 pb-3 shrink-0 bg-background">
           <DialogTitle className="text-base font-semibold text-foreground">
             {t('schedule.method.title')}
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-0.5">{cropName}</p>
         </DialogHeader>
 
-        <div className="px-4 pb-5 space-y-2">
+        <div className="px-4 pb-5 space-y-2 overflow-y-auto mobile-scroll-container min-h-0">
           {FARMING_OPTIONS.map((option, index) => (
             <motion.button
               key={option.mode}

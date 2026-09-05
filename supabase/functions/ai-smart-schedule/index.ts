@@ -1,4 +1,5 @@
 // CHANGE LOG
+// 2026-09-05 15:45 UTC — Reserve narration time and return retryable pending state on timeout.
 // 2026-09-05 — Farmer-language root fix: non-English schedules now fail closed when
 //   narration is unavailable/partial. A schedule tagged Marathi must never persist
 //   deterministic English source text as if it were localized. Language is normalized
@@ -123,7 +124,7 @@ serve(async (req) => {
     const sanitized = baseline.tasks.map((t) => sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details }));
     baseline.tasks.forEach((t, i) => { t.task_name = sanitized[i].task_name || t.task_name; t.task_description = sanitized[i].task_description; t.instructions = sanitized[i].instructions; if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`); });
     const HARD_DEADLINE_MS = 110_000;
-    const narrationBudgetMs = HARD_DEADLINE_MS - (Date.now() - startTime) - 15_000;
+    const narrationBudgetMs = Math.max(20_000, Math.min(60_000, HARD_DEADLINE_MS - (Date.now() - startTime) - 12_000));
     const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);
     const narrated = narration.tasks;
     if (!narration.narrated) {
@@ -133,6 +134,18 @@ serve(async (req) => {
       // non-English farmer. The previous implementation marked the schedule as `mr`
       // while storing English task_name/task_description when LLM narration failed.
       if (language !== "en") {
+        if (narration.timedOut) return json({
+          success: false,
+          error: "Farmer-language narration is still being prepared; no mixed-language schedule was persisted.",
+          code: "FARMER_LANGUAGE_PENDING",
+          retryable: true,
+          language,
+          narratedCount: narration.narratedCount,
+          totalCount: narration.totalCount,
+          reason: narration.reason,
+          gaps: baseline.gaps,
+          coverage: baseline.coverage,
+        });
         return json({
           error: "Farmer-language narration was not completed; no mixed-language schedule was persisted.",
           code: "FARMER_LANGUAGE_UNAVAILABLE",
@@ -147,7 +160,10 @@ serve(async (req) => {
     } else if (narration.narratedCount < narration.totalCount) {
       baseline.gaps.push(`narration_partial: ${narration.narratedCount}/${narration.totalCount}`);
       baseline.coverage.narration = false;
-      if (language !== "en") return json({ error: "Farmer-language narration was incomplete; no mixed-language schedule was persisted.", code: "FARMER_LANGUAGE_INCOMPLETE", language, narratedCount: narration.narratedCount, totalCount: narration.totalCount, gaps: baseline.gaps, coverage: baseline.coverage }, 503);
+      if (language !== "en") {
+        if (narration.timedOut) return json({ success: false, error: "Farmer-language narration is still being prepared; no mixed-language schedule was persisted.", code: "FARMER_LANGUAGE_PENDING", retryable: true, language, narratedCount: narration.narratedCount, totalCount: narration.totalCount, reason: narration.reason, gaps: baseline.gaps, coverage: baseline.coverage });
+        return json({ error: "Farmer-language narration was incomplete; no mixed-language schedule was persisted.", code: "FARMER_LANGUAGE_INCOMPLETE", language, narratedCount: narration.narratedCount, totalCount: narration.totalCount, gaps: baseline.gaps, coverage: baseline.coverage }, 503);
+      }
     } else baseline.coverage.narration = true;
 
     const sow = new Date(inputs.sowingDate);

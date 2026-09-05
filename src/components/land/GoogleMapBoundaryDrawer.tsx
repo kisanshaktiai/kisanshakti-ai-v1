@@ -535,9 +535,9 @@ export function GoogleMapBoundaryDrawer({
 
   // Memoized polygon options — editable when 3+ points so users can drag vertices/midpoints
   const polygonOptions = useMemo(() => ({
-    fillColor: getThemeColor('--primary', '#22c55e'),
+    fillColor: getThemeColor('--polygon-fill', getThemeColor('--primary', '#22c55e')),
     fillOpacity: 0.3,
-    strokeColor: getThemeColor('--primary', '#22c55e'),
+    strokeColor: getThemeColor('--polygon-stroke', getThemeColor('--primary', '#22c55e')),
     strokeOpacity: 1,
     strokeWeight: 2.5,
     clickable: true,
@@ -548,7 +548,7 @@ export function GoogleMapBoundaryDrawer({
   }), [mode, boundary.length]);
 
   const polylineOptions = useMemo(() => ({
-    strokeColor: getThemeColor('--primary', '#22c55e'),
+    strokeColor: getThemeColor('--tracking-stroke', getThemeColor('--primary', '#22c55e')),
     strokeOpacity: 1,
     strokeWeight: 2,
     clickable: false,
@@ -565,7 +565,7 @@ export function GoogleMapBoundaryDrawer({
     return {
       path: google.maps.SymbolPath.CIRCLE,
       scale: 8,
-      fillColor: getThemeColor('--accent', '#3b82f6'),
+      fillColor: getThemeColor('--tracking-fill', getThemeColor('--accent', '#3b82f6')),
       fillOpacity: 1,
       strokeColor: getThemeColor('--background', '#ffffff'),
       strokeWeight: 2,
@@ -578,7 +578,7 @@ export function GoogleMapBoundaryDrawer({
     return {
       path: google.maps.SymbolPath.CIRCLE,
       scale: 11, // ~22px diameter, large finger target
-      fillColor: getThemeColor('--destructive', '#ef4444'),
+      fillColor: getThemeColor('--marker-color', getThemeColor('--destructive', '#ef4444')),
       fillOpacity: 1,
       strokeColor: getThemeColor('--background', '#ffffff'),
       strokeWeight: 3,
