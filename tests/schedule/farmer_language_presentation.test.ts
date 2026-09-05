@@ -9,6 +9,7 @@ const mr = (key: string, fallback?: string) => ({
   'schedule.stages.harvest': 'कापणी',
   'schedule.task_card.description': 'काम',
   'schedule.task_card.quantity': 'किती लागेल',
+  'schedule.amount.water': 'किती लागेल',
 }[key] ?? fallback ?? key);
 
 describe('farmer schedule presentation safety', () => {
