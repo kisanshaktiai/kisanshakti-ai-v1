@@ -48,20 +48,15 @@ export function buildScheduleTaskPresentation(
   currentLanguage?: string,
 ): ScheduleTaskPresentation {
   const resources = task.resources && typeof task.resources === 'object' && !Array.isArray(task.resources) ? task.resources as Record<string, unknown> : {};
-  // When a caller does not pass the active UI language (legacy cards), use the schedule's
-  // persisted target language. This prevents a Marathi schedule from silently reverting
-  // to English merely because one presentation component omitted the third argument.
-  const effectiveLanguage = String(currentLanguage ?? resources.target_language ?? task.language ?? 'en').trim().toLowerCase() || 'en';
+  const effectiveLanguage = String(currentLanguage ?? resources.target_language ?? task.language ?? 'en').trim().toLowerCase().split('-')[0] || 'en';
   const taskType = String(task.task_type ?? '').trim().toLowerCase();
   const rawName = cleanText(task.task_name);
   const rawDescription = cleanText(task.task_description);
   const localizedName = cleanText(task.localized_task_name ?? resources.localized_task_name);
   const localizedDescription = cleanText(task.localized_task_description ?? resources.localized_task_description);
   const sourceLanguage = cleanText(task.language ?? resources.source_language);
-  const nameUnsafe = effectiveLanguage !== 'en' && !localizedName && (sourceLanguage ? sourceLanguage.toLowerCase() !== effectiveLanguage : looksUntranslated(rawName ?? '', effectiveLanguage));
+  const nameUnsafe = effectiveLanguage !== 'en' && !localizedName && (sourceLanguage ? sourceLanguage.toLowerCase().split('-')[0] !== effectiveLanguage : looksUntranslated(rawName ?? '', effectiveLanguage));
 
-  // Farmer-language invariant: untranslated source text is never the primary copy for
-  // a non-English farmer. Use authoritative localized text, then a localized task-type label.
   const what = effectiveLanguage === 'en'
     ? (rawName || t(taskTypeLabelKey(taskType)))
     : (localizedName || (!nameUnsafe ? rawName : null) || t(taskTypeLabelKey(taskType)));
@@ -75,16 +70,17 @@ export function buildScheduleTaskPresentation(
   });
   const detailedSteps = asArray(task.detailed_steps).map(cleanText).filter((x): x is string => Boolean(x));
   const rawHow = [...detailedSteps, ...instructions];
-  const descriptionUnsafe = effectiveLanguage !== 'en' && !localizedDescription &&
-    (sourceLanguage ? sourceLanguage.toLowerCase() !== effectiveLanguage : looksUntranslated(rawDescription ?? '', effectiveLanguage));
+  const descriptionUnsafe = effectiveLanguage !== 'en' && !localizedDescription && (sourceLanguage ? sourceLanguage.toLowerCase().split('-')[0] !== effectiveLanguage : looksUntranslated(rawDescription ?? '', effectiveLanguage));
   const localizedHow = localizedDescription && !descriptionUnsafe ? [localizedDescription] : [];
-  // Never let a task card go blank: prefer localized description, then the stored
-  // steps/instructions, then the raw description as a last resort. Steps that are
-  // merely untranslated are still shown (flagged via needsTranslation) because an
-  // actionable English step is better than an empty "How to do it" block.
+
+  // Existing schedules can contain English source text from before the hard language
+  // invariant. Do not re-expose that text in a non-English farmer card.
+  const safeRawHow = effectiveLanguage === 'en'
+    ? rawHow
+    : rawHow.filter((x) => !looksUntranslated(x, effectiveLanguage));
   const how: string[] = [];
   if (effectiveLanguage !== 'en' && localizedHow.length) how.push(...localizedHow);
-  how.push(...rawHow.filter((x) => !how.includes(x)));
+  how.push(...safeRawHow.filter((x) => !how.includes(x)));
   if (!how.length) {
     const fallbackDescription = effectiveLanguage === 'en'
       ? rawDescription
