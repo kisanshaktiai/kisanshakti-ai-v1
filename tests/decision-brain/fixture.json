@@ -855,6 +855,42 @@
 "action_text": "RICE_NUTR_ORGANIC_001 text",
 "contraindications": null,
 "mutually_exclusive_with": null
+},
+{
+"rule_id": "TEST_IRRIG_PI_ROW",
+"crop_code": "rice",
+"trigger_class": "CONTEXT_SCHEDULE",
+"category": "irrigation",
+"rule_intent": "recommendation",
+"region_code": null,
+"stage_applicable": [
+"panicle_initiation"
+],
+"growth_stage": "panicle_initiation",
+"crop_age_days_min": null,
+"crop_age_days_max": null,
+"cultivation_method_applicable": [
+"any"
+],
+"priority": 7,
+"condition_code": "stage_general",
+"conditions_json": {
+"observations": [
+"stage_general"
+]
+},
+"is_active": true,
+"is_farmer_servable": true,
+"is_safety_block": false,
+"blocks_rule_ids": [],
+"input_class": null,
+"dosage_per_acre": null,
+"active_ingredient": null,
+"deprecated_at": null,
+"action_type": "recommend",
+"action_text": "test irrigation row (PI)",
+"contraindications": null,
+"mutually_exclusive_with": null
 }
 ],
 "intent_observation_mapping": [
@@ -970,6 +1006,12 @@
 "intent_code": "HARVEST_TIMING",
 "crop_code": "rice",
 "observation_code": "rice_lodging",
+"is_active": true
+},
+{
+"intent_code": "IRRIGATION_QUERY",
+"crop_code": "rice",
+"observation_code": "stage_general",
 "is_active": true
 }
 ],

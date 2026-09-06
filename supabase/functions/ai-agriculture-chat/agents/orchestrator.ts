@@ -8886,6 +8886,16 @@ export class AIAgentOrchestrator {
               traceId: traceId,
             });
 
+            // 2026-09-06 — intent relevance (see context-rule-selector): keep only
+            // schedule rows whose authored codes map to this turn's intent.
+            try {
+              const { filterScheduleCandidatesByIntent } =
+                await import('../decision/context-rule-selector.ts');
+              const _rel = await filterScheduleCandidatesByIntent(this.supabase, ctxSel.applicable, intentCode, _laneBCrop, traceId);
+              if (_rel.applied) { (ctxSel as any).applicable = _rel.kept; agentsUsed.push('LANE_B_INTENT_RELEVANCE'); }
+            } catch (relErr) {
+              console.warn(`[LANE_B_INTENT_RELEVANCE] non-fatal failure: ${(relErr as Error)?.message ?? relErr}`);
+            }
             if (ctxSel.applicable.length > 0) {
               // FIX 7 (2026-08-28): Lane B is ADDITIVE. Context rules never
               // replace the canonical candidate stream and never overwrite
@@ -9315,7 +9325,25 @@ export class AIAgentOrchestrator {
           if ((this as any)._evidenceFrozen) {
             assertDecisionGraphOrder(this as any, traceId, 'BRAIN_TRACE');
           }
-          if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
+          // 2026-09-05 — DB INTENT CONTRACT EXEMPTION (same rule as INTENT_AUTHORITY /
+          // DIRECT_MODE_CONVERSATION_VETO / OBS_TO_HYP_GAP in layer 2). Live
+          // trace_mtokyona_z7fta7: FERTILIZER_SCHEDULE (DIRECT/0, zero farmer-text
+          // symptoms) → Lane B + CONTEXT_BLOCK_GATE set primary=RICE_NUTR_LATE_N_BLOCK_001,
+          // then THIS router (requiresAgronomicReasoningIntent is true for every
+          // SYMBOLIC_BRAIN intent) nulled layeredRuleResult.primary_decision and forced
+          // observation cards → sentinel → PHOTO_REQUEST. Zero hypotheses is the
+          // expected shape of an advisory turn; the context lane owns it when it
+          // produced a primary.
+          const _laneOwnsDirectTurn =
+            (this as any).__directContractNoSymptoms === true &&
+            !!(layeredRuleResult as any)?.primary_decision?.rule_id;
+          if (_laneOwnsDirectTurn && (this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
+            console.log(
+              `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} hypotheses=0 ` +
+              `action=none (DIRECT/0 contract; context lane primary=${(layeredRuleResult as any).primary_decision.rule_id} kept)`
+            );
+            agentsUsed.push('OBS_TO_HYP_GAP_CONTEXT_KEPT');
+          } else if ((this as any)._evidenceFrozen && _obsToHyp === 0 && _hypIds.length === 0 && requiresAgronomicReasoningIntent(intentCode)) {
             console.log(
               `[OBS_TO_HYP_GAP] trace_id=${traceId} intent=${intentCode} ` +
               `confirmed_obs=${_cs?.confirmed?.length ?? 0} real_obs=${_realObsCount} ` +

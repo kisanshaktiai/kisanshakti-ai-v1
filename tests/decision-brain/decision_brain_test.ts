@@ -182,3 +182,29 @@ Deno.test('T4 crops with no CONTEXT rows (sugarcane, groundnut): Lane B and bloc
     assertEquals(out.nextMatched, []);
   }
 });
+
+// ── 2026-09-06: Lane B intent relevance
+Deno.test('R1 fertiliser intent at PI keeps LCC and drops an irrigation schedule row', async () => {
+  const { client } = makeMockSupabase(FIX);
+  const q = { ...MH, growthStage: 'panicle_initiation', das: 65 };
+  const cands = (await sel.selectContextRules(client, q)).applicable;
+  assert(cands.some((r: any) => r.rule_id === 'TEST_IRRIG_PI_ROW') && cands.some((r: any) => r.rule_id === 'RICE_NUTR_LCC_001'));
+  const rel = await sel.filterScheduleCandidatesByIntent(client, cands, 'FERTILIZER_SCHEDULE', 'rice', 'R1');
+  assertEquals(rel.applied, true);
+  assert(rel.kept.every((r: any) => r.rule_id !== 'TEST_IRRIG_PI_ROW'), 'irrigation row must be dropped for a fertiliser intent');
+  assert(rel.kept.some((r: any) => r.rule_id === 'RICE_NUTR_LCC_001'), 'nitrogen schedule rows stay');
+  assertEquals(rel.dropped.map((r: any) => r.rule_id), ['TEST_IRRIG_PI_ROW']);
+});
+Deno.test('R2 irrigation intent at PI keeps the irrigation row and drops LCC', async () => {
+  const { client } = makeMockSupabase(FIX);
+  const cands = (await sel.selectContextRules(client, { ...MH, growthStage: 'panicle_initiation', das: 65 })).applicable;
+  const rel = await sel.filterScheduleCandidatesByIntent(client, cands, 'IRRIGATION_QUERY', 'rice', 'R2');
+  assertEquals(rel.kept.map((r: any) => r.rule_id), ['TEST_IRRIG_PI_ROW']);
+});
+Deno.test('R3 unmapped intent → fail-open (candidates unchanged)', async () => {
+  const { client } = makeMockSupabase(FIX);
+  const cands = (await sel.selectContextRules(client, { ...MH, growthStage: 'panicle_initiation', das: 65 })).applicable;
+  const rel = await sel.filterScheduleCandidatesByIntent(client, cands, 'SEED_SELECTION', 'rice', 'R3');
+  assertEquals(rel.applied, false);
+  assertEquals(rel.kept.length, cands.length);
+});

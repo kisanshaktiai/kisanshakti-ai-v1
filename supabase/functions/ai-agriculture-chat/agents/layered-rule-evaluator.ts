@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-05 — BRAIN-ONLY EXCLUSION: candidates that farmer-text-filter would
+ *   blank (isDiagnosisRule / isDifferentialText) are not eligible for primary.
+ *   They remain matched/applied. Logs [BRAIN_ONLY_EXCLUDED].
  * 2026-09-04 (b) — all PRESCRIPTION-path projections (allowed, blocked-by-graph,
  *   gate-blocked/display-only, minimal) now carry trigger_class / DAS window /
  *   condition_code. Live trace_mtn7mf2w_wyixre: DB category 'nutrition' →
@@ -39,6 +42,7 @@ import { stagesEquivalent, stageFamily, isKnownStage } from '../runtime/stage-fa
 import { cultivationLaneMatches } from '../utils/observation-mapping-cache.ts';
 import { currentLane } from '../utils/stage-knowledge-cache.ts';
 import { canonicalObsCode, canonicalStageKey } from '../utils/canonical-code.ts';
+import { isDiagnosisRule, isDifferentialText } from '../utils/farmer-text-filter.ts';
 
 
 import { 
@@ -975,7 +979,27 @@ export function evaluateRulesLayered(
       !SAFETY_GATE_ACTION_TYPES.has(r.action_type)
     );
     
-    const candidatesForPrimary = nonSafetyResponses.length > 0 ? nonSafetyResponses : responsesForSelection;
+    // 2026-09-05 — BRAIN-ONLY rules cannot be primary. farmer-text-filter blanks
+    // diagnosis-category / differential action_text at render time, so a
+    // DIAGNOSIS rule chosen as primary renders as an empty product card (live
+    // trace_mtolayjn_3vtgc8: RICE_DIAG_YELLOW_LEAVES_001 "Ask: (1) Where on
+    // plant? …" rendered as "1. वापरण्याची गोष्ट"). Such rules still count as
+    // matched/applied (they feed hypotheses); they just cannot lead the answer.
+    const _poolForPrimary = nonSafetyResponses.length > 0 ? nonSafetyResponses : responsesForSelection;
+    const _renderable = (r: any) =>
+      !isDiagnosisRule({ rule_id: r?.rule_id, category: r?.category ?? r?.rule_category }) &&
+      !isDifferentialText(r?.action_text);
+    const _renderableCandidates = _poolForPrimary.filter(_renderable);
+    if (_renderableCandidates.length < _poolForPrimary.length) {
+      console.log(`   🧠 [BRAIN_ONLY_EXCLUDED] not eligible for primary (diagnosis/differential text): ${_poolForPrimary.filter(r => !_renderable(r)).map(r => r.rule_id).join(',')}`);
+    }
+    const candidatesForPrimary = _renderableCandidates;
+    if (candidatesForPrimary.length === 0) {
+      // every matched rule is brain-only → no farmer-renderable primary; the
+      // orchestrator's existing no-primary path (clarification / escalation) owns the turn.
+      console.warn(`   🧠 [BRAIN_ONLY_EXCLUDED] all ${_poolForPrimary.length} candidate(s) are brain-only — primary_decision stays NULL`);
+      result.primary_decision = null;
+    } else {
     
     if (nonSafetyResponses.length < responsesForSelection.length) {
       console.log(`🛡️ [SafetyGateExclusion] Excluded ${responsesForSelection.length - nonSafetyResponses.length} safety_gate rules from primary arbitration`);
@@ -1261,6 +1285,7 @@ export function evaluateRulesLayered(
       console.log(`   density_weight: ${densityWeight.toFixed(3)}`);
       console.log(`   weighted_confidence: ${weightedConfidence.toFixed(3)}`);
     }
+    } // end renderable-candidates branch (2026-09-05)
   } else {
     // PHASE 7: RULE_DATA_INTEGRITY_ERROR - Fail-fast when rules matched but
     const matchedRuleIds = result.matched_responses.map(r => r.rule_id);

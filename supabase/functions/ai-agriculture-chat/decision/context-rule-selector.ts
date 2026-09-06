@@ -3,6 +3,9 @@
  * Lane B — CONTEXT rule selector (zero-observation advisory)
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-09-06 — filterScheduleCandidatesByIntent(): Lane B schedule candidates
+ *     are kept only when their condition_code / observations map to the turn's
+ *     intent in intent_observation_mapping (fail-open when nothing maps).
  *   2026-09-03 — SAFETY/CONFLICT SEPARATION: gate result now carries
  *     `safetyBlocks` (is_safety_block=true only) and `conflictBlocks`
  *     (non-safety hard blocks). `resolveContextGateOutcome()` is the single
@@ -240,6 +243,39 @@ export async function selectContextRules(
 }
 
 /** Project a decision_rules row into the evaluator's matched_response shape. */
+/**
+ * 2026-09-06 — INTENT RELEVANCE for CONTEXT_SCHEDULE candidates (same G2 rule the
+ * block gate applies). Lane B is additive and had NO intent check, so once the
+ * advisory lane holds irrigation / harvest / weed rows for a stage, a fertiliser
+ * question would receive them as candidates. A schedule row is relevant when its
+ * condition_code or any conditions_json.observations code is mapped to the intent
+ * in intent_observation_mapping (crop or universal). If the intent maps nothing,
+ * or no candidate matches, the candidate list is returned unchanged (fail-open:
+ * an unmapped intent must not silence the lane).
+ */
+export async function filterScheduleCandidatesByIntent(
+  supabase: any, candidates: any[], intentCode: string | null | undefined, cropCode: string | null | undefined,
+  traceId?: string,
+): Promise<{ kept: any[]; dropped: any[]; applied: boolean }> {
+  const intent = String(intentCode ?? '').trim().toUpperCase();
+  const crop = norm(cropCode);
+  if (!intent || !crop || !Array.isArray(candidates) || candidates.length === 0) return { kept: candidates ?? [], dropped: [], applied: false };
+  const iom = await loadIntentObservationCodes(supabase, intent, crop);
+  if (iom.size === 0) return { kept: candidates, dropped: [], applied: false };
+  const codesOf = (r: any): string[] => {
+    const cc = norm(r?.condition_code);
+    const obs = Array.isArray(r?.conditions_json?.observations) ? r.conditions_json.observations.map(norm) : [];
+    return [cc, ...obs].filter(Boolean);
+  };
+  const kept = candidates.filter((r) => codesOf(r).some((c) => iom.has(c)));
+  if (kept.length === 0) return { kept: candidates, dropped: [], applied: false };
+  const dropped = candidates.filter((r) => !kept.includes(r));
+  if (dropped.length > 0) {
+    console.log(`[LANE_B_INTENT_RELEVANCE] trace=${traceId ?? 'n/a'} intent=${intent} kept=${kept.map((r) => r.rule_id).join(',')} dropped=${dropped.map((r) => r.rule_id).join(',')}`);
+  }
+  return { kept, dropped, applied: true };
+}
+
 export function toMatchedResponse(row: any): any {
   return {
     ...row,
