@@ -8705,6 +8705,20 @@ export type Database = {
             foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_rice_rule_certification"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rice_rule_certification_v2"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "decision_rule_qa_findings_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_rule_banned_substance_audit"
             referencedColumns: ["rule_id"]
           },
@@ -14885,6 +14899,20 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rice_rule_certification"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "fk_hrm_rule_id"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rice_rule_certification_v2"
             referencedColumns: ["rule_id"]
           },
           {
@@ -27172,6 +27200,20 @@ export type Database = {
             foreignKeyName: "rule_product_mapping_rule_id_fkey"
             columns: ["rule_id"]
             isOneToOne: false
+            referencedRelation: "v_rice_rule_certification"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rice_rule_certification_v2"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
             referencedRelation: "v_rule_banned_substance_audit"
             referencedColumns: ["rule_id"]
           },
@@ -27375,6 +27417,20 @@ export type Database = {
             columns: ["rule_id"]
             isOneToOne: false
             referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rice_rule_certification"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_source_evidence_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_rice_rule_certification_v2"
             referencedColumns: ["rule_id"]
           },
           {
@@ -39046,6 +39102,91 @@ export type Database = {
           status: string | null
         }
         Relationships: []
+      }
+      v_rice_rule_certification: {
+        Row: {
+          category: string | null
+          certification_status: string | null
+          condition_ok: boolean | null
+          dose_ok: boolean | null
+          etl_ok: boolean | null
+          expert_approved: boolean | null
+          is_active: boolean | null
+          is_farmer_servable: boolean | null
+          phi_ok: boolean | null
+          phi_status: string | null
+          policy_ok: boolean | null
+          regulatory_status: string | null
+          rule_class: string | null
+          rule_id: string | null
+          source_ok: boolean | null
+          stage_ok: boolean | null
+          why_ok: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+        ]
+      }
+      v_rice_rule_certification_v2: {
+        Row: {
+          blocking_reason: string | null
+          category: string | null
+          compile_status: string | null
+          cultivation_status: string | null
+          dose_status: string | null
+          etl_status: string | null
+          evidence_status: string | null
+          expert_approved: boolean | null
+          final_certification: string | null
+          is_active: boolean | null
+          is_farmer_servable: boolean | null
+          pest_code: string | null
+          phi_status: string | null
+          phi_status_gate: string | null
+          policy_status: string | null
+          regulatory_status: string | null
+          rule_class: string | null
+          rule_id: string | null
+          runtime_status: string | null
+          safety_status: string | null
+          stage_status: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "rule_category_master"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_category_fk"
+            columns: ["category"]
+            isOneToOne: false
+            referencedRelation: "v_rule_coverage_gaps"
+            referencedColumns: ["category"]
+          },
+          {
+            foreignKeyName: "decision_rules_pest_code_fk"
+            columns: ["pest_code"]
+            isOneToOne: false
+            referencedRelation: "pest_master"
+            referencedColumns: ["pest_code"]
+          },
+        ]
       }
       v_rule_banned_substance_audit: {
         Row: {
