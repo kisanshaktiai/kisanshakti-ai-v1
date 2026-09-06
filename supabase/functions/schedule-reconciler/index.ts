@@ -1,4 +1,16 @@
 // CHANGE LOG
+// 2026-09-05 — v1.4.0 FIELD-CONDITION LAYER RUNS FOR EVERY ACTIVE SCHEDULE.
+//   (1) The weather/NDVI adaptation (weather-adaptation.ts) now runs BEFORE the phenology and
+//       provisional-stage gates. Those gates protect stage-drift shifts, which need biological
+//       evidence; a wet field or an unusable spray window needs none. Live audit 2026-09-05:
+//       11 of 12 active schedules were skipped entirely (provisional/unresolved) and so never
+//       received a rain-based irrigation deferral. The SSOT conflict gate still fails closed for
+//       everything (a schedule whose crop identity is broken gets zero mutations of any kind).
+//   (2) New mutations: ADVANCE (dry field earlier than planned), application-window DEFER for
+//       spray/spread tasks, FLAG/UNFLAG of the scouting task under disease/stress/NDVI risk.
+//       All verdicts come from land_weather_state / land_farm_state; no thresholds live here.
+//   (3) Every invocation writes an edge_invocation_logs row (previously the only trace of a run
+//       was whatever it changed, so "ran and found nothing" and "failed" were indistinguishable).
 // 2026-08-29 — v1.3.0 WEATHER ADAPTATION: the baseline now emits ONE recurring irrigation
 //   task per stage window (generator v1.5.0) instead of a dated clone per interval. This
 //   function is the layer that turns that cadence into real events: when today's
@@ -62,6 +74,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { applyWeatherAdaptation } from "./weather-adaptation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +82,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.3.0";
+const ENGINE_VERSION = "schedule-reconciler@1.4.0";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -140,6 +153,7 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
   );
 
+  const invokedAt = Date.now();
   try {
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
@@ -165,7 +179,8 @@ serve(async (req) => {
       const startedAt = new Date().toISOString();
       const adjustments: Array<Record<string, unknown>> = [];
       let examined = 0, changed = 0, skipped = 0, floorSkipped = 0;
-      let irrigationDeferred = 0;
+      let weather: Awaited<ReturnType<typeof applyWeatherAdaptation>> | null = null;
+      const todayIso = iso(new Date());
 
       const failedTaskIds: string[] = [];
 
@@ -197,17 +212,16 @@ serve(async (req) => {
       // 1. Biological stage truth for the land (DB resolver is the stage SSOT)
       const { data: phen } = await supabase.rpc("resolve_crop_phenology", { p_land_id: sched.land_id });
       const stage = Array.isArray(phen) ? phen[0] : phen;
-      if (!stage?.stage_code) {
-        results.push({ schedule_id: sched.id, skipped: "phenology_unresolved", started_at: startedAt, completed_at: new Date().toISOString() });
-        continue;
-      }
+      const phenologyResolved = !!stage?.stage_code;
 
-      // 2. Stage window from the stage master
-      const { data: stageRow } = await supabase
-        .from("crop_stage_master")
-        .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference")
-        .eq("id", stage.stage_uuid)
-        .maybeSingle();
+      // 2. Stage window from the stage master (when the resolver produced a stage)
+      const { data: stageRow } = phenologyResolved
+        ? await supabase
+          .from("crop_stage_master")
+          .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference")
+          .eq("id", stage.stage_uuid)
+          .maybeSingle()
+        : { data: null };
 
       // 2b. SSOT gate — any conflict fails CLOSED for this whole schedule (zero mutations).
       const conflict = assessSsotConflict({
@@ -232,9 +246,9 @@ serve(async (req) => {
             schedule_crop: sched.crop_name,
             land_crop: landCropName,
             land_stage_crop: landStageCrop,
-            resolver_stage: stage.stage_code,
+            resolver_stage: stage?.stage_code ?? null,
             resolver_stage_crop: stageRow?.crop_code ?? null,
-            resolver_confidence: stage.confidence ?? null,
+            resolver_confidence: stage?.confidence ?? null,
           },
           engine_version: ENGINE_VERSION,
         });
@@ -250,17 +264,49 @@ serve(async (req) => {
         continue;
       }
 
+      // 2c. v1.4.0 FIELD-CONDITION LAYER — runs for every SSOT-coherent schedule, with or
+      //     without biological stage evidence: a wet field, an unusable spray window or a
+      //     disease-risk day need no phenology to be acted on. See weather-adaptation.ts.
+      try {
+        weather = await applyWeatherAdaptation(supabase, {
+          scheduleId: sched.id,
+          landId: sched.land_id,
+          sowingDate: sched.sowing_date ?? null,
+          stageRow: stageRow ? { stage_code: stageRow.stage_code ?? null, das_max: stageRow.das_max ?? null } : null,
+          todayIso,
+          engineVersion: ENGINE_VERSION,
+        });
+        adjustments.push(...weather.adjustments);
+        failedTaskIds.push(...weather.failedTaskIds);
+      } catch (wErr) {
+        console.error("[schedule-reconciler] weather adaptation failed (non-fatal):", wErr);
+        weather = { applied: false, skipped: `weather_adaptation_error:${(wErr as Error).message}`, adjustments: [], failedTaskIds: [], counters: { irrigation_deferred: 0, irrigation_advanced: 0, application_deferred: 0, application_window_exhausted: 0, flagged: 0, unflagged: 0 }, evidence: null };
+      }
+      const weatherSummary = weather ? { weather_applied: weather.applied, weather_skipped: weather.skipped ?? null, ...weather.counters } : {};
+
+      // Stage-drift layer needs a resolved, evidence-backed stage.
+      if (!phenologyResolved) {
+        if (adjustments.length) await supabase.from("schedule_adjustments").insert(adjustments);
+        if (failedTaskIds.length) anyFailure = true;
+        results.push({ schedule_id: sched.id, success: failedTaskIds.length === 0, skipped: "phenology_unresolved", tasks_examined: 0, tasks_changed: 0, ...weatherSummary, tasks_failed: failedTaskIds.length, started_at: startedAt, completed_at: new Date().toISOString() });
+        continue;
+      }
+
       // v1.2.1 SOURCE GATE — calendar-only stages carry no biological evidence and must not
       // move a farmer's tasks (the DB resolver labels them provisional).
       if (PROVISIONAL_SOURCES.has(String(stage.source ?? ""))) {
+        if (adjustments.length) await supabase.from("schedule_adjustments").insert(adjustments);
+        if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
-          success: true,
+          success: failedTaskIds.length === 0,
           skipped: "provisional_stage_source",
           stage: stage.stage_code,
           stage_source: stage.source ?? null,
           tasks_examined: 0,
           tasks_changed: 0,
+          ...weatherSummary,
+          tasks_failed: failedTaskIds.length,
           started_at: startedAt,
           completed_at: new Date().toISOString(),
         });
@@ -272,73 +318,6 @@ serve(async (req) => {
         String(stageRow?.das_reference ?? "sowing").toLowerCase() === "transplanting"
           ? (stage.current_dat ?? null)
           : (stage.current_das ?? null);
-
-      // 2c. v1.3.0 WEATHER ADAPTATION — the static baseline plans an irrigation cadence;
-      //     the field decides the real events. When today's derived land water state says
-      //     irrigation is NOT needed (rain covered the deficit), a due irrigation task is
-      //     deferred by its own DB-declared cadence instead of nagging the farmer to
-      //     irrigate a wet field. All thresholds come from land_weather_state — no
-      //     agronomic constants here. Bounded: only tasks due today or tomorrow.
-      const { data: waterState } = await supabase
-        .from("land_weather_state")
-        .select("metric_date, irrigation_needed, irrigation_urgency, water_balance_status, effective_rainfall_mm, water_deficit_mm")
-        .eq("land_id", sched.land_id)
-        .order("metric_date", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const todayIso = iso(new Date());
-      const stateIsCurrent = !!waterState?.metric_date && String(waterState.metric_date).slice(0, 10) === todayIso;
-
-      if (stateIsCurrent && waterState?.irrigation_needed === false) {
-        const horizon = iso(new Date(Date.now() + 86400000));
-        const { data: dueIrrigation } = await supabase
-          .from("schedule_tasks")
-          .select("id, task_date, resources, is_pinned, original_date")
-          .eq("schedule_id", sched.id)
-          .eq("status", "pending")
-          .eq("task_type", "irrigation")
-          .lte("task_date", horizon);
-
-        for (const task of dueIrrigation || []) {
-          if (task.is_pinned) continue;
-          const rec = (task.resources as Record<string, any> | null)?.recurrence;
-          const step = Number(rec?.interval_days);
-          if (!Number.isFinite(step) || step < 1) continue; // no declared cadence → never guess
-          const next = iso(new Date(new Date(task.task_date as string).getTime() + step * 86400000));
-          const windowEnd = Number(rec?.window_end);
-          const { error: defErr } = await supabase
-            .from("schedule_tasks")
-            .update({
-              task_date: next,
-              projected_date: next,
-              original_date: (task as any).original_date ?? task.task_date,
-              auto_rescheduled: true,
-              adjustment_reason: "weather_water_sufficient",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", task.id);
-          if (defErr) { failedTaskIds.push(task.id as string); continue; }
-          irrigationDeferred += 1;
-          adjustments.push({
-            schedule_id: sched.id,
-            task_id: task.id,
-            change_type: "DEFER",
-            old_value: { task_date: task.task_date },
-            new_value: { task_date: next },
-            reason: "Soil water balance already sufficient — irrigation deferred by the declared cadence",
-            evidence: {
-              metric_date: waterState.metric_date,
-              water_balance_status: waterState.water_balance_status,
-              effective_rainfall_mm: waterState.effective_rainfall_mm,
-              water_deficit_mm: waterState.water_deficit_mm,
-              interval_days: step,
-              window_end: Number.isFinite(windowEnd) ? windowEnd : null,
-            },
-            engine_version: ENGINE_VERSION,
-          });
-        }
-      }
 
       // 3. Drift = how far biology is from the calendar assumption. Position within the
       //    observed stage's window is NOT drift (see computeStageDrift).
@@ -359,7 +338,7 @@ serve(async (req) => {
           drift_days: drift,
           tasks_examined: 0,
           tasks_changed: 0,
-          irrigation_deferred: irrigationDeferred,
+          ...weatherSummary,
           tasks_failed: failedTaskIds.length,
           started_at: startedAt,
           completed_at: new Date().toISOString(),
@@ -446,7 +425,7 @@ serve(async (req) => {
         tasks_changed: changed,
         tasks_skipped: skipped,
         tasks_skipped_before_sowing: floorSkipped,
-        irrigation_deferred: irrigationDeferred,
+        ...weatherSummary,
         tasks_failed: failedTaskIds.length,
         failed_task_ids: failedTaskIds,
         started_at: startedAt,
@@ -455,13 +434,21 @@ serve(async (req) => {
     }
 
     // A completed invocation is NOT successful reconciliation: success reflects outcomes.
-    return json({
+    const summary = {
       success: !anyConflict && !anyFailure,
       engine: ENGINE_VERSION,
       schedules: results.length,
       conflicts: results.filter((r) => r.conflict).length,
       results,
-    });
+    };
+    try {
+      await supabase.from("edge_invocation_logs").insert({
+        function_name: "schedule-reconciler",
+        user_id: null,
+        payload: { ...summary, results: results.map((r) => ({ ...r })), source: body?.source ?? null, execution_time_ms: Date.now() - invokedAt },
+      });
+    } catch (logErr) { console.warn("[schedule-reconciler] edge_invocation_logs insert failed:", logErr); }
+    return json(summary);
   } catch (e) {
     console.error("❌ [schedule-reconciler]", e);
     return json({ success: false, error: (e as Error).message }, 500);

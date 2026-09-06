@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-09-05 — Completeness fixes (all DB-driven, no agronomy constants):
+//   (1) getFertilizerPlan prefers the row whose cultivation_context matches the farmer's method
+//       or stage clock; a context mismatch is recorded as a named gap, never hidden.
+//   (2) getCropClockOrigins exposes the crop's clock-origin names (crop_stage_master
+//       clock_reference/das_reference) so a split anchored to another method's establishment
+//       event can be re-anchored to THIS graph's establishment stage by the generator.
+//   (3) getStraightFertilizerProducts reads master_products.nutrient_analysis for single-nutrient
+//       fertilizers so a nutrient dose can be shown as an equivalent product quantity (pure
+//       arithmetic on catalog percentages).
+//   (4) getLaborRate re-wired to the real labor_rates columns (state, operation_type, daily_wage).
 // 2026-09-04 — P0: baseline CONTEXT_SCHEDULE rules now use the same safety/servability
 //   contract as the Harness evidence layer. Unsafe/non-farmer-servable rules must never
 //   become required baseline candidates. This is a governance filter only; no agronomy is
@@ -79,12 +89,25 @@ export async function getSeedRate(
   };
 }
 
-export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance; }
-export async function getFertilizerPlan(supabase:SupabaseClient,cropCode:string,regionCode:string|null,fertilityClass:string|null):Promise<FertilizerPlan|null>{
-  const {data}=await supabase.from("fertilizer_recommendation_master").select("id, crop_code, region_code, soil_fertility_class, n_kg_ha, p2o5_kg_ha, k2o_kg_ha, split_schedule, source, authority, confidence").ilike("crop_code",cropCode);const rows=data||[];if(!rows.length)return null;
-  const score=(r:Record<string,unknown>)=>(regionCode&&String(r.region_code??"").toLowerCase()===regionCode.toLowerCase()?2:0)+(fertilityClass&&String(r.soil_fertility_class??"").toLowerCase()===fertilityClass.toLowerCase()?2:0)+(r.region_code==null?1:0);const best=[...rows].sort((a,b)=>score(b)-score(a))[0];const gaps:string[]=[];let splitParsed:unknown=best.split_schedule;
+export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance;cultivation_context:string|null; }
+export async function getFertilizerPlan(supabase:SupabaseClient,cropCode:string,regionCode:string|null,fertilityClass:string|null,methodTokens:string[]=[]):Promise<FertilizerPlan|null>{
+  const {data}=await supabase.from("fertilizer_recommendation_master").select("id, crop_code, region_code, soil_fertility_class, n_kg_ha, p2o5_kg_ha, k2o_kg_ha, split_schedule, source, authority, confidence, cultivation_context").ilike("crop_code",cropCode);const rows=data||[];if(!rows.length)return null;
+  const tokens=[...new Set(methodTokens.filter(Boolean).map(t=>String(t).toLowerCase()))];const contextMatches=(r:Record<string,unknown>)=>{const c=String(r.cultivation_context??"").toLowerCase();return !!c&&tokens.some(t=>c.includes(t));};
+  const score=(r:Record<string,unknown>)=>(contextMatches(r)?4:0)+(regionCode&&String(r.region_code??"").toLowerCase()===regionCode.toLowerCase()?2:0)+(fertilityClass&&String(r.soil_fertility_class??"").toLowerCase()===fertilityClass.toLowerCase()?2:0)+(r.region_code==null?1:0);const best=[...rows].sort((a,b)=>score(b)-score(a))[0];const gaps:string[]=[];let splitParsed:unknown=best.split_schedule;
+  if(tokens.length&&best.cultivation_context&&!contextMatches(best))gaps.push(`fertilizer_context_mismatch:${String(best.cultivation_context)}`);
   if(typeof splitParsed==="string"){const trimmed=splitParsed.trim();if(!trimmed)splitParsed=null;else{try{splitParsed=JSON.parse(trimmed);}catch{splitParsed=null;gaps.push("fertilizer_split_schedule_unparseable");}}}
-  const splits=Array.isArray(splitParsed)?splitParsed:splitParsed&&typeof splitParsed==="object"?Object.values(splitParsed):[];return{n_kg_ha:best.n_kg_ha!=null?Number(best.n_kg_ha):null,p2o5_kg_ha:best.p2o5_kg_ha!=null?Number(best.p2o5_kg_ha):null,k2o_kg_ha:best.k2o_kg_ha!=null?Number(best.k2o_kg_ha):null,splits:splits as Array<Record<string,unknown>>,gaps,provenance:{table:"fertilizer_recommendation_master",row_id:best.id,source:best.source??null,authority:best.authority??null,confidence:best.confidence!=null?Number(best.confidence):null}};
+  const splits=Array.isArray(splitParsed)?splitParsed:splitParsed&&typeof splitParsed==="object"?Object.values(splitParsed):[];return{n_kg_ha:best.n_kg_ha!=null?Number(best.n_kg_ha):null,p2o5_kg_ha:best.p2o5_kg_ha!=null?Number(best.p2o5_kg_ha):null,k2o_kg_ha:best.k2o_kg_ha!=null?Number(best.k2o_kg_ha):null,splits:splits as Array<Record<string,unknown>>,gaps,provenance:{table:"fertilizer_recommendation_master",row_id:best.id,source:best.source??null,authority:best.authority??null,confidence:best.confidence!=null?Number(best.confidence):null},cultivation_context:best.cultivation_context!=null?String(best.cultivation_context):null};
+}
+
+/** Clock-origin names used by this crop's stage graphs (e.g. the values of clock_reference/das_reference). DB-derived; no crop-specific list. */
+export async function getCropClockOrigins(supabase:SupabaseClient,cropCode:string):Promise<string[]>{const {data}=await supabase.from("crop_stage_master").select("clock_reference, das_reference").ilike("crop_code",cropCode).eq("is_active",true).limit(1000);const out=new Set<string>();for(const r of data||[]){for(const v of [r.clock_reference,r.das_reference]){const s=String(v??"").trim().toLowerCase();if(s)out.add(s);}}return [...out];}
+
+export interface StraightFertilizerProduct { id:string;name:string;nutrient:string;percent:number;organicCertified:boolean; }
+/** Single-nutrient fertilizer products from the catalog (exactly one non-zero key in nutrient_analysis). Used only to express a DB-derived nutrient dose as a product quantity. */
+export async function getStraightFertilizerProducts(supabase:SupabaseClient):Promise<StraightFertilizerProduct[]>{
+  const {data}=await supabase.from("master_products").select("id, name, nutrient_analysis, organic_certified").eq("product_type","fertilizer").eq("ai_recommendable",true).eq("status","active").limit(500);const out:StraightFertilizerProduct[]=[];
+  for(const r of data||[]){const na=r.nutrient_analysis&&typeof r.nutrient_analysis==="object"?r.nutrient_analysis as Record<string,unknown>:null;if(!na)continue;const nonZero=Object.entries(na).filter(([,v])=>v!=null&&Number.isFinite(Number(v))&&Number(v)>0);if(nonZero.length!==1)continue;const [key,val]=nonZero[0];const pct=Number(val);if(!(pct>0&&pct<=100))continue;out.push({id:String(r.id),name:String(r.name),nutrient:String(key).toUpperCase(),percent:pct,organicCertified:r.organic_certified===true});}
+  return out.sort((a,b)=>b.percent-a.percent||a.name.localeCompare(b.name));
 }
 
 export interface IrrigationGuideline { stageId:string|null;growthStage:string|null;dasStart:number|null;dasEnd:number|null;intervalDays:number|null;waterMm:number|null;notes:string|null;criticalMoisturePercent:number|null;provenance:Provenance; }
@@ -114,4 +137,4 @@ export async function getVarietyDuration(supabase:SupabaseClient,varietyId:strin
   if(!varietyId)return null;for(const method of [...new Set(methods.filter(Boolean))]){const {data}=await supabase.from("variety_cultivation_agronomy").select("id, duration_days_min, duration_days_max, source, evidence_tier").eq("variety_id",varietyId).eq("cultivation_method",method).eq("is_active",true).maybeSingle();if(data)return{maxDays:data.duration_days_max!=null?Number(data.duration_days_max):null,provenance:{table:"variety_cultivation_agronomy",row_id:data.id,source:data.source??null}};}return null;}
 
 export async function getBannedChemicals(supabase:SupabaseClient):Promise<Set<string>>{const {data}=await supabase.from("chemical_regulatory_status").select("chemical_name, status").limit(1000);const out=new Set<string>();for(const r of data||[]){if(String(r.status??"").toLowerCase()!=="approved")out.add(String(r.chemical_name??"").toLowerCase());}return out;}
-export async function getLaborRate(supabase:SupabaseClient,state:string|null,district:string|null):Promise<number|null>{if(!state&&!district)return null;const {data}=await supabase.from("labor_rates").select("daily_rate").eq("state",state).eq("district",district).maybeSingle();return data?.daily_rate!=null?Number(data.daily_rate):null;}
+export async function getLaborRate(supabase:SupabaseClient,state:string|null,operationType:string|null):Promise<number|null>{if(!state)return null;let q=supabase.from("labor_rates").select("daily_wage").ilike("state",state).eq("is_active",true).order("effective_date",{ascending:false}).limit(1);if(operationType)q=q.eq("operation_type",operationType);const {data}=await q;const row=(data||[])[0];return row?.daily_wage!=null?Number(row.daily_wage):null;}

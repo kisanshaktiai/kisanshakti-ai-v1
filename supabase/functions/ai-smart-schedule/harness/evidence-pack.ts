@@ -1,3 +1,17 @@
+// CHANGE LOG
+// 2026-09-05 — Completeness fixes (verified on live schedule 6d95e1a4, 41 candidates → 0 materialized):
+//   (1) A treatment rule is no longer dropped from the pack just because a baseline SCOUTING task
+//       lists its rule_id as a threshold reference. 9/9 pest, 9/12 disease and 1/3 weed dosed
+//       treatment rules for the audited schedule were excluded that way; the farmer saw the ETL text
+//       and never the treatment. Only rules already materialized as a non-monitoring baseline task
+//       are excluded now.
+//   (2) Farmer-facing instructions for a rule candidate are composed from the rule's own DB fields
+//       (condition, ETL, active ingredient, dose/acre, method, PHI) — the technical_details list is
+//       unchanged; nothing is derived.
+//   (3) Micronutrient guideline values of 0 are NOT_REQUIRED (no candidate, no gap); NULL is
+//       INSUFFICIENT_DATA; a positive value stays evidence-only exactly as before.
+//   (4) Every audited domain with no candidate for this crop/method/region is written to gaps as
+//       NO_AUTHORITATIVE_RULE:<DOMAIN> so the schedule states what it could not evaluate.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { toDas, computeTransplantOffset, type BaselineTask } from "../generator/baseline-generator.ts";
@@ -155,6 +169,21 @@ function policyAllows(rule: Record<string, unknown>, domain: CandidateDomain, in
   return true;
 }
 
+/** Farmer-readable steps composed ONLY from the rule row's own fields. Narration translates; nothing is derived. */
+function farmerInstructions(rule: Record<string, unknown>, status: CandidateStatus): string[] {
+  const out: string[] = [];
+  const condition = String(rule.condition_code ?? "").trim();
+  const etl = String(rule.etl_threshold ?? "").trim();
+  if (status === "CONDITIONAL") out.push(`Only if: ${etl || condition || "the condition described by the rule is confirmed in the field"}.`);
+  else if (status === "MONITOR") out.push(`Monitor for: ${etl || condition || "the condition described by the rule"}.`);
+  const what = [rule.active_ingredient, rule.treatment_type].map((v) => String(v ?? "").trim()).filter(Boolean).join(" — ");
+  const dose = String(rule.dosage_per_acre ?? "").trim();
+  const method = String(rule.application_method ?? "").trim();
+  if (what || dose || method) out.push(`Apply: ${[what, dose ? `${dose} per acre` : "", method ? `by ${method}` : ""].filter(Boolean).join(", ")}.`);
+  if (rule.phi_days != null && String(rule.phi_days).trim() !== "") out.push(`Wait ${rule.phi_days} days after this application before harvest.`);
+  return out;
+}
+
 function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, domain: CandidateDomain, status: CandidateStatus): BaselineTask {
   const ruleId = String(rule.rule_id);
   const condition = String(rule.condition_code ?? "").trim();
@@ -191,7 +220,7 @@ function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, d
     rule_ids: [ruleId],
     confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null,
     source_refs: [{ table: "decision_rules", row_id: ruleId, source: rule.scientific_source ?? null, authority: rule.icar_package ?? rule.university_source ?? null, confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null }],
-    instructions: [],
+    instructions: farmerInstructions(rule, status),
     precautions: Array.isArray(rule.contraindications) ? rule.contraindications.map(String).filter(Boolean) : [],
     technical_details: technical,
     resources: {
@@ -214,7 +243,9 @@ function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, d
 export async function buildAgronomicEvidencePack(supabase: SupabaseClient, inputs: ResolvedInputs, stages: StageRow[], existingTasks: BaselineTask[]): Promise<AgronomicEvidencePack> {
   const gaps: string[] = [];
   const candidates: HarnessCandidate[] = [];
-  const existingRuleIds = new Set(existingTasks.flatMap((t) => t.rule_ids));
+  // Exclude only rules that already became a baseline ACTION task. Scouting tasks reference
+  // OBSERVATION rule_ids as threshold text; that must not hide the treatment those rules carry.
+  const existingRuleIds = new Set(existingTasks.filter((t) => t.task_type !== "monitoring").flatMap((t) => t.rule_ids));
   const transplantOffset = computeTransplantOffset(stages, inputs.sowingDate, inputs.transplantDate);
 
   const ruleQuery = await supabase.from("decision_rules")
@@ -284,7 +315,10 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
   for (const row of ((guidelineQuery.data || []) as Array<Record<string, unknown>>)) {
     if (row.stage_master_id && !stageIds.has(String(row.stage_master_id))) continue;
     if (row.variety_id && inputs.varietyId && String(row.variety_id) !== String(inputs.varietyId)) continue;
-    const micro = [["S", row.sulphur_optimal], ["Zn", row.zinc_optimal], ["Fe", row.iron_optimal]].filter(([,v]) => v != null && Number.isFinite(Number(v)));
+    const microAll = [["S", row.sulphur_optimal], ["Zn", row.zinc_optimal], ["Fe", row.iron_optimal]] as Array<[string, unknown]>;
+    for (const [element, v] of microAll) if (v == null) gaps.push(`micronutrient_guideline_missing:${element}:${String(row.growth_stage ?? row.id)}`);
+    // 0 = the guideline records no requirement at this stage (NOT_REQUIRED); only positive values are evidence.
+    const micro = microAll.filter(([,v]) => v != null && Number.isFinite(Number(v)) && Number(v) > 0);
     if (!micro.length) continue;
     const stage = row.stage_master_id ? stages.find((s) => s.id === String(row.stage_master_id)) : null;
     if (!stage) continue;
@@ -317,5 +351,13 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
     s.candidates++; if (c.materializable) s.actionable++; else s.evidence_only++; domainSummary[c.domain]=s;
   }
   if (capped) gaps.push("evidence_pack_candidate_cap_reached");
+  // Domain completeness: state explicitly which audited domains had no authoritative candidate.
+  const audited: CandidateDomain[] = ["NUTRIENT", "MICRONUTRIENT", "ORGANIC_INPUT", "WEED", "PEST", "DISEASE", "PGR", "SEED_TREATMENT"];
+  const baselineTypes = new Set(existingTasks.map((t) => t.task_type));
+  for (const d of audited) {
+    const s = domainSummary[d];
+    if (!s && !baselineTypes.has(taskTypeForDomain(d))) gaps.push(`NO_AUTHORITATIVE_RULE:${d}`);
+    else if (s && s.actionable === 0 && d === "MICRONUTRIENT") gaps.push("micronutrient_dose_not_authoritative");
+  }
   return {candidates,domain_summary:domainSummary,gaps};
 }

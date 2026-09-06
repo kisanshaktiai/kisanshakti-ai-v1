@@ -1,4 +1,10 @@
 // CHANGE LOG
+// 2026-09-05 — Completeness + time plan. (1) The Harness planner is given a bounded budget
+//   (HARNESS_MAX_MS) derived from the single request deadline so it can no longer consume the
+//   narration slice — on the audited schedules it did, every run fell to deterministic_fallback
+//   and narration was skipped. (2) Evidence-pack gaps (NO_AUTHORITATIVE_RULE:<DOMAIN>, micronutrient
+//   status, context mismatches) are merged into the persisted gap list so the schedule states what
+//   it could not evaluate. Narration fail-closed semantics below are unchanged.
 // 2026-09-05 15:45 UTC — Reserve narration time and return retryable pending state on timeout.
 // 2026-09-05 — Farmer-language root fix: non-English schedules now fail closed when
 //   narration is unavailable/partial. A schedule tagged Marathi must never persist
@@ -91,6 +97,14 @@ serve(async (req) => {
     if (baseline.validation && baseline.validation.violations.length) return json({ error: "Generated schedule failed structural validation and was not persisted", code: "SCHEDULE_VALIDATION_FAILED", violations: baseline.validation.violations, warnings: baseline.validation.warnings, gaps: baseline.gaps }, 422);
     if (baseline.validation && baseline.validation.warnings.length) for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
 
+    // ── Time plan: one deadline, explicit slices ─────────────────────────────
+    const HARD_DEADLINE_MS = 110_000;
+    const PERSIST_RESERVE_MS = 12_000;
+    const NARRATION_MIN_MS = 45_000;
+    const HARNESS_MAX_MS = 40_000;
+    const harnessBudgetMs = Math.max(0, Math.min(HARNESS_MAX_MS, HARD_DEADLINE_MS - (Date.now() - startTime) - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
+    const timePlan: Record<string, number | null> = { hard_deadline_ms: HARD_DEADLINE_MS, harness_budget_ms: harnessBudgetMs, narration_budget_ms: null };
+
     let harnessTrace: Record<string, unknown> | null = null;
     try {
       const harnessFlag = await isFlagEnabled(supabase, "crop_schedule_harness_v2", { tenantId, farmerId });
@@ -101,7 +115,8 @@ serve(async (req) => {
           const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
           return buildAgronomicEvidencePack(supabase, inputs, stages, baseline.tasks);
         })();
-        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack });
+        for (const g of evidencePack.gaps) if (!baseline.gaps.includes(g)) baseline.gaps.push(g);
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;
@@ -123,8 +138,8 @@ serve(async (req) => {
 
     const sanitized = baseline.tasks.map((t) => sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details }));
     baseline.tasks.forEach((t, i) => { t.task_name = sanitized[i].task_name || t.task_name; t.task_description = sanitized[i].task_description; t.instructions = sanitized[i].instructions; if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`); });
-    const HARD_DEADLINE_MS = 110_000;
-    const narrationBudgetMs = Math.max(20_000, Math.min(60_000, HARD_DEADLINE_MS - (Date.now() - startTime) - 12_000));
+    const narrationBudgetMs = Math.max(20_000, Math.min(60_000, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS));
+    timePlan.narration_budget_ms = narrationBudgetMs;
     const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);
     const narrated = narration.tasks;
     if (!narration.narrated) {
@@ -195,7 +210,7 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { generator_version: GENERATOR_VERSION, resolved_inputs: inputs, harness: harnessTrace, narration: { requested_language: language, persisted_language: language, applied: narration.narrated, narrated_count: narration.narratedCount, total_count: narration.totalCount, reason: narration.reason ?? null }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi },
+      generation_params: { generator_version: GENERATOR_VERSION, resolved_inputs: inputs, harness: harnessTrace, narration: { requested_language: language, persisted_language: language, applied: narration.narrated, narrated_count: narration.narratedCount, total_count: narration.totalCount, reason: narration.reason ?? null }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
       metadata: { coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };

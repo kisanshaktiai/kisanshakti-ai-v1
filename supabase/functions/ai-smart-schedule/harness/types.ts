@@ -35,6 +35,8 @@ export interface ScheduleHarnessContext {
 export interface PlanItem { candidate_id: string; sequence_order: number; status?: CandidateStatus; reason?: string; }
 export interface PlanIntent {
   schema_version: string; status: "READY" | "NEEDS_DATA" | "NO_VALID_PLAN"; sequence: PlanItem[]; uncertainties: string[]; reasoning_summary: string;
+  /** Optional planner self-check of completeness per agronomic domain (v3 extension; ignored by the validator). */
+  domain_coverage?: Record<string, string>;
 }
 export interface HarnessResult { applied: boolean; status: HarnessStatus; plan: PlanIntent | null; selectedIds: string[]; trace: Record<string, unknown>; }
 export interface HarnessExecution { tasks: BaselineTask[]; result: HarnessResult; }

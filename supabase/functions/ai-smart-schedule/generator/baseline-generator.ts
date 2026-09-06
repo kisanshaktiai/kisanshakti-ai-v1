@@ -1,4 +1,19 @@
 // CHANGE LOG
+// 2026-09-05 — v1.6.0 fertilizer completeness (verified against live schedule 6d95e1a4: the basal
+//   split — 50% N, 100% P2O5, 50% K2O — was silently skipped on direct-seeded rice because the
+//   only fertilizer row is written for a transplanted context and anchors basal to the
+//   'transplanting' event, which does not exist in the direct-seeded stage graph):
+//   (1) the fertilizer row is chosen with the farmer's method/stage clock; a context mismatch is
+//       recorded as fertilizer_context_mismatch:<context>.
+//   (2) a split anchored to a stage that is a CLOCK ORIGIN of this crop (crop_stage_master
+//       clock_reference/das_reference — e.g. the establishment event of another method) but is
+//       absent from the selected graph is re-anchored to the selected graph's establishment stage
+//       (the stage at day 0 of the schedule clock) and recorded as
+//       fertilizer_split_stage_remapped_to_establishment:<token>-><stage>. Any other unresolved
+//       split is still skipped with fertilizer_split_without_timing_skipped. No dose changes.
+//   (3) nutrient tasks name the basis the DB row uses (N, P2O5, K2O) and carry equivalent
+//       single-nutrient product quantities computed from master_products.nutrient_analysis
+//       (dose ÷ percentage) — catalog arithmetic, not a recommendation of a product.
 // 2026-09-01 — v1.5.1 farmer-semantic projection fix: irrigation guideline.notes is a
 // generic stage note and is NOT safe to project into an irrigation card. Only
 // irrigation-specific DB fields are farmer-facing; the raw note remains unprojected.
@@ -80,11 +95,13 @@ import {
   getVarietyDuration,
   getBannedChemicals,
   getLaborRate,
+  getCropClockOrigins,
+  getStraightFertilizerProducts,
   type Provenance,
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.5.1";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.6.0";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -440,8 +457,17 @@ export async function generateBaseline(
 
 
   // ── Fertilizer split tasks ─────────────────────────────────────────────────
-  const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass);
+  const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass, [inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean) as string[]);
   coverage.fertilizer = !!fert && fert.splits.length > 0;
+  // Clock-origin names of this crop (DB) and the establishment stage of THIS graph: the stage at
+  // day 0 of the schedule clock. Used only to re-anchor a split written against another method's
+  // establishment event; every such re-anchor is recorded as a gap.
+  const clockOrigins = fert ? new Set(await getCropClockOrigins(supabase, inputs.cropCode)) : new Set<string>();
+  const graphClock = String(stages.find((s) => toDas(s, s.das_min, transplantOffset) === 0)?.clock_reference ?? "").toLowerCase();
+  const establishmentStage = stages.find((s) => toDas(s, s.das_min, transplantOffset) === 0) ?? null;
+  const straightProducts = fert ? await getStraightFertilizerProducts(supabase) : [];
+  const policyKind = String(inputs.farmingPolicy ?? "").toLowerCase();
+  const organicOnly = policyKind === "organic" || policyKind === "organic_only" || policyKind === "natural";
   let nKg: number | null = null, pKg: number | null = null, kKg: number | null = null;
   if (!fert) {
     gaps.push("fertilizer_recommendation_master_no_row");
@@ -469,6 +495,16 @@ export async function generateBaseline(
       } catch {
         gaps.push("fertilizer_split_malformed");
         continue;
+      }
+      if (das == null) {
+        // Re-anchor ONLY when the split names a clock origin of this crop (e.g. the establishment
+        // event of another cultivation method) that is absent from the selected graph.
+        const token = String(split.stage ?? split.stage_code ?? split.growth_stage ?? split.timing ?? "").trim().toLowerCase();
+        if (token && clockOrigins.has(token) && token !== graphClock && establishmentStage) {
+          stage = establishmentStage;
+          das = toDas(stage, stage.das_min, transplantOffset);
+          gaps.push(`fertilizer_split_stage_remapped_to_establishment:${token}->${stage.stage_code || stage.growth_stage}`);
+        }
       }
       if (das == null) {
         gaps.push("fertilizer_split_without_timing_skipped");
@@ -523,8 +559,17 @@ export async function generateBaseline(
       // 2026-09-03: the card used to read "Fertilizer application (N)" with an EMPTY
       // description. Nutrient letters are spelled out and the farmer line is composed
       // from the SAME DB numbers already computed above (no new agronomy).
-      const nutrientLabel = nutrient === "N" ? "Nitrogen" : nutrient === "P" ? "Phosphorus" : nutrient === "K" ? "Potassium" : nutrient;
+      // The DB row is on N / P2O5 / K2O basis; say so, and express the dose as equivalent
+      // single-nutrient product quantities from the catalog (dose ÷ nutrient %).
+      const basisKey = nutrient === "N" ? "N" : nutrient === "P" ? "P2O5" : nutrient === "K" ? "K2O" : nutrient;
+      const nutrientLabel = nutrient === "N" ? "Nitrogen (N)" : nutrient === "P" ? "Phosphorus (P2O5 basis)" : nutrient === "K" ? "Potassium (K2O basis)" : nutrient;
       const splitNote = String(split.note ?? split.description ?? "").trim();
+      const equivalents = straightProducts
+        .filter((p) => p.nutrient === basisKey && (!organicOnly || p.organicCertified))
+        .slice(0, 3)
+        .map((p) => ({ product_id: p.id, product_name: p.name, nutrient: basisKey, percent: p.percent, product_kg: Number((qty / (p.percent / 100)).toFixed(2)) }));
+      const equivalentLines = equivalents.map((e) => `Equivalent product quantity: ${e.product_kg} kg ${e.product_name} (${e.percent}% ${basisKey})`);
+      if (!equivalents.length) gaps.push(`fertilizer_product_equivalent_unavailable:${basisKey}`);
       tasks.push({
         task_name: `Apply ${nutrientLabel} fertilizer`,
         task_type: "nutrition",
@@ -546,10 +591,10 @@ export async function generateBaseline(
 
         rule_ids: [],
         confidence: fert.provenance.confidence ?? null,
-        source_refs: [fert.provenance],
-        instructions: [],
+        source_refs: [fert.provenance, ...equivalents.map((e) => ({ table: "master_products", row_id: e.product_id, source: null } as Provenance))],
+        instructions: [`Apply ${qty} kg ${nutrientLabel} on this field for this application.`, ...equivalentLines],
         precautions: [],
-        resources: { requirement_semantics: "BASELINE" },
+        resources: { requirement_semantics: "BASELINE", nutrient_basis: basisKey, product_equivalents: equivalents, fertilizer_context: fert.cultivation_context },
       });
     }
   }

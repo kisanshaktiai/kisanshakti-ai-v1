@@ -1,3 +1,20 @@
+// CHANGE LOG
+// 2026-09-05 — Deterministic fallback completeness. The fallback used to retain ONLY required
+//   baseline candidates (canonicalSequence), so every evidence-pack candidate — dosed pest/disease/
+//   weed treatments, nutrition corrections, organic inputs — was discarded whenever the planner did
+//   not complete (verified: 41 candidates → 0 materialized on live schedules). The fallback now also
+//   retains candidates whose classification is already deterministic in the DB: every CONDITIONAL
+//   candidate (a trigger, never a forced application) and every SCHEDULED candidate whose task type
+//   the baseline does not already cover. Required baseline candidates keep first priority; nothing
+//   is invented; the LLM is not involved in this path.
+// 2026-09-05 — Time-budgeted Harness. applyScheduleHarness accepts `budgetMs`; attempts stop as
+//   soon as the remaining time cannot fit a useful planner call, and the deadline is passed
+//   down to requestPlan so a slow provider can never consume the narration budget that index.ts
+//   reserves for the farmer. The plan's per-candidate status and reason are now materialized
+//   onto the task (`resources.harness`) so every persisted task carries the planner's
+//   classification and the evidence-citing reason behind it. Fallback semantics unchanged:
+//   required baseline candidates are always retained; nothing invents agronomy.
+
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { BaselineTask } from "../generator/baseline-generator.ts";
 import type { AgronomicEvidencePack } from "./evidence-pack.ts";
@@ -10,6 +27,7 @@ import {
   type HarnessContextSnapshot,
   type HarnessExecution,
   type PlanIntent,
+  type PlanItem,
   type ScheduleHarnessContext,
 } from "./types.ts";
 import { buildCandidateGraph, canonicalSequence } from "./candidate-graph.ts";
@@ -17,19 +35,43 @@ import { requestPlan } from "./llm-v3.ts";
 import { validatePlanIntent } from "./validator.ts";
 
 const MAX_ATTEMPTS = 2;
+const DEFAULT_BUDGET_MS = 40_000;
+const MIN_ATTEMPT_MS = 8_000;
 
-const fallback = (c: ScheduleHarnessContext): PlanIntent => ({
-  schema_version: "schedule_plan_intent_v3",
-  status: "READY",
-  sequence: canonicalSequence(c.graph).map((candidate_id, i) => ({
-    candidate_id,
-    sequence_order: i + 1,
-    status: "SCHEDULED" as const,
-    reason: "Deterministic fallback retained the database-backed baseline.",
-  })),
-  uncertainties: c.gaps,
-  reasoning_summary: "Deterministic fallback preserved the required database-backed baseline; optional evidence candidates were not auto-applied.",
-});
+const fallback = (c: ScheduleHarnessContext, baselineTasks: BaselineTask[]): PlanIntent => {
+  const requiredOrder = canonicalSequence(c.graph);
+  const requiredRank = new Map(requiredOrder.map((id, i) => [id, i]));
+  const baselineTypes = new Set(baselineTasks.map((t) => t.task_type));
+  const optional = c.graph.nodes.filter((n) =>
+    !n.required && n.materializable &&
+    (n.default_status === "CONDITIONAL" || (n.default_status === "SCHEDULED" && !baselineTypes.has(n.task_type)))
+  );
+  const nodes = [
+    ...requiredOrder.map((id) => c.graph.nodes.find((n) => n.id === id)!).filter(Boolean),
+    ...optional,
+  ].sort((a, b) =>
+    a.days_from_sowing - b.days_from_sowing ||
+    (requiredRank.has(a.id) ? 0 : 1) - (requiredRank.has(b.id) ? 0 : 1) ||
+    a.stage_order - b.stage_order ||
+    a.id.localeCompare(b.id)
+  );
+  return {
+    schema_version: "schedule_plan_intent_v3",
+    status: "READY",
+    sequence: nodes.map((n, i) => ({
+      candidate_id: n.id,
+      sequence_order: i + 1,
+      status: n.required ? ("SCHEDULED" as const) : (n.default_status as PlanItem["status"]),
+      reason: n.required
+        ? "Deterministic fallback retained the database-backed baseline."
+        : n.default_status === "CONDITIONAL"
+          ? "Deterministic fallback retained a DB-classified conditional treatment; it applies only when its trigger is met."
+          : "Deterministic fallback retained a DB-scheduled candidate for a domain the baseline does not cover.",
+    })),
+    uncertainties: c.gaps,
+    reasoning_summary: "Deterministic fallback preserved the required database-backed baseline; optional evidence candidates were not auto-applied by a model — only DB-classified CONDITIONAL candidates and SCHEDULED candidates for uncovered domains were retained.",
+  };
+};
 
 function contextSnapshot(inputs: ResolvedInputs, landContext: LandContext): HarnessContextSnapshot {
   return {
@@ -57,10 +99,20 @@ function contextSnapshot(inputs: ResolvedInputs, landContext: LandContext): Harn
   };
 }
 
+/** Attach the planner's classification to the task without touching any agronomic field. */
+const withPlanItem = (task: BaselineTask, item: PlanItem, planner: string): BaselineTask => ({
+  ...task,
+  resources: {
+    ...(task.resources ?? {}),
+    harness: { planner, status: item.status ?? "SCHEDULED", reason: item.reason ?? null, sequence_order: item.sequence_order },
+  },
+});
+
 const materialize = (
   tasks: BaselineTask[],
   evidence: AgronomicEvidencePack,
   plan: PlanIntent,
+  planner: string,
 ): BaselineTask[] => {
   const baselineMap = new Map(tasks.map((t, i) => [`task_${String(i + 1).padStart(4, "0")}`, t]));
   const evidenceMap = new Map(
@@ -76,7 +128,10 @@ const materialize = (
       return evidenceMap.has(x.candidate_id);
     })
     .sort((a, b) => a.sequence_order - b.sequence_order)
-    .map((x) => baselineMap.get(x.candidate_id) ?? evidenceMap.get(x.candidate_id))
+    .map((x) => {
+      const task = baselineMap.get(x.candidate_id) ?? evidenceMap.get(x.candidate_id);
+      return task ? withPlanItem(task, x, planner) : undefined;
+    })
     .filter((t): t is BaselineTask => Boolean(t));
 };
 
@@ -121,31 +176,40 @@ async function buildSafeEvidencePack(
   return buildAgronomicEvidencePack(supabase, minimal, stages, tasks);
 }
 
+interface LegacyHarnessInput {
+  cropCode: string;
+  cultivationMethod: string | null;
+  cropCycle: string | null;
+  gaps: string[];
+  resolvedInputs?: ResolvedInputs;
+  landContext?: LandContext;
+  stages?: Awaited<ReturnType<typeof getStages>>;
+  evidencePack?: AgronomicEvidencePack;
+  /** Wall-clock budget for the planner. index.ts derives it from its global deadline. */
+  budgetMs?: number;
+}
+
+const emptyLandContext: LandContext = { soil: null, weather: null, coordinates: null, agroClimaticZone: null, ndvi: null, gaps: [] };
+
 export async function applyScheduleHarness(
   tasks: BaselineTask[],
-  input:
-    | {
-        cropCode: string;
-        cultivationMethod: string | null;
-        cropCycle: string | null;
-        gaps: string[];
-        resolvedInputs?: ResolvedInputs;
-        landContext?: LandContext;
-        stages?: Awaited<ReturnType<typeof getStages>>;
-        evidencePack?: AgronomicEvidencePack;
-      }
-    | ScheduleHarnessContext,
+  input: LegacyHarnessInput | (ScheduleHarnessContext & { budgetMs?: number }),
 ): Promise<HarnessExecution> {
+  const startedAt = Date.now();
+  const deadlineAt = startedAt + Math.max(0, input.budgetMs ?? DEFAULT_BUDGET_MS);
+  const remaining = () => deadlineAt - Date.now();
   const isContext = "graph" in input && "evidencePack" in input;
+
   if (isContext) {
     const context = input as ScheduleHarnessContext;
     const graph = context.graph;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let errors: string[] = [];
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining() >= MIN_ATTEMPT_MS; attempt++) {
       try {
-        const r = await requestPlan(context, []);
-        const errors = validatePlanIntent(r.plan, graph);
-        if (!errors.length && r.plan.status === "READY") {
-          const materialized = materialize(tasks, context.evidencePack, r.plan);
+        const r = await requestPlan(context, errors, { deadlineAt });
+        const validationErrors = validatePlanIntent(r.plan, graph);
+        if (!validationErrors.length && r.plan.status === "READY") {
+          const materialized = materialize(tasks, context.evidencePack, r.plan, "llm_evidence_pack");
           return {
             tasks: materialized,
             result: {
@@ -161,22 +225,27 @@ export async function applyScheduleHarness(
                 provider: r.provider,
                 model: r.model,
                 attempts: attempt,
+                elapsed_ms: Date.now() - startedAt,
                 baseline_candidate_count: tasks.length,
                 evidence_candidate_count: context.evidencePack.candidates.length,
                 materialized_candidate_count: materialized.length,
                 domain_summary: context.evidencePack.domain_summary,
+                domain_coverage: r.plan.domain_coverage ?? null,
                 validation_errors: [],
               },
             },
           };
         }
-      } catch {
-        // Rebuild below into the deterministic fallback. No model failure can create agronomy.
+        errors = validationErrors.length ? validationErrors : [`planner_status:${r.plan.status}`];
+      } catch (error) {
+        errors = [error instanceof Error ? error.message : String(error)];
+        if (errors[0] === "MODEL_UNAVAILABLE" || errors[0] === "MODEL_TIMEOUT") break;
       }
     }
-    const plan = fallback(context);
+    const plan = fallback(context, tasks);
+    const materialized = materialize(tasks, context.evidencePack, plan, "deterministic_fallback");
     return {
-      tasks: materialize(tasks, context.evidencePack, plan),
+      tasks: materialized,
       result: {
         applied: true,
         status: "READY",
@@ -186,25 +255,18 @@ export async function applyScheduleHarness(
           harness_version: HARNESS_VERSION,
           planner: "deterministic_fallback",
           attempts: MAX_ATTEMPTS,
+          elapsed_ms: Date.now() - startedAt,
           baseline_candidate_count: tasks.length,
           evidence_candidate_count: context.evidencePack.candidates.length,
-          materialized_candidate_count: tasks.length,
+          materialized_candidate_count: materialized.length,
           domain_summary: context.evidencePack.domain_summary,
+          validation_errors: errors,
         },
       },
     };
   }
 
-  const legacy = input as {
-    cropCode: string;
-    cultivationMethod: string | null;
-    cropCycle: string | null;
-    gaps: string[];
-    resolvedInputs?: ResolvedInputs;
-    landContext?: LandContext;
-    stages?: Awaited<ReturnType<typeof getStages>>;
-    evidencePack?: AgronomicEvidencePack;
-  };
+  const legacy = input as LegacyHarnessInput;
 
   let evidencePack = legacy.evidencePack;
   let stages = legacy.stages;
@@ -220,17 +282,7 @@ export async function applyScheduleHarness(
   }
 
   const snapshot: HarnessContextSnapshot | null = legacy.resolvedInputs
-    ? contextSnapshot(
-        legacy.resolvedInputs,
-        legacy.landContext ?? {
-          soil: null,
-          weather: null,
-          coordinates: null,
-          agroClimaticZone: null,
-          ndvi: null,
-          gaps: [],
-        },
-      )
+    ? contextSnapshot(legacy.resolvedInputs, legacy.landContext ?? emptyLandContext)
     : null;
 
   const graph = buildCandidateGraph(tasks, evidencePack.candidates);
@@ -247,14 +299,14 @@ export async function applyScheduleHarness(
   let errors: string[] = [];
   let provider: string | null = null;
   let model: string | null = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining() >= MIN_ATTEMPT_MS; attempt++) {
     try {
-      const r = await requestPlan(context, errors);
+      const r = await requestPlan(context, errors, { deadlineAt });
       provider = r.provider;
       model = r.model;
       const validationErrors = validatePlanIntent(r.plan, graph);
       if (!validationErrors.length && r.plan.status === "READY") {
-        const materialized = materialize(tasks, evidencePack, r.plan);
+        const materialized = materialize(tasks, evidencePack, r.plan, "llm_evidence_pack");
         return {
           tasks: materialized,
           result: {
@@ -270,16 +322,14 @@ export async function applyScheduleHarness(
               provider,
               model,
               attempts: attempt,
+              elapsed_ms: Date.now() - startedAt,
               baseline_candidate_count: tasks.length,
               evidence_candidate_count: evidencePack.candidates.length,
               materialized_candidate_count: materialized.length,
               domain_summary: evidencePack.domain_summary,
+              domain_coverage: r.plan.domain_coverage ?? null,
               context_integrated: Boolean(legacy.resolvedInputs),
-              context_fields: legacy.resolvedInputs
-                ? Object.keys(contextSnapshot(legacy.resolvedInputs, legacy.landContext ?? {
-                    soil: null, weather: null, coordinates: null, agroClimaticZone: null, ndvi: null, gaps: [],
-                  }))
-                : [],
+              context_fields: snapshot ? Object.keys(snapshot) : [],
               validation_errors: [],
             },
           },
@@ -288,12 +338,12 @@ export async function applyScheduleHarness(
       errors = validationErrors.length ? validationErrors : [`planner_status:${r.plan.status}`];
     } catch (error) {
       errors = [error instanceof Error ? error.message : String(error)];
-      if (errors[0] === "MODEL_UNAVAILABLE") break;
+      if (errors[0] === "MODEL_UNAVAILABLE" || errors[0] === "MODEL_TIMEOUT") break;
     }
   }
 
-  const plan = fallback(context);
-  const materialized = materialize(tasks, evidencePack, plan);
+  const plan = fallback(context, tasks);
+  const materialized = materialize(tasks, evidencePack, plan, "deterministic_fallback");
   return {
     tasks: materialized,
     result: {
@@ -307,6 +357,7 @@ export async function applyScheduleHarness(
         provider,
         model,
         attempts: MAX_ATTEMPTS,
+        elapsed_ms: Date.now() - startedAt,
         baseline_candidate_count: tasks.length,
         evidence_candidate_count: evidencePack.candidates.length,
         materialized_candidate_count: materialized.length,
