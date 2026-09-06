@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-09-06 — v1.4.1 DRY RUN + IDEMPOTENCY CERTIFICATION. Body { dryRun: true } computes every
+//   stage-drift shift and field-condition mutation and returns them without writing a task, an
+//   adjustment or a log row. Two consecutive real runs on the same field state now produce zero
+//   new adjustments (stamps in weather-adaptation v1.1.0; stage drift was already recomputed
+//   from original_date). The certification recipe is in the README of this patch.
 // 2026-09-05 — v1.4.0 FIELD-CONDITION LAYER RUNS FOR EVERY ACTIVE SCHEDULE.
 //   (1) The weather/NDVI adaptation (weather-adaptation.ts) now runs BEFORE the phenology and
 //       provisional-stage gates. Those gates protect stage-drift shifts, which need biological
@@ -82,7 +87,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.4.0";
+const ENGINE_VERSION = "schedule-reconciler@1.4.1";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -158,6 +163,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
     const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;
+    const dryRun: boolean = body?.dryRun === true || body?.dry_run === true;
 
     let q = supabase
       .from("crop_schedules")
@@ -236,7 +242,7 @@ serve(async (req) => {
       });
       if (conflict) {
         anyConflict = true;
-        await supabase.from("schedule_adjustments").insert({
+        if (!dryRun) await supabase.from("schedule_adjustments").insert({
           schedule_id: sched.id,
           task_id: null,
           change_type: "CONFLICT",
@@ -275,6 +281,7 @@ serve(async (req) => {
           stageRow: stageRow ? { stage_code: stageRow.stage_code ?? null, das_max: stageRow.das_max ?? null } : null,
           todayIso,
           engineVersion: ENGINE_VERSION,
+          dryRun,
         });
         adjustments.push(...weather.adjustments);
         failedTaskIds.push(...weather.failedTaskIds);
@@ -282,11 +289,13 @@ serve(async (req) => {
         console.error("[schedule-reconciler] weather adaptation failed (non-fatal):", wErr);
         weather = { applied: false, skipped: `weather_adaptation_error:${(wErr as Error).message}`, adjustments: [], failedTaskIds: [], counters: { irrigation_deferred: 0, irrigation_advanced: 0, application_deferred: 0, application_window_exhausted: 0, flagged: 0, unflagged: 0 }, evidence: null };
       }
-      const weatherSummary = weather ? { weather_applied: weather.applied, weather_skipped: weather.skipped ?? null, ...weather.counters } : {};
+      const weatherSummary = weather
+        ? { weather_applied: weather.applied, weather_skipped: weather.skipped ?? null, ...weather.counters, ...(dryRun ? { planned_field_adjustments: weather.adjustments.map((a) => ({ task_id: a.task_id, change_type: a.change_type, old_value: a.old_value, new_value: a.new_value, reason: a.reason })) } : {}) }
+        : {};
 
       // Stage-drift layer needs a resolved, evidence-backed stage.
       if (!phenologyResolved) {
-        if (adjustments.length) await supabase.from("schedule_adjustments").insert(adjustments);
+        if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
         if (failedTaskIds.length) anyFailure = true;
         results.push({ schedule_id: sched.id, success: failedTaskIds.length === 0, skipped: "phenology_unresolved", tasks_examined: 0, tasks_changed: 0, ...weatherSummary, tasks_failed: failedTaskIds.length, started_at: startedAt, completed_at: new Date().toISOString() });
         continue;
@@ -295,7 +304,7 @@ serve(async (req) => {
       // v1.2.1 SOURCE GATE — calendar-only stages carry no biological evidence and must not
       // move a farmer's tasks (the DB resolver labels them provisional).
       if (PROVISIONAL_SOURCES.has(String(stage.source ?? ""))) {
-        if (adjustments.length) await supabase.from("schedule_adjustments").insert(adjustments);
+        if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
         if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
@@ -329,7 +338,7 @@ serve(async (req) => {
       );
 
       if (drift == null || drift === 0) {
-        if (adjustments.length) await supabase.from("schedule_adjustments").insert(adjustments);
+        if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
         if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
@@ -375,7 +384,7 @@ serve(async (req) => {
         // v1.2.1 SOWING FLOOR — never schedule a task before the crop existed.
         if (sched.sowing_date && newDate < String(sched.sowing_date)) { skipped += 1; floorSkipped += 1; continue; }
 
-        const { error: updErr } = await supabase
+        const { error: updErr } = dryRun ? { error: null } : await supabase
           .from("schedule_tasks")
           .update({
             task_date: newDate,
@@ -411,7 +420,7 @@ serve(async (req) => {
         });
       }
 
-      if (adjustments.length) {
+      if (adjustments.length && !dryRun) {
         await supabase.from("schedule_adjustments").insert(adjustments);
       }
       if (failedTaskIds.length) anyFailure = true;
@@ -421,6 +430,7 @@ serve(async (req) => {
         success: failedTaskIds.length === 0,
         stage: stage.stage_code,
         drift_days: drift,
+        ...(dryRun ? { planned_adjustments: adjustments.map((a) => ({ task_id: a.task_id, change_type: a.change_type, old_value: a.old_value, new_value: a.new_value })) } : {}),
         tasks_examined: examined,
         tasks_changed: changed,
         tasks_skipped: skipped,
@@ -437,12 +447,13 @@ serve(async (req) => {
     const summary = {
       success: !anyConflict && !anyFailure,
       engine: ENGINE_VERSION,
+      dry_run: dryRun,
       schedules: results.length,
       conflicts: results.filter((r) => r.conflict).length,
       results,
     };
     try {
-      await supabase.from("edge_invocation_logs").insert({
+      if (!dryRun) await supabase.from("edge_invocation_logs").insert({
         function_name: "schedule-reconciler",
         user_id: null,
         payload: { ...summary, results: results.map((r) => ({ ...r })), source: body?.source ?? null, execution_time_ms: Date.now() - invokedAt },

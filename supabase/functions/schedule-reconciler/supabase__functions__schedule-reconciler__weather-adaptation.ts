@@ -1,4 +1,11 @@
 // CHANGE LOG
+// 2026-09-06 — v1.1.0 IDEMPOTENCY + DRY RUN. (1) Every mutation is stamped on the task
+//   (resources.dynamic.{deferred_on|advanced_on|flagged_on} = metric_date) and skipped when the
+//   stamp already equals today's metric_date, so "same field state + run twice = same DB state"
+//   holds even for a 1-day irrigation cadence (whose deferred date lands inside tomorrow's
+//   horizon and was re-deferred by a second run). (2) A task advanced today is never deferred
+//   today and vice versa. (3) dryRun: compute and return every intended mutation without writing
+//   a task or an adjustment — the certification path for the repeated-cron invariant.
 // 2026-09-05 — v1.0.0 FIELD-CONDITION ADAPTATION (hosted inside schedule-reconciler; one
 //   feature = one edge function). The static schedule says WHAT and roughly WHEN; the field says
 //   whether TODAY is the day. Every signal used here is already decided by the DB weather engine
@@ -43,6 +50,8 @@ export interface WeatherAdaptationInput {
   stageRow: { stage_code: string | null; das_max: number | null } | null;
   todayIso: string;
   engineVersion: string;
+  /** When true, nothing is written; the outcome lists what WOULD change. */
+  dryRun?: boolean;
 }
 
 export interface WeatherAdaptationOutcome {
@@ -127,7 +136,9 @@ export async function applyWeatherAdaptation(supabase: SupabaseClient, input: We
   const tasks = (rows || []) as TaskRow[];
   const todayDas = input.sowingDate ? Math.round((new Date(input.todayIso).getTime() - new Date(String(input.sowingDate).slice(0, 10)).getTime()) / 86400000) : null;
 
+  const stampedToday = (task: TaskRow, key: string) => String(dyn(task)[key] ?? "") === String(ws.metric_date);
   const update = async (task: TaskRow, patch: Record<string, unknown>) => {
+    if (input.dryRun) return true;
     const { error: e } = await supabase.from("schedule_tasks").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", task.id);
     if (e) { failedTaskIds.push(task.id); return false; }
     return true;
@@ -139,6 +150,7 @@ export async function applyWeatherAdaptation(supabase: SupabaseClient, input: We
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   if (ws.irrigation_needed === false) {
     for (const task of irrigation.filter((t) => t.task_date <= horizon)) {
+      if (stampedToday(task, "deferred_on") || stampedToday(task, "advanced_on")) continue; // already decided today
       const rec = (task.resources?.recurrence ?? null) as Record<string, unknown> | null;
       const step = Number(rec?.interval_days);
       if (!Number.isFinite(step) || step < 1) {
@@ -150,7 +162,7 @@ export async function applyWeatherAdaptation(supabase: SupabaseClient, input: We
         continue;
       }
       const next = addDays(task.task_date, step);
-      if (await update(task, { task_date: next, projected_date: next, original_date: task.original_date ?? task.task_date, auto_rescheduled: true, adjustment_reason: "weather_water_sufficient" })) {
+      if (await update(task, { task_date: next, projected_date: next, original_date: task.original_date ?? task.task_date, auto_rescheduled: true, adjustment_reason: "weather_water_sufficient", resources: { ...(task.resources ?? {}), dynamic: { ...dyn(task), deferred_on: ws.metric_date, deferred_reason: "water_sufficient" } } })) {
         record(task, "DEFER", { task_date: task.task_date }, { task_date: next }, "Soil water balance already sufficient (recent rainfall covered the deficit) — irrigation deferred by the declared cadence", { interval_days: step, window_end: rec?.window_end ?? null });
         counters.irrigation_deferred += 1;
       }
@@ -159,11 +171,12 @@ export async function applyWeatherAdaptation(supabase: SupabaseClient, input: We
     // Field dry earlier than the calendar assumed: bring the next declared event forward to
     // today, but only once its own DB-declared window has opened.
     const next = irrigation.find((t) => t.task_date > horizon);
-    if (next) {
+    const advancedAlready = irrigation.some((t) => stampedToday(t, "advanced_on"));
+    if (next && !advancedAlready && !stampedToday(next, "deferred_on")) {
       const rec = (next.resources?.recurrence ?? null) as Record<string, unknown> | null;
       const windowStart = Number(rec?.window_start);
       const windowOpen = todayDas != null && Number.isFinite(windowStart) ? todayDas >= windowStart : true;
-      if (windowOpen && (await update(next, { task_date: input.todayIso, projected_date: input.todayIso, original_date: next.original_date ?? next.task_date, auto_rescheduled: true, adjustment_reason: "weather_water_deficit_high" }))) {
+      if (windowOpen && (await update(next, { task_date: input.todayIso, projected_date: input.todayIso, original_date: next.original_date ?? next.task_date, auto_rescheduled: true, adjustment_reason: "weather_water_deficit_high", resources: { ...(next.resources ?? {}), dynamic: { ...dyn(next), advanced_on: ws.metric_date, advanced_from: next.task_date } } }))) {
         record(next, "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, "Water deficit urgency HIGH — next declared irrigation event brought forward to today", { window_start: Number.isFinite(windowStart) ? windowStart : null, today_das: todayDas });
         counters.irrigation_advanced += 1;
       }
@@ -175,6 +188,7 @@ export async function applyWeatherAdaptation(supabase: SupabaseClient, input: We
   if (win && win.total > 0 && win.good === 0) {
     const due = tasks.filter((t) => !t.is_pinned && t.weather_dependent === true && APPLICATION_TASK_TYPES.has(t.task_type) && t.task_date <= input.todayIso);
     for (const task of due) {
+      if (stampedToday(task, "last_deferred_on")) continue; // already moved today
       const next = addDays(input.todayIso, 1);
       // Bound: never defer an application past its stage window (when the window is known).
       const stageEndDas = input.stageRow && task.anchor_stage && input.stageRow.stage_code && norm(task.anchor_stage) === norm(input.stageRow.stage_code) ? input.stageRow.das_max : null;
@@ -208,7 +222,7 @@ export async function applyWeatherAdaptation(supabase: SupabaseClient, input: We
   if (covering) {
     const current = dyn(covering);
     if (riskReasons.length) {
-      const already = Array.isArray(current.risk_reasons) && JSON.stringify(current.risk_reasons) === JSON.stringify(riskReasons) && current.as_of === ws.metric_date;
+      const already = Array.isArray(current.risk_reasons) && JSON.stringify(current.risk_reasons) === JSON.stringify(riskReasons) && String(current.as_of ?? "") === String(ws.metric_date);
       if (!already) {
         const previousPriority = String(current.previous_priority ?? covering.priority ?? "medium");
         const raised = PRIORITY_RANK[String(covering.priority ?? "medium")] >= PRIORITY_RANK.high ? String(covering.priority) : "high";

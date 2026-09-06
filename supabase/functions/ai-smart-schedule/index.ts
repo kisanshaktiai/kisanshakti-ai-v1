@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-06 — hard gate: CULTIVATION_METHOD_UNRESOLVED (422) when the resolver returns no
+//   method; the persisted schedule is the crop-cycle SSOT for the phenology resolver, so it must
+//   never carry a NULL method.
 // 2026-09-05 — Completeness + time plan. (1) The Harness planner is given a bounded budget
 //   (HARNESS_MAX_MS) derived from the single request deadline so it can no longer consume the
 //   narration slice — on the audited schedules it did, every run fell to deterministic_fallback
@@ -89,6 +92,10 @@ serve(async (req) => {
     if (!inputs.cropCode) return json({ error: "Crop could not be resolved to the crop master", cropName, gaps: inputs.gaps }, 422);
     if (!inputs.sowingDate) return json({ error: "Sowing date is required and was not found", gaps: inputs.gaps }, 422);
     if (inputs.cultivationMethod === AMBIGUOUS_CULTIVATION_METHOD) return json({ error: "Cultivation method is required for this crop", code: "CULTIVATION_METHOD_REQUIRED", cropCode: inputs.cropCode, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
+    // 2026-09-06 — a schedule is never persisted without a resolved cultivation method: the
+    // method selects the stage graph, and the phenology resolver now refuses to guess it. This
+    // closes the path that produced the legacy NULL-method schedule (b9f15e9e, generator 1.0.0).
+    if (!inputs.cultivationMethod) return json({ error: "Cultivation method could not be resolved for this crop", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
     if (inputs.cropCycle === AMBIGUOUS_CROP_CYCLE) return json({ error: "Crop cycle is required for this crop", code: "CROP_CYCLE_REQUIRED", cropCode: inputs.cropCode, options: await getCropCycleOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
 
     const baseline = await generateBaseline(supabase, inputs);
