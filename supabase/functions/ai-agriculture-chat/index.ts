@@ -4448,38 +4448,67 @@ async function buildFormattedRecommendationsList(
     // English-only labels — forceTranslateResponse() handles localization
     const richLabels = { action: 'Action', reason: 'Reason' };
 
-    let primaryText = `**${recNumber}. ${productName}**`;
-    if (dosage) primaryText += ` @ ${dosage}`;
+    // 2026-09-06 — WHAT / WHY / HOW wiring from decision_rules columns.
+    // Live trace_mtppg69l_ke7z6s rendered RICE_NUTR_LATE_N_BLOCK_001 (a prohibition)
+    // as "1. Recommended product / Morning 6-10 AM / 90% effective": the header,
+    // the timing and the percentage were all template defaults, and the "% effective"
+    // was the rule's confidence_score. A prohibition has no product, no spray time
+    // and no efficacy; a recommendation is WHAT (action_text) → HOW (product, dose,
+    // method, water, timing) → WHY (reason_text) → SAFETY (PHI, re-entry, safety
+    // level) → CHECK (success_indicators). Every line comes from a DB column; when
+    // the column is empty the line is omitted, never defaulted.
+    const _actionTypeUp = String(primary.action_type || '').toUpperCase();
+    const _isBlockAction = /^(BLOCK|NO_ACTION_REQUIRED|URGENT_BLOCK|WEATHER_BLOCK|AVOID)$/.test(_actionTypeUp) || String(app.rule_intent || '').toLowerCase() === 'block';
+    const _hasProduct = !!(richData.active_ingredient || dosage);
+    const _isImperative = /^(URGENT_ACTION|COMMAND)$/.test(_actionTypeUp) || String(app.rule_intent || '').toLowerCase() === 'command';
+    const timingLabels: Record<string, string> = { MORNING: 'Morning 6-10 AM', EVENING: 'Evening 4-6 PM', ANY: 'Any time' };
+    const _timingFromDb = !!primary.timing?.best_time_of_day;   // only render timing the decision actually carries
+    const _phiDays = app.phi_days ?? richData.phi_days ?? null;
+    const _reentry = app.reentry_interval_hours ?? null;
+    const _safetyLevel = String(app.farmer_safety_level || '').toLowerCase();
+    const _water = app.water_volume_per_acre || app.water_volume || '';
+    const _checks: string[] = Array.isArray(app.success_indicators) ? app.success_indicators.filter((x: unknown) => typeof x === 'string' && x.trim()) : [];
 
-    // Add method - translated
-    if (method) {
-      const methodText = getMethodTranslation(method, lang);
-      primaryText += `\n   📍 ${methodText}`;
+    let primaryText = '';
+    if (_isBlockAction) {
+      // WHAT NOT → WHY. No product, no timing, no efficacy, no market names.
+      primaryText = `⛔ **${recNumber}. Do not do this now**`;
+      if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
+      if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${oneLine(reasonText, 240)}`;
+    } else {
+      // WHAT — for an imperative rule the action leads the card, the product follows.
+      if (_isImperative && actionText) {
+        primaryText = `**${recNumber}. ${oneLine(actionText, 160)}**`;
+      } else {
+        primaryText = `**${recNumber}. ${_hasProduct ? productName : (actionText ? oneLine(actionText, 120) : productName)}**`;
+      }
+      // HOW — product, dose, method, water, timing (DB-backed lines only)
+      if (_hasProduct) {
+        if (_isImperative) primaryText += `\n   🧪 ${productName}${dosage ? ` @ ${dosage}` : ''}`;
+        else if (dosage) primaryText += ` @ ${dosage}`;
+      }
+      if (method) primaryText += `\n   📍 ${getMethodTranslation(method, lang)}`;
+      if (_water) primaryText += `\n   💧 ${_water}`;
+      if (_timingFromDb) primaryText += `\n   ⏰ ${timingLabels[timing] || timing}`;
+      if (marketProductLine) primaryText += `\n   ${marketProductLine}`;
+      if (actionText && !_isImperative) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
+      else if (actionText && _isImperative && actionText.length > 160) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
+      // WHY
+      if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${oneLine(reasonText, 240)}`;
+      // SAFETY — from decision_rules only
+      const _safety: string[] = [];
+      if (typeof _phiDays === 'number' && _phiDays > 0) _safety.push(`PHI ${_phiDays} days before harvest`);
+      if (typeof _reentry === 'number' && _reentry > 0) _safety.push(`re-entry after ${_reentry} h`);
+      if (_safetyLevel && _safetyLevel !== 'safe') _safety.push(`safety: ${_safetyLevel}`);
+      if (_safety.length) primaryText += `\n   ⚠️ ${_safety.join(' · ')}`;
+      // CHECK
+      if (_checks.length) primaryText += `\n   ✅ Check: ${_checks.slice(0, 3).join('; ')}`;
+      // Efficacy ONLY when the rule carries a measured yield gain (roi_yield_gain_pct);
+      // expected_outcomes.efficacy_percent was derived from confidence_score and is not rendered.
+      const _yieldGain = app.roi_yield_gain_pct ?? richData.roi_yield_gain_pct ?? null;
+      if (typeof _yieldGain === 'number' && _yieldGain > 0) primaryText += ` | 📈 yield gain up to ${_yieldGain}%`;
     }
-
-    // Add timing
-    const timingLabels: Record<string, string> = {
-      MORNING: 'Morning 6-10 AM',
-      EVENING: 'Evening 4-6 PM',
-      ANY: 'Any time'
-    };
-    const timingText = timingLabels[timing] || timingLabels.MORNING;
-    primaryText += `\n   ⏰ ${timingText}`;
-
-    // PRODUCT MAPPING: Append market product brand names
-    if (marketProductLine) {
-      primaryText += `\n   ${marketProductLine}`;
-    }
-
-    if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${oneLine(reasonText, 240)}`;
     // FIX A: knowledge_text intentionally omitted from farmer output.
-
-    // Add efficacy
-    const efficacy = primary.expected_outcomes?.efficacy_percent;
-    if (efficacy) {
-      primaryText += ` | 📊 ${efficacy}% effective`;
-    }
 
     recParts.push(primaryText);
     recNumber++;

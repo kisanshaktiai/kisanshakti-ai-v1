@@ -3488,7 +3488,7 @@ export class AIAgentOrchestrator {
                   data_authority_rank: layeredPrimaryDecision.data_authority_rank || null,
                 },
                 expected_outcomes: {
-                  efficacy_percent: Math.round((layeredPrimaryDecision.confidence_score || 0.75) * 100),
+                  efficacy_percent: 0, // 2026-09-06 — not confidence (see main path)
                   time_to_visible_effect_days: '3-5',
                   success_indicators: []
                 }
@@ -3523,7 +3523,7 @@ export class AIAgentOrchestrator {
                     rule_id: firstMatch.rule_id
                   },
                   expected_outcomes: {
-                    efficacy_percent: 75,
+                    efficacy_percent: 0, // 2026-09-06 — no fabricated efficacy
                     time_to_visible_effect_days: '3-5',
                     success_indicators: []
                   }
@@ -10304,11 +10304,9 @@ export class AIAgentOrchestrator {
                 data_authority_rank: layeredRuleResult.primary_decision.data_authority_rank || null,
               },
               expected_outcomes: {
-                efficacy_percent: layeredRuleResult.primary_decision.weighted_confidence 
-                  ? Math.round(layeredRuleResult.primary_decision.weighted_confidence * 100) 
-                  : layeredRuleResult.primary_decision.confidence_score
-                    ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100)
-                    : 75,
+                // 2026-09-06 — efficacy is NOT confidence. decision_rules has no efficacy
+                // column; renderers show a yield figure only from roi_yield_gain_pct.
+                efficacy_percent: 0,
                 time_to_visible_effect_days: '3-5',
                 success_indicators: layeredRuleResult.primary_decision.success_indicators || []
               }

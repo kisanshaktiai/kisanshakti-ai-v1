@@ -33,6 +33,12 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 // are kept regardless because a banned-chemical block is non-servable by
 // construction and must still be able to block.
 export const SERVABILITY_OR = 'is_farmer_servable.eq.true,rule_intent.eq.block,is_safety_block.eq.true';
+// 2026-09-06 — PHI INVARIANT (certification review P0-A). is_farmer_servable is a GENERATED column that only
+// checks phi_days IS NOT NULL, so a chemical with a typed-but-unverified waiting period was reaching farmers.
+// A row passes this second gate when it carries no input (active_ingredient null), or its PHI status is
+// label-verified / explicitly not applicable. Blocks still pass through SERVABILITY_OR above; this filter is
+// ANDed by PostgREST, so a block with a stray status would need active_ingredient null — blocks carry none.
+export const PHI_INVARIANT_OR = 'active_ingredient.is.null,phi_status.in.(PHI_REQUIRED_VERIFIED,PHI_NOT_APPLICABLE)';
 
 export class KnowledgeLoadError extends Error {
   constructor(msg: string) {
@@ -192,11 +198,12 @@ function buildSnapshot(rows: RawRuleRow[], fingerprint: string): RuleSnapshot {
 async function readVersionFingerprint(sb: any): Promise<string> {
   try {
     const [countRes, latestRes] = await Promise.all([
-      sb.from('decision_rules').select('rule_id', { count: 'exact', head: true }).eq('is_active', true).or(SERVABILITY_OR),
+      sb.from('decision_rules').select('rule_id', { count: 'exact', head: true }).eq('is_active', true).or(SERVABILITY_OR).or(PHI_INVARIANT_OR),
       sb.from('decision_rules')
         .select('updated_at')
         .eq('is_active', true)
         .or(SERVABILITY_OR)
+        .or(PHI_INVARIANT_OR)
         .order('updated_at', { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle(),
@@ -223,6 +230,7 @@ async function fetchRows(sb: any): Promise<RawRuleRow[]> {
       .select('*')
       .eq('is_active', true)
       .or(SERVABILITY_OR) // SERVABILITY GATE (2026-09-03) — see header
+      .or(PHI_INVARIANT_OR) // PHI INVARIANT (2026-09-06) — see header
       .order('rule_id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) {

@@ -138,7 +138,7 @@ export class RuleEngineExecutor {
               dosage: productDosage,
               application_method: productMethod as any,
               ipm_level: rec.ipm_level || 3,
-              efficacy_percent: 80,
+              efficacy_percent: 0, // 2026-09-06 — no fabricated efficacy; renderer uses roi_yield_gain_pct only
               cost_per_acre_inr: parseInt(rec.cost_estimate?.replace(/[^0-9]/g, '') || '0') || 0
             } : undefined,
             confidence: 0.85

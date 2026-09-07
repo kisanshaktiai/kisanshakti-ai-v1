@@ -42,17 +42,41 @@ function setCache(key: string, products: string[]): void {
 
 // Extract the primary ingredient keyword from a full ingredient string.
 export function extractIngredientKeyword(activeIngredient: string): string {
-  if (!activeIngredient || typeof activeIngredient !== 'string') return '';
-  
-  // Remove percentage and formulation codes
+  // Kept for callers/tests that expect the first word (cache keys, logs).
+  return extractIngredientTokens(activeIngredient)[0] || '';
+}
+
+/**
+ * 2026-09-06 — EXACT-INGREDIENT MATCHING. Live trace_mtppdk03_ysulhl offered
+ * "Potash, Gromor NPK" for `Potassium Sulphate (foliar)`: the old matcher used
+ * only the FIRST word ("potassium"), so muriate of potash (KCl) and NPK blends
+ * matched a foliar sulphate. A product must contain EVERY chemical token of the
+ * rule's active ingredient. Percentages, formulation codes and parenthetical
+ * notes ("(foliar)", "(ZnSO4)") are stripped; British/US spellings are folded.
+ */
+const _INGREDIENT_STOP = new Set(['of','and','the','foliar','soil','basal','drench','spray','granular','organic','technical']);
+function _foldSpelling(w: string): string {
+  return w.toLowerCase()
+    .replace(/sulphate/g, 'sulfate').replace(/sulphur/g, 'sulfur')
+    .replace(/hydrochloride/g, 'hcl').replace(/[^a-z0-9]/g, '');
+}
+export function extractIngredientTokens(activeIngredient: string): string[] {
+  if (!activeIngredient || typeof activeIngredient !== 'string') return [];
   const cleaned = activeIngredient
-    .replace(/\d+\.?\d*\s*%/g, '')  // Remove percentages
-    .replace(/\b(EC|SC|SL|WP|WG|SP|SG|GR|FS|CS|SE|EW|OD|ZC)\b/gi, '') // Remove formulation codes
-    .trim();
-  
-  // Take the first word (primary ingredient name)
-  const firstWord = cleaned.split(/\s+/)[0];
-  return firstWord || activeIngredient.split(/\s+/)[0] || '';
+    .replace(/\([^)]*\)/g, ' ')                                    // parenthetical notes
+    .replace(/\d+\.?\d*\s*%/g, ' ')                                 // percentages
+    .replace(/\b(EC|SC|SL|WP|WG|SP|SG|GR|FS|CS|SE|EW|OD|ZC|G|DP|WDG)\b/gi, ' ') // formulation codes
+    .replace(/[+/,]/g, ' ');
+  return Array.from(new Set(
+    cleaned.split(/\s+/).map(_foldSpelling).filter((w) => w.length > 2 && !_INGREDIENT_STOP.has(w)),
+  ));
+}
+/** True when every ingredient token appears in the product's active_ingredients payload. */
+export function productMatchesIngredient(activeIngredientsPayload: unknown, tokens: string[]): boolean {
+  if (!tokens.length || activeIngredientsPayload == null) return false;
+  let hay = '';
+  try { hay = _foldSpelling(typeof activeIngredientsPayload === 'string' ? activeIngredientsPayload : JSON.stringify(activeIngredientsPayload)); } catch { return false; }
+  return tokens.every((t) => hay.includes(t));
 }
 
 // MAIN LOOKUP FUNCTION
@@ -124,9 +148,12 @@ export async function lookupMarketProducts(
       return { found: false, products: [], ingredient: activeIngredient, source: 'fallback' };
     }
 
-    // In-memory keyword scan over active_ingredients JSONB payload (any shape).
+    // In-memory scan over active_ingredients JSONB payload (any shape).
+    // 2026-09-06 — ALL ingredient tokens must match (see extractIngredientTokens).
+    const _tokens = extractIngredientTokens(activeIngredient);
     const keywordLc = keyword.toLowerCase();
     const ingredientMatched = (data || []).filter((p: any) => {
+      if (_tokens.length > 1) return productMatchesIngredient(p?.active_ingredients, _tokens);
       const ai = p.active_ingredients;
       if (ai == null) return false;
       try {
