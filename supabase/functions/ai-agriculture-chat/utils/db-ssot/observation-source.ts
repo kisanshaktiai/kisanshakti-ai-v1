@@ -40,6 +40,9 @@ export interface ObservationMasterSourceRow {
   frequency_score: number | null;
   applies_to_stages: string[] | null;
   is_active: boolean | null;
+  // 2026-09-07 — crop-peer bridging (universal `lodging` → crop-scoped `rice_lodging`)
+  symptom_type: string | null;
+  crop_group: string | null;
 }
 
 export interface ObservationAliasSourceRow {
@@ -53,7 +56,7 @@ export interface ObservationAliasSourceRow {
 
 const MASTER_COLUMNS =
   'observation_code, semantic_class, canonical_group, observation_category, affected_plant_part, ' +
-  'is_diagnostic, is_farmer_observable, can_generate_question, clarity_score, discriminator_score, frequency_score, applies_to_stages, is_active';
+  'is_diagnostic, is_farmer_observable, can_generate_question, clarity_score, discriminator_score, frequency_score, applies_to_stages, is_active, symptom_type, crop_group';
 const ALIAS_COLUMNS = 'alias_code, alias_normalized, alias_text, canonical_code, active, language';
 
 const TTL_MS = 10 * 60 * 1000;

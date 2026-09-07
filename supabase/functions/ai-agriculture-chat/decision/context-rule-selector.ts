@@ -262,12 +262,25 @@ export async function filterScheduleCandidatesByIntent(
   if (!intent || !crop || !Array.isArray(candidates) || candidates.length === 0) return { kept: candidates ?? [], dropped: [], applied: false };
   const iom = await loadIntentObservationCodes(supabase, intent, crop);
   if (iom.size === 0) return { kept: candidates, dropped: [], applied: false };
+  // 2026-09-07 — live trace_mtqr25oy_g59g2x: "which fertiliser now" at heading was answered by the weekly
+  // pest-scouting rule because its observations list carried the catch-all `management_planning`, which
+  // FERTILIZER_SCHEDULE also maps. The authored condition_code is the rule's intent contract: when it is a
+  // real code it decides relevance alone; observations are consulted only when condition_code is absent
+  // or is itself a contract placeholder (stage_general / management_planning).
+  const PLACEHOLDER = new Set(['stage_general', 'management_planning']);
   const codesOf = (r: any): string[] => {
     const cc = norm(r?.condition_code);
+    if (cc && !PLACEHOLDER.has(cc)) return [cc];
     const obs = Array.isArray(r?.conditions_json?.observations) ? r.conditions_json.observations.map(norm) : [];
     return [cc, ...obs].filter(Boolean);
   };
-  const kept = candidates.filter((r) => codesOf(r).some((c) => iom.has(c)));
+  // Placeholders never establish relevance on their own: a rule is relevant when one of its SPECIFIC codes is
+  // mapped to the intent. Only when the intent itself maps nothing specific (a generic advisory intent) do
+  // placeholder-coded rules qualify.
+  const iomSpecific = new Set(Array.from(iom).filter((c) => !PLACEHOLDER.has(c)));
+  const kept = iomSpecific.size > 0
+    ? candidates.filter((r) => codesOf(r).some((c) => iomSpecific.has(c)))
+    : candidates.filter((r) => PLACEHOLDER.has(norm(r?.condition_code)));
   if (kept.length === 0) return { kept: candidates, dropped: [], applied: false };
   const dropped = candidates.filter((r) => !kept.includes(r));
   if (dropped.length > 0) {

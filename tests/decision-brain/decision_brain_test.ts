@@ -208,3 +208,22 @@ Deno.test('R3 unmapped intent → fail-open (candidates unchanged)', async () =>
   assertEquals(rel.applied, false);
   assertEquals(rel.kept.length, cands.length);
 });
+
+// ── 2026-09-07: relevance keys on condition_code first (scouting rule must not answer a fertiliser question)
+Deno.test('R4 a stage_general scouting row with management_planning in observations is dropped for FERTILIZER_SCHEDULE', async () => {
+  const { client } = makeMockSupabase(FIX);
+  const scout = { rule_id: 'TEST_SCOUT', condition_code: 'stage_general', conditions_json: { observations: ['stage_general','management_planning'] }, trigger_class: 'CONTEXT_SCHEDULE' };
+  const lcc = { rule_id: 'RICE_NUTR_LCC_001', condition_code: 'n_deficiency_rice', conditions_json: { observations: ['management_planning'] }, trigger_class: 'CONTEXT_SCHEDULE' };
+  const rel = await sel.filterScheduleCandidatesByIntent(client, [scout, lcc], 'FERTILIZER_SCHEDULE', 'rice', 'R4');
+  assertEquals(rel.applied, true);
+  assertEquals(rel.kept.map((r: any) => r.rule_id), ['RICE_NUTR_LCC_001']);
+});
+Deno.test('R5 a generic advisory intent (placeholders only) keeps placeholder-coded rows and drops specific-coded ones', async () => {
+  const { client } = makeMockSupabase(FIX);
+  const scout = { rule_id: 'TEST_SCOUT', condition_code: 'stage_general', conditions_json: { observations: ['stage_general'] }, trigger_class: 'CONTEXT_SCHEDULE' };
+  const lcc = { rule_id: 'RICE_NUTR_LCC_001', condition_code: 'n_deficiency_rice', conditions_json: { observations: ['management_planning'] }, trigger_class: 'CONTEXT_SCHEDULE' };
+  // fixture intent that maps only placeholders for rice
+  (FIX.intent_observation_mapping as any[]).push({ intent_code: 'BEST_PRACTICE_GENERAL', crop_code: 'rice', observation_code: 'stage_general', is_active: true });
+  const rel = await sel.filterScheduleCandidatesByIntent(makeMockSupabase(FIX).client, [scout, lcc], 'BEST_PRACTICE_GENERAL', 'rice', 'R5');
+  assertEquals(rel.kept.map((r: any) => r.rule_id), ['TEST_SCOUT']);
+});

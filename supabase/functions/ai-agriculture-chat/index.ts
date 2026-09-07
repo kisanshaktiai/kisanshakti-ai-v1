@@ -2638,12 +2638,25 @@ serve(async (req) => {
       const _doseRe = /(\d+(?:[.,]\d+)?)\s*(ml|l|litre|liter|g|kg|gm|gram)\b/gi;
       const _rendered = String(responseContent ?? '');
       const _unbacked: string[] = [];
+      // 2026-09-07 — the formatter prompt instructs "TOTAL dosage = dosage_per_acre × land area", then this gate
+      // rejected the product (2 kg × 0.72 acre = 1.44 kg) as not DB-backed → fallback (trace_mtqr4nqt_a2r8e3).
+      // A rendered quantity is accepted when it equals a DB quantity × the land area (rounded to 0/1/2 dp).
+      const _areaAcres = Number(orchestratorResponse.decision_output?.land_context?.area_acres
+        ?? (orchestratorResponse as any)?.land_context?.area_acres ?? NaN);
+      const _dbQty: Array<{ n: number; u: string }> = [];
+      for (const m of _dbCorpus.matchAll(/(\d+(?:\.\d+)?)(ml|l|litre|liter|g|kg|gm|gram)\b/g)) _dbQty.push({ n: parseFloat(m[1]), u: m[2] });
+      const _unitNorm = (u: string) => (u === 'litre' || u === 'liter') ? 'l' : (u === 'gm' || u === 'gram') ? 'g' : u;
+      const _scaledOk = (num: number, unit: string): boolean => {
+        if (!Number.isFinite(_areaAcres) || _areaAcres <= 0) return false;
+        const un = _unitNorm(unit);
+        return _dbQty.some(q => _unitNorm(q.u) === un && [0, 1, 2].some(dp => Math.abs(Number((q.n * _areaAcres).toFixed(dp)) - num) < 1e-9));
+      };
       for (const m of _rendered.matchAll(_doseRe)) {
         const num = m[1].replace(',', '.');
         const unit = m[2].toLowerCase();
         const compact = `${num}${unit}`;
         const alt = `${parseFloat(num)}${unit}`;
-        if (!_dbCorpus.includes(compact) && !_dbCorpus.includes(alt)) _unbacked.push(m[0].trim());
+        if (!_dbCorpus.includes(compact) && !_dbCorpus.includes(alt) && !_scaledOk(parseFloat(num), unit)) _unbacked.push(m[0].trim());
       }
       if (_unbacked.length > 0) {
         console.error(
@@ -2675,14 +2688,27 @@ serve(async (req) => {
         metadata: orchestratorResponse.metadata
       }, null, 2));
       
-      // Generate fallback response if validation fails
-      // CRITICAL FIX: Pass actions_returned so we can use them in fallback
-      responseContent = generateValidationFailureFallback(
-        detectedLanguage,
-        validationResult.errors,
-        orchestratorResponse,
-        actions_returned  // Pass actions so fallback can use them
-      );
+      // 2026-09-07 — live trace_mtqr4nqt_a2r8e3: after a DOSAGE_NOT_DB_BACKED rejection the farmer received
+      // "1. POTASSIUM SULPHATE" and nothing else, because generateValidationFailureFallback reads
+      // `dosage` (the field is `dosage_per_acre`) and never prints action/reason/method. When a primary
+      // decision exists, render the same WHAT → HOW → WHY → SAFETY → CHECK card the template path uses.
+      if (orchestratorResponse.decision_output?.primary_decision) {
+        console.log(`   📋 [VALIDATION_FALLBACK] rendering full deterministic card from decision_output`);
+        responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
+          orchestratorResponse.decision_output,
+          detectedLanguage,
+          supabase,
+          marketProductMemo,
+          farmingPreference as any
+        ), detectedLanguage);
+      } else {
+        responseContent = generateValidationFailureFallback(
+          detectedLanguage,
+          validationResult.errors,
+          orchestratorResponse,
+          actions_returned
+        );
+      }
     }
     
     // Store user message with preprocessed_content (English normalized)

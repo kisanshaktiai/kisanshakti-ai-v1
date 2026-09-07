@@ -1,6 +1,6 @@
 // LLM OUTPUT VALIDATOR v1.0.0
 
-import { resolveAliasCanonical, observationIndexReady } from './db-ssot/observation-index.ts';
+import { resolveAliasCanonical, observationIndexReady, resolveCropPeer } from './db-ssot/observation-index.ts';
 
 export const LLM_OUTPUT_VALIDATOR_VERSION = '1.1.0';
 
@@ -292,6 +292,12 @@ export async function validateLLMOutputAgainstDB(params: {
           return dbCanonicalUpper;
         }
       }
+    }
+
+    // 2026-09-07 — crop-peer bridge: universal code → crop-scoped code sharing symptom_type (DB-SSOT)
+    if (observationIndexReady() && applicableObs.size > 0) {
+      const peer = resolveCropPeer(code, applicableObs);
+      if (peer && validObservations.has(peer)) return peer;
     }
 
     // Cold-boot / DB-miss fallback: consult the tiny in-code map. This path

@@ -55,6 +55,8 @@ export interface ObservationMasterRow {
   frequency_score: number | null;
   applies_to_stages: string[] | null;
   is_active: boolean | null;
+  symptom_type: string | null;
+  crop_group: string | null;
 }
 
 export interface ObservationAliasRow {
@@ -298,6 +300,30 @@ export function observationIndexReady(): boolean {
   return state.loadedAt !== null && state.masterByCode.size > 0;
 }
 
+/**
+ * 2026-09-07 — CROP-PEER BRIDGE. A perceived universal code (crop_group 'universal') is resolved to the
+ * crop-scoped code that shares its symptom_type when that crop code is in the caller's applicable set.
+ * Live trace_mtqr3uk2_alf6wb: "pik valat aahe" → LLM perceived `lodging` (universal) → rejected as not
+ * applicable to rice although `rice_lodging` (same symptom_type after data fix) is the rice hypothesis input.
+ */
+export function resolveCropPeer(code: string, applicableUpper: Set<string>): string | null {
+  const st = state;
+  const src = st.masterByCode.get(String(code ?? '').trim().toLowerCase());
+  if (!src) return null;
+  const stype = String(src.symptom_type ?? '').trim().toLowerCase();
+  if (!stype) return null;
+  const srcGroup = String(src.crop_group ?? '').trim().toLowerCase();
+  if (srcGroup && srcGroup !== 'universal') return null; // only universal → crop-specific
+  for (const cand of applicableUpper) {
+    const row = st.masterByCode.get(cand.toLowerCase());
+    if (!row) continue;
+    const g = String(row.crop_group ?? '').trim().toLowerCase();
+    if (!g || g === 'universal') continue;
+    if (String(row.symptom_type ?? '').trim().toLowerCase() === stype && row.is_active !== false) return cand.toUpperCase();
+  }
+  return null;
+}
+
 export function getObservationMaster(code: string): ObservationMasterRow | null {
   const k = nLower(code);
   if (!k) return null;
@@ -407,6 +433,9 @@ function deepEqualLite(a: unknown, b: unknown): boolean {
 }
 
 /** Test-only reset. */
+/** test-only seam (2026-09-07): direct access to the state map for resolver tests */
+export function __stateForTest(): IndexState { return state; }
+
 export function __resetObservationIndex(): void {
   state.loadedAt = null;
   state.loading = null;

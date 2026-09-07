@@ -10311,6 +10311,17 @@ export class AIAgentOrchestrator {
                 success_indicators: layeredRuleResult.primary_decision.success_indicators || []
               }
             };
+            // 2026-09-07 — the recovered decision must not keep the sentinel's envelope. Live
+            // trace_mtqr25oy_g59g2x served RICE_NUTR_LATE_N_BLOCK_001 while decision_id stayed
+            // "needs_evidence_*" and status stayed NEEDS_MORE_EVIDENCE, so TURN_END, the audit chip and
+            // session decision-tracking all recorded "no decision" for a turn that gave one.
+            if (String(decisionOutput.status ?? '').toUpperCase() === 'NEEDS_MORE_EVIDENCE') {
+              decisionOutput.status = 'SUCCESS';
+              decisionOutput.decision_id = `decision_${Date.now().toString(36)}`;
+              const _wc = Number(layeredRuleResult.primary_decision.weighted_confidence ?? layeredRuleResult.primary_decision.confidence_score ?? NaN);
+              if (Number.isFinite(_wc) && _wc > 0) (decisionOutput as any).confidence_score = _wc;
+              console.log(`   🔄 PRIMARY_DECISION RECOVERY: envelope updated status=SUCCESS decision_id=${decisionOutput.decision_id} confidence=${(decisionOutput as any).confidence_score}`);
+            }
           }
         }
 
