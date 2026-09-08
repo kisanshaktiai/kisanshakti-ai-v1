@@ -21,10 +21,15 @@ serve(async (req) => {
   const startedAt = Date.now();
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const sweepKey = Deno.env.get("SCHEDULE_NARRATE_KEY") || "";
   const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-  if (!bearer || (bearer !== serviceRoleKey && (!sweepKey || bearer !== sweepKey))) {
-    return json({ error: "Unauthorized" }, 401);
+  if (!bearer) return json({ error: "Unauthorized" }, 401);
+  if (bearer !== serviceRoleKey) {
+    // The cron job signs with the vault secret `schedule_narrate_key`; verify against the vault
+    // itself so no second copy of the key has to be kept in sync.
+    const { createClient } = await import("npm:@supabase/supabase-js@2.57.2");
+    const admin = createClient(supabaseUrl, serviceRoleKey);
+    const { data: vaultKey } = await admin.rpc("get_sweep_key", { p_name: "schedule_narrate_key" });
+    if (!vaultKey || String(vaultKey) !== bearer) return json({ error: "Unauthorized" }, 401);
   }
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* cron may post an empty body */ }
