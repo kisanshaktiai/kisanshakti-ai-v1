@@ -285,7 +285,8 @@ serve(async (req) => {
         }
         narration.narratedCount += second.narratedCount;
         if (second.narratedCount > 0) narration.narrated = true;
-        timePlan.narration_second_pass = { attempted: missingIdx.length, recovered: second.narratedCount };
+        timePlan.narration_second_pass_attempted = missingIdx.length;
+        timePlan.narration_second_pass_recovered = second.narratedCount;
       }
     }
     // Narration outcome only annotates coverage; it never blocks persistence. Un-narrated tasks
