@@ -86,6 +86,10 @@ export function getAPIEndpoint(provider: AIProvider): string {
 
 // Get the API key for the specified provider
 export function getAPIKey(provider: AIProvider): string {
+  if (provider === 'lovable') {
+    const key = Deno.env.get("LOVABLE_API_KEY");
+    return key && key.trim() !== "" ? key : "";
+  }
   if (provider === 'openai') {
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
     if (openaiKey && openaiKey.trim() !== "") {
