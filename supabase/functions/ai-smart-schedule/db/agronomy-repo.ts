@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-08 — straight fertilizer = exactly one PRIMARY nutrient (N, P2O5, K2O) in nutrient_analysis; secondary
+//   nutrients (S, Ca, Mg) no longer disqualify a product — SSP (16% P2O5 + 11% S + 20% Ca) was being rejected, so
+//   every P dose shipped with no product equivalent.
 // 2026-09-05 — Completeness fixes (all DB-driven, no agronomy constants):
 //   (1) getFertilizerPlan prefers the row whose cultivation_context matches the farmer's method
 //       or stage clock; a context mismatch is recorded as a named gap, never hidden.
@@ -106,7 +109,7 @@ export interface StraightFertilizerProduct { id:string;name:string;nutrient:stri
 /** Single-nutrient fertilizer products from the catalog (exactly one non-zero key in nutrient_analysis). Used only to express a DB-derived nutrient dose as a product quantity. */
 export async function getStraightFertilizerProducts(supabase:SupabaseClient):Promise<StraightFertilizerProduct[]>{
   const {data}=await supabase.from("master_products").select("id, name, nutrient_analysis, organic_certified").eq("product_type","fertilizer").eq("ai_recommendable",true).eq("status","active").limit(500);const out:StraightFertilizerProduct[]=[];
-  for(const r of data||[]){const na=r.nutrient_analysis&&typeof r.nutrient_analysis==="object"?r.nutrient_analysis as Record<string,unknown>:null;if(!na)continue;const nonZero=Object.entries(na).filter(([,v])=>v!=null&&Number.isFinite(Number(v))&&Number(v)>0);if(nonZero.length!==1)continue;const [key,val]=nonZero[0];const pct=Number(val);if(!(pct>0&&pct<=100))continue;out.push({id:String(r.id),name:String(r.name),nutrient:String(key).toUpperCase(),percent:pct,organicCertified:r.organic_certified===true});}
+  for(const r of data||[]){const na=r.nutrient_analysis&&typeof r.nutrient_analysis==="object"?r.nutrient_analysis as Record<string,unknown>:null;if(!na)continue;const PRIMARY=new Set(["N","P2O5","K2O"]);const nonZero=Object.entries(na).filter(([k,v])=>PRIMARY.has(String(k).toUpperCase())&&v!=null&&Number.isFinite(Number(v))&&Number(v)>0);if(nonZero.length!==1)continue;const [key,val]=nonZero[0];const pct=Number(val);if(!(pct>0&&pct<=100))continue;out.push({id:String(r.id),name:String(r.name),nutrient:String(key).toUpperCase(),percent:pct,organicCertified:r.organic_certified===true});}
   return out.sort((a,b)=>b.percent-a.percent||a.name.localeCompare(b.name));
 }
 

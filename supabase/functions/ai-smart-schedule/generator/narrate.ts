@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-09-08 — farmer-simple register (by meaning, no language-specific words): extension-officer voice, short
+//   sentences, what/when/how much/how to mix/why; numbers, units, dates, product names and grades untouched.
 // 2026-09-07 — DURABLE NARRATION. Live measurement (schedule of 91 tasks, Marathi): 28-task
 //   chunks at maxTokens 3000 overflow the output (Devanagari costs 3-4 tokens per word), the
 //   model returns truncated JSON, every retry burns the budget, 0/91 tasks narrated. Fixes:
@@ -55,7 +57,7 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: farmerInstructionSource(t.instructions) }));
   const prompt = [
     `You are a village agriculture officer explaining farm tasks to a smallholder farmer who left school early.`,
-    language === "en" ? `Rewrite the supplied text in very simple English.` : `Rewrite the supplied text in natural, simple spoken ${language} for an Indian farmer. Use the target language as the main language, not English transliteration. Keep only unavoidable product names, crop names, units and numbers in Latin script.`,
+    language === "en" ? `Rewrite the supplied text in very simple spoken English, as a village extension officer would say it to a farmer with little schooling: short sentences; say what to do, when, how much to buy, how to mix, and why; keep every number, unit, product name and date exactly as given.` : `Rewrite the supplied text in natural, simple spoken ${language}, as a village extension officer would say it to a farmer with little schooling: short sentences; everyday farming words the farmer already uses; say what to do, when, how much to buy, how to mix, and why. Use the target language as the main language, not English transliteration. Keep every number, unit, date, product name and fertilizer grade exactly as given, in Latin script where the farmer reads them that way on the bag.`,
     `The database and deterministic pipeline are the agricultural authority. You only re-word the supplied facts.`,
     `Do NOT use model memory to add agricultural facts, products, doses, timings or treatments.`,
     `Never add, remove, calculate, convert or change a number, unit, date, product, chemical, dose, timing or threshold.`,

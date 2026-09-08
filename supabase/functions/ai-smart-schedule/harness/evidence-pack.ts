@@ -1,4 +1,13 @@
 // CHANGE LOG
+// 2026-09-08 — AGRONOMIC PLACEMENT: HARVEST / POST_HARVEST rules anchor to the LAST stage they name,
+//   not the first (a harvest-readiness rule was dated at grain-filling start, 35 days early).
+// 2026-09-08 — CALENDAR LEGIBILITY (rural farmer): a CONDITIONAL rule ("only if you see pest X")
+//   is NOT a dated card. It used to be materialized at the stage-start day — so a single tillering
+//   day carried 29 conditional cards a farmer could not act on. Conditional candidates now carry
+//   materializable=false and default_status stays CONDITIONAL, and they expose stage_key +
+//   a one-line watch brief so the generator folds them into that stage's ONE scouting card as a
+//   "watch for / if seen" list. Only unconditional CONTEXT_SCHEDULE rule actions stay dated tasks.
+//   No agronomy changes; placement and grouping only.
 // 2026-09-07 — Calendar shape: every rule task carries resources.window {from_das,to_das,clock} (the stage
 //   window, as a real crop calendar shows a timing range, not a point); LAND_PREPARATION, INTERCULTURAL
 //   and POST_HARVEST join the audited domains so their absence is reported and enrichable.
@@ -113,14 +122,18 @@ function stageMatches(stage: StageRow, token: string): boolean {
   return code === t || growth === t || (!!code && code.endsWith(`_${t}`));
 }
 
-function firstStageMatch(stages: StageRow[], tokens: unknown, transplantOffset: number | null): { stage: StageRow; das: number } | null {
+function firstStageMatch(stages: StageRow[], tokens: unknown, transplantOffset: number | null, pick: "first" | "last" = "first"): { stage: StageRow; das: number } | null {
   const list = Array.isArray(tokens) ? tokens.map(String) : tokens ? [String(tokens)] : [];
   const matched = stages
     .filter((s) => list.some((token) => stageMatches(s, token)))
     .map((stage) => ({ stage, das: toDas(stage, stage.das_min, transplantOffset) }))
     .filter((x): x is { stage: StageRow; das: number } => x.das != null)
     .sort((a, b) => a.das - b.das || String(a.stage.stage_code ?? "").localeCompare(String(b.stage.stage_code ?? "")));
-  return matched[0] ?? null;
+  // A rule that names several stages is placed at the FIRST one, except end-of-crop domains
+  // (harvest readiness, post-harvest, irrigation withdrawal) which belong at the LAST one —
+  // a "harvest when 80% panicles are straw-coloured" rule listed for grain_filling|maturity
+  // was appearing as a harvest card 35 days before the variety matures.
+  return (pick === "last" ? matched[matched.length - 1] : matched[0]) ?? null;
 }
 
 function varietyApplies(value: unknown, varietyName: string | null): boolean {
@@ -187,6 +200,21 @@ function farmerInstructions(rule: Record<string, unknown>, status: CandidateStat
   return out;
 }
 
+/** One-line, farmer-facing "watch for / if seen do" brief for a conditional rule — DB fields only.
+ *  Used by the generator to fold conditional rules into the stage's scouting card, not a dated task. */
+function watchBrief(rule: Record<string, unknown>): { rule_id: string; category: string; watch_for: string; if_seen: string } {
+  const etl = String(rule.etl_threshold ?? "").trim();
+  const cond = String(rule.condition_code ?? "").trim();
+  const ai = String(rule.active_ingredient ?? "").trim();
+  const dose = String(rule.dosage_per_acre ?? "").trim();
+  const method = String(rule.application_method ?? "").trim();
+  const phi = rule.phi_days != null && String(rule.phi_days).trim() !== "" ? ` Wait ${rule.phi_days} days before harvest.` : "";
+  const ifSeen = ai || dose || method
+    ? `Apply ${[ai, dose ? `${dose} per acre` : "", method ? `by ${method}` : ""].filter(Boolean).join(", ")}.${phi}`
+    : (String(rule.action_text ?? "").trim() || "Follow the recommended action.");
+  return { rule_id: String(rule.rule_id), category: String(rule.category ?? ""), watch_for: etl || cond || String(rule.category ?? "problem"), if_seen: ifSeen };
+}
+
 /** Offset that mapped this stage's das_min onto the schedule clock (0 for sowing-clock stages). */
 const transplantOffsetOf = (stage: StageRow, das: number) => (stage.das_min != null ? das - Number(stage.das_min) : 0);
 function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, domain: CandidateDomain, status: CandidateStatus): BaselineTask {
@@ -231,6 +259,7 @@ function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, d
     resources: {
       requirement_semantics: status === "CONDITIONAL" ? "CONDITIONAL_RULE" : "RULE_ACTION",
       window: { from_das: das, to_das: toDas(stage, stage.das_max, transplantOffsetOf(stage, das)) ?? das, clock: String(stage.das_reference ?? "sowing") },
+      watch_brief: status === "CONDITIONAL" ? watchBrief(rule) : null,
       planning_status: status,
       trigger_class: trigger || null,
       condition_code: condition || null,
@@ -286,10 +315,10 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
     if (!domain) continue;
     const count = byDomain.get(domain) ?? 0;
     if (count >= MAX_RULES_PER_DOMAIN) { capped = true; continue; }
-    const matched = firstStageMatch(stages, rule.stage_applicable, transplantOffset);
+    const matched = firstStageMatch(stages, rule.stage_applicable, transplantOffset, domain === "HARVEST" || domain === "POST_HARVEST" ? "last" : "first");
     if (!matched) continue;
     const status = statusForRule(rule.trigger_class, rule.action_type);
-    const materializable = status !== "MONITOR" && rule.requires_field_action !== false;
+    const materializable = status !== "MONITOR" && status !== "CONDITIONAL" && rule.requires_field_action !== false;
     const task = ruleTask(rule, matched.stage, matched.das, domain, status);
     const id = `rule_${String(rule.rule_id).replace(/[^a-zA-Z0-9_]+/g, "_")}`;
     candidates.push({

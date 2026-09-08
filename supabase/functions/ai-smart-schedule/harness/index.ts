@@ -1,4 +1,13 @@
 // CHANGE LOG
+// 2026-09-08 — ONE CARD PER STAGE for water and harvest: DB rule cards of the same type and stage as a
+//   baseline card fold into it as instructions (foldSameStageRuleCards), so a stage shows one
+//   irrigation card and one harvest card, each carrying the DB rule's practice text.
+// 2026-09-08 — CALENDAR LEGIBILITY. Conditional (OBSERVATION-triggered) candidates are no longer
+//   materializable (evidence-pack), so materialize()/fallback() stop emitting them as dated cards
+//   — this alone removes the ~29-card pile-up on the tillering start day. Their watch briefs are
+//   folded into the matching stage's scouting (monitoring) task via foldWatchBriefs(), so the
+//   farmer sees ONE "scout this stage; if you see X, do Y" card per stage instead of dozens.
+//   Deterministic fallback and the required-baseline contract are unchanged.
 // 2026-09-05 — Deterministic fallback completeness. The fallback used to retain ONLY required
 //   baseline candidates (canonicalSequence), so every evidence-pack candidate — dosed pest/disease/
 //   weed treatments, nutrition corrections, organic inputs — was discarded whenever the planner did
@@ -42,9 +51,10 @@ const fallback = (c: ScheduleHarnessContext, baselineTasks: BaselineTask[]): Pla
   const requiredOrder = canonicalSequence(c.graph);
   const requiredRank = new Map(requiredOrder.map((id, i) => [id, i]));
   const baselineTypes = new Set(baselineTasks.map((t) => t.task_type));
+  // Conditional candidates are non-materializable (they fold into scouting), so only
+  // SCHEDULED candidates for a domain the baseline does not already cover are added here.
   const optional = c.graph.nodes.filter((n) =>
-    !n.required && n.materializable &&
-    (n.default_status === "CONDITIONAL" || (n.default_status === "SCHEDULED" && !baselineTypes.has(n.task_type)))
+    !n.required && n.materializable && n.default_status === "SCHEDULED" && !baselineTypes.has(n.task_type)
   );
   const nodes = [
     ...requiredOrder.map((id) => c.graph.nodes.find((n) => n.id === id)!).filter(Boolean),
@@ -107,6 +117,58 @@ const withPlanItem = (task: BaselineTask, item: PlanItem, planner: string): Base
     harness: { planner, status: item.status ?? "SCHEDULED", reason: item.reason ?? null, sequence_order: item.sequence_order },
   },
 });
+
+/** Fold conditional-rule watch briefs (evidence-pack) into each stage's scouting task, so a
+ *  farmer sees one scouting card per stage with a "watch for / if seen" list, not many cards. */
+function foldWatchBriefs(tasks: BaselineTask[], evidence: AgronomicEvidencePack): BaselineTask[] {
+  const briefsByStage = new Map<string, Array<Record<string, unknown>>>();
+  for (const c of evidence.candidates) {
+    const brief = (c.task.resources as Record<string, unknown> | undefined)?.watch_brief as Record<string, unknown> | null | undefined;
+    if (c.default_status !== "CONDITIONAL" || !brief) continue;
+    const key = String(c.task.stage_key ?? c.task.anchor_stage ?? "");
+    if (!key) continue;
+    (briefsByStage.get(key) ?? briefsByStage.set(key, []).get(key)!).push(brief);
+  }
+  if (!briefsByStage.size) return tasks;
+  for (const t of tasks) {
+    if (t.task_type !== "monitoring") continue;
+    const key = String(t.stage_key ?? t.anchor_stage ?? "");
+    const briefs = briefsByStage.get(key);
+    if (!briefs || !briefs.length) continue;
+    const res = (t.resources ??= {}) as Record<string, unknown>;
+    res.watch_list = briefs;                       // structured, for the UI
+    res.watch_count = briefs.length;
+    // Also add human-readable lines so the scouting card is useful even without UI changes.
+    const lines = briefs.map((b) => `Watch for ${String(b.watch_for)}; if seen: ${String(b.if_seen)}`);
+    t.instructions = [...(t.instructions ?? []), ...lines];
+  }
+  return tasks;
+}
+
+/** One card per stage for water and harvest: a DB rule card of the same task_type and stage as a
+ *  baseline card (e.g. "keep 5 cm standing water, cyclic irrigation" beside the guideline cadence
+ *  card; "harvest when 80% panicles are straw-coloured" beside the harvest card) is folded into the
+ *  baseline card as instructions, so the farmer reads one card, not two contradicting ones. */
+const FOLDABLE_TYPES = new Set(["irrigation", "harvest", "post_harvest"]);
+function foldSameStageRuleCards(tasks: BaselineTask[]): BaselineTask[] {
+  const keyOf = (t: BaselineTask) => `${t.task_type}|${String(t.stage_key ?? t.anchor_stage ?? t.days_from_sowing)}`;
+  const isBaseline = (t: BaselineTask) => { const s = (t.resources as Record<string, unknown> | undefined)?.requirement_semantics; return s === "BASELINE" || s === "BASELINE_WITHDRAWAL" || s == null && t.rule_ids.length === 0; };
+  const anchors = new Map<string, BaselineTask>();
+  for (const t of tasks) if (FOLDABLE_TYPES.has(t.task_type) && isBaseline(t) && !anchors.has(keyOf(t))) anchors.set(keyOf(t), t);
+  if (!anchors.size) return tasks;
+  const out: BaselineTask[] = [];
+  for (const t of tasks) {
+    const anchor = FOLDABLE_TYPES.has(t.task_type) && !isBaseline(t) ? anchors.get(keyOf(t)) : undefined;
+    if (!anchor || anchor === t) { out.push(t); continue; }
+    const text = [t.task_description, ...(t.instructions ?? [])].map((x) => String(x ?? "").trim()).filter(Boolean);
+    anchor.instructions = [...(anchor.instructions ?? []), ...text.filter((x) => !(anchor.instructions ?? []).includes(x))];
+    anchor.rule_ids = [...new Set([...(anchor.rule_ids ?? []), ...(t.rule_ids ?? [])])];
+    anchor.source_refs = [...(anchor.source_refs ?? []), ...(t.source_refs ?? [])];
+    const res = (anchor.resources ??= {}) as Record<string, unknown>;
+    res.folded_rule_cards = [...((res.folded_rule_cards as unknown[]) ?? []), { task_name: t.task_name, rule_ids: t.rule_ids }];
+  }
+  return out;
+}
 
 const materialize = (
   tasks: BaselineTask[],
@@ -209,7 +271,7 @@ export async function applyScheduleHarness(
         const r = await requestPlan(context, errors, { deadlineAt });
         const validationErrors = validatePlanIntent(r.plan, graph);
         if (!validationErrors.length && r.plan.status === "READY") {
-          const materialized = materialize(tasks, context.evidencePack, r.plan, "llm_evidence_pack");
+          const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, r.plan, "llm_evidence_pack"), context.evidencePack));
           return {
             tasks: materialized,
             result: {
@@ -243,7 +305,7 @@ export async function applyScheduleHarness(
       }
     }
     const plan = fallback(context, tasks);
-    const materialized = materialize(tasks, context.evidencePack, plan, "deterministic_fallback");
+    const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, plan, "deterministic_fallback"), context.evidencePack));
     return {
       tasks: materialized,
       result: {
@@ -306,7 +368,7 @@ export async function applyScheduleHarness(
       model = r.model;
       const validationErrors = validatePlanIntent(r.plan, graph);
       if (!validationErrors.length && r.plan.status === "READY") {
-        const materialized = materialize(tasks, evidencePack, r.plan, "llm_evidence_pack");
+        const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, evidencePack, r.plan, "llm_evidence_pack"), evidencePack));
         return {
           tasks: materialized,
           result: {
@@ -343,7 +405,7 @@ export async function applyScheduleHarness(
   }
 
   const plan = fallback(context, tasks);
-  const materialized = materialize(tasks, evidencePack, plan, "deterministic_fallback");
+  const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, evidencePack, plan, "deterministic_fallback"), evidencePack));
   return {
     tasks: materialized,
     result: {
