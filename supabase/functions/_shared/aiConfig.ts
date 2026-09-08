@@ -1,7 +1,10 @@
 // Centralized AI Configuration
 
 // AI Provider types
-export type AIProvider = "openai" | "google" | "gemini";
+// 2026-09-08 — "lovable" is the managed Lovable AI Gateway (LOVABLE_API_KEY). It is added as a
+// narration provider because direct OpenAI/Gemini keys were returning sustained HTTP 429 during
+// schedule narration, which left farmer schedules half-English.
+export type AIProvider = "openai" | "google" | "gemini" | "lovable";
 
 // Model configurations: OpenAI GPT-5.6 Luna primary, Gemini provider fallback
 export const AI_MODELS = {
