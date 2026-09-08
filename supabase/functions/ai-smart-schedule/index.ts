@@ -237,8 +237,23 @@ serve(async (req) => {
       }
     } catch (e) { console.error("rag-evidence attachment failed (non-fatal):", e); }
 
-    const sanitized = baseline.tasks.map((t) => sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details }));
-    baseline.tasks.forEach((t, i) => { t.task_name = sanitized[i].task_name || t.task_name; t.task_description = sanitized[i].task_description; t.instructions = sanitized[i].instructions; if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`); });
+    // 2026-09-08 — CLOCK GUARD + NO BLANK CARD. When this crop cycle has no transplanting event,
+    // every task is counted from sowing, so any transplant-worded sentence carried over from a DB
+    // row authored for the transplanted method is withheld from the farmer text (kept as technical
+    // detail) instead of telling the farmer a day number against the wrong field event. A task
+    // whose description empties out inherits its first action step, so no card is ever blank.
+    const sowingOnlyCycle = !inputs.transplantDate;
+    const sanitized = baseline.tasks.map((t) => sanitizeTaskText(
+      { task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details },
+      { clock: sowingOnlyCycle && t.anchor_type !== "DAT" ? "sowing" : "transplant" },
+    ));
+    baseline.tasks.forEach((t, i) => {
+      const s = sanitized[i];
+      if (!s.task_description && s.instructions.length) s.task_description = s.instructions[0];
+      if (s.task_description !== t.task_description && !s.task_description) baseline.gaps.push(`clock_mismatch_text_withheld:${t.task_type}`);
+      t.task_name = s.task_name || t.task_name; t.task_description = s.task_description; t.instructions = s.instructions;
+      if (!hasFarmerText(s)) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`);
+    });
     const narrationBudgetMs = Math.max(20_000, Math.min(60_000, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS));
     timePlan.narration_budget_ms = narrationBudgetMs;
     const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);
