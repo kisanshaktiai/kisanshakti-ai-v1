@@ -1,7 +1,10 @@
 // Centralized AI Configuration
 
 // AI Provider types
-export type AIProvider = "openai" | "google" | "gemini";
+// 2026-09-08 — "lovable" is the managed Lovable AI Gateway (LOVABLE_API_KEY). It is added as a
+// narration provider because direct OpenAI/Gemini keys were returning sustained HTTP 429 during
+// schedule narration, which left farmer schedules half-English.
+export type AIProvider = "openai" | "google" | "gemini" | "lovable";
 
 // Model configurations: OpenAI GPT-5.6 Luna primary, Gemini provider fallback
 export const AI_MODELS = {
@@ -23,13 +26,19 @@ export const AI_MODELS = {
     fallback: "gemini-2.0-flash",
     premium: "gemini-2.5-pro",
   },
+  lovable: {
+    default: "google/gemini-2.5-flash",
+    fallback: "google/gemini-2.5-flash-lite",
+    premium: "google/gemini-2.5-pro",
+  },
 } as const;
 
-// API endpoints - PRODUCTION: Only use Gemini & OpenAI directly, NO Lovable AI Gateway
+// API endpoints
 export const AI_ENDPOINTS = {
   openai: "https://api.openai.com/v1/chat/completions",
   google: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", // Use Gemini directly
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  lovable: "https://ai.gateway.lovable.dev/v1/chat/completions",
 } as const;
 
 export const AI_CONFIG = {
@@ -77,6 +86,10 @@ export function getAPIEndpoint(provider: AIProvider): string {
 
 // Get the API key for the specified provider
 export function getAPIKey(provider: AIProvider): string {
+  if (provider === 'lovable') {
+    const key = Deno.env.get("LOVABLE_API_KEY");
+    return key && key.trim() !== "" ? key : "";
+  }
   if (provider === 'openai') {
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
     if (openaiKey && openaiKey.trim() !== "") {
@@ -231,6 +244,13 @@ export function getBestScheduleProvider(): { provider: AIProvider; model: string
 // Gemini is used only as a provider fallback after an OpenAI request failure.
 export function getScheduleProviderChain(): Array<{ provider: AIProvider; model: string }> {
   const chain: Array<{ provider: AIProvider; model: string }> = [];
+  // Managed gateway first: direct OpenAI/Gemini keys were rate-limiting narration to a standstill.
+  if (getAPIKey("lovable")) {
+    chain.push({
+      provider: "lovable",
+      model: Deno.env.get("LOVABLE_SCHEDULE_MODEL")?.trim() || AI_MODELS.lovable.default,
+    });
+  }
   if (hasOpenAIKey()) {
     chain.push({
       provider: "openai",
@@ -304,12 +324,12 @@ export function buildAIRequest(
     payload.temperature = options.temperature;
   } else {
     // Lower temperature for structured outputs
-    payload.temperature = provider === "gemini" ? 0.4 : 0.7;
+    payload.temperature = (provider === "gemini" || provider === "lovable") ? 0.4 : 0.7;
   }
 
   // For Gemini, prefer JSON mode over tool calling for complex schedules
   // Gemini's function calling has limitations with complex nested schemas
-  if (provider === "gemini" && options.useJsonMode !== false) {
+  if ((provider === "gemini" || provider === "lovable") && options.useJsonMode !== false) {
     // Skip tools for Gemini - use JSON mode instead
     // The system prompt should instruct to return JSON
     payload.response_format = { type: "json_object" };
