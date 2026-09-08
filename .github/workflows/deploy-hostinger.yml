@@ -34,7 +34,6 @@ jobs:
       - name: ✅ Verify build output
         run: |
           if [ ! -d ./dist ] || [ ! -f ./dist/index.html ]; then echo "❌ ERROR: production build output is missing"; exit 1; fi
-          echo "✅ Build output verified"
       - name: 🔐 Setup SSH authentication
         run: |
           mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
@@ -83,9 +82,8 @@ jobs:
         run: bun run build
       - name: 📱 Setup Capacitor
         run: |
-          bun add @capacitor/core @capacitor/cli @capacitor/android
-          bunx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          bunx cap add android
+          test -f capacitor.config.ts || { echo "❌ capacitor.config.ts not found"; exit 1; }
+          if [ -d "android" ]; then echo "android/ already exists — using existing native project"; else bunx cap add android; fi
           bunx cap sync android
           bunx cap copy android
       - name: 🔨 Build Debug APK
@@ -120,7 +118,6 @@ jobs:
           retention-days: 90
       - name: ✅ Android Build Summary
         run: |
-          echo "📱 Android APK Build Complete!"
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then echo "✅ Release APK: Available in Artifacts (Signed)"; else echo "⚠️ Release APK: Skipped (No keystore configured)"; fi
 
   build-ios:
@@ -148,9 +145,8 @@ jobs:
         run: bun run build
       - name: 📱 Setup Capacitor
         run: |
-          bun add @capacitor/core @capacitor/cli @capacitor/ios
-          bunx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          bunx cap add ios
+          test -f capacitor.config.ts || { echo "❌ capacitor.config.ts not found"; exit 1; }
+          if [ -d "ios" ] && [ -d "ios/App" ]; then echo "ios/ already exists — using existing native project"; else bunx cap add ios; fi
           bunx cap sync ios
           bunx cap copy ios
       - name: 📦 Install CocoaPods dependencies
