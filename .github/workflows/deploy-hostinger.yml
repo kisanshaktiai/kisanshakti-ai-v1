@@ -21,50 +21,30 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
+
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: 📦 Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then 
-            npm ci --prefer-offline --no-audit
-          else 
-            npm install --no-audit
-          fi
+        run: bun install --frozen-lockfile
 
       - name: 🏗️ Build production bundle
         env:
           NODE_ENV: production
           VITE_APP_VERSION: ${{ github.sha }}
           VITE_BUILD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
-        run: |
-          npm run build
-          echo "✅ Build completed successfully"
+        run: bun run build
 
       - name: ✅ Verify build output
         run: |
-          echo "🔍 Checking build output..."
-          
-          if [ ! -d ./dist ]; then 
-            echo "❌ ERROR: dist folder not found!"
+          if [ ! -d ./dist ] || [ ! -f ./dist/index.html ]; then
+            echo "❌ ERROR: production build output is missing"
             exit 1
           fi
-          
-          if [ ! -f ./dist/index.html ]; then
-            echo "❌ ERROR: index.html not found!"
-            exit 1
-          fi
-          
-          echo "✅ index.html exists"
-          
-          if [ -f ./dist/.htaccess ]; then
-            echo "✅ .htaccess found"
-          fi
-          
-          if [ -f ./dist/manifest.json ]; then
-            echo "✅ manifest.json found"
-          fi
-          
+          echo "✅ Build output verified"
           echo "📊 Build size: $(du -sh ./dist)"
 
       - name: 🔐 Setup SSH authentication
@@ -73,7 +53,6 @@ jobs:
           chmod 700 "$HOME/.ssh"
           echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
-          
           if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then
             echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
           else
@@ -83,13 +62,11 @@ jobs:
 
       - name: 🚀 Deploy to Hostinger
         run: |
-          echo "🚀 Starting deployment..."
           rsync -avz --delete \
             -e "ssh -i $HOME/.ssh/deploy_key -p ${{ secrets.HOST_SFTP_PORT }} -o StrictHostKeyChecking=no" \
             --exclude='.git*' \
             --exclude='node_modules' \
-            --progress \
-            ./dist/ \
+            --progress ./dist/ \
             "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/"
           echo "✅ PWA deployed successfully"
 
@@ -123,8 +100,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
@@ -133,19 +109,24 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: 📦 Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: 🏗️ Build web app
-        run: npm run build
+        run: bun run build
 
       - name: 📱 Setup Capacitor
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          npx cap add android
-          npx cap sync android
-          npx cap copy android
+          bun add @capacitor/core @capacitor/cli @capacitor/android
+          bunx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          bunx cap add android
+          bunx cap sync android
+          bunx cap copy android
 
       - name: 🔨 Build Debug APK
         run: |
@@ -182,7 +163,6 @@ jobs:
               }
           }
           EOF
-          
           cd android
           ./gradlew assembleRelease --stacktrace
 
@@ -196,14 +176,12 @@ jobs:
 
       - name: ✅ Android Build Summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📱 Android APK Build Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Debug APK: Available in Artifacts"
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then
             echo "✅ Release APK: Available in Artifacts (Signed)"
           else
-            echo "⚠️  Release APK: Skipped (No keystore configured)"
+            echo "⚠️ Release APK: Skipped (No keystore configured)"
           fi
 
   # Job 3: Build iOS IPA
@@ -219,27 +197,31 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
       - name: 🍎 Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
 
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: 📦 Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: 🏗️ Build web app
-        run: npm run build
+        run: bun run build
 
       - name: 📱 Setup Capacitor
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          npx cap add ios
-          npx cap sync ios
-          npx cap copy ios
+          bun add @capacitor/core @capacitor/cli @capacitor/ios
+          bunx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          bunx cap add ios
+          bunx cap sync ios
+          bunx cap copy ios
 
       - name: 📦 Install CocoaPods dependencies
         run: |
@@ -271,7 +253,6 @@ jobs:
           </dict>
           </plist>
           EOF
-          
           xcodebuild -exportArchive \
             -archivePath $PWD/build/KisanShakti.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
@@ -286,11 +267,8 @@ jobs:
 
       - name: ✅ iOS Build Summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🍎 iOS IPA Build Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ IPA: Available in Artifacts"
-          echo "⚠️  Note: For App Store, configure signing in Xcode"
 
   # Job 4: Build Summary
   summary:
@@ -301,15 +279,7 @@ jobs:
     steps:
       - name: 🎉 Deployment Summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🎉 BUILD & DEPLOYMENT COMPLETE!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
           echo "✅ PWA: https://kisanshaktiai.in"
           echo "✅ Android APK: Check Artifacts tab"
           echo "✅ iOS IPA: Check Artifacts tab"
-          echo ""
-          echo "📱 Download apps from:"
-          echo "   Actions → Workflow run → Artifacts"
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
