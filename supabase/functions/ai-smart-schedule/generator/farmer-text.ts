@@ -78,12 +78,31 @@ export function isTechnicalLine(line: string): boolean {
  * Split a task's text into farmer-facing text and technical detail.
  * Names/descriptions keep their meaning; only tags and shorthand change.
  */
-export function sanitizeTaskText(task: {
-  task_name?: string;
-  task_description?: string;
-  instructions?: unknown;
-  technical_details?: unknown;
-}): SanitizedTaskText {
+/**
+ * 2026-09-08 — CLOCK GUARD. A task counted on the SOWING axis must never be worded on the
+ * TRANSPLANTING clock: the farmer reads the day number against the wrong field event, which is
+ * exactly the "stage mismatch" reported on the live rice schedules (weed task at day 10 after
+ * sowing carrying "25-30 days after transplanting" text, basal splits authored for transplanted
+ * rice re-anchored onto the direct-seeded establishment stage). Such sentences are withheld from
+ * farmer text and kept as technical detail — never rewritten, because rewriting would move an
+ * agronomic timing.
+ */
+const TRANSPLANT_WORDING = /\b(?:DAT\b|after\s+transplant(?:ing)?|days\s+after\s+transplant(?:ing)?|at\s+transplant(?:ing)?|transplanting)\b/i;
+
+function splitSentences(value: string): string[] {
+  return value.split(/(?<=[.!?।])\s+/).map((s) => s.trim()).filter(Boolean);
+}
+
+export function sanitizeTaskText(
+  task: {
+    task_name?: string;
+    task_description?: string;
+    instructions?: unknown;
+    technical_details?: unknown;
+  },
+  opts?: { clock?: "sowing" | "transplant" },
+): SanitizedTaskText {
+  const sowingAxis = opts?.clock === "sowing";
   const farmer: string[] = [];
   const technical: string[] = (Array.isArray(task.technical_details) ? task.technical_details : [])
     .map(clean)
@@ -97,14 +116,28 @@ export function sanitizeTaskText(task: {
       technical.push(line);
       continue;
     }
-    farmer.push(expandShorthand(line));
+    const expanded = expandShorthand(line);
+    if (sowingAxis && TRANSPLANT_WORDING.test(expanded)) {
+      technical.push(expanded);
+      continue;
+    }
+    farmer.push(expanded);
   }
 
   const description = clean(task.task_description);
+  let farmerDescription = isTechnicalLine(description) ? "" : expandShorthand(description);
+  if (sowingAxis && farmerDescription && TRANSPLANT_WORDING.test(farmerDescription)) {
+    const kept: string[] = [];
+    for (const sentence of splitSentences(farmerDescription)) {
+      if (TRANSPLANT_WORDING.test(sentence)) technical.push(sentence);
+      else kept.push(sentence);
+    }
+    farmerDescription = kept.join(" ").trim();
+  }
 
   return {
     task_name: expandShorthand(clean(task.task_name)),
-    task_description: isTechnicalLine(description) ? "" : expandShorthand(description),
+    task_description: farmerDescription,
     instructions: farmer,
     technical_details: [...new Set(technical)],
   };
