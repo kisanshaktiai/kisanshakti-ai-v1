@@ -5,9 +5,9 @@ const config: CapacitorConfig = {
   appName: 'KisanShakti',
   webDir: 'dist',
   server: {
-    // For development - connects to Lovable preview for hot reload
-    url: 'https://1ca669aa-ddca-4527-a8c3-e8b29bf3e598.lovableproject.com?forceHideBadge=true',
-    cleartext: true
+    // Production web application URL used by native builds.
+    url: 'https://app.kisanshaktiai.in',
+    cleartext: false
   },
   plugins: {
     SplashScreen: {
