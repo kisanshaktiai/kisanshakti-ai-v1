@@ -262,10 +262,33 @@ serve(async (req) => {
       t.task_name = s.task_name || t.task_name; t.task_description = s.task_description; t.instructions = s.instructions;
       if (!hasFarmerText(s)) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`);
     });
-    const narrationBudgetMs = Math.max(20_000, Math.min(60_000, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS));
+    // 2026-09-08 — WRITE IT IN THE FARMER'S LANGUAGE THE FIRST TIME. The schedule must leave this
+    // request already written in the farmer's language; storing English and repairing it later is
+    // what produced half-English schedules. The whole remaining request budget is therefore given
+    // to the language pass, and any task the first pass could not cover is retried in-request
+    // while time remains. The periodic sweep stays only as a safety net for a provider outage.
+    const narrationBudgetMs = Math.max(20_000, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS);
     timePlan.narration_budget_ms = narrationBudgetMs;
     const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);
     const narrated = narration.tasks;
+    if (language !== "en" && narration.narratedCount < narration.totalCount) {
+      const remainingMs = HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS;
+      if (remainingMs > 15_000) {
+        const covered = new Set(narration.appliedIndices);
+        const missingIdx = baseline.tasks.map((_, i) => i).filter((i) => !covered.has(i));
+        const second = await narrateTasks(missingIdx.map((i) => ({ task_name: baseline.tasks[i].task_name, task_description: baseline.tasks[i].task_description, instructions: baseline.tasks[i].instructions })), language, remainingMs);
+        for (const localIdx of second.appliedIndices) {
+          const globalIdx = missingIdx[localIdx];
+          if (globalIdx === undefined) continue;
+          narrated[globalIdx] = second.tasks[localIdx];
+          narration.appliedIndices.push(globalIdx);
+        }
+        narration.narratedCount += second.narratedCount;
+        if (second.narratedCount > 0) narration.narrated = true;
+        timePlan.narration_second_pass_attempted = missingIdx.length;
+        timePlan.narration_second_pass_recovered = second.narratedCount;
+      }
+    }
     // Narration outcome only annotates coverage; it never blocks persistence. Un-narrated tasks
     // are persisted with language=NULL + needs_translation and completed afterwards (see below).
     if (!narration.narrated) { baseline.gaps.push(`narration_unavailable: ${narration.reason ?? "unknown"}`); baseline.coverage.narration = false; }
