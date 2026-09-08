@@ -41630,6 +41630,7 @@ export type Database = {
         Returns: number
       }
       get_super_admin_count: { Args: never; Returns: number }
+      get_sweep_key: { Args: { p_name: string }; Returns: string }
       get_tenant_api_costs: {
         Args: {
           p_end_date?: string

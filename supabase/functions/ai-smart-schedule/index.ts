@@ -82,8 +82,16 @@ serve(async (req) => {
 
     // ── action=narrate: finish pending farmer-language narration (no generation) ──
     if (body?.action === "narrate") {
-      const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-      const sweep = Boolean(serviceRoleKey) && bearer === serviceRoleKey;
+      const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+      // 2026-09-08 — SWEEP AUTH. The 10-minute cron cannot hold the service-role key, so it signs
+      // with the vault secret `schedule_narrate_key`. Accepting it here lets the cron call this
+      // function directly instead of depending on a separate forwarder endpoint (the earlier
+      // forwarder never existed, so every sweep 404'd and half-translated schedules never healed).
+      let sweep = Boolean(serviceRoleKey) && bearer === serviceRoleKey;
+      if (!sweep && bearer) {
+        const { data: sweepKey } = await supabase.rpc("get_sweep_key", { p_name: "schedule_narrate_key" });
+        sweep = Boolean(sweepKey) && String(sweepKey) === bearer;
+      }
       const outcome = await narratePendingSchedules(supabase, { scheduleId: body?.scheduleId ?? body?.schedule_id ?? null, tenantId: tenantId || null, farmerId: farmerId || null, sweep, limit: body?.limit ?? null, deadlineAt: startTime + 110_000 });
       try { await supabase.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: sweep ? null : (farmerId || null), payload: { action: "narrate", mode: sweep ? "sweep" : "farmer", http_status: outcome.status, ...outcome.body, execution_time_ms: Date.now() - startTime } }); } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
       return json(outcome.body, outcome.status);
@@ -237,8 +245,23 @@ serve(async (req) => {
       }
     } catch (e) { console.error("rag-evidence attachment failed (non-fatal):", e); }
 
-    const sanitized = baseline.tasks.map((t) => sanitizeTaskText({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details }));
-    baseline.tasks.forEach((t, i) => { t.task_name = sanitized[i].task_name || t.task_name; t.task_description = sanitized[i].task_description; t.instructions = sanitized[i].instructions; if (!hasFarmerText(sanitized[i])) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`); });
+    // 2026-09-08 — CLOCK GUARD + NO BLANK CARD. When this crop cycle has no transplanting event,
+    // every task is counted from sowing, so any transplant-worded sentence carried over from a DB
+    // row authored for the transplanted method is withheld from the farmer text (kept as technical
+    // detail) instead of telling the farmer a day number against the wrong field event. A task
+    // whose description empties out inherits its first action step, so no card is ever blank.
+    const sowingOnlyCycle = !inputs.transplantDate;
+    const sanitized = baseline.tasks.map((t) => sanitizeTaskText(
+      { task_name: t.task_name, task_description: t.task_description, instructions: t.instructions, technical_details: t.technical_details },
+      { clock: sowingOnlyCycle && t.anchor_type !== "DAT" ? "sowing" : "transplant" },
+    ));
+    baseline.tasks.forEach((t, i) => {
+      const s = sanitized[i];
+      if (!s.task_description && s.instructions.length) s.task_description = s.instructions[0];
+      if (s.task_description !== t.task_description && !s.task_description) baseline.gaps.push(`clock_mismatch_text_withheld:${t.task_type}`);
+      t.task_name = s.task_name || t.task_name; t.task_description = s.task_description; t.instructions = s.instructions;
+      if (!hasFarmerText(s)) baseline.gaps.push(`task_without_farmer_text:${t.task_type}`);
+    });
     const narrationBudgetMs = Math.max(20_000, Math.min(60_000, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS));
     timePlan.narration_budget_ms = narrationBudgetMs;
     const narration = await narrateTasks(baseline.tasks.map((t) => ({ task_name: t.task_name, task_description: t.task_description, instructions: t.instructions })), language, narrationBudgetMs);

@@ -277,6 +277,35 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     // or implement as a server-side scheduled task
   }, [schedule?.id, landId, refetchSchedules]);
 
+  // 2026-09-08 — Finish farmer-language translation for a schedule the farmer is looking at.
+  // Tasks that could not be translated inside the generation request are stored untranslated and
+  // hidden from the card; without this the farmer sees a card with no details until the periodic
+  // sweep happens to reach that schedule.
+  const narrateAttemptsRef = React.useRef<Record<string, number>>({});
+  useEffect(() => {
+    const scheduleId = schedule?.id;
+    if (!scheduleId || !user?.id || !user?.tenantId) return;
+    const pending = tasks.some((t: any) => t?.resources?.needs_translation === true);
+    if (!pending) return;
+    const attempts = narrateAttemptsRef.current[scheduleId] ?? 0;
+    if (attempts >= 3) return;
+    narrateAttemptsRef.current[scheduleId] = attempts + 1;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { supabase } = await import('@/integrations/supabase/client');
+        await supabase.functions.invoke('ai-smart-schedule', {
+          body: { action: 'narrate', scheduleId },
+          headers: { 'x-tenant-id': user.tenantId as string, 'x-farmer-id': user.id as string },
+        });
+        if (!cancelled) await fetchTasks(scheduleId);
+      } catch (err) {
+        console.warn('⚠️ [CropScheduleView] translation follow-up failed (non-fatal):', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [schedule?.id, tasks, user?.id, user?.tenantId]);
+
   const getFilteredTasks = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
