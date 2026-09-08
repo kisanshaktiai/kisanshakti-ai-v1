@@ -10,6 +10,9 @@ jobs:
   deploy-pwa:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
 
     steps:
       - name: 📥 Checkout repository
@@ -41,27 +44,11 @@ jobs:
       - name: ✅ Verify build output
         run: |
           echo "🔍 Checking build output..."
-          
-          if [ ! -d ./dist ]; then 
-            echo "❌ ERROR: dist folder not found!"
-            exit 1
-          fi
-          
-          if [ ! -f ./dist/index.html ]; then
-            echo "❌ ERROR: index.html not found!"
-            exit 1
-          fi
-          
+          if [ ! -d ./dist ]; then echo "❌ ERROR: dist folder not found!"; exit 1; fi
+          if [ ! -f ./dist/index.html ]; then echo "❌ ERROR: index.html not found!"; exit 1; fi
           echo "✅ index.html exists"
-          
-          if [ -f ./dist/.htaccess ]; then
-            echo "✅ .htaccess found"
-          fi
-          
-          if [ -f ./dist/manifest.json ]; then
-            echo "✅ manifest.json found"
-          fi
-          
+          if [ -f ./dist/.htaccess ]; then echo "✅ .htaccess found"; fi
+          if [ -f ./dist/manifest.json ]; then echo "✅ manifest.json found"; fi
           echo "📊 Build size: $(du -sh ./dist)"
 
       - name: 🔐 Setup SSH authentication
@@ -70,7 +57,6 @@ jobs:
           chmod 700 "$HOME/.ssh"
           echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
-          
           if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then
             echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
           else
@@ -91,10 +77,10 @@ jobs:
           echo "✅ PWA deployed successfully"
 
       - name: 🔄 Purge Cloudflare cache
-        if: ${{ secrets.CF_API_TOKEN != '' && secrets.CF_ZONE_ID != '' }}
+        if: ${{ env.CF_API_TOKEN != '' && env.CF_ZONE_ID != '' }}
         run: |
-          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
             --data '{"purge_everything":true}'
           echo "✅ Cache purged"
@@ -110,30 +96,27 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy-pwa
     timeout-minutes: 45
+    env:
+      ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
 
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
-
       - name: 📦 Install dependencies
         run: npm ci
-
       - name: 🏗️ Build web app
         run: npm run build
-
       - name: 📱 Setup Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
@@ -141,29 +124,22 @@ jobs:
           npx cap add android
           npx cap sync android
           npx cap copy android
-
       - name: 🔨 Build Debug APK
         run: |
           cd android
           chmod +x ./gradlew
           ./gradlew assembleDebug --stacktrace
-
       - name: 📤 Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: kisanshakti-debug.apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
-
       - name: 🔨 Build Release APK (if keystore exists)
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_B64 != '' }}
         run: |
-          # Decode keystore
-          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > android/app/release.keystore
-          
-          # Create signing config
+          echo "$ANDROID_KEYSTORE_B64" | base64 --decode > android/app/release.keystore
           cat >> android/app/build.gradle << EOF
-          
           android {
               signingConfigs {
                   release {
@@ -174,63 +150,45 @@ jobs:
                   }
               }
               buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
+                  release { signingConfig signingConfigs.release }
               }
           }
           EOF
-          
           cd android
           ./gradlew assembleRelease --stacktrace
-
       - name: 📤 Upload Release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_B64 != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: kisanshakti-release.apk
           path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 90
-
       - name: ✅ Android Build Summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📱 Android APK Build Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Debug APK: Available in Artifacts"
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
-            echo "✅ Release APK: Available in Artifacts (Signed)"
-          else
-            echo "⚠️  Release APK: Skipped (No keystore configured)"
-          fi
+          if [ -n "$ANDROID_KEYSTORE_B64" ]; then echo "✅ Release APK: Available in Artifacts (Signed)"; else echo "⚠️ Release APK: Skipped (No keystore configured)"; fi
 
   # Job 3: Build iOS IPA
   build-ios:
     runs-on: macos-latest
     needs: deploy-pwa
     timeout-minutes: 60
-
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: 🍎 Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
-
       - name: 📦 Install dependencies
         run: npm ci
-
       - name: 🏗️ Build web app
         run: npm run build
-
       - name: 📱 Setup Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/ios
@@ -238,78 +196,41 @@ jobs:
           npx cap add ios
           npx cap sync ios
           npx cap copy ios
-
       - name: 📦 Install CocoaPods dependencies
         run: |
           cd ios/App
           pod install
-
       - name: 🔨 Build iOS App (Debug)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace \
-            -scheme App \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            -archivePath $PWD/build/KisanShakti.xcarchive \
-            archive
-
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -destination 'generic/platform=iOS' -archivePath $PWD/build/KisanShakti.xcarchive archive
       - name: 📦 Export IPA (Debug)
         run: |
           cd ios/App
-          
-          # Create export options
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>development</string>
-              <key>teamID</key>
-              <string>${{ secrets.APPLE_TEAM_ID }}</string>
-          </dict>
-          </plist>
+          <plist version="1.0"><dict><key>method</key><string>development</string><key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string></dict></plist>
           EOF
-          
-          xcodebuild -exportArchive \
-            -archivePath $PWD/build/KisanShakti.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath $PWD/build
-
+          xcodebuild -exportArchive -archivePath $PWD/build/KisanShakti.xcarchive -exportOptionsPlist ExportOptions.plist -exportPath $PWD/build
       - name: 📤 Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: kisanshakti-ios.ipa
           path: ios/App/build/*.ipa
           retention-days: 30
-
       - name: ✅ iOS Build Summary
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🍎 iOS IPA Build Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ IPA: Available in Artifacts"
-          echo "⚠️  Note: For App Store, configure signing in Xcode"
+        run: echo "🍎 iOS IPA Build Complete!"
 
   # Job 4: Build Summary
   summary:
     runs-on: ubuntu-latest
     needs: [deploy-pwa, build-android, build-ios]
     if: always()
-
     steps:
       - name: 🎉 Deployment Summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🎉 BUILD & DEPLOYMENT COMPLETE!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
           echo "✅ PWA: https://kisanshaktiai.in"
           echo "✅ Android APK: Check Artifacts tab"
           echo "✅ iOS IPA: Check Artifacts tab"
-          echo ""
-          echo "📱 Download apps from:"
-          echo "   Actions → Workflow run → Artifacts"
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
