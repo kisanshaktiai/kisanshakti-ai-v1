@@ -26,13 +26,19 @@ export const AI_MODELS = {
     fallback: "gemini-2.0-flash",
     premium: "gemini-2.5-pro",
   },
+  lovable: {
+    default: "google/gemini-2.5-flash",
+    fallback: "google/gemini-2.5-flash-lite",
+    premium: "google/gemini-2.5-pro",
+  },
 } as const;
 
-// API endpoints - PRODUCTION: Only use Gemini & OpenAI directly, NO Lovable AI Gateway
+// API endpoints
 export const AI_ENDPOINTS = {
   openai: "https://api.openai.com/v1/chat/completions",
   google: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", // Use Gemini directly
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  lovable: "https://ai.gateway.lovable.dev/v1/chat/completions",
 } as const;
 
 export const AI_CONFIG = {
