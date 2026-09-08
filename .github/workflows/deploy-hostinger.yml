@@ -6,124 +6,93 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Job 1: Build and Deploy PWA to Hostinger
   deploy-pwa:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
       CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
-
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-
+          node-version: '22'
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: 📦 Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then 
-            npm ci --prefer-offline --no-audit
-          else 
-            npm install --no-audit
-          fi
-
+        run: bun install --frozen-lockfile
       - name: 🏗️ Build production bundle
         env:
           NODE_ENV: production
           VITE_APP_VERSION: ${{ github.sha }}
           VITE_BUILD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
-        run: |
-          npm run build
-          echo "✅ Build completed successfully"
-
+        run: bun run build
       - name: ✅ Verify build output
         run: |
-          echo "🔍 Checking build output..."
-          if [ ! -d ./dist ]; then echo "❌ ERROR: dist folder not found!"; exit 1; fi
-          if [ ! -f ./dist/index.html ]; then echo "❌ ERROR: index.html not found!"; exit 1; fi
-          echo "✅ index.html exists"
-          if [ -f ./dist/.htaccess ]; then echo "✅ .htaccess found"; fi
-          if [ -f ./dist/manifest.json ]; then echo "✅ manifest.json found"; fi
+          if [ ! -d ./dist ] || [ ! -f ./dist/index.html ]; then echo "❌ ERROR: production build output is missing"; exit 1; fi
+          echo "✅ Build output verified"
           echo "📊 Build size: $(du -sh ./dist)"
-
       - name: 🔐 Setup SSH authentication
         run: |
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
           echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
-          if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then
-            echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
-          else
-            ssh-keyscan -p "${{ secrets.HOST_SFTP_PORT }}" "${{ secrets.HOST_SFTP_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null
-          fi
+          if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"; else ssh-keyscan -p "${{ secrets.HOST_SFTP_PORT }}" "${{ secrets.HOST_SFTP_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null; fi
           chmod 600 "$HOME/.ssh/known_hosts"
-
       - name: 🚀 Deploy to Hostinger
         run: |
-          echo "🚀 Starting deployment..."
-          rsync -avz --delete \
-            -e "ssh -i $HOME/.ssh/deploy_key -p ${{ secrets.HOST_SFTP_PORT }} -o StrictHostKeyChecking=no" \
-            --exclude='.git*' \
-            --exclude='node_modules' \
-            --progress \
-            ./dist/ \
-            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/"
+          rsync -avz --delete -e "ssh -i $HOME/.ssh/deploy_key -p ${{ secrets.HOST_SFTP_PORT }} -o StrictHostKeyChecking=no" --exclude='.git*' --exclude='node_modules' --progress ./dist/ "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/"
           echo "✅ PWA deployed successfully"
-
       - name: 🔄 Purge Cloudflare cache
         if: ${{ env.CF_API_TOKEN != '' && env.CF_ZONE_ID != '' }}
         run: |
-          curl -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}'
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" --data '{"purge_everything":true}'
           echo "✅ Cache purged"
-
       - name: 🧹 Cleanup
         if: always()
         run: |
           shred -u "$HOME/.ssh/deploy_key" 2>/dev/null || rm -f "$HOME/.ssh/deploy_key"
           rm -f "$HOME/.ssh/known_hosts" 2>/dev/null || true
 
-  # Job 2: Build Android APK
   build-android:
     runs-on: ubuntu-latest
     needs: deploy-pwa
     timeout-minutes: 45
     env:
       ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: 📦 Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
       - name: 🏗️ Build web app
-        run: npm run build
+        run: bun run build
       - name: 📱 Setup Capacitor
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          npx cap add android
-          npx cap sync android
-          npx cap copy android
+          bun add @capacitor/core @capacitor/cli @capacitor/android
+          bunx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          bunx cap add android
+          bunx cap sync android
+          bunx cap copy android
       - name: 🔨 Build Debug APK
         run: |
           cd android
@@ -168,7 +137,6 @@ jobs:
           echo "📱 Android APK Build Complete!"
           if [ -n "$ANDROID_KEYSTORE_B64" ]; then echo "✅ Release APK: Available in Artifacts (Signed)"; else echo "⚠️ Release APK: Skipped (No keystore configured)"; fi
 
-  # Job 3: Build iOS IPA
   build-ios:
     runs-on: macos-latest
     needs: deploy-pwa
@@ -179,23 +147,26 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
       - name: 🍎 Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
+      - name: 📦 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - name: 📦 Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
       - name: 🏗️ Build web app
-        run: npm run build
+        run: bun run build
       - name: 📱 Setup Capacitor
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          npx cap add ios
-          npx cap sync ios
-          npx cap copy ios
+          bun add @capacitor/core @capacitor/cli @capacitor/ios
+          bunx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          bunx cap add ios
+          bunx cap sync ios
+          bunx cap copy ios
       - name: 📦 Install CocoaPods dependencies
         run: |
           cd ios/App
@@ -222,7 +193,6 @@ jobs:
       - name: ✅ iOS Build Summary
         run: echo "🍎 iOS IPA Build Complete!"
 
-  # Job 4: Build Summary
   summary:
     runs-on: ubuntu-latest
     needs: [deploy-pwa, build-android, build-ios]
