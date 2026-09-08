@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-07 — Calendar shape: every rule task carries resources.window {from_das,to_das,clock} (the stage
+//   window, as a real crop calendar shows a timing range, not a point); LAND_PREPARATION, INTERCULTURAL
+//   and POST_HARVEST join the audited domains so their absence is reported and enrichable.
 // 2026-09-05 — Completeness fixes (verified on live schedule 6d95e1a4, 41 candidates → 0 materialized):
 //   (1) A treatment rule is no longer dropped from the pack just because a baseline SCOUTING task
 //       lists its rule_id as a threshold reference. 9/9 pest, 9/12 disease and 1/3 weed dosed
@@ -184,6 +187,8 @@ function farmerInstructions(rule: Record<string, unknown>, status: CandidateStat
   return out;
 }
 
+/** Offset that mapped this stage's das_min onto the schedule clock (0 for sowing-clock stages). */
+const transplantOffsetOf = (stage: StageRow, das: number) => (stage.das_min != null ? das - Number(stage.das_min) : 0);
 function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, domain: CandidateDomain, status: CandidateStatus): BaselineTask {
   const ruleId = String(rule.rule_id);
   const condition = String(rule.condition_code ?? "").trim();
@@ -225,6 +230,7 @@ function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, d
     technical_details: technical,
     resources: {
       requirement_semantics: status === "CONDITIONAL" ? "CONDITIONAL_RULE" : "RULE_ACTION",
+      window: { from_das: das, to_das: toDas(stage, stage.das_max, transplantOffsetOf(stage, das)) ?? das, clock: String(stage.das_reference ?? "sowing") },
       planning_status: status,
       trigger_class: trigger || null,
       condition_code: condition || null,
@@ -352,7 +358,7 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
   }
   if (capped) gaps.push("evidence_pack_candidate_cap_reached");
   // Domain completeness: state explicitly which audited domains had no authoritative candidate.
-  const audited: CandidateDomain[] = ["NUTRIENT", "MICRONUTRIENT", "ORGANIC_INPUT", "WEED", "PEST", "DISEASE", "PGR", "SEED_TREATMENT"];
+  const audited: CandidateDomain[] = ["LAND_PREPARATION", "SEED_TREATMENT", "NUTRIENT", "MICRONUTRIENT", "ORGANIC_INPUT", "WEED", "PEST", "DISEASE", "PGR", "INTERCULTURAL", "POST_HARVEST"];
   const baselineTypes = new Set(existingTasks.map((t) => t.task_type));
   for (const d of audited) {
     const s = domainSummary[d];

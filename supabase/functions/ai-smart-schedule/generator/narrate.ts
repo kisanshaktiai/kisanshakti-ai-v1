@@ -1,4 +1,12 @@
 // CHANGE LOG
+// 2026-09-07 — DURABLE NARRATION. Live measurement (schedule of 91 tasks, Marathi): 28-task
+//   chunks at maxTokens 3000 overflow the output (Devanagari costs 3-4 tokens per word), the
+//   model returns truncated JSON, every retry burns the budget, 0/91 tasks narrated. Fixes:
+//   (1) chunk size 10, output budget 4500 tokens; (2) identical task texts are narrated ONCE and
+//   the result is applied to every task that shares them (recurring irrigation/scouting cards);
+//   (3) the caller's order is honoured, so soonest-due tasks are narrated first; (4) internal
+//   ceiling raised to 90 s — the caller's budget governs; (5) or/as/ur scripts restored (all 13
+//   app languages). Fact boundary (numeric fidelity + script share) unchanged.
 // 2026-09-05 — Surgical timeout fix: one normal crop schedule is narrated in one bounded
 // LLM request instead of several sequential/parallel chunk requests. This prevents the
 // Supabase Edge invocation from exhausting its request lifetime before persistence.
@@ -6,7 +14,7 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 28; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 35_000; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 10; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 90_000; const MAX_OUTPUT_TOKENS = 4_500; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
 const cooldownUntil = new Map<AIProvider, number>();
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 function cooldownRemaining(provider: AIProvider) { return (cooldownUntil.get(provider) ?? 0) - Date.now(); }
@@ -32,6 +40,7 @@ function hasFarmerLanguageQuality(value: string, language: string): boolean {
     hi: /[\u0900-\u097F]/g, mr: /[\u0900-\u097F]/g, pa: /[\u0A00-\u0A7F]/g,
     ta: /[\u0B80-\u0BFF]/g, te: /[\u0C00-\u0C7F]/g, bn: /[\u0980-\u09FF]/g,
     gu: /[\u0A80-\u0AFF]/g, kn: /[\u0C80-\u0CFF]/g, ml: /[\u0D00-\u0D7F]/g,
+    or: /[\u0B00-\u0B7F]/g, as: /[\u0980-\u09FF]/g, ur: /[\u0600-\u06FF]/g,
   };
   const target = patterns[language]; if (!target) return false;
   const scriptChars = (value.match(target) || []).length;
@@ -64,7 +73,7 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   const ordered = [...chain].sort((a, b) => Math.max(0, cooldownRemaining(a.provider)) - Math.max(0, cooldownRemaining(b.provider)));
   for (const { provider, model } of ordered) { const apiKey = getAPIKey(provider); if (!apiKey) continue; try {
     await waitForCooldown(provider, signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
-    const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: 3000, temperature: 0, useJsonMode: true });
+    const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: MAX_OUTPUT_TOKENS, temperature: 0, useJsonMode: true });
     const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify(body), signal });
     if (!res.ok) { if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
     const responseJson = await res.json(); const raw = parseModelJson(responseJson?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray((raw as any)?.tasks) ? (raw as any).tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
@@ -87,16 +96,23 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
   let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" }; }
   if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" };
   let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil.clear();
-  const chunks: Array<{ items: NarratableTask[]; offset: number }> = []; for (let i = 0; i < tasks.length; i += CHUNK_SIZE) chunks.push({ items: tasks.slice(i, i + CHUNK_SIZE), offset: i });
+  // Narrate each distinct text once (recurring cards share name/desc/steps); fan the result out.
+  const keyOf = (t: NarratableTask) => JSON.stringify([t.task_name, t.task_description, farmerInstructionSource(t.instructions)]);
+  const uniqueIndexByKey = new Map<string, number>(); const uniqueTasks: NarratableTask[] = []; const members: number[][] = [];
+  tasks.forEach((t, idx) => { const k = keyOf(t); let u = uniqueIndexByKey.get(k); if (u === undefined) { u = uniqueTasks.length; uniqueIndexByKey.set(k, u); uniqueTasks.push(t); members.push([]); } members[u].push(idx); });
+  const chunks: Array<{ items: NarratableTask[]; offset: number }> = []; for (let i = 0; i < uniqueTasks.length; i += CHUNK_SIZE) chunks.push({ items: uniqueTasks.slice(i, i + CHUNK_SIZE), offset: i });
   const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), Math.max(0, Math.min(NARRATION_BUDGET_MS, budgetMs ?? NARRATION_BUDGET_MS))); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = []; let i = 0;
     while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal)))); i += MAX_CONCURRENCY; }
-    for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const target = out[item.i]; if (!target) continue; let touched = false;
-      if (item.name && isFaithful(target.task_name, item.name) && containsExpectedScript(item.name, language)) { target.task_name = item.name; touched = true; }
-      if (item.desc && isFaithful(target.task_description, item.desc) && containsExpectedScript(item.desc, language)) { target.task_description = item.desc; touched = true; }
-      const source = farmerInstructionSource(target.instructions); if (Array.isArray(item.instructions) && item.instructions.length === source.length) { const translated = item.instructions.map(String); if (translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language))) { target.instructions = translated; touched = true; } }
-      if (touched) appliedIndices.add(item.i);
+    for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const unique = uniqueTasks[item.i]; if (!unique) continue;
+      const source = farmerInstructionSource(unique.instructions);
+      const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language);
+      const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language);
+      const translated = Array.isArray(item.instructions) && item.instructions.length === source.length ? item.instructions.map(String) : null;
+      const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language));
+      if (!nameOk && !descOk && !stepsOk) continue;
+      for (const idx of members[item.i] ?? []) { const target = out[idx]; if (!target) continue; if (nameOk) target.task_name = String(item.name); if (descOk) target.task_description = String(item.desc); if (stepsOk && translated) target.instructions = translated; appliedIndices.add(idx); }
     } }
   } finally { clearTimeout(budgetTimer); }
   const applied = appliedIndices.size; const uniqueFailures = [...new Set(failures)].slice(0, 2);

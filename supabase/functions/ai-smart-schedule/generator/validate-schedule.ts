@@ -2,6 +2,9 @@
 // PATH: supabase/functions/ai-smart-schedule/generator/validate-schedule.ts
 //
 // CHANGE LOG
+// 2026-09-07 — pre-season admission is DB-driven: a task anchored to a stage the graph declares before
+//   day 0 (sugarcane LAND_PREPARATION −45…−15, PRE_PLANTING −15…0) is valid down to that stage's das_min;
+//   PRE_SEASON/NURSERY phase tasks remain admitted within −60. Callers pass das_min in StageRef.
 // 2026-08-30 01:35 UTC — degrade-don't-discard: das_max is now received already
 //   normalised onto the sowing axis (transplant-clocked stages no longer trip the
 //   bounds check); a task with NO stage link is a warning (W2), not a violation;
@@ -16,7 +19,7 @@
 //   Hard invariants enforced here (violations — block persistence):
 //     V1 a task whose stage_uuid belongs to a DIFFERENT stage graph;
 //     V2 every task carries non-empty source provenance (source_refs);
-//     V3 days_from_sowing is null or negative;
+//     V3 days_from_sowing is null, or negative outside a PRE_SEASON task's structural bound (-60);
 //     V4 every task has a task_name and a task_type.
 //     V5 recurrence metadata, when present, is structurally valid.
 //   Soft checks (warnings — recorded, never block):
@@ -30,6 +33,9 @@ import type { BaselineTask } from "./baseline-generator.ts";
 export interface StageRef {
   id: string;
   das_max: number | null;
+  /** Sowing-axis das_min; negative when the stage graph itself declares pre-season work
+   *  (e.g. a LAND_PREPARATION stage at −45…−15). Optional for older callers. */
+  das_min?: number | null;
 }
 
 export interface ValidationResult {
@@ -45,6 +51,7 @@ export function validateBaseline(
   const violations: string[] = [];
   const warnings: string[] = [];
   const stageIds = new Set(stages.map((s) => String(s.id)));
+  const stageMinById = new Map(stages.map((s) => [String(s.id), s.das_min ?? null]));
   const graphMaxDas = stages.reduce(
     (max, s) => (s.das_max != null && s.das_max > max ? s.das_max : max),
     0,
@@ -72,7 +79,16 @@ export function validateBaseline(
     if (!t.source_refs || t.source_refs.length === 0) {
       cap(violations, `V2 missing_provenance: ${ref}`);
     }
-    if (t.days_from_sowing == null || t.days_from_sowing < 0) {
+    // Pre-season work (land preparation, seed treatment, nursery preparation) is legitimately
+    // anchored BEFORE sowing, as every real crop calendar does; admit it only when the task says
+    // so (resources.phase = PRE_SEASON) and within a structural bound.
+    const phase = (t.resources as Record<string, unknown> | undefined)?.phase;
+    const preSeason = phase === "PRE_SEASON" || phase === "NURSERY";
+    // A negative day is valid when (a) the stage graph itself declares that stage before day 0
+    // (SSOT), or (b) the task is pre-season/nursery work within the structural bound.
+    const graphMin = t.stage_uuid ? stageMinById.get(String(t.stage_uuid)) : undefined;
+    const graphAllowsNegative = graphMin != null && graphMin < 0 && t.days_from_sowing != null && t.days_from_sowing >= graphMin;
+    if (t.days_from_sowing == null || (t.days_from_sowing < 0 && !graphAllowsNegative && !(preSeason && t.days_from_sowing >= -60))) {
       cap(violations, `V3 das_out_of_graph_bounds: ${ref}`);
     } else if (upperBound > 0 && t.days_from_sowing > upperBound) {
       cap(warnings, `W3 das_beyond_graph_bounds: ${ref} (bound ${upperBound})`);

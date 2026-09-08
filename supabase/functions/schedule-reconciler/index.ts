@@ -1,4 +1,12 @@
 // CHANGE LOG
+// 2026-09-08 — v1.5.0 CLOSED LOOP. (1) Field-condition mutations now come from the DB's own
+//   farm_decision rows (derive_farm_decisions over land_farm_state and decision_rules) via
+//   decision-application.ts — the reconciler joins existing engines, it is not one. (2) Every
+//   active schedule gets one schedule_monitoring row per run (live or dry): the crop-state
+//   snapshot observed, the decisions evaluated (ids, keys, rules), the outcome per task, what
+//   changed and why, and the versions of generator / reconciler / decision engine / rule set.
+//   (3) schedule_tasks.decision_state carries the farm_decision status vocabulary, separate from
+//   task_date. (4) farm_decision.schedule_id/task_id are written when a decision is applied.
 // 2026-09-06 — v1.4.1 DRY RUN + IDEMPOTENCY CERTIFICATION. Body { dryRun: true } computes every
 //   stage-drift shift and field-condition mutation and returns them without writing a task, an
 //   adjustment or a log row. Two consecutive real runs on the same field state now produce zero
@@ -79,7 +87,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
-import { applyWeatherAdaptation } from "./weather-adaptation.ts";
+import { applyFieldDecisions, DECISION_APPLICATION_VERSION } from "./decision-application.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,7 +95,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.4.1";
+const ENGINE_VERSION = "schedule-reconciler@1.5.0";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -150,6 +158,14 @@ export function assessSsotConflict(ctx: SsotContext): string | null {
   return null;
 }
 
+const numOrNull = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/** One crop-state ledger row per schedule per run. Dry runs are recorded too (run_mode=dry_run) — a trace, not a mutation. */
+async function writeMonitoring(supabase: ReturnType<typeof createClient>, _dryRun: boolean, row: Record<string, unknown>) {
+  const { error } = await supabase.from("schedule_monitoring").insert(row);
+  if (error) console.warn("[schedule-reconciler] schedule_monitoring insert failed:", error.message);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -164,10 +180,13 @@ serve(async (req) => {
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
     const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;
     const dryRun: boolean = body?.dryRun === true || body?.dry_run === true;
+    // Rule-set stamp for the ledger: the latest change to decision_rules (the governed source).
+    const { data: rsRow } = await supabase.from("decision_rules").select("updated_at").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    const ruleSetStamp = rsRow?.updated_at ? `decision_rules@${String(rsRow.updated_at)}` : null;
 
     let q = supabase
       .from("crop_schedules")
-      .select("id, land_id, farmer_id, tenant_id, crop_name, sowing_date, transplant_date, cultivation_method, crop_cycle, variety_id")
+      .select("id, land_id, farmer_id, tenant_id, crop_name, sowing_date, transplant_date, cultivation_method, crop_cycle, variety_id, generation_params")
       .eq("is_active", true)
       .eq("status", "active")
       .limit(500);
@@ -185,7 +204,9 @@ serve(async (req) => {
       const startedAt = new Date().toISOString();
       const adjustments: Array<Record<string, unknown>> = [];
       let examined = 0, changed = 0, skipped = 0, floorSkipped = 0;
-      let weather: Awaited<ReturnType<typeof applyWeatherAdaptation>> | null = null;
+      let weather: Awaited<ReturnType<typeof applyFieldDecisions>> | null = null;
+      const ruleSetVersion = ruleSetStamp;
+      const generatorVersion = String((sched.generation_params as Record<string, unknown> | null)?.generator_version ?? "");
       const todayIso = iso(new Date());
 
       const failedTaskIds: string[] = [];
@@ -258,6 +279,7 @@ serve(async (req) => {
           },
           engine_version: ENGINE_VERSION,
         });
+        await writeMonitoring(supabase, dryRun, { schedule_id: sched.id, tenant_id: sched.tenant_id ?? null, farmer_id: sched.farmer_id ?? null, land_id: sched.land_id, check_date: todayIso, run_mode: dryRun ? "dry_run" : "live", engine: ENGINE_VERSION, decision: { conflict }, changes: [], decisions_evaluated: [], engine_versions: { generator: String((sched.generation_params as Record<string, unknown> | null)?.generator_version ?? "") || null, reconciler: ENGINE_VERSION, decision_application: DECISION_APPLICATION_VERSION, decision_engine: null, rule_set: ruleSetStamp }, skipped_reason: "ssot_conflict", alerts_generated: 0, refinements_applied: 0 });
         results.push({
           schedule_id: sched.id,
           success: false,
@@ -270,11 +292,10 @@ serve(async (req) => {
         continue;
       }
 
-      // 2c. v1.4.0 FIELD-CONDITION LAYER — runs for every SSOT-coherent schedule, with or
-      //     without biological stage evidence: a wet field, an unusable spray window or a
-      //     disease-risk day need no phenology to be acted on. See weather-adaptation.ts.
+      // 2c. v1.5.0 DECISION LAYER — the DB's farm_decision rows for this land, joined to the
+      //     schedule's pending tasks; runs for every SSOT-coherent schedule (no phenology needed).
       try {
-        weather = await applyWeatherAdaptation(supabase, {
+        weather = await applyFieldDecisions(supabase, {
           scheduleId: sched.id,
           landId: sched.land_id,
           sowingDate: sched.sowing_date ?? null,
@@ -286,9 +307,27 @@ serve(async (req) => {
         adjustments.push(...weather.adjustments);
         failedTaskIds.push(...weather.failedTaskIds);
       } catch (wErr) {
-        console.error("[schedule-reconciler] weather adaptation failed (non-fatal):", wErr);
-        weather = { applied: false, skipped: `weather_adaptation_error:${(wErr as Error).message}`, adjustments: [], failedTaskIds: [], counters: { irrigation_deferred: 0, irrigation_advanced: 0, application_deferred: 0, application_window_exhausted: 0, flagged: 0, unflagged: 0 }, evidence: null };
+        console.error("[schedule-reconciler] decision application failed (non-fatal):", wErr);
+        weather = { applied: false, skipped: `decision_application_error:${(wErr as Error).message}`, adjustments: [], failedTaskIds: [], counters: { deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0 }, state_snapshot: null, decisions_evaluated: [], outcomes: [], decision_engine_version: null };
       }
+      const monitor = (extra: Record<string, unknown>) => writeMonitoring(supabase, dryRun, {
+        schedule_id: sched.id, tenant_id: sched.tenant_id ?? null, farmer_id: sched.farmer_id ?? null, land_id: sched.land_id, check_date: todayIso,
+        run_mode: dryRun ? "dry_run" : "live", engine: ENGINE_VERSION,
+        state_snapshot: weather?.state_snapshot ?? null,
+        decisions_evaluated: weather?.decisions_evaluated ?? [],
+        decision: { field: weather?.outcomes ?? [], ...extra },
+        changes: adjustments.map((a) => ({ task_id: a.task_id, change_type: a.change_type, old_value: a.old_value, new_value: a.new_value, reason: a.reason })),
+        engine_versions: { generator: generatorVersion || null, reconciler: ENGINE_VERSION, decision_application: DECISION_APPLICATION_VERSION, decision_engine: weather?.decision_engine_version ?? null, rule_set: ruleSetVersion },
+        weather_conditions: (weather?.state_snapshot as Record<string, unknown> | null)?.water ?? null,
+        ndvi_value: numOrNull(((weather?.state_snapshot as Record<string, unknown> | null)?.canopy as Record<string, unknown> | null)?.ndvi),
+        pest_detected: (weather?.decisions_evaluated ?? []).some((d) => String(d.key ?? "").startsWith("scout:pest")),
+        disease_detected: (weather?.decisions_evaluated ?? []).some((d) => String(d.key ?? "").startsWith("scout:disease")),
+        alerts_generated: (weather?.decisions_evaluated ?? []).length,
+        refinements_applied: adjustments.length,
+        stage_code: weather?.state_snapshot ? String((weather.state_snapshot as Record<string, unknown>).stage_code ?? "") || null : null,
+        stage_source: weather?.state_snapshot ? String((weather.state_snapshot as Record<string, unknown>).stage_source ?? "") || null : null,
+        skipped_reason: weather?.skipped ?? null,
+      });
       const weatherSummary = weather
         ? { weather_applied: weather.applied, weather_skipped: weather.skipped ?? null, ...weather.counters, ...(dryRun ? { planned_field_adjustments: weather.adjustments.map((a) => ({ task_id: a.task_id, change_type: a.change_type, old_value: a.old_value, new_value: a.new_value, reason: a.reason })) } : {}) }
         : {};
@@ -296,6 +335,7 @@ serve(async (req) => {
       // Stage-drift layer needs a resolved, evidence-backed stage.
       if (!phenologyResolved) {
         if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
+        await monitor({ stage_drift: { skipped: "phenology_unresolved" } });
         if (failedTaskIds.length) anyFailure = true;
         results.push({ schedule_id: sched.id, success: failedTaskIds.length === 0, skipped: "phenology_unresolved", tasks_examined: 0, tasks_changed: 0, ...weatherSummary, tasks_failed: failedTaskIds.length, started_at: startedAt, completed_at: new Date().toISOString() });
         continue;
@@ -305,6 +345,7 @@ serve(async (req) => {
       // move a farmer's tasks (the DB resolver labels them provisional).
       if (PROVISIONAL_SOURCES.has(String(stage.source ?? ""))) {
         if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
+        await monitor({ stage_drift: { skipped: "provisional_stage_source", stage: stage.stage_code, stage_source: stage.source ?? null } });
         if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
@@ -339,6 +380,7 @@ serve(async (req) => {
 
       if (drift == null || drift === 0) {
         if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
+        await monitor({ stage_drift: { stage: stage.stage_code, stage_source: stage.source ?? null, drift_days: drift ?? null, tasks_examined: 0, tasks_changed: 0 } });
         if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
@@ -423,6 +465,7 @@ serve(async (req) => {
       if (adjustments.length && !dryRun) {
         await supabase.from("schedule_adjustments").insert(adjustments);
       }
+      await monitor({ stage_drift: { stage: stage.stage_code, stage_source: stage.source ?? null, drift_days: drift, tasks_examined: examined, tasks_changed: changed, tasks_skipped: skipped } });
       if (failedTaskIds.length) anyFailure = true;
 
       results.push({

@@ -288,6 +288,27 @@ export default function Schedule() {
       // Reset retry count on success
       setRetryCount(0);
 
+      // Farmer-language completion: the schedule is persisted as soon as its agronomy is ready;
+      // tasks not yet in the farmer's language are finished by the same function (action=narrate).
+      // Fire-and-forget here; the periodic sweep is the safety net. The list refreshes on its own.
+      if (data.narrationStatus === 'PENDING' && data.scheduleId) {
+        supabase.functions
+          .invoke('ai-smart-schedule', {
+            body: { action: 'narrate', scheduleId: data.scheduleId },
+            headers: {
+              'x-tenant-id': tenant?.id || user?.tenantId || '',
+              'x-farmer-id': user?.id || '',
+            },
+          })
+          .then((r) => console.log('🈯 [Schedule] narrate follow-up:', r.error ?? r.data))
+          .catch((e) => console.warn('⚠️ [Schedule] narrate follow-up failed (non-fatal):', e));
+        toast({
+          title: t('schedule.main.generated_success'),
+          description: t('schedule.farmer_task.translation_pending'),
+          className: 'border-info bg-info text-info-foreground',
+        });
+      }
+
       // Record the biological transplanting anchor (DAT) for transplanted crops.
       if (transplantDate) {
         try {
