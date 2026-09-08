@@ -14,9 +14,9 @@ jobs:
       CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       - name: 📦 Setup Bun
@@ -35,11 +35,9 @@ jobs:
         run: |
           if [ ! -d ./dist ] || [ ! -f ./dist/index.html ]; then echo "❌ ERROR: production build output is missing"; exit 1; fi
           echo "✅ Build output verified"
-          echo "📊 Build size: $(du -sh ./dist)"
       - name: 🔐 Setup SSH authentication
         run: |
-          mkdir -p "$HOME/.ssh"
-          chmod 700 "$HOME/.ssh"
+          mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
           echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
           if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"; else ssh-keyscan -p "${{ secrets.HOST_SFTP_PORT }}" "${{ secrets.HOST_SFTP_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null; fi
@@ -47,12 +45,10 @@ jobs:
       - name: 🚀 Deploy to Hostinger
         run: |
           rsync -avz --delete -e "ssh -i $HOME/.ssh/deploy_key -p ${{ secrets.HOST_SFTP_PORT }} -o StrictHostKeyChecking=no" --exclude='.git*' --exclude='node_modules' --progress ./dist/ "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/"
-          echo "✅ PWA deployed successfully"
       - name: 🔄 Purge Cloudflare cache
         if: ${{ env.CF_API_TOKEN != '' && env.CF_ZONE_ID != '' }}
         run: |
           curl -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" --data '{"purge_everything":true}'
-          echo "✅ Cache purged"
       - name: 🧹 Cleanup
         if: always()
         run: |
@@ -67,17 +63,16 @@ jobs:
       ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       - name: ☕ Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
       - name: 📦 Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -110,17 +105,8 @@ jobs:
           echo "$ANDROID_KEYSTORE_B64" | base64 --decode > android/app/release.keystore
           cat >> android/app/build.gradle << EOF
           android {
-              signingConfigs {
-                  release {
-                      storeFile file('release.keystore')
-                      storePassword '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'
-                      keyAlias '${{ secrets.ANDROID_KEY_ALIAS }}'
-                      keyPassword '${{ secrets.ANDROID_KEY_PASSWORD }}'
-                  }
-              }
-              buildTypes {
-                  release { signingConfig signingConfigs.release }
-              }
+              signingConfigs { release { storeFile file('release.keystore'); storePassword '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'; keyAlias '${{ secrets.ANDROID_KEY_ALIAS }}'; keyPassword '${{ secrets.ANDROID_KEY_PASSWORD }}' } }
+              buildTypes { release { signingConfig signingConfigs.release } }
           }
           EOF
           cd android
@@ -143,9 +129,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       - name: 🍎 Setup Xcode
