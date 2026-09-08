@@ -244,6 +244,13 @@ export function getBestScheduleProvider(): { provider: AIProvider; model: string
 // Gemini is used only as a provider fallback after an OpenAI request failure.
 export function getScheduleProviderChain(): Array<{ provider: AIProvider; model: string }> {
   const chain: Array<{ provider: AIProvider; model: string }> = [];
+  // Managed gateway first: direct OpenAI/Gemini keys were rate-limiting narration to a standstill.
+  if (getAPIKey("lovable")) {
+    chain.push({
+      provider: "lovable",
+      model: Deno.env.get("LOVABLE_SCHEDULE_MODEL")?.trim() || AI_MODELS.lovable.default,
+    });
+  }
   if (hasOpenAIKey()) {
     chain.push({
       provider: "openai",
