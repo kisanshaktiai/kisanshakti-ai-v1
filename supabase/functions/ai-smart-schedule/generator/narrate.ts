@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-09-08 — Language-quality ratio now ignores Latin words carried over from the SOURCE (product
+//   names, fertilizer grades, units, codes). A faithful translation of a fact-dense line is mostly
+//   Latin by necessity; counting it as 'untranslated' rejected such tasks permanently, so they stayed
+//   English forever and the narration sweep retried them for ever.
 // 2026-09-08 — farmer-simple register (by meaning, no language-specific words): extension-officer voice, short
 //   sentences, what/when/how much/how to mix/why; numbers, units, dates, product names and grades untouched.
 // 2026-09-07 — DURABLE NARRATION. Live measurement (schedule of 91 tasks, Marathi): 28-task
@@ -36,7 +40,7 @@ function isProvenanceLine(s: string): boolean { return isTechnicalLine(s); }
 function farmerInstructionSource(instructions: string[] | undefined): string[] { return (instructions ?? []).map(String).map((x) => x.trim()).filter(Boolean).filter((x) => !isProvenanceLine(x)); }
 
 /** Reject mixed English output that merely contains one target-language word. */
-function hasFarmerLanguageQuality(value: string, language: string): boolean {
+function hasFarmerLanguageQuality(value: string, language: string, source?: string): boolean {
   if (language === "en") return true;
   const patterns: Record<string, RegExp> = {
     hi: /[\u0900-\u097F]/g, mr: /[\u0900-\u097F]/g, pa: /[\u0A00-\u0A7F]/g,
@@ -46,12 +50,18 @@ function hasFarmerLanguageQuality(value: string, language: string): boolean {
   };
   const target = patterns[language]; if (!target) return false;
   const scriptChars = (value.match(target) || []).length;
-  const latinChars = (value.match(/[A-Za-z]/g) || []).length;
+  // Latin that CAME FROM THE SOURCE (product names, grades, units, codes) is a preserved fact, not
+  // untranslated text: excluding it stops a correct line such as "…17.2 kg Muriate of Potash (MOP)
+  // 60% K2O" from being rejected forever for being "mostly English".
+  const carried = source ? new Set((source.match(/[A-Za-z]{2,}/g) || []).map((w) => w.toLowerCase())) : null;
+  const latinWords = value.match(/[A-Za-z]{2,}/g) || [];
+  const untranslatedLatin = carried ? latinWords.filter((w) => !carried.has(w.toLowerCase())) : latinWords;
+  const latinChars = untranslatedLatin.join("").length + (value.match(/(?<![A-Za-z])[A-Za-z](?![A-Za-z])/g) || []).length;
   const totalLetters = scriptChars + latinChars;
-  if (totalLetters < 3) return false;
+  if (totalLetters < 3) return scriptChars > 0 || (carried != null && latinWords.length > 0 && untranslatedLatin.length === 0);
   return scriptChars / totalLetters >= 0.65;
 }
-function containsExpectedScript(value: string, language: string): boolean { return hasFarmerLanguageQuality(value, language); }
+function containsExpectedScript(value: string, language: string, source?: string): boolean { return hasFarmerLanguageQuality(value, language, source); }
 
 async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: farmerInstructionSource(t.instructions) }));
@@ -109,10 +119,10 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
     while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal)))); i += MAX_CONCURRENCY; }
     for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const unique = uniqueTasks[item.i]; if (!unique) continue;
       const source = farmerInstructionSource(unique.instructions);
-      const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language);
-      const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language);
+      const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language, unique.task_name);
+      const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language, unique.task_description);
       const translated = Array.isArray(item.instructions) && item.instructions.length === source.length ? item.instructions.map(String) : null;
-      const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language));
+      const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language, source[idx] ?? ""));
       if (!nameOk && !descOk && !stepsOk) continue;
       for (const idx of members[item.i] ?? []) { const target = out[idx]; if (!target) continue; if (nameOk) target.task_name = String(item.name); if (descOk) target.task_description = String(item.desc); if (stepsOk && translated) target.instructions = translated; appliedIndices.add(idx); }
     } }

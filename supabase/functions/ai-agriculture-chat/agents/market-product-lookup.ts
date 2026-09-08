@@ -55,6 +55,8 @@ export function extractIngredientKeyword(activeIngredient: string): string {
  * notes ("(foliar)", "(ZnSO4)") are stripped; British/US spellings are folded.
  */
 const _INGREDIENT_STOP = new Set(['of','and','the','foliar','soil','basal','drench','spray','granular','organic','technical']);
+/** Pack/grade descriptors, not identity: folded before comparison. */
+const _NON_IDENTIFYING = new Set(['monohydrate','heptahydrate','pentahydrate','dihydrate','hydrate','anhydrous','hydrated','pure','tech','technical','grade','powder','granules','crystal','crystals']);
 function _foldSpelling(w: string): string {
   return w.toLowerCase()
     .replace(/sulphate/g, 'sulfate').replace(/sulphur/g, 'sulfur')
@@ -71,12 +73,55 @@ export function extractIngredientTokens(activeIngredient: string): string[] {
     cleaned.split(/\s+/).map(_foldSpelling).filter((w) => w.length > 2 && !_INGREDIENT_STOP.has(w)),
   ));
 }
-/** True when every ingredient token appears in the product's active_ingredients payload. */
-export function productMatchesIngredient(activeIngredientsPayload: unknown, tokens: string[]): boolean {
-  if (!tokens.length || activeIngredientsPayload == null) return false;
-  let hay = '';
-  try { hay = _foldSpelling(typeof activeIngredientsPayload === 'string' ? activeIngredientsPayload : JSON.stringify(activeIngredientsPayload)); } catch { return false; }
-  return tokens.every((t) => hay.includes(t));
+/** True when the product's active_ingredients payload identifies the same ingredient.
+ *  Both sides are spelling-folded (sulphate→sulfate etc.), so a payload written "Sulphur 90% WDG"
+ *  is comparable with a rule written "Sulphur 80% WG". A product is a match when it carries the
+ *  IDENTIFYING tokens of the request — the longest token (the salt/molecule name) plus, when the
+ *  request names an element and a salt, that element too. Requiring EVERY token made a request for
+ *  "Zinc Sulphate Monohydrate" miss a product listed as "Zinc Sulphate 21%", which is the same
+ *  input a farmer buys: hydration state and grade are packaging detail, not identity. */
+/** The ingredient entry a product is actually sold as: highest declared percentage, else the first.
+ *  Trace nutrients (the 13% sulphur inside a magnesium fertiliser) must not make that product an
+ *  answer to "which sulphur product do I buy". */
+function _principalIngredientText(payload: unknown): string {
+  if (payload == null) return '';
+  try {
+    const list = typeof payload === 'string' ? JSON.parse(payload) : payload;
+    if (Array.isArray(list) && list.length) {
+      const best = [...list].sort((a, b) => Number(b?.percentage ?? 0) - Number(a?.percentage ?? 0))[0];
+      return _foldSpelling(JSON.stringify(best ?? list[0]));
+    }
+    return _foldSpelling(JSON.stringify(list));
+  } catch { return _foldSpelling(String(payload)); }
+}
+
+/** True when the product is the same input the rule names. Both sides are spelling-folded, so a
+ *  payload written "Sulphur 90% WDG" is comparable with a rule written "Sulphur 80% WG".
+ *  The identifying token must appear in the product NAME or in its PRINCIPAL ingredient — the salt
+ *  is often only in the name (payloads store the nutrient plus a formula, e.g. Zinc + ZnSO4.7H2O) —
+ *  and the remaining tokens are matched loosely, because hydration state and grade
+ *  ("…Monohydrate", "21%") are packaging detail, not identity. */
+export function productMatchesIngredient(activeIngredientsPayload: unknown, tokens: string[], productName = ''): boolean {
+  if (!tokens.length) return false;
+  let payloadHay = '';
+  try { payloadHay = _foldSpelling(typeof activeIngredientsPayload === 'string' ? activeIngredientsPayload : JSON.stringify(activeIngredientsPayload ?? '')); } catch { payloadHay = ''; }
+  const nameHay = _foldSpelling(productName || '');
+  // What the product IS, is what the pack is called; the declared percentages are only a fallback
+  // (a magnesium sulphate can declare more sulphur than magnesium, which would otherwise make it
+  // the answer to "which sulphur product").
+  const principalHay = nameHay || _principalIngredientText(activeIngredientsPayload);
+  const fullHay = `${nameHay}${payloadHay}`;
+  if (!principalHay && !fullHay) return false;
+  const folded = tokens.map((t) => _foldSpelling(t)).filter(Boolean);
+  // Hydration state, purity and grade describe the pack, not the input: a rule naming the
+  // monohydrate salt is answered by the same salt sold as heptahydrate.
+  const identifying = folded.filter((t) => !_NON_IDENTIFYING.has(t));
+  const required = identifying.length ? identifying : folded;
+  if (!required.length) return false;
+  // Every identifying token must be present somewhere on the product, and at least one of them
+  // must be what the product is principally sold as — so a trace nutrient never answers the query.
+  if (!required.every((t) => fullHay.includes(t))) return false;
+  return required.some((t) => principalHay.includes(t));
 }
 
 // MAIN LOOKUP FUNCTION
@@ -136,7 +181,7 @@ export async function lookupMarketProducts(
 
     const { data, error } = await supabase
       .from('master_products')
-      .select('brand, active_ingredients, suitable_crops, ai_metadata, effectiveness_rating')
+      .select('name, brand, active_ingredients, suitable_crops, ai_metadata, effectiveness_rating')
       .eq('ai_recommendable', true)
       .eq('status', 'active')
       .order('effectiveness_rating', { ascending: false })
@@ -152,15 +197,7 @@ export async function lookupMarketProducts(
     // 2026-09-06 — ALL ingredient tokens must match (see extractIngredientTokens).
     const _tokens = extractIngredientTokens(activeIngredient);
     const keywordLc = keyword.toLowerCase();
-    const ingredientMatched = (data || []).filter((p: any) => {
-      if (_tokens.length > 1) return productMatchesIngredient(p?.active_ingredients, _tokens);
-      const ai = p.active_ingredients;
-      if (ai == null) return false;
-      try {
-        const s = typeof ai === 'string' ? ai : JSON.stringify(ai);
-        return s.toLowerCase().includes(keywordLc);
-      } catch { return false; }
-    });
+    const ingredientMatched = (data || []).filter((p: any) => productMatchesIngredient(p?.active_ingredients, _tokens.length ? _tokens : [keywordLc], p?.name || p?.brand || ''));
 
     if (ingredientMatched.length === 0) {
       console.log(`[MarketProductLookup] No products found for ingredient "${keyword}"`);

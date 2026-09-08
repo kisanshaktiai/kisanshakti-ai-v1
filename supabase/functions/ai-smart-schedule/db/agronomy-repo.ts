@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-09-08 — methodFilter tolerates a missing methods array (falls back to 'any'); getObservationRules /
+//   getFieldActionRules called with fewer args no longer throw.
 // 2026-09-08 — straight fertilizer = exactly one PRIMARY nutrient (N, P2O5, K2O) in nutrient_analysis; secondary
 //   nutrients (S, Ca, Mg) no longer disqualify a product — SSP (16% P2O5 + 11% S + 20% Ca) was being rejected, so
 //   every P dose shipped with no product equivalent.
@@ -123,7 +125,7 @@ export async function getIrrigationGuidelines(supabase:SupabaseClient,cropCode:s
 
 export interface FieldActionRule {rule_id:string;category:string|null;action_type:string|null;action_text:string|null;stage_applicable:unknown;priority:number|null;phi_days:number|null;chemical_class:string|null;scientific_source:string|null;biological_group:string|null;etl_threshold:string|null;dosage_per_acre:string|null;contraindications:unknown;organic_alternative?:string|null;ipm_level?:number|string|null;}
 const regionFilter=(regionCode:string|null):string=>regionCode?`region_code.is.null,region_code.eq.${regionCode}`:`region_code.is.null`;
-const methodFilter=(methods:string[]):string=>`cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${[...new Set(["any",...methods.filter(Boolean)])].join(",")}}`;
+const methodFilter=(methods:string[]|null|undefined):string=>`cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${[...new Set(["any",...(methods??[]).filter(Boolean)])].join(",")}}`;
 export async function getFieldActionRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<FieldActionRule[]>{
   const FIELD_ACTION_RULE_LIMIT=1000;
   const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
