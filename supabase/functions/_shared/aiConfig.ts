@@ -324,12 +324,12 @@ export function buildAIRequest(
     payload.temperature = options.temperature;
   } else {
     // Lower temperature for structured outputs
-    payload.temperature = provider === "gemini" ? 0.4 : 0.7;
+    payload.temperature = (provider === "gemini" || provider === "lovable") ? 0.4 : 0.7;
   }
 
   // For Gemini, prefer JSON mode over tool calling for complex schedules
   // Gemini's function calling has limitations with complex nested schemas
-  if (provider === "gemini" && options.useJsonMode !== false) {
+  if ((provider === "gemini" || provider === "lovable") && options.useJsonMode !== false) {
     // Skip tools for Gemini - use JSON mode instead
     // The system prompt should instruct to return JSON
     payload.response_format = { type: "json_object" };
