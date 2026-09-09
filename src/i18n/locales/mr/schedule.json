@@ -180,7 +180,10 @@
       "ai_adjusted": "AI समायोजित",
       "done": "पूर्ण",
       "today": "आज",
-      "tomorrow": "उद्या"
+      "tomorrow": "उद्या",
+      "current_work": "शेतातील सध्याचे काम",
+      "expand": "सूचना पहा",
+      "collapse": "सूचना लपवा"
     },
     "dialog": {
       "description": "तपशील",
@@ -427,6 +430,18 @@
       "translation_pending": "हे काम अजून इंग्रजीत आहे — भाषांतर बाकी आहे.",
       "technical_details": "तांत्रिक माहिती",
       "amount_not_available": "या कामासाठी पडताळलेले प्रमाण अजून उपलब्ध नाही."
+    },
+    "completion": {
+      "mark_when_finished": "काम झाल्यावर पूर्ण म्हणून नोंदवा",
+      "completed_on": "{{date}} रोजी पूर्ण झाले",
+      "just_now": "आत्ताच",
+      "status": "स्थिती: {{status}}",
+      "completed": "पूर्ण झाले",
+      "undoing": "मागे घेत आहोत...",
+      "unmark": "अपूर्ण म्हणून नोंदवा",
+      "syncing": "जतन करत आहोत...",
+      "mark_done": "काम पूर्ण झाले",
+      "task_completed": "काम पूर्ण झाले"
     },
     "crop_growth": {
       "title": "पिकाची वाढ",
