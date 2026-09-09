@@ -667,7 +667,7 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
               <div
                 key={s.key}
                 style={{ width: `${(s.value / total) * 100}%` }}
-                className={cn(toneRail[s.tone])}
+                className={cn(BAND_RAIL[s.band])}
                 title={`${s.key}: ${s.value}`}
               />
             ))}
@@ -677,7 +677,7 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
       <div className="flex items-center gap-1.5 shrink-0">
         {segments.map(s => (
           <span key={s.key} className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground">
-            <span className={cn('w-1.5 h-1.5 rounded-full', toneRail[s.tone])} />
+            <span className={cn('w-1.5 h-1.5 rounded-full', BAND_RAIL[s.band])} />
             {s.value}
           </span>
         ))}
