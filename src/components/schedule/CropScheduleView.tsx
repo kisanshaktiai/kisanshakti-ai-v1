@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useTranslation } from 'react-i18next';
-import { format, addDays, isTomorrow, isPast, differenceInDays } from 'date-fns';
+import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
