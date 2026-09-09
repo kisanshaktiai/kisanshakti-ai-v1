@@ -180,7 +180,10 @@
       "ai_adjusted": "AI समायोजित",
       "done": "पूर्ण",
       "today": "आज",
-      "tomorrow": "कल"
+      "tomorrow": "कल",
+      "current_work": "खेत का मौजूदा काम",
+      "expand": "निर्देश दिखाएं",
+      "collapse": "निर्देश छिपाएं"
     },
     "dialog": {
       "description": "विवरण",
@@ -427,6 +430,18 @@
       "translation_pending": "यह काम अभी अंग्रेज़ी में है — अनुवाद बाकी है।",
       "technical_details": "तकनीकी जानकारी",
       "amount_not_available": "इस काम के लिए सत्यापित मात्रा अभी उपलब्ध नहीं है।"
+    },
+    "completion": {
+      "mark_when_finished": "काम पूरा होने के बाद इसे पूर्ण करें",
+      "completed_on": "{{date}} को पूरा हुआ",
+      "just_now": "अभी",
+      "status": "स्थिति: {{status}}",
+      "completed": "पूरा हुआ",
+      "undoing": "वापस कर रहे हैं...",
+      "unmark": "अपूर्ण करें",
+      "syncing": "सहेज रहे हैं...",
+      "mark_done": "काम पूरा करें",
+      "task_completed": "काम पूरा हुआ"
     },
     "crop_growth": {
       "title": "फसल की बढ़त",

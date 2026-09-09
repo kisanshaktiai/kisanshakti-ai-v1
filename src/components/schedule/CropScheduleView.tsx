@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
+import { Calendar, Leaf, Package, Sparkles, RefreshCw, MapPin, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +17,6 @@ import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from '
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
-import ModernTaskCard from './ModernTaskCard';
-import ScheduleErrorBoundary from './ScheduleErrorBoundary';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
@@ -28,7 +26,6 @@ import { useLandStage } from '@/hooks/useLandStage';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
-import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface CropSchedule {
   id: string;
@@ -115,15 +112,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [showLandPhotoUpload, setShowLandPhotoUpload] = useState(false);
 
   // Task type icons and colors
-  const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft dark:bg-info/30' },
-    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft dark:bg-success/30' },
-    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
-    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft dark:bg-primary/30' },
-    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
-    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted dark:bg-foreground/80/30' }
-  };
-
   // Update schedule when schedules data changes from React Query
   useEffect(() => {
     console.log('📋 [CropScheduleView] useEffect triggered:', {
@@ -469,7 +457,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
   const completedTasks = filteredTasks.filter(t => t.status === 'completed');
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
-  const todayTasks = tasks.filter(t => isToday(new Date(t.task_date)) && t.status === 'pending');
 
   // Find real harvest date from tasks (harvest/harvesting task)
   const harvestTask = tasks.find(t => 
@@ -481,9 +468,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const realHarvestDate = harvestTask?.task_date || schedule.expected_harvest_date;
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
+    <div className="min-h-full bg-background">
       {/* Compact inline crop summary (non-sticky — parent header handles back/nav) */}
-      <div className="px-4 pt-3 pb-2">
+      <div className="px-3 pt-3 pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold text-foreground flex items-center gap-1.5 leading-tight truncate">
@@ -525,7 +512,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
 
       {/* Quick Stats Cards - Mobile Optimized */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="px-3 pt-3 pb-2">
         <div className="grid grid-cols-2 gap-3 mb-3">
           <Card className="relative overflow-hidden bg-success-soft border-success/30">
             <div className="absolute inset-y-0 left-0 w-1 bg-success" aria-hidden />
@@ -618,75 +605,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           </div>
         </Card>
 
-        {/* Today's Priority Tasks - Big & Clear for Farmers */}
-        {todayTasks.length > 0 && (
-          <Card className="mb-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 shadow-lg">
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-primary" />
-                  {t('schedule.todays_tasks')}
-                </h3>
-                <Badge variant="destructive" className="text-[10px]">
-                  {todayTasks.length} {t('schedule.pending')}
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                {todayTasks.slice(0, 2).map((task) => {
-                  const config = resolveTaskTypeConfig(taskTypeConfig, task.task_type);
-                  const Icon = config.icon;
-                  return (
-                    <div 
-                      key={task.id} 
-                      className={`p-3 rounded-lg ${config.bg} border border-border/50 cursor-pointer hover:shadow-md transition-shadow`}
-                      onClick={() => setSelectedTask(task)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-full bg-background/80 ${config.color}`}>
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-sm text-foreground">{task.task_name}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{task.task_description}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                speakTask(task);
-                              }}
-                            >
-                              <Volume2 className="h-3 w-3 mr-1" />
-                              {t('schedule.listen')}
-                            </Button>
-                            {/* Camera button for task photo */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPhotoUploadTask(task);
-                              }}
-                            >
-                              <Camera className="h-3 w-3" />
-                              {t('schedule.photo')}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </Card>
-        )}
-
         {/* Tasks Summary */}
-        <Card className="bg-background/60 backdrop-blur-sm border-border/50">
+        <Card className="border-2 border-border bg-card">
           <div className="p-3">
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="bg-primary/10 rounded-lg p-3">
@@ -710,7 +630,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               variant="outline"
               size="sm"
               onClick={() => refetchSchedules()}
-              className="w-full mt-3 bg-background/60 backdrop-blur-sm border-primary/20 hover:bg-primary/10"
+              className="mt-3 min-h-11 w-full border-2 border-primary bg-card text-card-foreground"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               {i18n.t('schedule.refreshSchedule')}
@@ -720,13 +640,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>
 
       {/* Task Tabs - Simple View Switcher */}
-      <div className="px-4 pb-20">
+      <div className="px-2 pb-nav-safe">
         <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="mt-4">
-          <TabsList className="grid w-full grid-cols-4 bg-background/60 backdrop-blur-sm">
-            <TabsTrigger value="today" className="text-xs">{i18n.t('schedule.today')}</TabsTrigger>
-            <TabsTrigger value="week" className="text-xs">{i18n.t('schedule.week')}</TabsTrigger>
-            <TabsTrigger value="month" className="text-xs">{i18n.t('schedule.month')}</TabsTrigger>
-            <TabsTrigger value="all" className="text-xs">{i18n.t('schedule.all')}</TabsTrigger>
+          <TabsList className="grid min-h-12 w-full grid-cols-4 border-2 border-border bg-card p-1">
+            <TabsTrigger value="today" className="min-h-10 text-sm font-bold">{i18n.t('schedule.today')}</TabsTrigger>
+            <TabsTrigger value="week" className="min-h-10 text-sm font-bold">{i18n.t('schedule.week')}</TabsTrigger>
+            <TabsTrigger value="month" className="min-h-10 text-sm font-bold">{i18n.t('schedule.month')}</TabsTrigger>
+            <TabsTrigger value="all" className="min-h-10 text-sm font-bold">{i18n.t('schedule.all')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value={viewMode} className="mt-3 space-y-3">
@@ -737,41 +657,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               </Card>
             ) : (
               <div className="space-y-3">
-                {viewMode === 'week' || viewMode === 'month' || viewMode === 'all' ? (
-                  <TaskTimeline 
-                    tasks={filteredTasks} 
-                    onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
-                    onTaskComplete={refetchSchedules}
-                    onTaskUpdate={handleTaskUpdate}
-                    onTakePhoto={(task: any) => setPhotoUploadTask(task as ScheduleTask)}
-                    stagePhaseOfTask={phaseOfTask}
-                  />
-                ) : (
-                  <div className="grid gap-3">
-                    {filteredTasks.map((task) => {
-                      const taskDate = new Date(task.task_date);
-                      const isOverdue = isPast(taskDate) && task.status === 'pending';
-                      const daysUntil = differenceInDays(taskDate, new Date());
-                      
-                      return (
-                        <ScheduleErrorBoundary key={task.id}>
-                          <div onClick={() => setSelectedTask(task)}>
-                            <ModernTaskCard
-                              task={task}
-                              onSpeak={() => speakTask(task)}
-                              isSpeaking={isSpeaking && speakingTaskId === task.id}
-                              isOverdue={isOverdue}
-                              daysUntil={daysUntil}
-                              readOnly={true}
-                              onTakePhoto={() => setPhotoUploadTask(task)}
-                              stagePhase={phaseOfTask(task as any)}
-                            />
-                          </div>
-                        </ScheduleErrorBoundary>
-                      );
-                    })}
-                  </div>
-                )}
+                <TaskTimeline 
+                  tasks={filteredTasks} 
+                  onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
+                  onTaskComplete={refetchSchedules}
+                  onTaskUpdate={handleTaskUpdate}
+                  onTakePhoto={(task: any) => setPhotoUploadTask(task as ScheduleTask)}
+                  stagePhaseOfTask={phaseOfTask}
+                />
               </div>
             )}
           </TabsContent>

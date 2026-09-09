@@ -262,7 +262,10 @@
       "ai_adjusted": "AI Adjusted",
       "done": "Done",
       "today": "Today",
-      "tomorrow": "Tomorrow"
+      "tomorrow": "Tomorrow",
+      "current_work": "Current field work",
+      "expand": "Show instructions",
+      "collapse": "Hide instructions"
     },
     "dialog": {
       "description": "Description",
@@ -427,6 +430,18 @@
       "translation_pending": "This task is still in English — translation is pending.",
       "technical_details": "Technical details",
       "amount_not_available": "The database has not provided a verified amount for this task yet."
+    },
+    "completion": {
+      "mark_when_finished": "Mark this task done after finishing it",
+      "completed_on": "Completed on {{date}}",
+      "just_now": "just now",
+      "status": "Status: {{status}}",
+      "completed": "Completed",
+      "undoing": "Undoing...",
+      "unmark": "Mark as not done",
+      "syncing": "Saving...",
+      "mark_done": "Mark task done",
+      "task_completed": "Task completed"
     },
     "crop_growth": {
       "title": "Crop Growth Tracking",
