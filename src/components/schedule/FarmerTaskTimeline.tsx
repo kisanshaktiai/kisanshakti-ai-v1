@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Loader2, Camera, Pencil, BookOpen } from 'lucide-react';
-import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
-import { motion } from 'framer-motion';
+import { AlertCircle, BookOpen, Bug, Camera, Check, CheckCircle2, ChevronDown, Clock, Droplets, Leaf, Loader2, Package, Pencil, Scissors, ShieldAlert, Volume2, VolumeX, Zap } from 'lucide-react';
+import { differenceInDays, format, isPast, isToday, isTomorrow } from 'date-fns';
+import { motion, useReducedMotion } from 'framer-motion';
 import { TaskCompletionSection } from './TaskCompletionSection';
 import { VideoHelpButton } from './VideoHelpButton';
 import ProductRecommendationCard from './ProductRecommendationCard';
@@ -22,65 +22,158 @@ import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 interface Task {
   id: string; task_date: string; task_type: string; task_name: string;
   task_description?: string; status: string; priority: string; weather_dependent: boolean;
-  climate_adjusted?: boolean; auto_rescheduled?: boolean | null; original_date?: string | null;
-  adjustment_reason?: string | null; reschedule_reason?: string | null;
-  instructions?: string[]; precautions?: string[]; resources?: Record<string, any>;
+  climate_adjusted?: boolean; instructions?: string[]; detailed_steps?: string[]; precautions?: string[];
+  resources?: Record<string, any>; completed_at?: string; stage_uuid?: string | null; language?: string;
   product_recommendations?: Array<{ product_name: string; brand?: string; dose_per_acre?: string; price_estimate?: number; product_type?: string; active_ingredient?: string; application_method?: string }>;
-  duration_hours?: number; estimated_cost?: number; currency?: string; completed_at?: string;
-  stage_uuid?: string | null; language?: string;
 }
+
 interface Props {
   tasks: Task[]; onTaskClick?: (task: Task) => void; onTaskComplete?: () => void;
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void; onTakePhoto?: (task: Task) => void;
   onEditTask?: (task: Task) => void; stagePhaseOfTask?: (task: { stage_uuid?: string | null }) => StagePhase;
 }
+
 const typeConfig = {
-  irrigation: { icon: Droplets, color: 'from-info to-info', bg: 'bg-info-soft dark:bg-info/20', border: 'border-info/30 dark:border-info' },
-  fertilizer: { icon: Leaf, color: 'from-success to-success', bg: 'bg-success-soft dark:bg-success/20', border: 'border-success/30 dark:border-success' },
-  nutrition: { icon: Leaf, color: 'from-success to-success', bg: 'bg-success-soft dark:bg-success/20', border: 'border-success/30 dark:border-success' },
-  pesticide: { icon: Bug, color: 'from-warning to-warning', bg: 'bg-warning-soft dark:bg-warning/20', border: 'border-warning/30 dark:border-warning' },
-  pest_management: { icon: Bug, color: 'from-warning to-warning', bg: 'bg-warning-soft dark:bg-warning/20', border: 'border-warning/30 dark:border-warning' },
-  disease_management: { icon: Bug, color: 'from-warning to-warning', bg: 'bg-warning-soft dark:bg-warning/20', border: 'border-warning/30 dark:border-warning' },
-  weeding: { icon: Scissors, color: 'from-primary to-primary', bg: 'bg-primary-soft dark:bg-primary/20', border: 'border-primary/30 dark:border-primary' },
-  weed_management: { icon: Scissors, color: 'from-primary to-primary', bg: 'bg-primary-soft dark:bg-primary/20', border: 'border-primary/30 dark:border-primary' },
-  harvest: { icon: Package, color: 'from-warning to-warning', bg: 'bg-warning-soft dark:bg-warning/20', border: 'border-warning/30 dark:border-warning' },
-  other: { icon: AlertCircle, color: 'from-muted-foreground to-muted-foreground/60', bg: 'bg-muted dark:bg-muted/40', border: 'border-border dark:border-border' },
+  irrigation: { icon: Droplets }, fertilizer: { icon: Leaf }, nutrition: { icon: Leaf },
+  pesticide: { icon: Bug }, pest_management: { icon: Bug }, disease_management: { icon: Bug },
+  weeding: { icon: Scissors }, weed_management: { icon: Scissors }, harvest: { icon: Package },
+  other: { icon: AlertCircle },
 };
+
 export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate, onTakePhoto, stagePhaseOfTask }: Props) {
-  const { t } = useTranslation(); const { currentLanguage } = useLanguageStore();
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null); const [editingTask, setEditingTask] = useState<Task | null>(null); const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const { currentLanguage } = useLanguageStore();
+  const reduceMotion = useReducedMotion();
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const languageMap: Record<string, string> = { hi: 'hi-IN', en: 'en-US', pa: 'pa-IN', mr: 'mr-IN', ta: 'ta-IN' };
   const { speak, stop, isSpeaking, isSupported, isVoicesLoaded } = useTextToSpeech({ language: languageMap[currentLanguage] || 'hi-IN', rate: 0.9 });
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
-  const taskTypeLabel = (type: string) => { const keys: Record<string, string> = { irrigation: 'schedule.stages.irrigation', fertilizer: 'schedule.stages.fertilizer', nutrition: 'schedule.stages.fertilizer', pesticide: 'schedule.stages.pest_control', pest_management: 'schedule.stages.pest_control', disease_management: 'schedule.stages.pest_control', weeding: 'schedule.stages.weeding', weed_management: 'schedule.stages.weeding', sowing: 'schedule.stages.sowing', harvest: 'schedule.stages.harvest' }; return t(keys[type?.toLowerCase()] || 'schedule.task_card.description'); };
+
   const speakTask = (task: Task) => {
-    if (!isSupported || !isVoicesLoaded) { toast.error(t('schedule.task_card.read_aloud', 'Read aloud')); return; }
+    if (!isSupported || !isVoicesLoaded) { toast.error(t('schedule.task_card.read_aloud')); return; }
     if (isSpeaking && speakingTaskId === task.id) { stop(); setSpeakingTaskId(null); return; }
-    const p = buildScheduleTaskPresentation(task as any, t, currentLanguage); speak([p.what, ...p.how, ...p.howMuch].filter(Boolean).join('. ')); setSpeakingTaskId(task.id);
+    const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
+    speak([p.what, ...p.how, ...p.howMuch].filter(Boolean).join('. '));
+    setSpeakingTaskId(task.id);
   };
+
   const complete = async (taskId: string, completed: boolean) => {
-    const completedAt = completed ? new Date().toISOString() : undefined; onTaskUpdate?.(taskId, { status: completed ? 'completed' : 'pending', completed_at: completedAt });
-    try { const { schedulesApi } = await import('@/services/schedulesApi'); await schedulesApi.setTaskCompletion(taskId, completed, completedAt); onTaskComplete?.(); }
-    catch (error) { onTaskUpdate?.(taskId, { status: completed ? 'pending' : 'completed' }); toast.error(t('schedule.toast.sync_failed')); console.error('Task completion sync failed', error); }
+    const completedAt = completed ? new Date().toISOString() : undefined;
+    onTaskUpdate?.(taskId, { status: completed ? 'completed' : 'pending', completed_at: completedAt });
+    try {
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      await schedulesApi.setTaskCompletion(taskId, completed, completedAt);
+      onTaskComplete?.();
+    } catch (error) {
+      onTaskUpdate?.(taskId, { status: completed ? 'pending' : 'completed' });
+      toast.error(t('schedule.toast.sync_failed'));
+      console.error('Task completion sync failed', error);
+    }
   };
-  return <div className="space-y-4">
-    <div className="flex items-center justify-between px-1"><h3 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">{t('schedule.timeline.title')}</h3><Badge variant="outline" className="font-mono text-xs">{t('schedule.timeline.tasks_count', { count: tasks.length })}</Badge></div>
-    <div className="relative pl-8 space-y-8"><div className="absolute left-3 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-accent to-primary/20" />
-      {Object.entries(groupedTasks).map(([date, dateTasks], groupIndex) => { const d = new Date(date); const past = isPast(d) && !isToday(d); const days = differenceInDays(d, new Date()); const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE') : format(d, 'EEE, dd MMM'); return <motion.div key={date} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: groupIndex * 0.05 }} className="relative">
-        <div className="absolute -left-[1.875rem] top-3"><div className={cn('w-6 h-6 rounded-full flex items-center justify-center', isToday(d) ? 'bg-primary animate-pulse' : 'bg-muted')}><Clock className="h-3.5 w-3.5 text-white" /></div></div>
-        <div className="mb-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/70 border border-border"><span className="font-bold text-sm">{label}</span><Badge variant="secondary" className="text-[10px] h-5">{dateTasks.length}</Badge></div>
-        <div className="space-y-3">{dateTasks.map((task, taskIndex) => { const config = resolveTaskTypeConfig(typeConfig, task.task_type); const Icon = config.icon; const p = buildScheduleTaskPresentation(task as any, t, currentLanguage); const completed = task.status === 'completed'; const overdue = past && task.status === 'pending'; const expanded = expandedTaskId === task.id; return <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: groupIndex * 0.05 + taskIndex * 0.03 }} className={cn('group relative overflow-hidden rounded-xl border-2', completed && 'bg-success/5 border-success/20 opacity-70', overdue && !completed && 'bg-destructive/5 border-destructive/30', !completed && !overdue && `${config.bg} ${config.border}`)}>
-            <CollapsibleTrigger asChild><div className="relative p-4 cursor-pointer"><div className="flex items-start gap-4"><div className={cn('shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br shadow-lg flex items-center justify-center', config.color)}><Icon className="h-5 w-5 text-white" /></div><div className="flex-1 min-w-0"><div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2 mb-2 min-w-0"><h4 className={cn('font-semibold text-sm', completed ? 'line-through text-muted-foreground' : 'text-foreground')}>{p.what || taskTypeLabel(task.task_type)}</h4><StagePhaseBadge phase={stagePhaseOfTask?.(task)} /></div><ChevronDown className={cn('h-5 w-5 text-muted-foreground transition-transform', expanded && 'rotate-180')} /></div>{!expanded && p.how[0] && <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{p.how[0]}</p>}<div className="flex flex-wrap items-center gap-2"><Badge variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'default' : 'secondary'} className="text-[10px] h-5">{t(`schedule.task.${task.priority}`, task.priority)}</Badge>{task.weather_dependent && <Badge variant="outline" className="text-[10px] h-5 gap-1"><Droplets className="h-2.5 w-2.5" />{t('schedule.badges.weather')}</Badge>}{task.climate_adjusted && <Badge className="text-[10px] h-5 gap-1"><Zap className="h-2.5 w-2.5" />{t('schedule.badges.ai_adjusted')}</Badge>}{completed && <Badge className="text-[10px] h-5 gap-1"><CheckCircle2 className="h-2.5 w-2.5" />{t('schedule.timeline.done')}</Badge>}{overdue && !completed && <Badge variant="destructive" className="text-[10px] h-5">{t('schedule.task_card.overdue')}</Badge>}</div></div></div></div></CollapsibleTrigger>
-            <CollapsibleContent><div className="px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}><div className="flex flex-wrap justify-end gap-2">{onTakePhoto && <Button type="button" size="sm" onClick={() => onTakePhoto(task)} className="gap-2"><Camera className="h-4 w-4" />{t('cropGrowth.takePhoto', 'Photo')}</Button>}<Button type="button" variant="outline" size="sm" onClick={() => setEditingTask(task)} className="gap-2"><Pencil className="h-4 w-4" />{t('schedule.dialog.edit')}</Button><VideoHelpButton category={task.task_type} taskType={p.what} /><Button type="button" variant="ghost" size="sm" onClick={() => speakTask(task)} disabled={!isSupported || !isVoicesLoaded} className="gap-2">{isSpeaking && speakingTaskId === task.id ? <><VolumeX className="h-4 w-4" />{t('schedule.close')}</> : !isVoicesLoaded ? <><Loader2 className="h-4 w-4 animate-spin" />{t('schedule.loading.syncing', 'Loading...')}</> : <><Volume2 className="h-4 w-4" />{t('schedule.listen')}</>}</Button></div>
-              <div className="rounded-xl bg-primary/5 border border-primary/15 p-3 space-y-3"><div><h5 className="text-[10px] font-semibold text-primary uppercase tracking-wide">{t('schedule.task_card.description')}</h5><p className="text-sm font-semibold mt-1">{p.what}</p>{p.needsTranslation && <p className="mt-1 text-[11px] text-muted-foreground">{t('schedule.farmer_task.translation_pending')}</p>}</div>{p.how.length > 0 && <div><h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.task_card.instructions')}</h5><ol className="list-decimal list-inside space-y-1 mt-1">{p.how.map((x, i) => <li key={i} className="text-sm text-muted-foreground">{x}</li>)}</ol></div>}{p.howMuch.length > 0 && <div><h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.task_card.quantity')}</h5><div className="space-y-1 mt-1">{p.howMuch.map((x, i) => <p key={i} className="text-sm text-muted-foreground p-2 rounded-lg bg-info/5 border border-info/20">{x}</p>)}</div></div>}{p.technicalDetails.length > 0 && <details className="pt-1"><summary className="cursor-pointer text-xs font-medium flex items-center gap-2"><BookOpen className="h-4 w-4" />{t('schedule.task_card.based_on')}</summary><div className="mt-2 space-y-1">{p.technicalDetails.map((x, i) => <p key={i} className="text-xs text-muted-foreground">{x}</p>)}</div></details>}{!p.how.length && !p.howMuch.length && <p className="text-sm text-muted-foreground italic">{t('schedule.task_card.no_details')}</p>}</div>
-              {(Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0) || Number(task.resources?.labor_cost) > 0 ? <ProductRecommendationCard products={task.product_recommendations || []} landAreaAcres={1} laborCost={task.resources?.labor_cost || 0} laborDays={task.resources?.labor_days || 0} laborWorkers={task.resources?.labor_workers || 0} laborDaysPerAcre={task.resources?.labor_days_per_acre || 0} laborDailyWage={task.resources?.labor_daily_wage || 350} laborDescription={task.resources?.labor_description || ''} /> : null}
-              <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />
-            </div></CollapsibleContent>
-          </motion.div>
-        </Collapsible>; })}</div>
-      </motion.div>; })}
-    </div>
-    <TaskEditDialog task={editingTask} open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)} onSave={() => onTaskComplete?.()} />
-  </div>;
+
+  return (
+    <section className="space-y-3" aria-labelledby="schedule-timeline-title">
+      <header className="flex items-end justify-between gap-3 border-b-2 border-foreground bg-card px-1 pb-3">
+        <div>
+          <p className="text-xs font-bold text-foreground">{t('schedule.timeline.current_work')}</p>
+          <h3 id="schedule-timeline-title" className="text-xl font-extrabold text-card-foreground">{t('schedule.timeline.title')}</h3>
+        </div>
+        <Badge variant="outline" className="h-8 border-2 border-foreground bg-card px-3 text-sm font-bold text-card-foreground">
+          {t('schedule.timeline.tasks_count', { count: tasks.length })}
+        </Badge>
+      </header>
+
+      <div className="relative space-y-5 pl-7">
+        <div className="absolute bottom-0 left-3 top-0 w-1 bg-border" aria-hidden="true" />
+        {Object.entries(groupedTasks).map(([date, dateTasks], groupIndex) => {
+          const d = new Date(date);
+          const past = isPast(d) && !isToday(d);
+          const days = differenceInDays(d, new Date());
+          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE') : format(d, 'dd MMM');
+          return (
+            <motion.section key={date} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : groupIndex * 0.03 }} className="relative">
+              <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
+                {past ? <Check className="size-3.5" strokeWidth={3} /> : <Clock className="size-3.5" strokeWidth={3} />}
+              </div>
+              <div className="mb-2 flex items-center gap-2 pl-4">
+                <h4 className="text-base font-extrabold text-foreground">{label}</h4>
+                <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM')}</span>
+              </div>
+
+              <div className="space-y-3">
+                {dateTasks.map((task) => {
+                  const config = resolveTaskTypeConfig(typeConfig, task.task_type);
+                  const Icon = config.icon;
+                  const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
+                  const completed = task.status === 'completed';
+                  const overdue = past && task.status === 'pending';
+                  const expanded = expandedTaskId === task.id;
+                  const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
+                  return (
+                    <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
+                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="h-auto min-h-20 w-full justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
+                            <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
+                            <span className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3">
+                              <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
+                              <span className="min-w-0 flex-1 whitespace-normal">
+                                <span className="mb-1 flex flex-wrap items-center gap-1.5">
+                                  <span className="text-base font-extrabold leading-snug text-card-foreground">{p.what}</span>
+                                  <StagePhaseBadge phase={stagePhaseOfTask?.(task)} />
+                                </span>
+                                {!expanded && p.how[0] && <span className="line-clamp-2 block text-sm font-medium leading-relaxed text-card-foreground">{p.how[0]}</span>}
+                                <span className="mt-2 flex flex-wrap gap-1.5">
+                                  <Badge variant={overdue ? 'destructive' : completed ? 'default' : task.priority === 'high' ? 'destructive' : 'secondary'} className="font-bold">
+                                    {completed ? t('schedule.timeline.done') : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
+                                  </Badge>
+                                  {task.weather_dependent && <Badge variant="outline" className="border-2 font-bold"><Droplets className="mr-1 size-3" />{t('schedule.badges.weather')}</Badge>}
+                                  {task.climate_adjusted && <Badge variant="outline" className="border-2 font-bold"><Zap className="mr-1 size-3" />{t('schedule.badges.ai_adjusted')}</Badge>}
+                                </span>
+                              </span>
+                              <ChevronDown className={cn('mt-2 size-6 shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
+                            </span>
+                          </Button>
+                        </CollapsibleTrigger>
+
+                        <CollapsibleContent>
+                          <div className="space-y-4 border-t-2 border-border bg-card p-3" onClick={(event) => event.stopPropagation()}>
+                            {p.howMuch.length > 0 && (
+                              <section className="grid gap-2 sm:grid-cols-2">
+                                {p.howMuch.map((amount, index) => <div key={index} className="rounded-md border-2 border-foreground bg-background p-3"><p className="text-xs font-bold text-foreground">{t('schedule.farmer_task.how_much')}</p><p className="mt-1 text-lg font-extrabold leading-snug text-foreground">{amount}</p></div>)}
+                              </section>
+                            )}
+                            <section aria-labelledby={`steps-${task.id}`}>
+                              <h5 id={`steps-${task.id}`} className="mb-2 text-sm font-extrabold text-card-foreground">{t('schedule.farmer_task.how')}</h5>
+                              {p.how.length > 0 ? <ol className="space-y-2">{p.how.map((step, index) => <li key={index} className="flex items-start gap-3 rounded-md border border-border bg-background p-3 text-base font-semibold leading-relaxed text-foreground"><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-extrabold text-primary-foreground">{index + 1}</span><span>{step}</span></li>)}</ol> : <p className="rounded-md border border-border bg-background p-3 text-sm font-semibold text-foreground">{t('schedule.farmer_task.how_not_available')}</p>}
+                            </section>
+                            {precautions.length > 0 && <section className="overflow-hidden rounded-md border-2 border-warning"><h5 className="flex items-center gap-2 bg-warning px-3 py-2 text-sm font-extrabold text-warning-foreground"><ShieldAlert className="size-5" />{t('schedule.task_card.precautions')}</h5><ul className="space-y-2 bg-card p-3">{precautions.map((item: string, index: number) => <li key={index} className="text-sm font-semibold leading-relaxed text-card-foreground">• {item}</li>)}</ul></section>}
+                            {p.needsTranslation && <p className="rounded-md border-2 border-warning bg-warning-soft p-3 text-sm font-bold text-foreground">{t('schedule.farmer_task.translation_pending')}</p>}
+                            {p.technicalDetails.length > 0 && <details className="rounded-md border border-border bg-muted p-3"><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-bold text-foreground"><BookOpen className="size-4" />{t('schedule.farmer_task.technical_details')}</summary><ul className="mt-2 space-y-2">{p.technicalDetails.map((line, index) => <li key={index} className="text-sm leading-relaxed text-foreground">{line}</li>)}</ul></details>}
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              {onTakePhoto && <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => onTakePhoto(task)}><Camera className="size-4" />{t('cropGrowth.takePhoto', 'Photo')}</Button>}
+                              <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => setEditingTask(task)}><Pencil className="size-4" />{t('schedule.dialog.edit')}</Button>
+                              <VideoHelpButton category={task.task_type} taskType={p.what} />
+                              <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => speakTask(task)} disabled={!isSupported || !isVoicesLoaded} aria-label={t('schedule.listen')}>
+                                {!isVoicesLoaded ? <Loader2 className="size-4 animate-spin" /> : isSpeaking && speakingTaskId === task.id ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}{t('schedule.listen')}
+                              </Button>
+                            </div>
+                            {((task.product_recommendations?.length ?? 0) > 0 || Number(task.resources?.labor_cost) > 0) && <ProductRecommendationCard products={task.product_recommendations || []} landAreaAcres={1} laborCost={task.resources?.labor_cost || 0} laborDays={task.resources?.labor_days || 0} laborWorkers={task.resources?.labor_workers || 0} laborDaysPerAcre={task.resources?.labor_days_per_acre || 0} laborDailyWage={task.resources?.labor_daily_wage || 350} laborDescription={task.resources?.labor_description || ''} />}
+                            <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />
+                          </div>
+                        </CollapsibleContent>
+                      </article>
+                    </Collapsible>
+                  );
+                })}
+              </div>
+            </motion.section>
+          );
+        })}
+      </div>
+      <TaskEditDialog task={editingTask} open={!!editingTask} onOpenChange={(open) => !open && setEditingTask(null)} onSave={() => onTaskComplete?.()} />
+    </section>
+  );
 }
