@@ -4487,6 +4487,47 @@ export class AIAgentOrchestrator {
       const __turnTextSymptomCount = Number((this as any).__textOnlySymptomCount ?? 0);
       const directContractNoSymptoms = directHardBypass && __turnTextSymptomCount === 0;
       (this as any).__directContractNoSymptoms = directContractNoSymptoms;
+
+      // 2026-09-07 — STAGE GATE for DIRECT / 0-round intents. intent_assertion_pattern.stage_compatibility is
+      // the DB contract for "this question only makes sense at these stages" (harvest at PI, post-harvest at
+      // tillering …). The contradiction engine now reads it; when it fires for a DIRECT intent the farmer gets a
+      // stage explanation (system_config stage_mismatch_<lang>) instead of a rule that does not exist yet.
+      if (directHardBypass && intentCode) {
+        try {
+          const { detectContradiction } = await import('../runtime/contradiction-engine.ts');
+          const __sgStage = String((canonicalContext as any)?.growth_stage ?? (landContext as any)?.growth_stage ?? '').toLowerCase();
+          const __sgDas = (canonicalContext as any)?.days_since_sowing ?? (landContext as any)?.days_since_sowing ?? null;
+          const __sgCrop = String(cropFromAnyLayer ?? '').toLowerCase();
+          const __sg = await detectContradiction({ supabase: this.supabase, intent_code: intentCode, crop_code: __sgCrop, growth_stage: __sgStage, das: __sgDas, trace_id: traceId, observations: [] });
+          if (__sg && __sg.kind === 'STAGE_MISMATCH') {
+            const __lang = String(options.language || 'mr');
+            const __tpl = String(getConfigRaw<string>(`stage_mismatch_${__lang}`, getConfigRaw<string>('stage_mismatch_en',
+              'Your {crop} is at the {stage} stage (day {das}). This question applies at {expected}. Ask me what to do at this stage and I will guide you.')));
+            const __text = __tpl.replace('{crop}', __sgCrop || 'crop').replace('{stage}', __sgStage || '-').replace('{das}', String(__sgDas ?? '-'))
+              .replace('{expected}', (__sg.expected || []).join(', '));
+            agentsUsed.push('STAGE_GATE_DIRECT_INTENT');
+            console.log(`[STAGE_GATE] trace=${traceId} intent=${intentCode} stage=${__sgStage} das=${__sgDas} expected=[${(__sg.expected || []).join(',')}] → stage explanation`);
+            return {
+              type: 'DECISION_PROVIDED',
+              session_id: sessionId,
+              communication: {
+                message_id: crypto.randomUUID(), decision_id: `stage_gate_${Date.now()}`, session_id: sessionId, farmer_id: farmerId,
+                language: __lang, format: 'RICH_TEXT', tone: 'FRIENDLY', created_at: new Date().toISOString(),
+                main_message: { full_text: { [__lang]: __text, en: __text } },
+                quick_actions: [],
+                metadata: { word_count: __text.split(/\s+/).length, reading_time_seconds: 10, confidence_score: 0.9, source: 'STAGE_GATE', response_type: 'INFORMATION' },
+              } as any,
+              decision_output: {
+                decision_id: `stage_gate_${Date.now()}`, session_id: sessionId, status: 'INFORMATION_PROVIDED', decision_brain_source: true,
+                actions_returned: [], metadata: { stage_gate: { intent: intentCode, stage: __sgStage, das: __sgDas, expected: __sg.expected, reason: __sg.reason } },
+              } as any,
+              metadata: { confidence: 0.9, safety_status: 'SAFE', rules_applied: 0, processing_time_ms: Date.now() - startTime, agents_used: agentsUsed, trace_id: traceId },
+            } as any;
+          }
+        } catch (sgErr) {
+          console.warn(`[STAGE_GATE] non-fatal: ${(sgErr as Error)?.message ?? sgErr}`);
+        }
+      }
       const diagnosticIntentOwnsClarification =
         requiresAgronomicReasoningIntent(intentCode) ||
         symptomBasedIntents.includes(currentIntentForGate);
@@ -8839,6 +8880,28 @@ export class AIAgentOrchestrator {
             }
           }
         } catch { /* scoping is an optimization only */ }
+
+        // 2026-09-09 — INTENT RELEVANCE FOR LANE A CONTEXT ROWS. Lane A grants CONTEXT_SCHEDULE rows stage/DAS
+        // evidence (CONTEXT_EVIDENCE) with no intent check, so the critical-stage irrigation rule (priority 9)
+        // won "which fertiliser now" at heading on 2026-09-07/08 even though Lane B had already dropped it.
+        // Apply the same DB relevance (intent_observation_mapping) to Lane A's CONTEXT_SCHEDULE rows.
+        // CONTEXT_BLOCK rows are constraints and always stay.
+        try {
+          if (Array.isArray(rulesForEvaluator) && (rulesForEvaluator as any[]).length > 0 && intentCode) {
+            const _ctxRows = (rulesForEvaluator as any[]).filter(r => String(r?.trigger_class ?? '').toUpperCase() === 'CONTEXT_SCHEDULE');
+            if (_ctxRows.length > 0) {
+              const { filterScheduleCandidatesByIntent } = await import('../decision/context-rule-selector.ts');
+              const _cropForRel = String((canonicalContext as any)?.crop ?? (landContext as any)?.current_crop ?? cropCodeForFilter ?? '').toLowerCase();
+              const _rel = await filterScheduleCandidatesByIntent(this.supabase, _ctxRows.map(r => ({ rule_id: r.rule_id ?? r.id, condition_code: r.condition_code, conditions_json: r.conditions_json })), intentCode, _cropForRel, traceId);
+              if (_rel.applied) {
+                const _keep = new Set(_rel.kept.map((r: any) => String(r.rule_id)));
+                const _before = (rulesForEvaluator as any[]).length;
+                rulesForEvaluator = (rulesForEvaluator as any[]).filter(r => String(r?.trigger_class ?? '').toUpperCase() !== 'CONTEXT_SCHEDULE' || _keep.has(String(r.rule_id ?? r.id)));
+                console.log(`[LANE_A_CONTEXT_RELEVANCE] trace=${traceId} intent=${intentCode} context_rows=${_ctxRows.length} kept=${_keep.size} rules=${_before}→${(rulesForEvaluator as any[]).length}`);
+              }
+            }
+          }
+        } catch (relErr) { console.warn(`[LANE_A_CONTEXT_RELEVANCE] non-fatal: ${(relErr as Error)?.message ?? relErr}`); }
 
         // FIX 3 — dead-lane short circuit: with zero candidate rules the legacy
         // evaluator only burns latency and logs ZERO RULES MATCHED. Skip it and

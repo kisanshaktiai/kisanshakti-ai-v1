@@ -15,6 +15,7 @@ import { RecommendationCards, type VisionAnalysisResult } from './Recommendation
 import { DiagnosisOnlyCard } from './DiagnosisOnlyCard';
 import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSelector';
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
+import { AdvisorCard, type AdvisorCardData } from './AdvisorCard';
 import { DataAuditCards, type DataAudit } from './DataAuditCards';
 import { ClarificationOptionsUI } from './ClarificationOptionsUI';
 import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
@@ -292,6 +293,9 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
   const hasCanonicalAdvisory = !isUser && message.structuredAdvisory?.version;
+  // 2026-09-09 — the advisor card is the farmer contract (greeting → what → why → how → notes → products).
+  // It comes from the backend as metadata.advisor_card and takes precedence over the legacy card set.
+  const advisorCard: AdvisorCardData | null = (!isUser && (message as any)?.advisorCard) || null;
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   const hasDataAudit = !isUser && message.dataAudit;
   
@@ -642,6 +646,13 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                     ⚡ {message.analytics.responseTime}ms
                   </span>
                 )}
+              </div>
+            </>
+          ) : advisorCard ? (
+            <>
+              <AdvisorCard data={advisorCard} />
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             </>
           ) : hasDecisionBrainResponse ? (

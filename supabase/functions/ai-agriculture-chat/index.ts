@@ -2735,6 +2735,29 @@ serve(async (req) => {
         }
       });
       
+
+      // 2026-09-09 — ADVISOR CARD: the structured farmer contract the UI renders
+      // (greeting → what happened → why → how to fix → extras → market products).
+      // The LLM is the EXPLAINER of these DB facts only; unbacked numbers fall back to the template.
+      let advisorCard: any = null;
+      try {
+        const _d = orchestratorResponse.decision_output;
+        if (_d?.primary_decision) {
+          const { buildAdvisorCard } = await import('./agents/advisor-card.ts');
+          const { lookupMarketProductDetails } = await import('./agents/market-product-lookup.ts');
+          const _ai = _d.primary_decision?.application_details?.active_ingredient || null;
+          const _prods = _ai ? await lookupMarketProductDetails(supabase, _ai, orchestratorResponse.decision_output?.land_context?.crop) : [];
+          // the explainer runs on the same model the formatter uses; it may only reword the facts
+          const { explainerLLM: _explainerLLM } = await import('./agents/llm-response-formatter.ts');
+          advisorCard = await buildAdvisorCard({
+            decision: _d, lang: detectedLanguage, supabase, llm: _explainerLLM,
+            landContext: orchestratorResponse.decision_output?.land_context ?? null,
+            products: _prods, traceId: orchestratorResponse.metadata?.trace_id,
+          });
+          if (advisorCard) console.log(`[ADVISOR_CARD] built kind=${advisorCard.kind} explained_by=${advisorCard.source.explained_by} products=${advisorCard.products.length} replaced=${(advisorCard.source.replaced_terms || []).length}`);
+        }
+      } catch (acErr) { console.warn(`[ADVISOR_CARD] non-fatal: ${(acErr as Error)?.message ?? acErr}`); }
+
       // Store assistant response with language-appropriate content
       // FIXED: Now includes tokens_used tracking for cost monitoring
       const tokensUsed = llmFormatterOutput?.tokens_used || null;
@@ -2757,6 +2780,7 @@ serve(async (req) => {
         actions_returned: actions_returned,
         actions_filtered_out: actions_filtered_out,
         metadata: {
+          advisor_card: advisorCard,   // 2026-09-09 — structured farmer card the UI renders
           orchestrator_type: orchestratorResponse.type,
           confidence: orchestratorResponse.metadata?.confidence,
           safety_status: orchestratorResponse.metadata?.safety_status,
@@ -2822,6 +2846,8 @@ serve(async (req) => {
       traceId,
       aiModelUsed
     );
+    // 2026-09-09 — the UI reads metadata.advisor_card (same object that is stored on the message)
+    try { (responsePayload as any).metadata = { ...((responsePayload as any).metadata ?? {}), advisor_card: advisorCard }; } catch { /* non-fatal */ }
 
     // SESSION-LEVEL DECISION TRACKING
     const recommendationsProvided = orchestratorResponse.type === 'DECISION_PROVIDED' && 

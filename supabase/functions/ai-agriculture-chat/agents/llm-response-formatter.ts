@@ -1876,6 +1876,26 @@ async function callGeminiWithTimeout(
   }
 }
 
+/**
+ * 2026-09-09 — LLM callback for the EXPLAINER (agents/explainer.ts). Same provider chain as the formatter;
+ * returns raw text so the explainer can parse and verify it. No agronomy passes through here.
+ */
+export async function explainerLLM(systemPrompt: string, userPrompt: string): Promise<string> {
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (OPENAI_API_KEY) {
+    const r = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 8000);
+    if (typeof r === 'string' && r.trim()) return r;
+    if (r && typeof (r as any).content === 'string') return (r as any).content;
+  }
+  if (LOVABLE_API_KEY) {
+    const r = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 8000);
+    if (typeof r === 'string' && r.trim()) return r;
+    if (r && typeof (r as any).content === 'string') return (r as any).content;
+  }
+  throw new Error('no LLM provider available for the explainer');
+}
+
 async function callOpenAIWithTimeout(
   systemPrompt: string, 
   userPrompt: string, 

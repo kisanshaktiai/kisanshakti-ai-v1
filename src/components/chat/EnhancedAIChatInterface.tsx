@@ -501,6 +501,7 @@ export function EnhancedAIChatInterface() {
           ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
           : null,
         // P0 FIX: Reconstruct clarification options from persisted metadata
+        advisorCard: metadata?.advisor_card ?? undefined,   // 2026-09-09 farmer advisor card
         clarificationOptions: metadata?.clarification_options ? {
           question: metadata.clarification_options.question,
           options: metadata.clarification_options.options?.map((o: any) => ({
