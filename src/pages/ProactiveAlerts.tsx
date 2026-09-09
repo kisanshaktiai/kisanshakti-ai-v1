@@ -734,11 +734,11 @@ function LandCard({
         <span className="text-base leading-none" aria-hidden>{displayEmoji}</span>
         <span className={cn(
           'min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold inline-flex items-center justify-center leading-none',
-          count === 0 ? 'bg-muted text-muted-foreground' :
-          topPriority === 'CRITICAL' ? 'bg-destructive text-destructive-foreground' :
-          topPriority === 'HIGH' ? 'bg-warning text-warning-foreground' :
-          'bg-primary text-primary-foreground',
+          count === 0
+            ? 'bg-muted text-muted-foreground'
+            : BAND_SOLID[PRIORITY_BAND[topPriority || 'MEDIUM'] || 'moderate'],
         )}>
+
           {count}
         </span>
       </div>
