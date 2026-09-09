@@ -86,12 +86,15 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   for (const { provider, model } of ordered) { const apiKey = getAPIKey(provider); if (!apiKey) continue; try {
     await waitForCooldown(provider, signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
     const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: MAX_OUTPUT_TOKENS, temperature: 0, useJsonMode: true });
-    const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify(body), signal });
+    const authHeaders: Record<string, string> = provider === "lovable"
+      ? { "Content-Type": "application/json", "Lovable-API-Key": apiKey }
+      : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+    const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: authHeaders, body: JSON.stringify(body), signal });
     if (!res.ok) { if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
     const responseJson = await res.json(); const raw = parseModelJson(responseJson?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray((raw as any)?.tasks) ? (raw as any).tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
     if (parsed.length < chunk.length) throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null);
     return { items: parsed.map((p) => ({ ...p, i: offset + Number(p.i) })), provider, model };
-  } catch (error) { lastError = error; } }
+  } catch (error) { lastError = error; console.error(`[narrate] ${provider}/${model} failed: ${(error as Error)?.message}`); } }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal) {
