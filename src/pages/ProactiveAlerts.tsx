@@ -63,6 +63,83 @@ const PRIORITY_DOT: Record<string, string> = {
   LOW:      'bg-success',
 };
 
+/* ---------------- Risk band (green → red) ----------------
+ * Presentation only. Derived from the alert's own risk_score / priority,
+ * plus the satellite crop-health (NDVI) reading when the rule supplied one.
+ * A weak crop (low NDVI) pushes the same risk one band higher.
+ */
+type RiskBand = 'low' | 'moderate' | 'attention' | 'high' | 'critical';
+
+const BAND_ORDER: RiskBand[] = ['low', 'moderate', 'attention', 'high', 'critical'];
+
+const PRIORITY_BAND: Record<string, RiskBand> = {
+  LOW: 'low',
+  MEDIUM: 'moderate',
+  HIGH: 'high',
+  CRITICAL: 'critical',
+};
+
+function scoreBand(score: number): RiskBand {
+  if (score >= 85) return 'critical';
+  if (score >= 70) return 'high';
+  if (score >= 50) return 'attention';
+  if (score >= 30) return 'moderate';
+  return 'low';
+}
+
+function bump(band: RiskBand, steps: number): RiskBand {
+  const i = Math.min(BAND_ORDER.length - 1, Math.max(0, BAND_ORDER.indexOf(band) + steps));
+  return BAND_ORDER[i];
+}
+
+function riskBandOf(alert: ProactiveAlert): RiskBand {
+  const priorityBand = PRIORITY_BAND[alert.priority] || 'moderate';
+  const rawScore = Number((alert as any).risk_score);
+  let band = Number.isFinite(rawScore) ? scoreBand(rawScore) : priorityBand;
+
+  // Priority is a floor: a CRITICAL alert never renders green.
+  if (BAND_ORDER.indexOf(priorityBand) > BAND_ORDER.indexOf(band)) band = priorityBand;
+
+  // Satellite crop health, only when the alert actually carries it.
+  const ndviRaw = (alert.trigger_data as any)?.ndvi;
+  const ndvi = typeof ndviRaw === 'number' ? ndviRaw : Number(ndviRaw);
+  if (Number.isFinite(ndvi) && ndvi > 0 && ndvi <= 1) {
+    if (ndvi < 0.25) band = bump(band, 2);
+    else if (ndvi < 0.4) band = bump(band, 1);
+  }
+  return band;
+}
+
+const BAND_SURFACE: Record<RiskBand, string> = {
+  low:       'bg-success/10 border-success/40',
+  moderate:  'bg-primary/10 border-primary/40',
+  attention: 'bg-warning/15 border-warning/50',
+  high:      'bg-destructive/10 border-destructive/40',
+  critical:  'bg-destructive/20 border-destructive',
+};
+const BAND_RAIL: Record<RiskBand, string> = {
+  low:       'bg-success',
+  moderate:  'bg-primary',
+  attention: 'bg-warning',
+  high:      'bg-destructive/70',
+  critical:  'bg-destructive',
+};
+const BAND_CHIP: Record<RiskBand, string> = {
+  low:       'bg-success/15 text-success',
+  moderate:  'bg-primary/15 text-primary',
+  attention: 'bg-warning/25 text-warning-foreground',
+  high:      'bg-destructive/15 text-destructive',
+  critical:  'bg-destructive text-destructive-foreground',
+};
+const BAND_SOLID: Record<RiskBand, string> = {
+  low:       'bg-success text-success-foreground',
+  moderate:  'bg-primary text-primary-foreground',
+  attention: 'bg-warning text-warning-foreground',
+  high:      'bg-destructive/80 text-destructive-foreground',
+  critical:  'bg-destructive text-destructive-foreground',
+};
+
+
 const STATUS_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
   ACTED:     { mr: 'केले',     hi: 'किया',   en: 'Done' },
   DISMISSED: { mr: 'नाकारले',  hi: 'खारिज',  en: 'Dismissed' },
