@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
+import { Calendar, Leaf, Package, Sparkles, RefreshCw, MapPin, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,11 +13,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useTranslation } from 'react-i18next';
-import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
+import { format, addDays, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
-import ScheduleErrorBoundary from './ScheduleErrorBoundary';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
@@ -27,7 +26,6 @@ import { useLandStage } from '@/hooks/useLandStage';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
-import { resolveTaskTypeConfig } from '@/lib/taskTypeIcons';
 
 interface CropSchedule {
   id: string;
@@ -114,15 +112,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [showLandPhotoUpload, setShowLandPhotoUpload] = useState(false);
 
   // Task type icons and colors
-  const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft dark:bg-info/30' },
-    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft dark:bg-success/30' },
-    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
-    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft dark:bg-primary/30' },
-    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
-    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted dark:bg-foreground/80/30' }
-  };
-
   // Update schedule when schedules data changes from React Query
   useEffect(() => {
     console.log('📋 [CropScheduleView] useEffect triggered:', {
@@ -468,7 +457,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
   const completedTasks = filteredTasks.filter(t => t.status === 'completed');
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
-  const todayTasks = tasks.filter(t => isToday(new Date(t.task_date)) && t.status === 'pending');
 
   // Find real harvest date from tasks (harvest/harvesting task)
   const harvestTask = tasks.find(t => 

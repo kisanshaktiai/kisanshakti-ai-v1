@@ -125,7 +125,7 @@ export function TaskCompletionSection({
         {isCompleted ? (
           <div className="space-y-2">
             {/* Completed Badge */}
-            <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2 font-medium w-fit">
+            <Badge className="w-fit gap-2 border-success bg-success px-3 py-2 font-medium text-success-foreground">
               <Flag className="h-4 w-4 fill-current" />
                <span className="text-sm">{t('schedule.completion.completed')}</span>
             </Badge>
@@ -189,7 +189,7 @@ export function TaskCompletionSection({
       {/* Additional Status Badge */}
       {isCompleted && !isCompacting && (
         <div className="mt-3 flex items-center gap-2">
-          <Badge className="bg-success/10 text-success border-success/20 font-medium">
+          <Badge className="border-success bg-success font-medium text-success-foreground">
             <Check className="h-3 w-3 mr-1" />
             <span className="text-xs">{t('schedule.completion.task_completed')}</span>
           </Badge>
