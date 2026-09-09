@@ -8,7 +8,16 @@ import { cn } from '@/lib/utils';
 interface AlertEvidenceSectionProps {
   triggerData: Record<string, any>;
   reasoning: string | null;
+  riskBand?: 'low' | 'moderate' | 'attention' | 'high' | 'critical';
 }
+
+const RISK_SOLUTION_SURFACE = {
+  low: 'border-success bg-success text-success-foreground',
+  moderate: 'border-primary bg-primary text-primary-foreground',
+  attention: 'border-warning bg-warning text-warning-foreground',
+  high: 'border-destructive bg-destructive text-destructive-foreground',
+  critical: 'border-destructive bg-destructive text-destructive-foreground',
+} as const;
 
 // All labels are trilingual — no hardcoded sentences
 const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; mr: string; hi: string }> = {
@@ -57,9 +66,9 @@ const SECTION_HEADERS: Record<string, { mr: string; hi: string; en: string }> = 
 };
 
 const URGENCY_LABELS: Record<string, { en: string; mr: string; hi: string; color: string }> = {
-  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-destructive text-white' },
-  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-warning text-white' },
-  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-warning text-white' },
+  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-destructive text-destructive-foreground' },
+  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-warning text-warning-foreground' },
+  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-warning text-warning-foreground' },
 };
 
 function getLabel(key: string, lang: string): string {
@@ -89,7 +98,7 @@ function getSolutionSteps(solution: any, lang: string): string[] {
 }
 
 export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSectionProps>(
-  function AlertEvidenceSection({ triggerData, reasoning }, ref) {
+  function AlertEvidenceSection({ triggerData, reasoning, riskBand = 'moderate' }, ref) {
   const { i18n } = useTranslation();
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const lang = i18n.language || 'en';
@@ -111,11 +120,14 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
   const expectedBenefit = getSolutionField(solution, 'expected_benefit', lang);
   const followup = getSolutionField(solution, 'followup', lang);
 
-  const sectionTitle = (icon: React.ReactNode, headerKey: string) => {
+  const sectionTitle = (icon: React.ReactNode, headerKey: string, inverse = false) => {
     return (
       <div className="flex items-center gap-1.5 mb-1">
         {icon}
-        <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wide">{getHeader(headerKey, lang)}</span>
+        <span className={cn(
+          'text-[11px] font-semibold uppercase tracking-wide',
+          inverse ? 'text-current' : 'text-foreground/80',
+        )}>{getHeader(headerKey, lang)}</span>
       </div>
     );
   };
@@ -124,19 +136,22 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
     <div ref={ref} className="mt-3 space-y-2">
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
-        <div className="rounded-xl border border-success/30 dark:border-success bg-gradient-to-br from-success to-success dark:from-success/30 dark:to-success/20 p-3 space-y-3">
+        <div className={cn(
+          'rounded-xl border p-3 space-y-3 shadow-sm',
+          RISK_SOLUTION_SURFACE[riskBand],
+        )}>
           {(problem || cause) && (
             <div className="space-y-1.5">
               {problem && (
                 <div>
-                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-warning" />, 'problem')}
-                  <p className="text-xs text-foreground/80 leading-relaxed">{problem}</p>
+                  {sectionTitle(<AlertTriangle className="h-3 w-3" />, 'problem', true)}
+                  <p className="text-xs text-current leading-relaxed">{problem}</p>
                 </div>
               )}
               {cause && (
                 <div>
-                  {sectionTitle(<Lightbulb className="h-3 w-3 text-warning" />, 'cause')}
-                  <p className="text-xs text-foreground/70 leading-relaxed">{cause}</p>
+                  {sectionTitle(<Lightbulb className="h-3 w-3" />, 'cause', true)}
+                  <p className="text-xs text-current leading-relaxed opacity-90">{cause}</p>
                 </div>
               )}
             </div>
@@ -144,14 +159,14 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
 
           {steps.length > 0 && (
             <div>
-              {sectionTitle(<Target className="h-3 w-3 text-primary" />, 'steps')}
+              {sectionTitle(<Target className="h-3 w-3" />, 'steps', true)}
               <div className="space-y-1.5">
                 {steps.map((step, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold mt-0.5">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-background text-foreground flex items-center justify-center text-[10px] font-bold mt-0.5">
                       {i + 1}
                     </span>
-                    <p className="text-foreground/80 leading-relaxed">{step}</p>
+                    <p className="text-current leading-relaxed">{step}</p>
                   </div>
                 ))}
               </div>
@@ -159,31 +174,31 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
           )}
 
           {safety && (
-            <div className="bg-destructive-soft dark:bg-destructive/20 border border-destructive/30 dark:border-destructive rounded-lg p-2">
+            <div className="bg-background text-foreground border border-border rounded-lg p-2">
               {sectionTitle(<Shield className="h-3 w-3 text-destructive" />, 'safety')}
-              <p className="text-[11px] text-destructive dark:text-destructive leading-relaxed">{safety}</p>
+              <p className="text-[11px] text-foreground leading-relaxed">{safety}</p>
             </div>
           )}
 
           {organicAlt && (
-            <div className="bg-success-soft dark:bg-success/20 border border-success/30 dark:border-success rounded-lg p-2">
+            <div className="bg-background text-foreground border border-border rounded-lg p-2">
               {sectionTitle(<Leaf className="h-3 w-3 text-success" />, 'organic_alt')}
-              <p className="text-[11px] text-success dark:text-success leading-relaxed">{organicAlt}</p>
+              <p className="text-[11px] text-foreground leading-relaxed">{organicAlt}</p>
             </div>
           )}
 
           {(expectedBenefit || followup) && (
             <div className="flex gap-2">
               {expectedBenefit && (
-                <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
+                <div className="flex-1 bg-background text-foreground rounded-lg p-2">
                   {sectionTitle(<CheckCircle2 className="h-3 w-3 text-success" />, 'expected_benefit')}
-                  <p className="text-[10px] text-foreground/70 leading-relaxed">{expectedBenefit}</p>
+                  <p className="text-[10px] text-foreground leading-relaxed">{expectedBenefit}</p>
                 </div>
               )}
               {followup && (
-                <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
+                <div className="flex-1 bg-background text-foreground rounded-lg p-2">
                   {sectionTitle(<Clock className="h-3 w-3 text-info" />, 'followup')}
-                  <p className="text-[10px] text-foreground/70 leading-relaxed">{followup}</p>
+                  <p className="text-[10px] text-foreground leading-relaxed">{followup}</p>
                 </div>
               )}
             </div>

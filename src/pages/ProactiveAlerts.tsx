@@ -535,6 +535,7 @@ export default function ProactiveAlerts() {
                       <AlertEvidenceSection
                         triggerData={alert.trigger_data || {}}
                         reasoning={alert.decision_reasoning}
+                        riskBand={band}
                       />
 
                       {/* One-tap germination question (DB-authored options) */}
