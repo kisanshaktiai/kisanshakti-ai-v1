@@ -33,7 +33,7 @@ jobs:
         run: bun run build
       - name: ✅ Verify build output
         run: |
-          if [ ! -d ./dist ] || [ ! -f ./dist/index.html ]; then echo "❌ ERROR: production build output is missing"; exit 1; fi
+          test -d ./dist && test -f ./dist/index.html || { echo "❌ ERROR: production build output is missing"; exit 1; }
       - name: 🔐 Setup SSH authentication
         run: |
           mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
@@ -67,11 +67,18 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - name: ☕ Setup Java
+      - name: ☕ Setup Java 21
         uses: actions/setup-java@v5
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
+      - name: ✅ Verify Java toolchain
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          javac -version
+          JAVA_MAJOR=$(java -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)
+          test "$JAVA_MAJOR" = "21" || { echo "❌ CI is not using JDK 21"; exit 1; }
       - name: 📦 Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -90,6 +97,7 @@ jobs:
         run: |
           cd android
           chmod +x ./gradlew
+          ./gradlew --version
           ./gradlew assembleDebug --stacktrace
       - name: 📤 Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -183,6 +191,6 @@ jobs:
       - name: 🎉 Deployment Summary
         run: |
           echo "🎉 BUILD & DEPLOYMENT COMPLETE!"
-          echo "✅ PWA: https://kisanshaktiai.in"
+          echo "✅ PWA: https://app.kisanshaktiai.in"
           echo "✅ Android APK: Check Artifacts tab"
           echo "✅ iOS IPA: Check Artifacts tab"
