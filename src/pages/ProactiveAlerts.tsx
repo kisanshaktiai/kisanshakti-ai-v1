@@ -641,11 +641,12 @@ function Header({
 function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
   const total = summary.total || 0;
   const segments = ([
-    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
-    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH',     short: 'H' },
-    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM',   short: 'M' },
-    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW',      short: 'L' },
-  ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
+    { band: PRIORITY_BAND.CRITICAL, value: summary.CRITICAL || 0, key: 'CRITICAL' },
+    { band: PRIORITY_BAND.HIGH,     value: summary.HIGH || 0,     key: 'HIGH' },
+    { band: PRIORITY_BAND.MEDIUM,   value: summary.MEDIUM || 0,   key: 'MEDIUM' },
+    { band: PRIORITY_BAND.LOW,      value: summary.LOW || 0,      key: 'LOW' },
+  ] as { band: RiskBand; value: number; key: string }[]).filter(s => s.value > 0);
+
 
   return (
     <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
