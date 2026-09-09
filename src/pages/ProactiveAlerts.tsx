@@ -428,6 +428,8 @@ export default function ProactiveAlerts() {
               const isHistorical = alert.status === 'ACTED' || alert.status === 'DISMISSED';
               const isCritical = alert.priority === 'CRITICAL';
               const statusLabel = STATUS_LABEL[alert.status];
+              const band = riskBandOf(alert);
+              const riskScore = Number((alert as any).risk_score);
 
               return (
                 <motion.div
@@ -441,24 +443,27 @@ export default function ProactiveAlerts() {
                   <Card
                     onClick={() => isUnread && markSeen(alert.id)}
                     className={cn(
-                      'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all',
-                      isHistorical && 'opacity-70',
-                      isCritical && 'ring-1 ring-destructive/40',
+                      'relative overflow-hidden rounded-2xl border shadow-sm transition-all',
+                      isHistorical ? 'bg-card border-border opacity-70' : BAND_SURFACE[band],
+                      !isHistorical && isCritical && 'ring-1 ring-destructive/40',
                     )}
                   >
-                    {/* Left priority rail */}
+                    {/* Left risk rail */}
                     <span
                       aria-hidden
                       className={cn(
-                        'absolute left-0 top-0 bottom-0 w-1',
-                        toneRail[isCritical ? 'destructive' : cat.tone],
+                        'absolute left-0 top-0 bottom-0 w-1.5',
+                        isHistorical ? 'bg-muted-foreground/40' : BAND_RAIL[band],
                       )}
                     />
 
                     <CardContent className="p-3 pl-4">
                       <div className="flex items-start gap-3">
                         {/* Icon bubble */}
-                        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', toneBg[cat.tone])}>
+                        <div className={cn(
+                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                          isHistorical ? toneBg.muted : BAND_CHIP[band],
+                        )}>
                           <Icon className="h-5 w-5" />
                         </div>
 
@@ -482,12 +487,19 @@ export default function ProactiveAlerts() {
 
                           {/* Meta row: priority • land • time */}
                           <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[11px] text-muted-foreground">
-                            <Badge variant="outline" className={cn('h-5 px-1.5 gap-1 border-transparent', toneBg[isCritical ? 'destructive' : cat.tone])}>
+                            <Badge variant="outline" className={cn(
+                              'h-5 px-1.5 gap-1 border-transparent',
+                              isHistorical ? toneBg.muted : BAND_CHIP[band],
+                            )}>
                               <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[alert.priority] || 'bg-muted-foreground')} />
                               <span className="text-[10px] font-medium uppercase tracking-wide">
                                 {t(`proactive.priority.${alert.priority.toLowerCase()}`, alert.priority)}
                               </span>
+                              {Number.isFinite(riskScore) && (
+                                <span className="text-[10px] font-bold tabular-nums">{Math.round(riskScore)}</span>
+                              )}
                             </Badge>
+
                             {alert.land ? (
                               <LandRef land={alert.land} showArea className="text-[11px]" />
                             ) : alert.land_id ? (
