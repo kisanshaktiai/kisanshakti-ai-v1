@@ -313,6 +313,12 @@ export function buildAIRequest(
     }
   }
 
+  // GPT-5.x on /v1/chat/completions runs with reasoning on by default, which silently consumed the
+  // whole output budget and returned empty content during schedule narration.
+  if (provider === "openai" && isNextGenOpenAIModel(model)) {
+    payload.reasoning_effort = "none";
+  }
+
   // Temperature - Gemini works better with controlled temperature.
   // FIX (outage 2026-09-04, second 400 after the max_tokens fix): gpt-5.x / o-series
   // reject every non-default temperature ("Only the default (1) value is
