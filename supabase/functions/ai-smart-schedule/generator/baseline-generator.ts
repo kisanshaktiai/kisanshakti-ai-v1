@@ -154,6 +154,9 @@ export interface BaselineTask {
   weather_dependent: boolean;
   nutrient: string | null;
   quantity: { value: number; unit: string } | null;
+  /** Field water volume derived from depth x land area (1 mm over 1 m2 = 1 L). Pumps and drip
+   *  lines are set in litres, so the farmer gets the volume as well as the agronomic depth. */
+  water_volume?: { stage_total_liters: number; per_event_liters: number | null; events: number | null; basis: string; field_area_m2: number } | null;
   estimated_cost: number | null;
   rule_ids: string[];
   confidence: number | null;
@@ -381,6 +384,9 @@ export async function generateBaseline(
   // Schedule duration: the variety's own stated maturity window (VCA, per method) beats
   // the generic stage-graph span — a 115–125 d basmati must not inherit rice's 190 d
   // graph tail as its harvest date. The overrun is recorded, never silently dropped.
+  // 1 mm of depth over 1 m2 is exactly 1 litre, so field volume needs only the land area.
+  const fieldAreaM2: number | null = inputs.landAreaAcres != null ? Number(inputs.landAreaAcres) * 4046.856 : (inputs.landAreaHa != null ? Number(inputs.landAreaHa) * 10000 : null);
+  if (fieldAreaM2 == null) gaps.push("field_area_unknown_water_volume_unavailable");
   const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods);
   let durationDays = graphDurationDays;
   if (varietyDuration && varietyDuration.maxDays != null) {
@@ -679,6 +685,10 @@ export async function generateBaseline(
       nutrient: null,
       // The DB value is the STAGE total, so it belongs on the stage-level task —
       // never repeated per event.
+      // Depth is the agronomic figure; the farmer runs a pump or a drip line, so the field volume
+      // is what he can act on. litres = depth(mm) x field area(m2) — exact, no efficiency assumed.
+      // Both the stage total and the per-event volume are given; per-event only when the DB itself
+      // declares the number of events, never divided by a guessed cadence.
       quantity: !isWithdrawal && g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
       estimated_cost: null,
       rule_ids: [],
@@ -687,6 +697,14 @@ export async function generateBaseline(
       instructions: [...irrigationInstructions],
       precautions: [],
       technical_details: irrigationTechnical,
+      water_volume: !isWithdrawal && g.waterMm != null && fieldAreaM2 != null
+        ? (() => {
+            const stageL = Math.round(g.waterMm * fieldAreaM2);
+            const events = isWithdrawal ? null : expectedEvents;
+            const perEventL = events && events > 0 ? Math.round(stageL / events) : null;
+            return { stage_total_liters: stageL, per_event_liters: perEventL, events, basis: "depth_mm_x_field_area_m2", field_area_m2: Math.round(fieldAreaM2) };
+          })()
+        : null,
 
       recurrence: isWithdrawal
         ? null
@@ -1070,6 +1088,55 @@ export async function generateBaseline(
     gaps.push("duplicate_task_merged");
   }
   tasks = [...dedup.values()];
+
+  // ── The crop cycle ends at the variety's maturity ──────────────────────────
+  // The stage graph is written for the crop, so its late stages can run past a given variety's
+  // maturity and can overlap each other (a maturity window and a harvest window sharing days).
+  // Emitting one task per stage then produced several harvest cards weeks apart and post-harvest
+  // work dated after the farmer's own harvest date. The variety duration is the authority here —
+  // it already sets total_duration_days and the harvest date — so the calendar is closed to it:
+  // ONE harvest card at maturity carrying the merged harvest guidance, post-harvest immediately
+  // after it, and nothing else scheduled beyond maturity. Every change is recorded as a gap.
+  if (varietyDuration?.maxDays != null) {
+    const maturityDas = varietyDuration.maxDays;
+    const harvestTasks = tasks.filter((t) => t.task_type === "harvest");
+    if (harvestTasks.length) {
+      const primary = harvestTasks.reduce((a, b) => (Math.abs(a.days_from_sowing - maturityDas) <= Math.abs(b.days_from_sowing - maturityDas) ? a : b));
+      for (const t of harvestTasks) {
+        if (t === primary) continue;
+        primary.instructions = [...new Set([...primary.instructions, ...t.instructions])];
+        primary.precautions = [...new Set([...primary.precautions, ...t.precautions])];
+        primary.technical_details = [...new Set([...(primary.technical_details ?? []), ...(t.technical_details ?? [])])];
+        primary.rule_ids = [...new Set([...primary.rule_ids, ...t.rule_ids])];
+        primary.source_refs = [...primary.source_refs, ...t.source_refs];
+      }
+      if (harvestTasks.length > 1) gaps.push(`harvest_tasks_merged:${harvestTasks.length}->1`);
+      if (primary.days_from_sowing !== maturityDas) {
+        gaps.push(`harvest_moved_to_variety_maturity:${primary.days_from_sowing}->${maturityDas}`);
+        primary.days_from_sowing = maturityDas;
+      }
+      tasks = tasks.filter((t) => t.task_type !== "harvest" || t === primary);
+    }
+    // Post-harvest belongs after the harvest, not on the crop stage graph's own late calendar.
+    for (const t of tasks) {
+      if ((t.task_type === "post_harvest" || t.task_type === "residue_management") && t.days_from_sowing > maturityDas) {
+        gaps.push(`post_harvest_moved_to_after_harvest:${t.days_from_sowing}->${maturityDas + 1}`);
+        t.days_from_sowing = maturityDas + 1;
+        if (t.recurrence) { t.recurrence.window_start = maturityDas + 1; t.recurrence.window_end = Math.max(maturityDas + 1, t.recurrence.window_end); }
+      }
+    }
+    // Anything else that starts after maturity is not part of this crop cycle.
+    const beyond = tasks.filter((t) => t.days_from_sowing > maturityDas && t.task_type !== "post_harvest" && t.task_type !== "residue_management");
+    if (beyond.length) {
+      gaps.push(`tasks_after_variety_maturity_dropped:${beyond.length}`);
+      tasks = tasks.filter((t) => !beyond.includes(t));
+    }
+    // A stage window may still overrun maturity; close it so no card promises work past harvest.
+    for (const t of tasks) if (t.recurrence && t.recurrence.window_end > maturityDas && t.task_type !== "post_harvest" && t.task_type !== "residue_management") {
+      t.recurrence.window_end = maturityDas;
+      t.recurrence.expected_events = Math.max(1, Math.floor((maturityDas - t.recurrence.window_start) / Math.max(1, t.recurrence.interval_days)) + 1);
+    }
+  }
 
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(

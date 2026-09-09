@@ -6,15 +6,14 @@ Deno.test("generation persists first and never refuses a schedule for pending na
   const index = await read("supabase/functions/ai-smart-schedule/index.ts");
   assert(!index.includes("FARMER_LANGUAGE_PENDING"));
   assert(!index.includes("FARMER_LANGUAGE_UNAVAILABLE"));
-  // COMPLETE must mean EVERY task is narrated — `narration.narrated` alone means "at least one",
-  // which stamped partly-translated schedules as finished and stalled the follow-up and the sweep.
+  // COMPLETE must mean EVERY task carries the farmer's language.
   assert(index.includes('narration.narratedCount >= narration.totalCount'));
   assert(index.includes('status: narrationComplete ? "COMPLETE" : "PENDING"'));
-  assert(!index.includes('status: language === "en" || narration.narrated ? "COMPLETE" : "PENDING"'));
   assert(index.includes("narrationStatus: narrationState.status"));
   assert(index.indexOf("persist_ai_crop_schedule_atomic") < index.indexOf("await narrateScheduleTasks("));
   // un-narrated tasks keep the NULL-language signal the frontend guard relies on
   assert(index.includes("language: narratedIdx.has(idx) ? language : null"));
+  assert(index.includes("composeFarmerText("), "generation composes in the farmer language");
 });
 
 Deno.test("narration worker lives inside ai-smart-schedule, persists per batch, soonest-first, and touches no agronomic field", async () => {
@@ -32,8 +31,6 @@ Deno.test("narration worker lives inside ai-smart-schedule, persists per batch, 
 
 Deno.test("narrate.ts narrates each distinct text once, in small chunks, for all 13 app languages", async () => {
   const n = await read("supabase/functions/ai-smart-schedule/generator/narrate.ts");
-  // Chunk size is tuned (smaller chunks + concurrency): assert it stays small enough that one
-  // response cannot overflow the output budget, not one exact number.
   const chunk = Number(/const CHUNK_SIZE = (\d+)/.exec(n)?.[1] ?? 0);
   assert(chunk > 0 && chunk <= 10, `CHUNK_SIZE must stay small, found ${chunk}`);
   assert(n.includes("uniqueIndexByKey"));

@@ -50,6 +50,7 @@ export interface TaskFacts {
   fallback_instructions: string[];
   /** Structured, language-neutral values the composed text must preserve exactly. */
   quantity: { value: number; unit: string } | null;
+  water_volume: { stage_total_liters: number; per_event_liters: number | null; events: number | null } | null;
   inputs: Array<Record<string, unknown>>;
   product_equivalents: Array<Record<string, unknown>>;
   phi_days: number | null;
@@ -84,6 +85,7 @@ function factNumbers(f: TaskFacts): string[] {
   push(f.days_from_sowing);
   if (f.window) { push(f.window.from_das); push(f.window.to_das); }
   if (f.quantity) push(f.quantity.value);
+  if (f.water_volume) { push(f.water_volume.stage_total_liters); push(f.water_volume.per_event_liters); push(f.water_volume.events); }
   push(f.phi_days);
   for (const i of f.inputs) { push(i.dose_value); push(i.water_volume_l_per_acre); }
   for (const p of f.product_equivalents) { push(p.product_kg); push(p.percent); }
@@ -107,7 +109,11 @@ function factTokens(f: TaskFacts): string[] {
 export function respectsFactBoundary(composed: ComposedTask, f: TaskFacts, language: string): boolean {
   const all = [composed.task_name, composed.task_description, ...(composed.instructions ?? [])].join(" \n ");
   if (!all.trim()) return false;
-  if (!isTargetLanguage(all, language)) return false;
+  // Per FIELD, not on the joined text: a task_name left in English used to pass because the
+  // description carried the script, so farmers saw English card titles marked as translated.
+  if (!isTargetLanguage(composed.task_name, language)) return false;
+  if (!isTargetLanguage(composed.task_description, language)) return false;
+  for (const line of composed.instructions ?? []) if (line.trim() && !isTargetLanguage(line, language)) return false;
 
   const supplied = factNumbers(f);
   const suppliedSet = new Set(supplied);
@@ -164,6 +170,7 @@ function prompt(chunk: TaskFacts[], language: string): string {
       "task_name is a short label (a few words) naming the job.",
       "task_description is one plain sentence: what to do and why it matters now.",
       "instructions are short steps: what to do, how, how much, in how much water, and the wait before harvest when one is given.",
+      "When water_volume_liters is supplied, tell the farmer the volume in litres as well as the depth — a pump or drip line is set in litres, so the litre figure is the one he can act on.",
       "Use the everyday farming word a farmer in that language actually uses for each operation, input and plant part. Prefer the common spoken word over the textbook term.",
       "When the reference material uses a technical or scientific term the farmer may not know, express the meaning in plain words of his language rather than reproducing the term.",
       "Copy every number, unit, product name and fertilizer grade EXACTLY as supplied. Do not convert, round, add or drop a single number.",
@@ -180,6 +187,7 @@ function prompt(chunk: TaskFacts[], language: string): string {
       due_day_after_sowing: f.days_from_sowing,
       window_days: f.window,
       quantity: f.quantity,
+      water_volume_liters: f.water_volume,
       inputs: f.inputs,
       product_equivalents: f.product_equivalents,
       wait_days_before_harvest: f.phi_days,
