@@ -470,7 +470,7 @@ export default function ProactiveAlerts() {
                         <div className="flex-1 min-w-0">
                           {/* Title row */}
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-semibold text-sm leading-snug text-foreground line-clamp-2 flex-1">
+                            <h3 className="text-base font-extrabold leading-snug text-foreground line-clamp-2 flex-1">
                               {title}
                             </h3>
                             <button
@@ -486,22 +486,22 @@ export default function ProactiveAlerts() {
                           </div>
 
                           {/* Meta row: priority • land • time */}
-                          <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-2 flex-wrap mt-2 text-xs font-semibold text-foreground">
                             <Badge variant="outline" className={cn(
                               'h-5 px-1.5 gap-1 border-transparent',
                               isHistorical ? toneBg.muted : BAND_CHIP[band],
                             )}>
                               <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[alert.priority] || 'bg-muted-foreground')} />
-                              <span className="text-[10px] font-medium uppercase tracking-wide">
+                              <span className="text-xs font-bold uppercase">
                                 {t(`proactive.priority.${alert.priority.toLowerCase()}`, alert.priority)}
                               </span>
                               {Number.isFinite(riskScore) && (
-                                <span className="text-[10px] font-bold tabular-nums">{Math.round(riskScore)}</span>
+                                <span className="text-xs font-extrabold tabular-nums">{Math.round(riskScore)}</span>
                               )}
                             </Badge>
 
                             {alert.land ? (
-                              <LandRef land={alert.land} showArea className="text-[11px]" />
+                              <LandRef land={alert.land} showArea className="text-xs font-semibold text-foreground" />
                             ) : alert.land_id ? (
                               <span className="italic">
                                 🌾 {localized(lang, '(अज्ञात शेत)', '(अज्ञात भूमि)', '(unknown land)')}
@@ -512,7 +512,7 @@ export default function ProactiveAlerts() {
                               {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
                             </span>
                             {statusLabel && isHistorical && (
-                              <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-border bg-muted">
+                              <Badge variant="outline" className="h-6 px-2 text-xs font-bold border-border bg-muted text-foreground">
                                 {statusLabel[lang as 'mr' | 'hi' | 'en'] || statusLabel.en}
                               </Badge>
                             )}
@@ -521,12 +521,12 @@ export default function ProactiveAlerts() {
                       </div>
 
                       {/* Message */}
-                      <p className="text-sm text-foreground/85 mt-2.5 leading-relaxed">{message}</p>
+                      <p className="mt-3 text-base font-semibold leading-relaxed text-foreground">{message}</p>
 
                       {/* Action highlight */}
                       {actionText && (
-                        <div className="mt-2.5 flex items-start gap-1.5 text-xs font-medium text-primary bg-primary/8 rounded-xl px-3 py-2">
-                          <ChevronRight className="h-4 w-4 shrink-0 mt-px" />
+                        <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary bg-background px-3 py-3 text-sm font-bold leading-relaxed text-foreground">
+                          <ChevronRight className="h-5 w-5 shrink-0 text-primary" />
                           <span className="leading-snug">{actionText}</span>
                         </div>
                       )}
