@@ -60,6 +60,7 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      ANDROID_RELEASE_SIGNING_VALID: 'false'
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v6
@@ -104,20 +105,51 @@ jobs:
           name: kisanshakti-debug.apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
-      - name: 🔨 Build Release APK (if keystore exists)
+      - name: 🔐 Check Android release keystore
         if: ${{ env.ANDROID_KEYSTORE_B64 != '' }}
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           echo "$ANDROID_KEYSTORE_B64" | base64 --decode > android/app/release.keystore
+          test -s android/app/release.keystore || { echo "⚠️ Keystore is empty; signed release APK will be skipped"; exit 0; }
+          if ! keytool -list -keystore android/app/release.keystore -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "⚠️ Keystore password is invalid or keystore is unreadable; signed release APK will be skipped"
+            exit 0
+          fi
+          if ! keytool -list -keystore android/app/release.keystore -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "⚠️ ANDROID_KEY_ALIAS is not present in the configured keystore; signed release APK will be skipped"
+            exit 0
+          fi
+          echo "ANDROID_RELEASE_SIGNING_VALID=true" >> "$GITHUB_ENV"
+          echo "✅ Release keystore and alias validated"
+      - name: 🔨 Build Release APK (validated keystore)
+        if: ${{ env.ANDROID_RELEASE_SIGNING_VALID == 'true' }}
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
           cat >> android/app/build.gradle << EOF
           android {
-              signingConfigs { release { storeFile file('release.keystore'); storePassword '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'; keyAlias '${{ secrets.ANDROID_KEY_ALIAS }}'; keyPassword '${{ secrets.ANDROID_KEY_PASSWORD }}' } }
-              buildTypes { release { signingConfig signingConfigs.release } }
+              signingConfigs {
+                  release {
+                      storeFile file('release.keystore')
+                      storePassword '${ANDROID_KEYSTORE_PASSWORD}'
+                      keyAlias '${ANDROID_KEY_ALIAS}'
+                      keyPassword '${ANDROID_KEY_PASSWORD}'
+                  }
+              }
+              buildTypes {
+                  release { signingConfig signingConfigs.release }
+              }
           }
           EOF
           cd android
           ./gradlew assembleRelease --stacktrace
       - name: 📤 Upload Release APK
-        if: ${{ env.ANDROID_KEYSTORE_B64 != '' }}
+        if: ${{ env.ANDROID_RELEASE_SIGNING_VALID == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: kisanshakti-release.apk
@@ -125,7 +157,8 @@ jobs:
           retention-days: 90
       - name: ✅ Android Build Summary
         run: |
-          if [ -n "$ANDROID_KEYSTORE_B64" ]; then echo "✅ Release APK: Available in Artifacts (Signed)"; else echo "⚠️ Release APK: Skipped (No keystore configured)"; fi
+          if [ -f android/app/build/outputs/apk/debug/app-debug.apk ]; then echo "✅ Debug APK: Available in Artifacts"; else echo "❌ Debug APK missing"; exit 1; fi
+          if [ "$ANDROID_RELEASE_SIGNING_VALID" = "true" ]; then echo "✅ Release APK: Available in Artifacts (Signed)"; else echo "⚠️ Release APK: Skipped (Keystore not validated)"; fi
 
   build-ios:
     runs-on: macos-latest
