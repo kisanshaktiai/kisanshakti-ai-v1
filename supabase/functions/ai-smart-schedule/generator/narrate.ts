@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-09 — A task returned UNCHANGED in English was being accepted as translated: with no target
+//   script, every Latin word counted as 'carried from the source', the ratio had nothing to judge and
+//   the short-string fallback returned true. Target script is now mandatory for a non-English target.
 // 2026-09-08 — Language-quality ratio now ignores Latin words carried over from the SOURCE (product
 //   names, fertilizer grades, units, codes). A faithful translation of a fact-dense line is mostly
 //   Latin by necessity; counting it as 'untranslated' rejected such tasks permanently, so they stayed
@@ -50,6 +53,11 @@ function hasFarmerLanguageQuality(value: string, language: string, source?: stri
   };
   const target = patterns[language]; if (!target) return false;
   const scriptChars = (value.match(target) || []).length;
+  // A translation of a farm instruction always contains some target script. Text the model handed
+  // back unchanged has none — and because every Latin word in it is then "carried from the source",
+  // the ratio test below would see nothing left to judge and wave it through. Reject it here, so an
+  // English title can never be stamped as the farmer's language; it stays pending and is retried.
+  if (scriptChars === 0) return false;
   // Latin that CAME FROM THE SOURCE (product names, grades, units, codes) is a preserved fact, not
   // untranslated text: excluding it stops a correct line such as "…17.2 kg Muriate of Potash (MOP)
   // 60% K2O" from being rejected forever for being "mostly English".
@@ -58,7 +66,14 @@ function hasFarmerLanguageQuality(value: string, language: string, source?: stri
   const untranslatedLatin = carried ? latinWords.filter((w) => !carried.has(w.toLowerCase())) : latinWords;
   const latinChars = untranslatedLatin.join("").length + (value.match(/(?<![A-Za-z])[A-Za-z](?![A-Za-z])/g) || []).length;
   const totalLetters = scriptChars + latinChars;
-  if (totalLetters < 3) return scriptChars > 0 || (carried != null && latinWords.length > 0 && untranslatedLatin.length === 0);
+  // Floor: a real translation carries target script roughly in proportion to how much ordinary text
+  // the source had. Without this, "Apply Potassium fertilizer <one target word>" passes, because
+  // every Latin word is "carried" and the ratio has nothing left to weigh.
+  const sourceLetters = source ? (source.match(/[A-Za-z]/g) || []).length : 0;
+  if (sourceLetters > 0 && scriptChars < sourceLetters * 0.3) return false;
+  // Fact-only remainder (product names, grades, units carried over verbatim): the checks above
+  // already proved this is a real translation, so accept it.
+  if (totalLetters < 3) return true;
   return scriptChars / totalLetters >= 0.65;
 }
 function containsExpectedScript(value: string, language: string, source?: string): boolean { return hasFarmerLanguageQuality(value, language, source); }

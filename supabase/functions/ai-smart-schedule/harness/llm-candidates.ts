@@ -1,4 +1,11 @@
 // CHANGE LOG
+// 2026-09-09 — v1.6.0 FARMER-LANGUAGE OUTPUT. The proposal's farmer-facing words (title, purpose,
+//   action_steps, harvest indicator, tools/labour, precautions) are now written directly in the
+//   farmer's selected language — they used to be produced in English and translated afterwards,
+//   which was the same work twice and let the two versions drift. The STRUCTURED fields stay
+//   language-neutral on purpose: domain, phase, stage_key, clocks, method group, doses, units,
+//   product names and grades are matched against the database and printed on the bag, so they must
+//   remain comparable and are validated by the same gates as before.
 // 2026-09-08 — v1.5.0 AGRONOMIST PROMPT. The model is now briefed the way a senior agronomist
 //   briefs a field officer: the universal crop-calendar pattern (what every crop's package covers,
 //   phase by phase), the farmer-simplicity rules (one card = one job, water as a field condition
@@ -73,7 +80,7 @@ import type { LandContext } from "../db/land-context.ts";
 import type { StageRow } from "../db/agronomy-repo.ts";
 import type { AgronomicEvidencePack, CandidateDomain, CandidateStatus, HarnessCandidate } from "./evidence-pack.ts";
 
-export const ENRICHMENT_VERSION = "llm-enrichment@1.5.0";
+export const ENRICHMENT_VERSION = "llm-enrichment@1.6.0";
 export const PRE_SEASON_MAX_DAYS = 60; // structural sanity bound for pre-sowing anchors, not an agronomic value
 const PROPOSE_TIMEOUT_MS = 40_000;
 const VERIFY_TIMEOUT_MS = 15_000;
@@ -132,7 +139,7 @@ const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…"
 
 /* ────────────────────────── 1. Propose (structured only) ────────────────────────── */
 
-const systemPrompt = () => [
+const systemPrompt = (language: string) => [
   "You are a senior field agronomist (30 years, smallholder farms in India) writing the season plan for ONE farmer's field, for a farm advisory system that will check every number you give against a governed database before the farmer sees it.",
   "You are given the farmer's exact context (field, soil, irrigation system, method, variety, sowing date, policy) and the crop's biological stage graph from the database. Write the practices a good package of practices gives — for the DOMAINS REQUESTED ONLY — in the JSON schema supplied.",
   "THE UNIVERSAL PATTERN every crop package follows (use it as your checklist, fill only what applies to this crop and method):",
@@ -158,7 +165,9 @@ const systemPrompt = () => [
   "12. When a practice is a prepared mixture or culture (a slurry, a fermented extract, a biofertilizer culture), give mix_recipe as ordered preparation steps including standing/fermentation time and the water it is made up in.",
   "13. FREE HAND, STRICT HARNESS: you may propose any practice this crop, method and field genuinely need in the requested domains — you are not limited to what the database holds. But every input must be a real registered product or a standard grade, with a real recommended dose per acre; every number you give will be checked and dropped if unverifiable, so give the practice that the state package of practices, ICAR or the product label actually states, and name that source in source_kind.",
   "14. If db_plan_notes says the database fertilizer or irrigation plan was written for a different cultivation method than the farmer's, do NOT rewrite the totals; add ONE advisory practice at the establishment stage (domain NUTRIENT or IRRIGATION, task_type advisory via method 'advisory') that tells the farmer, in one sentence, how the timing differs for his method — the harness keeps the database totals.",
-  "15. Write purpose and action_steps in plain spoken language a farmer with little schooling understands; short sentences; the translator will render them in the farmer's language and must keep every number unchanged.",
+  `15. WRITE THE FARMER-FACING WORDS DIRECTLY IN THE LANGUAGE WITH CODE "${language}": title, purpose, action_steps, precautions, tools_or_labour and harvest_indicator. Write as a village extension officer speaking that language to a farmer with little schooling — short, plain sentences.`,
+  `15b. The database and the reference sources you are given are written in English by design; they are never duplicated per language. Saying their meaning to the farmer in "${language}" is part of your job — carry the meaning across, do not transliterate English words and do not leave English sentences in the farmer-facing fields. Where a technical term would not be understood, say the meaning in plain words of that language.`,
+  `16. Keep these fields language-neutral, exactly as specified: domain, phase, stage_key, timing, window, clock, application_method_group, irrigation_system, condition.type, source_kind, and every input field (name, kind, grade, active_ingredient, formulation, dose_value, dose_unit, water_volume_l_per_acre). Product names and fertilizer grades stay as printed on the bag. Never translate or convert a number, dose or unit.`,
   "Return JSON only: {\"proposals\":[...]}.",
 ].join("\n");
 
@@ -378,6 +387,7 @@ export async function proposeAndVerifyCandidates(
   const harvestTask = existingTasks.filter((t) => t.task_type === "harvest").sort((a, b) => a.days_from_sowing - b.days_from_sowing)[0] ?? null;
   const harvestDas = harvestTask?.days_from_sowing ?? stages.reduce<number | null>((m, s) => { const d = toDas(s, s.das_max, transplantOffset); return d != null && (m == null || d > m) ? d : m; }, null);
   const context = {
+    farmer_language: inputs.language || "en",
     crop: { code: inputs.cropCode, label: inputs.cropLabel, variety: inputs.varietyName, cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, crop_cycle: inputs.cropCycle },
     farmer_field: { state: inputs.state, district: inputs.district, region_code: inputs.regionCode, land_area_acres: inputs.landAreaAcres, soil_fertility_class: inputs.soilFertilityClass, soil: ctx.landContext?.soil ?? null, sowing_date: inputs.sowingDate, transplant_date: inputs.transplantDate, farming_policy: inputs.farmingPolicy ?? null, agro_climatic_zone: ctx.landContext?.agroClimaticZone ?? null, irrigation_system: irrigation.irrigation_type, irrigation_source: irrigation.irrigation_source, water_source: irrigation.water_source },
     stage_graph: stageSummary(stages, transplantOffset),
@@ -386,7 +396,7 @@ export async function proposeAndVerifyCandidates(
     db_plan_notes: dbPlanNotes,
     schema: { proposals: [{ domain: "one of domains_requested", application_method_group: "soil_application|seed_or_sett_treatment|drenching|foliar_spray|fertigation|broadcast|mechanical|manual|other", water_volume_basis_l: null, mix_recipe: ["optional ordered preparation steps"], irrigation_system: "any|drip|sprinkler|flood|furrow|surface|manual", phase: "PRE_SEASON|NURSERY|ESTABLISHMENT|VEGETATIVE|REPRODUCTIVE|MATURITY|HARVEST|POST_HARVEST", stage_key: "from stage_graph", window: { from_days: 0, to_days: 0, clock: "sowing|transplant|nursery|harvest" }, tools_or_labour: "optional", harvest_indicator: "optional, MATURITY/HARVEST only", title: "2-6 words", purpose: "one sentence", timing: { anchor: "stage_start|stage_mid|stage_end", offset_days: 0, repeat_every_days: null }, action_steps: ["..."], method: "e.g. broadcast / foliar spray / soil drench / drip", inputs: [{ name: "", kind: "fertilizer|micronutrient|organic|biological|herbicide|insecticide|fungicide|pgr|other", grade: "as printed on the bag, optional", active_ingredient: "", formulation: "", dose_value: 0, dose_unit: "kg|g|l|ml per acre", water_volume_l_per_acre: null, organic: false }], condition: { type: "none|observation|weather|soil_test", text: "", etl: "" }, phi_days: null, precautions: ["..."], source_kind: "state_pop|icar|label_claim|general_practice", confidence: 0.0 }] },
   };
-  const res = await callModel([{ role: "system", content: systemPrompt() }, { role: "user", content: JSON.stringify(context) }], PROPOSE_TIMEOUT_MS, ctx.deadlineAt, MAX_OUTPUT_TOKENS);
+  const res = await callModel([{ role: "system", content: systemPrompt(inputs.language || "en") }, { role: "user", content: JSON.stringify(context) }], PROPOSE_TIMEOUT_MS, ctx.deadlineAt, MAX_OUTPUT_TOKENS);
   if (!res) return { ...empty, gaps: ["enrichment_model_unavailable"], trace: { ...empty.trace, skipped: "model_unavailable", targets, elapsed_ms: Date.now() - startedAt } };
   const proposals = parseProposals(res.content).filter((p) => targets.includes(p.domain));
   const restricted = await loadRestrictedIngredients(supabase);
