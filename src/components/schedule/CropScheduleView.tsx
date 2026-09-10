@@ -77,12 +77,11 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { t, i18n } = useTranslation();
-  const { speak, stop, isSpeaking } = useTextToSpeech({ 
-    language: i18n.language === 'hi' ? 'hi-IN' : 
-             i18n.language === 'mr' ? 'mr-IN' : 
-             i18n.language === 'pa' ? 'pa-IN' : 
-             i18n.language === 'ta' ? 'ta-IN' : 'en-US'
-  });
+  // The TTS service maps the app language to a device locale itself. The previous
+  // ternary listed only four languages and sent the other ten to en-US, which read
+  // Indian-script text with an English voice.
+  const { speak, stop, isSpeaking, voiceUnavailable, openVoiceInstall, canInstallVoice } =
+    useTextToSpeech({ language: i18n.language });
   
   // Land stage SSOT (lands.stage_uuid) — read-only; tasks never compute their own stage
   const { stage: landStage, phaseOfTask, hasStageDisagreement } = useLandStage(landId);
@@ -330,10 +329,18 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   };
 
   const speakTask = (task: ScheduleTask) => {
-    const text = `${task.task_name}. ${task.task_description || ''}. 
-      ${task.instructions ? 'Instructions: ' + task.instructions.join('. ') : ''}
-      ${task.precautions ? 'Precautions: ' + task.precautions.join('. ') : ''}`;
-    
+    // Section labels come from i18n, never hardcoded English, so a Marathi
+    // farmer does not hear the word "Instructions" inside a Marathi sentence.
+    const parts: string[] = [task.task_name];
+    if (task.task_description) parts.push(task.task_description);
+    if (task.instructions?.length) {
+      parts.push(`${t('schedule.task_card.instructions', 'Instructions')}. ${task.instructions.join('. ')}`);
+    }
+    if (task.precautions?.length) {
+      parts.push(`${t('schedule.task_card.precautions', 'Precautions')}. ${task.precautions.join('. ')}`);
+    }
+    const text = parts.filter(Boolean).join('. ');
+
     if (isSpeaking && speakingTaskId === task.id) {
       stop();
       setSpeakingTaskId(null);
@@ -342,6 +349,20 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       setSpeakingTaskId(task.id);
     }
   };
+
+  // Surface a missing device voice instead of doing nothing when the button is tapped.
+  useEffect(() => {
+    if (!voiceUnavailable) return;
+    setSpeakingTaskId(null);
+    toast({
+      variant: 'destructive',
+      title: t('schedule.task_card.voice_not_installed', 'Voice not installed on this device'),
+      description: canInstallVoice
+        ? t('schedule.task_card.install_voice_hint', 'Open device settings to install the voice for your language.')
+        : undefined,
+    });
+    if (canInstallVoice) void openVoiceInstall();
+  }, [voiceUnavailable, canInstallVoice, openVoiceInstall, t, toast]);
 
   const loading = loadingSchedules || loadingTasks;
 

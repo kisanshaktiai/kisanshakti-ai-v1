@@ -203,7 +203,10 @@ class NativeTTSService {
       const { TextToSpeech } = await import('@capacitor-community/text-to-speech');
       this.nativeTTS = TextToSpeech;
 
-      await this.refreshDeviceLanguages();
+      // The Android speech engine finishes its own initialisation asynchronously
+      // after the plugin loads. Asking for the voice inventory at module load
+      // usually returns nothing, so retry briefly before accepting "unknown".
+      await this.loadDeviceLanguagesWithRetry();
 
       this.isInitialized = true;
       console.log('[NativeTTS] Initialized. Device language inventory known:', this.deviceLanguagesKnown);
@@ -215,6 +218,19 @@ class NativeTTSService {
       this.deviceLanguagesKnown = false;
       this.isInitialized = true;
     }
+  }
+
+  /**
+   * Read the device voice inventory, retrying while the speech engine warms up.
+   * Never fabricates a list: if the device stays silent, the inventory stays unknown.
+   */
+  private async loadDeviceLanguagesWithRetry(attempts = 4, delayMs = 600): Promise<void> {
+    for (let i = 0; i < attempts; i++) {
+      const languages = await this.refreshDeviceLanguages();
+      if (languages.length > 0) return;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+    console.warn('[NativeTTS] Device never reported a voice inventory; will speak unverified');
   }
 
   /**
@@ -308,6 +324,15 @@ class NativeTTSService {
     return !!this.nativeTTS;
   }
 
+  /**
+   * True once the speech plugin is usable. This is engine readiness, NOT a claim
+   * about any particular language. Callers must not gate playback on the voice
+   * inventory being known — a device can speak while reporting no inventory.
+   */
+  isEngineReady(): boolean {
+    return this.isInitialized && !!this.nativeTTS;
+  }
+
   /** Whether the device inventory was successfully read. */
   areDeviceLanguagesKnown(): boolean {
     return this.deviceLanguagesKnown;
@@ -319,7 +344,24 @@ class NativeTTSService {
    * If the engine rejects the request outright, no listener callback fires and
    * the promise would never settle, so the watchdog bounds the wait.
    */
-  private async speakChunk(chunk: string, lang: string, config: Required<TTSConfig>): Promise<void> {
+  /** Raw voice list from the device, for quality-aware selection. */
+  async getDeviceVoices(): Promise<Array<Record<string, unknown>>> {
+    if (!this.nativeTTS?.getSupportedVoices) return [];
+    try {
+      const result = await this.nativeTTS.getSupportedVoices();
+      return Array.isArray(result?.voices) ? result.voices : [];
+    } catch (e) {
+      console.warn('[NativeTTS] Could not read device voices:', e);
+      return [];
+    }
+  }
+
+  private async speakChunk(
+    chunk: string,
+    lang: string,
+    config: Required<TTSConfig>,
+    voiceIndex?: number
+  ): Promise<void> {
     const budget = Math.max(WATCHDOG_FLOOR_MS, (chunk.length * MS_PER_CHAR) / config.rate);
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -335,7 +377,12 @@ class NativeTTSService {
           rate: config.rate,
           pitch: config.pitch,
           volume: config.volume,
-          category: 'ambient',
+          // Index into getSupportedVoices(). Omitted when no specific voice was
+          // chosen, in which case the engine picks its default for the locale.
+          ...(typeof voiceIndex === 'number' && voiceIndex >= 0 ? { voice: voiceIndex } : {}),
+          // iOS audio session category. 'playback' keeps speech audible when the
+          // ring/silent switch is on silent, which 'ambient' would not.
+          category: 'playback',
         }),
         watchdog,
       ]);
@@ -352,7 +399,7 @@ class NativeTTSService {
   async speak(
     text: string,
     language: string = 'hi',
-    config: Partial<TTSConfig> = {},
+    config: Partial<TTSConfig> & { voiceIndex?: number } = {},
     callbacks: TTSCallbacks = {}
   ): Promise<TTSResult> {
     const startTime = performance.now();
@@ -374,7 +421,7 @@ class NativeTTSService {
     }
 
     this.currentCallbacks = callbacks;
-    const langInfo = this.getLanguageCode(language);
+    let langInfo = this.getLanguageCode(language);
 
     const resolved: Required<TTSConfig> = {
       rate: Math.max(0.5, Math.min(2.0, config.rate ?? 1.0)),
@@ -397,6 +444,12 @@ class NativeTTSService {
 
     // Graceful stop: no voice anywhere in the chain. The caller offers the
     // system voice-data installer rather than reading in the wrong language.
+    // Re-read the inventory once first: it may have been empty at app start.
+    if (!langInfo.available) {
+      await this.refreshDeviceLanguages();
+      langInfo = this.getLanguageCode(language);
+    }
+
     if (!langInfo.available) {
       const error = 'voice-unavailable';
       callbacks.onError?.(new Error(error));
@@ -446,7 +499,7 @@ class NativeTTSService {
         callbacks.onChunk?.(i, chunks.length, chunks[i]);
         callbacks.onProgress?.(Math.round((i / chunks.length) * 100));
 
-        await this.speakChunk(chunks[i], langInfo.code, resolved);
+        await this.speakChunk(chunks[i], langInfo.code, resolved, config.voiceIndex);
       }
 
       if (requestId === this.currentRequestId && !this.isStopping) {

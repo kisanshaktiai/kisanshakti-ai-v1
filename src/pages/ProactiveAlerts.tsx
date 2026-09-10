@@ -63,83 +63,6 @@ const PRIORITY_DOT: Record<string, string> = {
   LOW:      'bg-success',
 };
 
-/* ---------------- Risk band (green → red) ----------------
- * Presentation only. Derived from the alert's own risk_score / priority,
- * plus the satellite crop-health (NDVI) reading when the rule supplied one.
- * A weak crop (low NDVI) pushes the same risk one band higher.
- */
-type RiskBand = 'low' | 'moderate' | 'attention' | 'high' | 'critical';
-
-const BAND_ORDER: RiskBand[] = ['low', 'moderate', 'attention', 'high', 'critical'];
-
-const PRIORITY_BAND: Record<string, RiskBand> = {
-  LOW: 'low',
-  MEDIUM: 'moderate',
-  HIGH: 'high',
-  CRITICAL: 'critical',
-};
-
-function scoreBand(score: number): RiskBand {
-  if (score >= 85) return 'critical';
-  if (score >= 70) return 'high';
-  if (score >= 50) return 'attention';
-  if (score >= 30) return 'moderate';
-  return 'low';
-}
-
-function bump(band: RiskBand, steps: number): RiskBand {
-  const i = Math.min(BAND_ORDER.length - 1, Math.max(0, BAND_ORDER.indexOf(band) + steps));
-  return BAND_ORDER[i];
-}
-
-function riskBandOf(alert: ProactiveAlert): RiskBand {
-  const priorityBand = PRIORITY_BAND[alert.priority] || 'moderate';
-  const rawScore = Number((alert as any).risk_score);
-  let band = Number.isFinite(rawScore) ? scoreBand(rawScore) : priorityBand;
-
-  // Priority is a floor: a CRITICAL alert never renders green.
-  if (BAND_ORDER.indexOf(priorityBand) > BAND_ORDER.indexOf(band)) band = priorityBand;
-
-  // Satellite crop health, only when the alert actually carries it.
-  const ndviRaw = (alert.trigger_data as any)?.ndvi;
-  const ndvi = typeof ndviRaw === 'number' ? ndviRaw : Number(ndviRaw);
-  if (Number.isFinite(ndvi) && ndvi > 0 && ndvi <= 1) {
-    if (ndvi < 0.25) band = bump(band, 2);
-    else if (ndvi < 0.4) band = bump(band, 1);
-  }
-  return band;
-}
-
-const BAND_SURFACE: Record<RiskBand, string> = {
-  low:       'bg-success/10 border-success/40',
-  moderate:  'bg-primary/10 border-primary/40',
-  attention: 'bg-warning/15 border-warning/50',
-  high:      'bg-destructive/10 border-destructive/40',
-  critical:  'bg-destructive/20 border-destructive',
-};
-const BAND_RAIL: Record<RiskBand, string> = {
-  low:       'bg-success',
-  moderate:  'bg-primary',
-  attention: 'bg-warning',
-  high:      'bg-destructive/70',
-  critical:  'bg-destructive',
-};
-const BAND_CHIP: Record<RiskBand, string> = {
-  low:       'bg-success/15 text-success',
-  moderate:  'bg-primary/15 text-primary',
-  attention: 'bg-warning/25 text-warning-foreground',
-  high:      'bg-destructive/15 text-destructive',
-  critical:  'bg-destructive text-destructive-foreground',
-};
-const BAND_SOLID: Record<RiskBand, string> = {
-  low:       'bg-success text-success-foreground',
-  moderate:  'bg-primary text-primary-foreground',
-  attention: 'bg-warning text-warning-foreground',
-  high:      'bg-destructive/80 text-destructive-foreground',
-  critical:  'bg-destructive text-destructive-foreground',
-};
-
-
 const STATUS_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
   ACTED:     { mr: 'केले',     hi: 'किया',   en: 'Done' },
   DISMISSED: { mr: 'नाकारले',  hi: 'खारिज',  en: 'Dismissed' },
@@ -216,7 +139,9 @@ export default function ProactiveAlerts() {
     const title = getLocalizedText(alert, 'title', lang);
     const message = getLocalizedText(alert, 'message', lang);
     const action = getLocalizedText(alert, 'action_text', lang);
-    speak(`${title}. ${message}. ${action}`, lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN');
+    // The speech engine maps the app language to a device locale itself. The
+    // previous ternary sent every language except Marathi and Hindi to en-IN.
+    speak(`${title}. ${message}. ${action}`, lang);
   };
 
   const handleAskAI = (alert: ProactiveAlert) => {
@@ -428,8 +353,6 @@ export default function ProactiveAlerts() {
               const isHistorical = alert.status === 'ACTED' || alert.status === 'DISMISSED';
               const isCritical = alert.priority === 'CRITICAL';
               const statusLabel = STATUS_LABEL[alert.status];
-              const band = riskBandOf(alert);
-              const riskScore = Number((alert as any).risk_score);
 
               return (
                 <motion.div
@@ -443,34 +366,31 @@ export default function ProactiveAlerts() {
                   <Card
                     onClick={() => isUnread && markSeen(alert.id)}
                     className={cn(
-                      'relative overflow-hidden rounded-2xl border shadow-sm transition-all',
-                      isHistorical ? 'bg-card border-border opacity-70' : BAND_SURFACE[band],
-                      !isHistorical && isCritical && 'ring-1 ring-destructive/40',
+                      'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all',
+                      isHistorical && 'opacity-70',
+                      isCritical && 'ring-1 ring-destructive/40',
                     )}
                   >
-                    {/* Left risk rail */}
+                    {/* Left priority rail */}
                     <span
                       aria-hidden
                       className={cn(
-                        'absolute left-0 top-0 bottom-0 w-1.5',
-                        isHistorical ? 'bg-muted-foreground/40' : BAND_RAIL[band],
+                        'absolute left-0 top-0 bottom-0 w-1',
+                        toneRail[isCritical ? 'destructive' : cat.tone],
                       )}
                     />
 
                     <CardContent className="p-3 pl-4">
                       <div className="flex items-start gap-3">
                         {/* Icon bubble */}
-                        <div className={cn(
-                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                          isHistorical ? toneBg.muted : BAND_CHIP[band],
-                        )}>
+                        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', toneBg[cat.tone])}>
                           <Icon className="h-5 w-5" />
                         </div>
 
                         <div className="flex-1 min-w-0">
                           {/* Title row */}
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="text-base font-extrabold leading-snug text-foreground line-clamp-2 flex-1">
+                            <h3 className="font-semibold text-sm leading-snug text-foreground line-clamp-2 flex-1">
                               {title}
                             </h3>
                             <button
@@ -486,22 +406,15 @@ export default function ProactiveAlerts() {
                           </div>
 
                           {/* Meta row: priority • land • time */}
-                          <div className="flex items-center gap-2 flex-wrap mt-2 text-xs font-semibold text-foreground">
-                            <Badge variant="outline" className={cn(
-                              'h-5 px-1.5 gap-1 border-transparent',
-                              isHistorical ? toneBg.muted : BAND_CHIP[band],
-                            )}>
+                          <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[11px] text-muted-foreground">
+                            <Badge variant="outline" className={cn('h-5 px-1.5 gap-1 border-transparent', toneBg[isCritical ? 'destructive' : cat.tone])}>
                               <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[alert.priority] || 'bg-muted-foreground')} />
-                              <span className="text-xs font-bold uppercase">
+                              <span className="text-[10px] font-medium uppercase tracking-wide">
                                 {t(`proactive.priority.${alert.priority.toLowerCase()}`, alert.priority)}
                               </span>
-                              {Number.isFinite(riskScore) && (
-                                <span className="text-xs font-extrabold tabular-nums">{Math.round(riskScore)}</span>
-                              )}
                             </Badge>
-
                             {alert.land ? (
-                              <LandRef land={alert.land} showArea className="text-xs font-semibold text-foreground" />
+                              <LandRef land={alert.land} showArea className="text-[11px]" />
                             ) : alert.land_id ? (
                               <span className="italic">
                                 🌾 {localized(lang, '(अज्ञात शेत)', '(अज्ञात भूमि)', '(unknown land)')}
@@ -512,7 +425,7 @@ export default function ProactiveAlerts() {
                               {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
                             </span>
                             {statusLabel && isHistorical && (
-                              <Badge variant="outline" className="h-6 px-2 text-xs font-bold border-border bg-muted text-foreground">
+                              <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-border bg-muted">
                                 {statusLabel[lang as 'mr' | 'hi' | 'en'] || statusLabel.en}
                               </Badge>
                             )}
@@ -521,12 +434,12 @@ export default function ProactiveAlerts() {
                       </div>
 
                       {/* Message */}
-                      <p className="mt-3 text-base font-semibold leading-relaxed text-foreground">{message}</p>
+                      <p className="text-sm text-foreground/85 mt-2.5 leading-relaxed">{message}</p>
 
                       {/* Action highlight */}
                       {actionText && (
-                        <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary bg-background px-3 py-3 text-sm font-bold leading-relaxed text-foreground">
-                          <ChevronRight className="h-5 w-5 shrink-0 text-primary" />
+                        <div className="mt-2.5 flex items-start gap-1.5 text-xs font-medium text-primary bg-primary/8 rounded-xl px-3 py-2">
+                          <ChevronRight className="h-4 w-4 shrink-0 mt-px" />
                           <span className="leading-snug">{actionText}</span>
                         </div>
                       )}
@@ -535,7 +448,6 @@ export default function ProactiveAlerts() {
                       <AlertEvidenceSection
                         triggerData={alert.trigger_data || {}}
                         reasoning={alert.decision_reasoning}
-                        riskBand={band}
                       />
 
                       {/* One-tap germination question (DB-authored options) */}
@@ -642,12 +554,11 @@ function Header({
 function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
   const total = summary.total || 0;
   const segments = ([
-    { band: PRIORITY_BAND.CRITICAL, value: summary.CRITICAL || 0, key: 'CRITICAL' },
-    { band: PRIORITY_BAND.HIGH,     value: summary.HIGH || 0,     key: 'HIGH' },
-    { band: PRIORITY_BAND.MEDIUM,   value: summary.MEDIUM || 0,   key: 'MEDIUM' },
-    { band: PRIORITY_BAND.LOW,      value: summary.LOW || 0,      key: 'LOW' },
-  ] as { band: RiskBand; value: number; key: string }[]).filter(s => s.value > 0);
-
+    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
+    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH',     short: 'H' },
+    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM',   short: 'M' },
+    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW',      short: 'L' },
+  ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
 
   return (
     <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
@@ -668,7 +579,7 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
               <div
                 key={s.key}
                 style={{ width: `${(s.value / total) * 100}%` }}
-                className={cn(BAND_RAIL[s.band])}
+                className={cn(toneRail[s.tone])}
                 title={`${s.key}: ${s.value}`}
               />
             ))}
@@ -678,7 +589,7 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
       <div className="flex items-center gap-1.5 shrink-0">
         {segments.map(s => (
           <span key={s.key} className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground">
-            <span className={cn('w-1.5 h-1.5 rounded-full', BAND_RAIL[s.band])} />
+            <span className={cn('w-1.5 h-1.5 rounded-full', toneRail[s.tone])} />
             {s.value}
           </span>
         ))}
@@ -735,11 +646,11 @@ function LandCard({
         <span className="text-base leading-none" aria-hidden>{displayEmoji}</span>
         <span className={cn(
           'min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold inline-flex items-center justify-center leading-none',
-          count === 0
-            ? 'bg-muted text-muted-foreground'
-            : BAND_SOLID[PRIORITY_BAND[topPriority || 'MEDIUM'] || 'moderate'],
+          count === 0 ? 'bg-muted text-muted-foreground' :
+          topPriority === 'CRITICAL' ? 'bg-destructive text-destructive-foreground' :
+          topPriority === 'HIGH' ? 'bg-warning text-warning-foreground' :
+          'bg-primary text-primary-foreground',
         )}>
-
           {count}
         </span>
       </div>

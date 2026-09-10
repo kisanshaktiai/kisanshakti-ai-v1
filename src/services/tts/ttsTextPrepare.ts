@@ -35,7 +35,14 @@ export interface PreparedSpeech {
   spokenText: string;
 }
 
-export const DEFAULT_TARGET_CHARS = 240;
+/**
+ * Segments are paragraph sized, not sentence sized.
+ * A speech engine generates prosody across a whole utterance, so cutting at
+ * every full stop and restarting produces the stop-start delivery that makes
+ * synthesis sound mechanical. Larger segments let the engine carry its own
+ * rhythm across the sentences the farmer hears as one instruction.
+ */
+export const DEFAULT_TARGET_CHARS = 900;
 export const DEFAULT_MAX_CHARS = 1200;
 
 /**
@@ -53,6 +60,76 @@ function hasSpeakableContent(fragment: string): boolean {
  * Strip display-only markup from a single line while keeping every word.
  * Bullet markers are only stripped at the start of a line.
  */
+/**
+ * Number safety, applied before anything else.
+ * Language agnostic: no digit is ever turned into a word, because a word list
+ * would have to be per language and would put foreign words inside the
+ * farmer's sentence. Only the FORM of a number is normalised so the engine
+ * reads it correctly. Values are never changed.
+ */
+export function normaliseNumbers(text: string): string {
+  let out = text;
+
+  // Native-script digits to ASCII. Engines read ASCII digits reliably in every
+  // locale; some read foreign-script digits one glyph at a time or not at all.
+  const DIGIT_BLOCKS: Array<[number, number]> = [
+    [0x0966, 0x096f], // Devanagari
+    [0x09e6, 0x09ef], // Bengali
+    [0x0a66, 0x0a6f], // Gurmukhi
+    [0x0ae6, 0x0aef], // Gujarati
+    [0x0b66, 0x0b6f], // Odia
+    [0x0be6, 0x0bef], // Tamil
+    [0x0c66, 0x0c6f], // Telugu
+    [0x0ce6, 0x0cef], // Kannada
+    [0x0d66, 0x0d6f], // Malayalam
+    [0x0660, 0x0669], // Arabic-Indic
+    [0x06f0, 0x06f9], // Extended Arabic-Indic
+  ];
+  out = out.replace(/[\u0660-\u0669\u06f0-\u06f9\u0966-\u096f\u09e6-\u09ef\u0a66-\u0a6f\u0ae6-\u0aef\u0b66-\u0b6f\u0be6-\u0bef\u0c66-\u0c6f\u0ce6-\u0cef\u0d66-\u0d6f]/g, (ch) => {
+    const cp = ch.codePointAt(0)!;
+    for (const [start, end] of DIGIT_BLOCKS) {
+      if (cp >= start && cp <= end) return String(cp - start);
+    }
+    return ch;
+  });
+
+  // Grouping separators inside a number are removed. Indian grouping such as
+  // 1,20,000 is commonly misread as separate numbers. 1,20,000 -> 120000.
+  // Only runs of digit-comma-digits are touched, so list commas survive.
+  let previous: string;
+  do {
+    previous = out;
+    out = out.replace(/(\d),(\d{2,3})(?!\d)/g, '$1$2');
+  } while (out !== previous);
+
+  // A decimal point must not be read as a full stop. Ensure no space creeps in
+  // between the parts, so 2 . 5 reads as two point five, not as two sentences.
+  out = out.replace(/(\d)\s*\.\s*(\d)/g, '$1.$2');
+
+  // A decimal comma between digits is normalised to a point so the engine reads
+  // one number rather than two. 2,5 ml -> 2.5 ml
+  out = out.replace(/(\d),(\d)(?!\d)/g, '$1.$2');
+
+  return out;
+}
+
+/**
+ * Spell out short all-caps acronyms so the engine reads the letters instead of
+ * attempting them as a word: NPK becomes N P K, DAP becomes D A P.
+ *
+ * Language-neutral by construction. It inserts no words in any language and
+ * uses no agronomy list, so it works for any acronym in any of the app's
+ * languages and needs no maintenance when new terms appear.
+ */
+export function spaceAcronyms(text: string): string {
+  return text.replace(/\b([A-Z]{2,5})\b(?![a-z])/g, (match) => match.split('').join(' '));
+}
+
+/** True when the token is a number, possibly with a decimal part or a range. */
+function isNumericToken(token: string): boolean {
+  return /^[\d]+([.\-\u2013/][\d]+)*[%]?$/.test(token);
+}
+
 function stripLineMarkup(line: string): string {
   let out = line;
 
@@ -130,6 +207,20 @@ function hardSplit(sentence: string, maxChars: number): string[] {
   while (rest.length > maxChars) {
     let cut = rest.lastIndexOf(' ', maxChars);
     if (cut <= 0) cut = maxChars;
+
+    // Do not end a chunk on a number: a dose and its unit must stay together,
+    // otherwise the farmer hears the figure and the unit as separate utterances.
+    let guard = 0;
+    while (guard < 8) {
+      const head = rest.slice(0, cut).trim();
+      const lastToken = head.slice(head.lastIndexOf(' ') + 1);
+      if (!isNumericToken(lastToken)) break;
+      const earlier = rest.lastIndexOf(' ', cut - 1);
+      if (earlier <= 0) break;
+      cut = earlier;
+      guard++;
+    }
+
     parts.push(rest.slice(0, cut).trim());
     rest = rest.slice(cut).trim();
   }
@@ -155,7 +246,7 @@ export function prepareForSpeech(text: string, options: PrepareOptions = {}): Pr
     buffer = '';
   };
 
-  const rawLines = (text ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const rawLines = spaceAcronyms(normaliseNumbers(text ?? '')).replace(/\r\n?/g, '\n').split('\n');
 
   for (const rawLine of rawLines) {
     const line = stripLineMarkup(rawLine);

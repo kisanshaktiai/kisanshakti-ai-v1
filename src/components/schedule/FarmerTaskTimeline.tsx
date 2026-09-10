@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -47,17 +47,35 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
-  const languageMap: Record<string, string> = { hi: 'hi-IN', en: 'en-US', pa: 'pa-IN', mr: 'mr-IN', ta: 'ta-IN' };
-  const { speak, stop, isSpeaking, isSupported, isVoicesLoaded } = useTextToSpeech({ language: languageMap[currentLanguage] || 'hi-IN', rate: 0.9 });
+  // The TTS service maps the app language to a device locale itself, so no
+  // per-language map is kept here (a map silently sent every unlisted language
+  // to en-US, which read Indian-script text with an English voice).
+  const { speak, stop, isSpeaking, isSupported, voiceUnavailable, openVoiceInstall, canInstallVoice } =
+    useTextToSpeech({ language: currentLanguage, rate: 0.9 });
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
 
   const speakTask = (task: Task) => {
-    if (!isSupported || !isVoicesLoaded) { toast.error(t('schedule.task_card.read_aloud')); return; }
+    // Only engine support gates playback. The voice inventory is NOT a gate:
+    // a handset can speak while reporting no inventory, and gating on it
+    // silenced Read Aloud on the schedule screen entirely.
+    if (!isSupported) { toast.error(t('schedule.task_card.read_aloud')); return; }
     if (isSpeaking && speakingTaskId === task.id) { stop(); setSpeakingTaskId(null); return; }
     const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
     speak([p.what, ...p.how, ...p.howMuch].filter(Boolean).join('. '));
     setSpeakingTaskId(task.id);
   };
+
+  // When the handset has no voice for this language, say so and offer the
+  // system voice installer instead of failing silently.
+  useEffect(() => {
+    if (!voiceUnavailable) return;
+    setSpeakingTaskId(null);
+    toast.error(t('schedule.task_card.voice_not_installed', 'Voice not installed on this device'), {
+      action: canInstallVoice
+        ? { label: t('schedule.task_card.install_voice', 'Install'), onClick: () => { void openVoiceInstall(); } }
+        : undefined,
+    });
+  }, [voiceUnavailable, canInstallVoice, openVoiceInstall, t]);
 
   const complete = async (taskId: string, completed: boolean) => {
     const completedAt = completed ? new Date().toISOString() : undefined;
