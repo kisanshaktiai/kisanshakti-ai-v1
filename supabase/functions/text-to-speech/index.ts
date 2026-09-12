@@ -79,11 +79,59 @@ function json(body: unknown, status = 200) {
   });
 }
 
+/** Human language names, used to steer the Lovable AI voice. */
+const LANG_NAMES: Record<string, string> = {
+  hi: 'Hindi', mr: 'Marathi', ta: 'Tamil', te: 'Telugu', bn: 'Bengali',
+  gu: 'Gujarati', kn: 'Kannada', ml: 'Malayalam', pa: 'Punjabi', or: 'Odia',
+  as: 'Assamese', ur: 'Urdu', en: 'Indian English',
+};
+
 function configuredVendors(): string[] {
   const vendors: string[] = [];
   if (BHASHINI_API_KEY && BHASHINI_USER_ID && BHASHINI_PIPELINE_ID) vendors.push('bhashini');
   if (GOOGLE_API_KEY) vendors.push('google');
+  // Always-on floor: no extra secret to configure, so Read Aloud never dies
+  // just because the handset lacks the farmer's language pack.
+  if (LOVABLE_API_KEY) vendors.push('lovable');
   return vendors;
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+async function synthesiseLovable(text: string, locale: string) {
+  const base = locale.split('-')[0];
+  const langName = LANG_NAMES[base] || base;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'openai/gpt-4o-mini-tts',
+      input: text,
+      voice: 'alloy',
+      response_format: 'mp3',
+      instructions: `Speak in ${langName} with a natural rural Indian accent. Speak calmly and a little slowly, as if explaining to a farmer.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Lovable AI ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length === 0) throw new Error('Lovable AI returned no audio');
+
+  return { audioContent: toBase64(bytes), mimeType: 'audio/mpeg', vendor: 'lovable' };
 }
 
 async function synthesiseBhashini(text: string, locale: string) {
