@@ -56,3 +56,12 @@ Deno.test('EX6 no LLM at all → facts-only card, never an empty reply', async (
   const r = await ex.explainDecision({ frame, lang: 'zz', llm: async () => { throw new Error('down'); }, factsOnlyCard: base });
   assertEquals(r.explained_by, 'FACTS_ONLY'); assertEquals(r.how_to_fix, 'Irrigate immediately.');
 });
+
+Deno.test('EX7 the LLM callback throwing (wrong provider) must be visible as FACTS_ONLY with attempts=1', async () => {
+  // live trace_mtu3fkox_u2ca6w had exactly this signature: numbers_ok/script_ok true, no critic flags, attempts 1
+  const r = await ex.explainDecision({ frame, lang: 'zz', llm: async () => { throw new Error('no provider'); }, factsOnlyCard: base });
+  assertEquals(r.explained_by, 'FACTS_ONLY');
+  assertEquals(r.verification.attempts, 1);
+  assertEquals(r.verification.numbers_ok, true);
+  assertEquals(r.verification.critic_flags.length, 0);
+});

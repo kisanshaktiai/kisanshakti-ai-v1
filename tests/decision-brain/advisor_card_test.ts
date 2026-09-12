@@ -52,3 +52,11 @@ Deno.test('AC5 explainability columns are wired: failure indicators, options, ec
   const farmerText = [c!.what_happened, c!.why, c!.how_to_fix, ...c!.how_lines].join(' ');
   assert(!farmerText.includes('brain-only differential note'), 'knowledge_text must not reach the farmer');
 });
+
+Deno.test('AC6 land context and greeting fallback reach the card (live cards had crop/stage/das null and a blank greeting)', async () => {
+  const c = await ac.buildAdvisorCard({ decision, lang: 'mr', supabase: supa,
+    landContext: { current_crop: 'rice', growth_stage: 'heading', days_since_sowing: 93, area_acres: 0.72 },
+    greetingFallback: 'नमस्कार शेतकरी मित्रा' });
+  assertEquals(c!.crop, 'rice'); assertEquals(c!.stage, 'heading'); assertEquals(c!.das, 93);
+  assertEquals(c!.greeting, 'नमस्कार शेतकरी मित्रा');
+});

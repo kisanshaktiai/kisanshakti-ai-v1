@@ -53,6 +53,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
+import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../_shared/aiConfig.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 // Organic-preference flow (FIX 1/2): i18n chrome strings + preference vocabulary
@@ -2746,17 +2747,29 @@ serve(async (req) => {
           const { buildAdvisorCard } = await import('./agents/advisor-card.ts');
           const { lookupMarketProductDetails } = await import('./agents/market-product-lookup.ts');
           const _ai = _d.primary_decision?.application_details?.active_ingredient || null;
-          const _prods = _ai ? await lookupMarketProductDetails(supabase, _ai, orchestratorResponse.decision_output?.land_context?.crop) : [];
+          const _prods = _ai ? await lookupMarketProductDetails(supabase, _ai, detectedLanguage) : [];
           // the explainer runs on the same model the formatter uses; it may only reword the facts
           const { explainerLLM: _explainerLLM } = await import('./agents/llm-response-formatter.ts');
           advisorCard = await buildAdvisorCard({
             decision: _d, lang: detectedLanguage, supabase, llm: _explainerLLM,
-            landContext: orchestratorResponse.decision_output?.land_context ?? null,
+            landContext: (orchestratorResponse as any)?.land_context
+              ?? (orchestratorResponse as any)?.decision_output?.land_context
+              ?? (orchestratorResponse as any)?.metadata?.land_context ?? null,
+            greetingFallback: getUiString('chat.greeting', detectedLanguage),
             products: _prods, traceId: orchestratorResponse.metadata?.trace_id,
           });
           if (advisorCard) console.log(`[ADVISOR_CARD] built kind=${advisorCard.kind} explained_by=${advisorCard.source.explained_by} products=${advisorCard.products.length} replaced=${(advisorCard.source.replaced_terms || []).length}`);
         }
       } catch (acErr) { console.warn(`[ADVISOR_CARD] non-fatal: ${(acErr as Error)?.message ?? acErr}`); }
+
+      // 2026-09-11 — SINGLE FARMER-FACING RENDERER: when the card was explained by the LLM from DB facts it is the
+      // stored farmer text; the legacy renderers with hand-written bilingual strings leave the decision path.
+      if (advisorCard && (advisorCard.source?.explained_by === 'LLM' || advisorCard.source?.explained_by === 'LLM_REPAIRED')) {
+        const _cardText = [advisorCard.greeting, advisorCard.what_happened, advisorCard.why, advisorCard.how_to_fix,
+          ...(advisorCard.how_lines ?? []), ...(advisorCard.extras ?? []).map((e: any) => e?.text).filter(Boolean)]
+          .filter((x: unknown) => typeof x === 'string' && String(x).trim()).join('\n\n');
+        if (_cardText.trim()) { console.log(`   🗣️ [CARD_IS_CONTENT] ${advisorCard.source.explained_by}`); responseContent = _cardText; }
+      }
 
       // Store assistant response with language-appropriate content
       // FIXED: Now includes tokens_used tracking for cost monitoring
@@ -3517,12 +3530,13 @@ ${content}`;
         headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: AI_MODELS.openai.default,
           messages: [
             { role: 'system', content: `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.` },
             { role: 'user', content: translationPrompt }
           ],
-          max_tokens: 2000, temperature: 0.3
+          ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 2000 } : { max_tokens: 2000 }),
+          ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.3 })
         })
       });
       clearTimeout(tid);

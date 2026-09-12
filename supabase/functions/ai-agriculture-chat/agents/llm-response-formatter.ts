@@ -44,6 +44,10 @@ import {
 } from './deterministic-response-builder.ts';
 // FIX A (2026-08-16): brain-only text filter (diagnosis/differential/knowledge).
 import { getUiString } from '../i18n/ui-strings.ts';
+// 2026-09-11 — MODEL SSOT. The formatter had `model: 'gpt-4o-mini'` + legacy `max_tokens`/`temperature` while the
+// project standard (_shared/aiConfig.ts) is gpt-5.6-luna with `max_completion_tokens` and no custom temperature.
+// The 5.x API rejects the legacy body, so every OpenAI call here failed and the chain fell to Gemini.
+import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
 import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
@@ -569,9 +573,9 @@ export async function formatRecommendationsWithLLM(
       const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, Math.min(8000, remaining()));
       if (result.success) {
         formattedResponse = result.text;
-        aiModelUsed = 'gpt-4o-mini';  // COST OPTIMIZED: Using GPT-4o-mini
+        aiModelUsed = AI_MODELS.openai.default;
         tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ OpenAI formatting successful (gpt-4o-mini) in ${Date.now() - narrationStart}ms`);
+        console.log(`   ✅ OpenAI formatting successful (${AI_MODELS.openai.default}) in ${Date.now() - narrationStart}ms`);
       } else if (result.error === 'RATE_LIMIT') {
         console.warn(`   ⚠️ OpenAI rate limited — failing over immediately (no sleep)`);
       }
@@ -583,7 +587,7 @@ export async function formatRecommendationsWithLLM(
       const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, Math.min(6000, remaining()));
       if (result.success) {
         formattedResponse = result.text;
-        aiModelUsed = 'gemini-2.0-flash';
+        aiModelUsed = AI_MODELS.gemini.default;
         tokensUsed = result.tokens_used || 0;
         console.log(`   ✅ Gemini formatting successful in ${Date.now() - narrationStart}ms`);
       } else if (result.error === 'RATE_LIMIT') {
@@ -1831,7 +1835,7 @@ async function callGeminiWithTimeout(
   
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.default}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1881,19 +1885,24 @@ async function callGeminiWithTimeout(
  * returns raw text so the explainer can parse and verify it. No agronomy passes through here.
  */
 export async function explainerLLM(systemPrompt: string, userPrompt: string): Promise<string> {
+  // provider order = _shared/aiConfig.getBestAvailableProvider(): OpenAI (gpt-5.6-luna) first, then Gemini, then Lovable
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  if (OPENAI_API_KEY) {
-    const r = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 8000);
-    if (typeof r === 'string' && r.trim()) return r;
-    if (r && typeof (r as any).content === 'string') return (r as any).content;
-  }
-  if (LOVABLE_API_KEY) {
-    const r = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 8000);
-    if (typeof r === 'string' && r.trim()) return r;
-    if (r && typeof (r as any).content === 'string') return (r as any).content;
-  }
-  throw new Error('no LLM provider available for the explainer');
+  const tryOne = async (name: string, fn: () => Promise<any>): Promise<string | null> => {
+    try {
+      const r = await fn();
+      if (typeof r === 'string' && r.trim()) return r;
+      if (r && typeof r.content === 'string' && r.content.trim()) return r.content;
+      if (r && typeof r.text === 'string' && r.text.trim()) return r.text;
+      console.warn(`[EXPLAINER_LLM] ${name} returned no text`);
+    } catch (e) { console.warn(`[EXPLAINER_LLM] ${name} failed: ${(e as Error)?.message ?? e}`); }
+    return null;
+  };
+  if (OPENAI_API_KEY) { const r = await tryOne(`openai/${AI_MODELS.openai.default}`, () => callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 8000)); if (r) return r; }
+  if (GEMINI_API_KEY) { const r = await tryOne(`gemini/${AI_MODELS.gemini.default}`, () => callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, 8000)); if (r) return r; }
+  if (LOVABLE_API_KEY) { const r = await tryOne(`lovable/${AI_MODELS.lovable.default}`, () => callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 8000)); if (r) return r; }
+  throw new Error('no LLM provider produced text for the explainer');
 }
 
 async function callOpenAIWithTimeout(
@@ -1914,13 +1923,14 @@ async function callOpenAIWithTimeout(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'gpt-4o-mini',  // COST OPTIMIZATION: Using GPT-4o-mini for faster, cheaper responses
+        model: AI_MODELS.openai.default,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 2800,  // CRITICAL FIX: Increased from 1800 to 2800 for Devanagari languages (Marathi/Hindi use ~2.5x more tokens than English, causing truncated incomplete responses)
-        temperature: 0.5   // LOWER: More consistent, less creative for safety
+        // 2800 tokens: Devanagari uses ~2.5× the tokens of English. Parameter NAME follows the model family (aiConfig).
+        ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 2800 } : { max_tokens: 2800 }),
+        ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.5 })
       })
     });
     
@@ -1928,7 +1938,8 @@ async function callOpenAIWithTimeout(
     
     if (!response.ok) {
       const statusCode = response.status;
-      console.warn(`OpenAI API error: ${statusCode}`);
+      let _body = ''; try { _body = (await response.text()).slice(0, 400); } catch { /* consumed */ }
+      console.warn(`OpenAI API error: ${statusCode} model=${AI_MODELS.openai.default} body=${_body}`);
       if (statusCode === 429) {
         return { success: false, text: '', error: 'RATE_LIMIT' };
       }
@@ -1970,7 +1981,7 @@ async function callLovableAIWithTimeout(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: AI_MODELS.lovable.default,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },

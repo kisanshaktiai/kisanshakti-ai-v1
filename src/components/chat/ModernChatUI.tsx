@@ -296,6 +296,10 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // 2026-09-09 — the advisor card is the farmer contract (greeting → what → why → how → notes → products).
   // It comes from the backend as metadata.advisor_card and takes precedence over the legacy card set.
   const advisorCard: AdvisorCardData | null = (!isUser && (message as any)?.advisorCard) || null;
+  // read-aloud speaks what the farmer sees: the card when there is one
+  const spokenText = advisorCard
+    ? [advisorCard.greeting, advisorCard.what_happened, advisorCard.why, advisorCard.how_to_fix, ...(advisorCard.how_lines ?? [])].filter(Boolean).join('. ')
+    : message.content;
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   const hasDataAudit = !isUser && message.dataAudit;
   
@@ -883,7 +887,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
               content={message.content}
               language={currentLanguage}
               isPlaying={message.isPlaying}
-              onPlayStateChange={() => onPlay(message.id, message.content)}
+              onPlayStateChange={() => onPlay(message.id, spokenText)}
             />
 
             <Button

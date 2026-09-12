@@ -40,7 +40,7 @@ export interface Message {
   messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution' | 'orchestrator';
   analysisResult?: VisionAnalysisResult | any;
   /** Farmer advisor card rebuilt from persisted metadata.advisor_card */
-  advisorCard?: any;
+  advisorCard?: import('./AdvisorCard').AdvisorCardData;
   awaitingSuggestionSelection?: boolean;
   suggestionType?: SuggestionType | 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   structured?: {

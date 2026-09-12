@@ -119,7 +119,7 @@ function factsOnlyCard(f: SourceFacts) {
 export async function buildAdvisorCard(opts: {
   decision: any; lang: string; supabase: any; landContext?: any;
   llm?: (system: string, user: string) => Promise<string>;
-  products?: AdvisorProduct[]; traceId?: string;
+  products?: AdvisorProduct[]; traceId?: string; greetingFallback?: string;
 }): Promise<AdvisorCard | null> {
   const f = collectFacts(opts.decision); if (!f) return null;
   const lang = String(opts.lang || 'en');
@@ -137,7 +137,7 @@ export async function buildAdvisorCard(opts: {
 
   return {
     version: 1, language: lang, kind: f.kind,
-    greeting: explained.greeting || base.greeting,
+    greeting: explained.greeting || base.greeting || (opts.greetingFallback ?? ''),
     crop: f.crop ?? null, stage: f.stage ?? null, das: f.das ?? null,
     what_happened: explained.what_happened, why: explained.why, how_to_fix: explained.how_to_fix,
     how_lines: explained.how_lines, extras: explained.extras,

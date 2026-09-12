@@ -1785,6 +1785,7 @@ export function EnhancedAIChatInterface() {
         id: aiMessageId,
         role: 'assistant',
         content: responseText,
+        advisorCard: (data?.metadata?.advisor_card ?? undefined) as any, // 2026-09-11 live path (Lovable issue 1)
         timestamp: new Date(),
         messageType: isGeneralResponse ? 'text' : 'orchestrator',
         orchestratorType: isGeneralResponse
@@ -1840,6 +1841,8 @@ export function EnhancedAIChatInterface() {
           farmer_id: user?.id,
           role: 'assistant',
           content: responseText,
+          advisorCard: (data?.metadata?.advisor_card ?? undefined) as any,
+        advisorCard: (data?.metadata?.advisor_card ?? undefined) as any, // 2026-09-11 live path (Lovable issue 1)
           created_at: new Date().toISOString(),
           status: 'sent',
           metadata: {
