@@ -1842,7 +1842,6 @@ export function EnhancedAIChatInterface() {
           role: 'assistant',
           content: responseText,
           advisorCard: (data?.metadata?.advisor_card ?? undefined) as any,
-        advisorCard: (data?.metadata?.advisor_card ?? undefined) as any, // 2026-09-11 live path (Lovable issue 1)
           created_at: new Date().toISOString(),
           status: 'sent',
           metadata: {
