@@ -175,9 +175,10 @@ class TTSEngine {
     let isFallback = false;
     let locale = toLocale(language);
 
-    // Cloud voices are the natural-sounding tier, so they lead when the policy
-    // allows them. The device remains the guaranteed offline floor beneath.
-    const preferCloud = cloudAvailable && (mode === 'high_quality' || mode === 'auto');
+    // The handset speaks first whenever it genuinely has the farmer's language:
+    // free, offline and instant. Cloud is the natural-sounding tier, used when
+    // the farmer asks for it or when the device simply cannot speak the language.
+    const preferCloud = cloudAvailable && (mode === 'high_quality' || !deviceLocale);
 
     if (preferCloud) {
       source = 'cloud';
