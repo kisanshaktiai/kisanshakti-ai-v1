@@ -14,7 +14,7 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { checkRateLimit } from '../_shared/rateGuard.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
 
 const BHASHINI_API_KEY = Deno.env.get('BHASHINI_API_KEY');
 const BHASHINI_USER_ID = Deno.env.get('BHASHINI_USER_ID');
