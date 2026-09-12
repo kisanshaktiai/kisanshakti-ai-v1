@@ -21,6 +21,7 @@ const BHASHINI_USER_ID = Deno.env.get('BHASHINI_USER_ID');
 const BHASHINI_PIPELINE_ID = Deno.env.get('BHASHINI_PIPELINE_ID');
 const BHASHINI_ENDPOINT = Deno.env.get('BHASHINI_ENDPOINT');
 const GOOGLE_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
 const MAX_TEXT_LENGTH = 5000;
 
