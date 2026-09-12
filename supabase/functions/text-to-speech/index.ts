@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
       return json({ available, languages });
     }
 
-    const rateLimited = await checkRateLimit(req, 'text-to-speech', 60);
+    const rateLimited = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60 });
     if (rateLimited) return rateLimited;
 
     const { text, language } = body;
