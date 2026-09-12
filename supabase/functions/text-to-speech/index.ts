@@ -241,7 +241,9 @@ Deno.serve(async (req) => {
         const result =
           vendor === 'bhashini'
             ? await synthesiseBhashini(trimmed, locale)
-            : await synthesiseGoogle(trimmed, locale);
+            : vendor === 'google'
+              ? await synthesiseGoogle(trimmed, locale)
+              : await synthesiseLovable(trimmed, locale);
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
