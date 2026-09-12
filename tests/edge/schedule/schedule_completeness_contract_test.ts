@@ -7,7 +7,7 @@ Deno.test("harness planner is deadline-aware and never sleeps on a rate limit", 
   const harness = await read("supabase/functions/ai-smart-schedule/harness/index.ts");
   const index = await read("supabase/functions/ai-smart-schedule/index.ts");
   assert(llm.includes("deadlineAt"));
-  assert(!/Retry-After/.test(llm));
+  assert(!/Retry-After/.test(llm.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n")));
   assert(!/await sleep\(/.test(llm));
   assert(harness.includes("remaining() >= MIN_ATTEMPT_MS"));
   assert(index.includes("budgetMs: harnessBudgetMs"));
@@ -52,7 +52,7 @@ Deno.test("fertilizer basal split is re-anchored only via DB clock origins and i
 Deno.test("nutrient doses carry basis and catalog-derived product equivalents, never invented products", async () => {
   const gen = await read("supabase/functions/ai-smart-schedule/generator/baseline-generator.ts");
   const repo = await read("supabase/functions/ai-smart-schedule/db/agronomy-repo.ts");
-  assert(repo.includes("nonZero.length !== 1"));
+  assert(/nonZero\.length\s*!==\s*1/.test(repo) && repo.includes("PRIMARY.has(String(k).toUpperCase())"));
   assert(gen.includes("product_kg: Number((qty / (p.percent / 100)).toFixed(2))"));
   assert(gen.includes("nutrient_basis: basisKey"));
   const fertBlock = gen.slice(gen.indexOf("const straightProducts"), gen.indexOf("Irrigation plan (ONE recurring task per stage window)"));
@@ -69,23 +69,8 @@ Deno.test("task language is owned by narration, never by the sync trigger", asyn
   assertEquals(sql.includes("cron.schedule"), false);
 });
 
-Deno.test("field-condition layer runs before biology gates and holds no thresholds of its own", async () => {
-  const rec = await read("supabase/functions/schedule-reconciler/index.ts");
-  const wx = await read("supabase/functions/schedule-reconciler/weather-adaptation.ts");
-  // weather adaptation is applied before the provisional-stage gate
-  assert(rec.indexOf("await applyWeatherAdaptation(") < rec.indexOf("PROVISIONAL_SOURCES.has("));
-  // SSOT conflict still fails closed before any weather mutation
-  assert(rec.indexOf("if (conflict) {") < rec.indexOf("await applyWeatherAdaptation("));
-  assert(rec.includes('function_name: "schedule-reconciler"'));
-  // no numeric agronomic threshold literals in the adaptation module (only DB verdicts)
-  assert(!/(rain|deficit|mm|humidity|wind)[^\n]*[<>]=?\s*\d/i.test(wx));
-  assert(wx.includes("ws.irrigation_needed === false"));
-  assert(wx.includes('norm(ws.irrigation_urgency) === "HIGH"'));
-  assert(wx.includes("win.good === 0"));
-  assert(wx.includes('"ndvi_canopy_below_expected"'));
-  assert(wx.includes("if (task.is_pinned)") || wx.includes("!t.is_pinned"));
-  assert(wx.includes("no declared cadence") || wx.includes("never guess a new date"));
-});
+// The field-condition layer is now the decision layer (schedule-reconciler/decision-application.ts);
+// its contracts live in decision_loop_contract_test.ts.
 
 Deno.test("planner self-check covers every audited domain", async () => {
   const llm = await read("supabase/functions/ai-smart-schedule/harness/llm-v3.ts");

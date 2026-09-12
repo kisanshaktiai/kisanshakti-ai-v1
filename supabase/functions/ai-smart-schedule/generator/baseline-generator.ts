@@ -422,10 +422,21 @@ export async function generateBaseline(
     // The farmer line is built from the same DB numbers in plain words.
     const sowTechnical: string[] = [];
     if (seed?.rationale) sowTechnical.push(`Derivation: ${seed.rationale}`);
+    // The computed rate assumes the sowing method the DB row was written for (drill / line sown).
+    // A farmer broadcasting by hand needs the broadcast rate from the SAME row, so the card says
+    // which method the figure is for and gives the hand-sowing quantity when the DB supplies it.
+    const seedBasisLine = seed?.basisCode === "FIELD_LINE_SOWN" ? "This seed quantity is for line sowing with a drill." : null;
+    const bc = seed?.broadcastKgPerAcre;
+    const broadcastLine = bc && areaAcres != null && (bc.min != null || bc.max != null)
+      ? `If you broadcast the seed by hand instead, use ${[bc.min != null ? Number((bc.min * areaAcres).toFixed(2)) : null, bc.max != null ? Number((bc.max * areaAcres).toFixed(2)) : null].filter((x) => x != null).join(" to ")} kg for ${areaAcres} acre.`
+      : null;
+    if (seed && seed.basisCode && !broadcastLine) gaps.push(`seed_rate_broadcast_band_missing:${seed.basisCode}`);
     const sowDescription = seedKg != null && areaAcres != null
       ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
       : "";
     const sowInstructions: string[] = [];
+    if (seedBasisLine) sowInstructions.push(seedBasisLine);
+    if (broadcastLine) sowInstructions.push(broadcastLine);
     if (!sowDescription) {
       if (sowStage?.growth_stage) sowInstructions.push(`Stage: ${sowStage.growth_stage}`);
       if (!sowInstructions.length) gaps.push("sowing_task_no_detail");

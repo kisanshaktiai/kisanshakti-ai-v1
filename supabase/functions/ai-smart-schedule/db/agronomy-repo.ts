@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-09-09 — getSeedRate now also returns the row's seed_rate_basis_code and its broadcast band.
+//   The computed rate is the DRILL / line-sown figure; a smallholder broadcasting by hand needs the
+//   broadcast rate, which sits in the same row and was simply never read. The schedule stated one
+//   number with no indication of which sowing method it assumed.
 // 2026-09-08 — methodFilter tolerates a missing methods array (falls back to 'any'); getObservationRules /
 //   getFieldActionRules called with fewer args no longer throw.
 // 2026-09-08 — straight fertilizer = exactly one PRIMARY nutrient (N, P2O5, K2O) in nutrient_analysis; secondary
@@ -41,7 +45,11 @@ export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycl
   return rows.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
 }
 
-export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance; }
+export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance;
+  /** What the rate assumes (e.g. drill / line-sown vs nursery), straight from the DB row. */
+  basisCode:string|null;
+  /** The same row's broadcast band, for a farmer sowing by hand rather than with a drill. */
+  broadcastKgPerAcre:{min:number|null;max:number|null}|null; }
 const RPC_TGW_UNVERIFIED="default_20g_UNVERIFIED";
 export async function getSeedRate(
   supabase: SupabaseClient,
@@ -57,7 +65,7 @@ export async function getSeedRate(
   for (const method of candidateMethods) {
     const { data } = await supabase
       .from("variety_cultivation_agronomy")
-      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier")
+      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max")
       .eq("variety_id", varietyId)
       .eq("cultivation_method", method)
       .eq("is_active", true)
@@ -78,6 +86,8 @@ export async function getSeedRate(
     if (r?.seed_rate_kg_per_acre != null && typeof r.tgw_source === "string" && r.tgw_source !== RPC_TGW_UNVERIFIED) {
       return {
         kgPerAcre: Number(r.seed_rate_kg_per_acre),
+        basisCode: vca.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
+        broadcastKgPerAcre: vca.seed_rate_broadcast_kg_per_acre_min != null || vca.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
         rationale: r.rationale ?? null,
         provenance: { table: "fn_calculate_seed_rate", source: `tgw:${r.tgw_source}; method:${vcaMethod}` },
       };
@@ -90,6 +100,8 @@ export async function getSeedRate(
   return {
     kgPerAcre: min != null && max != null ? (min + max) / 2 : (min ?? max) as number,
     rationale: (vca?.seed_rate_rationale as string) ?? null,
+    basisCode: vca?.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
+    broadcastKgPerAcre: vca?.seed_rate_broadcast_kg_per_acre_min != null || vca?.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca?.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca?.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
     provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
   };
 }
