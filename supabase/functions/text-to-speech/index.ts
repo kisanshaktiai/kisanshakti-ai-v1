@@ -215,6 +215,7 @@ Deno.serve(async (req) => {
       const languages =
         available[0] === 'bhashini' ? Object.keys(BHASHINI_LANGS)
         : available[0] === 'google' ? Object.keys(GOOGLE_VOICES)
+        : available[0] === 'lovable' ? Object.keys(BHASHINI_LANGS)
         : [];
       return json({ available, languages });
     }
