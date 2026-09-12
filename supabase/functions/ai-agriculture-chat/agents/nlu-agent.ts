@@ -7,13 +7,14 @@
 
 // AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PURE PERCEPTION LAYER v7.0.0
 
-import {
 import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
+import {
   NLUAgentInput,
   NLUAgentOutput,
   LanguageDetectionResult,
   UrgencyAssessment,
 } from './types.ts';
+
 
 import {
   URGENCY_PATTERNS,

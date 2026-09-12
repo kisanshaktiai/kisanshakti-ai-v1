@@ -2,7 +2,7 @@
  * Compatibility wrapper over useSpeech, the single Read Aloud implementation.
  */
 import { useCallback } from 'react';
-import { useSpeech } from '@/hooks/useSpeech';
+import { useSpeech, type UseSpeechOptions } from '@/hooks/useSpeech';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTTSSettingsStore } from '@/stores/ttsSettingsStore';
 
@@ -12,18 +12,29 @@ export interface TTSConfig {
   volume: number;
 }
 
-export function useTTS() {
+export function useTTS(options: UseSpeechOptions = {}) {
   const currentLanguage = useLanguageStore((state) => state.currentLanguage);
 
   // Read the farmer's saved speech settings so the Profile settings panel keeps
-  // controlling playback.
-  const rate = useTTSSettingsStore((state) => state.rate);
-  const pitch = useTTSSettingsStore((state) => state.pitch);
-  const volume = useTTSSettingsStore((state) => state.volume);
+  // controlling playback. Caller-supplied options take precedence.
+  const rate = options.rate ?? useTTSSettingsStore((state) => state.rate);
+  const pitch = options.pitch ?? useTTSSettingsStore((state) => state.pitch);
+  const volume = options.volume ?? useTTSSettingsStore((state) => state.volume);
   const updateSettings = useTTSSettingsStore((state) => state.updateSettings);
   const config: TTSConfig = { rate, pitch, volume };
 
-  const s = useSpeech({ language: currentLanguage, rate, pitch, volume });
+  const s = useSpeech({
+    language: options.language ?? currentLanguage,
+    rate,
+    pitch,
+    volume,
+    allowCloud: options.allowCloud,
+    quality: options.quality,
+    allowCrossLanguageVoice: options.allowCrossLanguageVoice,
+    onStart: options.onStart,
+    onEnd: options.onEnd,
+    onError: options.onError,
+  });
 
   const updateConfig = useCallback(
     (partial: Partial<TTSConfig>) => updateSettings(partial),

@@ -20,12 +20,13 @@ export interface UseSpeechOptions {
   quality?: QualityMode;
   /** Default false: a Hindi voice reading Marathi is not Marathi speech. */
   allowCrossLanguageVoice?: boolean;
+  onStart?: () => void;
   onEnd?: () => void;
   onError?: (error: string) => void;
 }
 
 export function useSpeech(options: UseSpeechOptions = {}) {
-  const { language = 'hi', rate, pitch, volume, allowCloud, quality, allowCrossLanguageVoice, onEnd, onError } = options;
+  const { language = 'hi', rate, pitch, volume, allowCloud, quality, allowCrossLanguageVoice, onStart, onEnd, onError } = options;
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,6 +80,7 @@ export function useSpeech(options: UseSpeechOptions = {}) {
             setSource(src);
             setIsLoading(false);
             setIsSpeaking(true);
+            onStart?.();
           },
           onChunk: (index, total) => {
             if (!mounted.current) return;

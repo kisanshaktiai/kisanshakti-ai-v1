@@ -50,7 +50,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   // The TTS service maps the app language to a device locale itself, so no
   // per-language map is kept here (a map silently sent every unlisted language
   // to en-US, which read Indian-script text with an English voice).
-  const { speak, stop, isSpeaking, isSupported, voiceUnavailable, openVoiceInstall, canInstallVoice } =
+  const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: currentLanguage, rate: 0.9 });
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
 
