@@ -31,6 +31,7 @@ export function useTTS(options: UseSpeechOptions = {}) {
     allowCloud: options.allowCloud,
     quality: options.quality,
     allowCrossLanguageVoice: options.allowCrossLanguageVoice,
+    onStart: options.onStart,
     onEnd: options.onEnd,
     onError: options.onError,
   });
