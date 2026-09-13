@@ -41,3 +41,36 @@ Deno.test("mutations are idempotent per decision day and moved only by the task'
   assert(dec.includes("never guess a date"));
   assert(dec.includes("if (input.dryRun) return true;"));
 });
+
+Deno.test("agronomic response table: alerts change the schedule the way an agronomist would", async () => {
+  const dec = await read("supabase/functions/schedule-reconciler/decision-application.ts");
+  // 1. water stress = deficit + canopy/heat signal → irrigation advanced regardless of urgency label
+  assert(dec.includes("const stressConfirmed = decisions.some("));
+  assert(dec.includes('adjustment_reason: stressConfirmed ? "decision_water_stress_confirmed"'));
+  // canopy decline WITHOUT a deficit is scouting, not irrigation
+  assert(dec.includes("const waterDeficitToday = decisions.some("));
+  // 2. pest/disease onset → scouting card comes to TODAY, restored on decline
+  assert(dec.includes("const bringForward = covering.task_date > input.todayIso;"));
+  assert(dec.includes('adjustment_reason: onset ? "decision_episode_onset"'));
+  assert(dec.includes("const restoreDate = typeof current.previous_date"));
+  // no spray is ever created from a weather model — only scouting moves
+  assert(!/task_type:\s*"(pest_management|disease_management)"/.test(dec));
+  // 3. rain loss → fertilizer deferred; 4. deficiency → next in-window nutrition advanced
+  assert(dec.includes('adjustment_reason: "decision_rain_loss_risk"'));
+  assert(dec.includes('adjustment_reason: "decision_nutrient_deficiency"'));
+  // 5. the placeholder key is named as ignored, and nothing here holds a threshold
+  assert(dec.includes('IGNORED: "info:weather_triggered"'));
+  const code = dec.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+  assert(!/(rain|deficit|mm|humidity|wind|temp)[^\n]*[<>]=?\s*\d/i.test(code));
+});
+
+Deno.test("silent proactive rules are recompiled with their own thresholds only", async () => {
+  const sql = await read("supabase/migrations/20260913100000_compile_rice_proactive_rules.sql");
+  for (const code of ["BPH_BUILDUP", "SHEATH_BLIGHT", "NECK_BLAST", "FALSE_SMUT", "BLB_RAIN", "LODGING_RISK", "HEAT_FLOWERING"]) assert(sql.includes(code), `missing ${code}`);
+  assert(sql.includes("'legacy_source', conditions"), "legacy JSON must be preserved for audit");
+  assert(sql.includes("and not (conditions ? 'all')"), "must never overwrite an already-compiled rule");
+  assertEquals(/\bdelete\s+from\b/i.test(sql), false);
+  // only ops the engine supports
+  const ops = [...sql.matchAll(/'op','([a-z_]+)'/g)].map((m) => m[1]);
+  for (const op of ops) assert(["eq", "gt", "gte", "lt", "lte", "gte_field", "lt_field", "not_null"].includes(op), `unsupported op ${op}`);
+});
