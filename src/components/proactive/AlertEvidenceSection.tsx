@@ -101,7 +101,7 @@ function getSolutionSteps(solution: any, lang: string): string[] {
 }
 
 export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSectionProps>(
-  function AlertEvidenceSection({ triggerData, reasoning, riskBand = 'moderate' }, ref) {
+  function AlertEvidenceSection({ triggerData, reasoning, riskBand = 'moderate', toneSurface, toneBorder }, ref) {
   const { i18n } = useTranslation();
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const lang = i18n.language || 'en';
