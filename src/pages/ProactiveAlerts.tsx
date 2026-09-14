@@ -679,11 +679,15 @@ function LandCard({
   return (
     <button
       onClick={onClick}
+      style={landTone ? { backgroundColor: landTone.surface, borderColor: landTone.border } : undefined}
       className={cn(
         'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-all flex flex-col gap-1.5',
         active
-          ? 'bg-primary/10 border-primary ring-1 ring-primary/40 shadow-sm'
-          : 'bg-card border-border hover:bg-accent/30',
+          ? 'ring-1 ring-primary/40 shadow-sm'
+          : 'hover:bg-accent/30',
+        active && !landTone && 'bg-primary/10 border-primary',
+        !active && !landTone && 'bg-card border-border',
+        active && landTone && 'border-primary',
       )}
     >
       <div className="flex items-center justify-between gap-1.5">
