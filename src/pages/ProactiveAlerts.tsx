@@ -97,6 +97,13 @@ export default function ProactiveAlerts() {
     [clarifications],
   );
 
+  // Satellite crop health per land → drives the green→yellow→red card colour.
+  const alertLandIds = useMemo(
+    () => alerts.map(a => a.land_id).filter(Boolean) as string[],
+    [alerts],
+  );
+  const ndviByLand = useLandNdvi(alertLandIds);
+
   // One-tap germination answer → record_germination via edge function.
   const handleGerminationAnswer = async (alert: ProactiveAlert, confirmed: boolean) => {
     if (!alert.land_id) return;
