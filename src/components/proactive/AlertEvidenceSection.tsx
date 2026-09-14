@@ -139,10 +139,13 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
     <div ref={ref} className="mt-3 space-y-2">
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
-        <div className={cn(
-          'rounded-xl border p-3 space-y-4 shadow-sm',
-          RISK_SOLUTION_SURFACE[riskBand],
-        )}>
+        <div
+          style={toneSurface ? { backgroundColor: toneSurface, borderColor: toneBorder } : undefined}
+          className={cn(
+            'rounded-xl border p-3 space-y-4 shadow-sm',
+            toneSurface ? 'text-foreground' : RISK_SOLUTION_SURFACE[riskBand],
+          )}
+        >
           {(problem || cause) && (
             <div className="space-y-1.5">
               {problem && (
