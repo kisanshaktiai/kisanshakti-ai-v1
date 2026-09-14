@@ -486,6 +486,9 @@ export default function ProactiveAlerts() {
                       <AlertEvidenceSection
                         triggerData={alert.trigger_data || {}}
                         reasoning={alert.decision_reasoning}
+                        riskBand={tone?.band}
+                        toneSurface={tone?.softSurface}
+                        toneBorder={tone?.border}
                       />
 
                       {/* One-tap germination question (DB-authored options) */}
