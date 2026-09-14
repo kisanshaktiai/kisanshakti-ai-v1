@@ -313,6 +313,7 @@ export default function ProactiveAlerts() {
                   count={b.count}
                   counts={b.counts}
                   topPriority={b.topPriority}
+                  ndvi={ndviByLand.get(b.id)?.ndvi}
                   lang={lang}
                 />
               ))}
