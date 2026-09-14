@@ -598,7 +598,8 @@ function Header({
   );
 }
 
-function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
+function ReportSummary({ summary, lang, avgNdvi }: { summary: any; lang: string; avgNdvi?: number }) {
+  const avgTone = typeof avgNdvi === 'number' ? ndviTone(avgNdvi) : null;
   const total = summary.total || 0;
   const segments = ([
     { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
