@@ -103,6 +103,11 @@ export default function ProactiveAlerts() {
     [alerts],
   );
   const ndviByLand = useLandNdvi(alertLandIds);
+  const avgNdvi = useMemo(() => {
+    const values = Array.from(ndviByLand.values()).map(r => r.ndvi);
+    if (values.length === 0) return undefined;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }, [ndviByLand]);
 
   // One-tap germination answer → record_germination via edge function.
   const handleGerminationAnswer = async (alert: ProactiveAlert, confirmed: boolean) => {
