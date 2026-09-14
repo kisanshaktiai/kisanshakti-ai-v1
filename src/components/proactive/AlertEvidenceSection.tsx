@@ -9,14 +9,17 @@ interface AlertEvidenceSectionProps {
   triggerData: Record<string, any>;
   reasoning: string | null;
   riskBand?: 'low' | 'moderate' | 'attention' | 'high' | 'critical';
+  /** Crop-health tint inherited from the parent alert card. */
+  toneSurface?: string;
+  toneBorder?: string;
 }
 
 const RISK_SOLUTION_SURFACE = {
-  low: 'border-success bg-success text-success-foreground',
-  moderate: 'border-primary bg-primary text-primary-foreground',
-  attention: 'border-warning bg-warning text-warning-foreground',
-  high: 'border-destructive bg-destructive text-destructive-foreground',
-  critical: 'border-destructive bg-destructive text-destructive-foreground',
+  low: 'border-success bg-success-soft text-foreground',
+  moderate: 'border-primary bg-primary/10 text-foreground',
+  attention: 'border-warning bg-warning-soft text-foreground',
+  high: 'border-destructive bg-destructive-soft text-foreground',
+  critical: 'border-destructive bg-destructive-soft text-foreground',
 } as const;
 
 // All labels are trilingual — no hardcoded sentences
