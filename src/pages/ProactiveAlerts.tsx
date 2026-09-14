@@ -645,6 +645,15 @@ function ReportSummary({ summary, lang, avgNdvi }: { summary: any; lang: string;
           </span>
         ))}
       </div>
+      {avgTone && typeof avgNdvi === 'number' && (
+        <span
+          style={{ backgroundColor: avgTone.softSurface }}
+          className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-[11px] font-semibold text-foreground"
+        >
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: avgTone.color }} />
+          🛰️ {formatNdviValue(avgNdvi)}
+        </span>
+      )}
     </div>
   );
 }
