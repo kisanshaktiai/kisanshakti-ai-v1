@@ -609,7 +609,10 @@ function ReportSummary({ summary, lang, avgNdvi }: { summary: any; lang: string;
   ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
 
   return (
-    <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
+    <div
+      style={avgTone ? { backgroundColor: avgTone.surface, borderColor: avgTone.border } : undefined}
+      className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3"
+    >
       <div className="flex items-baseline gap-1 shrink-0">
         <span className="text-xl font-bold leading-none">{total}</span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
