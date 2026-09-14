@@ -643,7 +643,7 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
 
 
 function LandCard({
-  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, lang,
+  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, ndvi, lang,
 }: {
   active: boolean;
   onClick: () => void;
@@ -654,8 +654,10 @@ function LandCard({
   count: number;
   counts: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
   topPriority?: string;
+  ndvi?: number;
   lang: string;
 }) {
+  const landTone = typeof ndvi === 'number' ? ndviTone(ndvi) : null;
   const cropToEmoji = (crop?: string | null): string => {
     if (!crop) return '🌾';
     const c = crop.toLowerCase();
