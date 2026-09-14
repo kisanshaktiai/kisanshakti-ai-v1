@@ -376,25 +376,33 @@ export default function ProactiveAlerts() {
                 >
                   <Card
                     onClick={() => isUnread && markSeen(alert.id)}
+                    style={tone ? { backgroundColor: tone.surface, borderColor: tone.border } : undefined}
                     className={cn(
                       'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all',
                       isHistorical && 'opacity-70',
-                      isCritical && 'ring-1 ring-destructive/40',
+                      isCritical && !tone && 'ring-1 ring-destructive/40',
                     )}
                   >
-                    {/* Left priority rail */}
+                    {/* Left crop-health rail (falls back to category tone) */}
                     <span
                       aria-hidden
+                      style={tone ? { backgroundColor: tone.color } : undefined}
                       className={cn(
-                        'absolute left-0 top-0 bottom-0 w-1',
-                        toneRail[isCritical ? 'destructive' : cat.tone],
+                        'absolute left-0 top-0 bottom-0 w-1.5',
+                        !tone && toneRail[isCritical ? 'destructive' : cat.tone],
                       )}
                     />
 
                     <CardContent className="p-3 pl-4">
                       <div className="flex items-start gap-3">
                         {/* Icon bubble */}
-                        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', toneBg[cat.tone])}>
+                        <div
+                          style={tone ? { backgroundColor: tone.softSurface } : undefined}
+                          className={cn(
+                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                            tone ? 'text-foreground' : toneBg[cat.tone],
+                          )}
+                        >
                           <Icon className="h-5 w-5" />
                         </div>
 
