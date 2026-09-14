@@ -281,7 +281,7 @@ export default function ProactiveAlerts() {
         ))}
 
         {/* Mini Report Summary */}
-        <ReportSummary summary={summary} lang={lang} />
+        <ReportSummary summary={summary} lang={lang} avgNdvi={avgNdvi} />
 
         {/* Land cards row — AI-chat style */}
         {(landBuckets.length > 0 || hasUnresolved) && (
