@@ -23,6 +23,8 @@ import { useTenant } from '@/hooks/useTenant';
 import { toast } from '@/hooks/use-toast';
 import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
+import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
+import { ndviTone, formatNdviValue, NdviTone } from '@/lib/ndviColor';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
