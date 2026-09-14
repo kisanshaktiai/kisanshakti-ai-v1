@@ -716,6 +716,14 @@ function LandCard({
           ))}
         </div>
       )}
+      {landTone && typeof ndvi === 'number' && (
+        <div className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: landTone.color }} />
+          <span className="text-[9px] font-semibold text-foreground leading-none">
+            NDVI {formatNdviValue(ndvi)}
+          </span>
+        </div>
+      )}
     </button>
   );
 }
