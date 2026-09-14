@@ -448,6 +448,25 @@ export default function ProactiveAlerts() {
                                 {statusLabel[lang as 'mr' | 'hi' | 'en'] || statusLabel.en}
                               </Badge>
                             )}
+                            {reading ? (
+                              <span
+                                style={tone ? { backgroundColor: tone.softSurface } : undefined}
+                                className="inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-semibold text-foreground"
+                              >
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: ndviTone(reading.ndvi).color }}
+                                />
+                                🛰️ NDVI {formatNdviValue(reading.ndvi)}
+                                <span className="font-normal text-muted-foreground">
+                                  · {new Date(reading.date).toLocaleDateString(lang === 'en' ? 'en-IN' : lang)}
+                                </span>
+                              </span>
+                            ) : alert.land_id ? (
+                              <span className="text-[11px] text-muted-foreground">
+                                🛰️ {localized(lang, 'उपग्रह माहिती उपलब्ध नाही', 'उपग्रह जानकारी उपलब्ध नहीं', 'satellite reading not available')}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
