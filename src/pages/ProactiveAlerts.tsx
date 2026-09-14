@@ -472,7 +472,7 @@ export default function ProactiveAlerts() {
                       </div>
 
                       {/* Message */}
-                      <p className="text-sm text-foreground/85 mt-2.5 leading-relaxed">{message}</p>
+                      <p className="text-[15px] text-foreground mt-2.5 leading-relaxed">{message}</p>
 
                       {/* Action highlight */}
                       {actionText && (
