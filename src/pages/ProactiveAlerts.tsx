@@ -362,6 +362,8 @@ export default function ProactiveAlerts() {
               const isHistorical = alert.status === 'ACTED' || alert.status === 'DISMISSED';
               const isCritical = alert.priority === 'CRITICAL';
               const statusLabel = STATUS_LABEL[alert.status];
+              const reading: LandNdviReading | undefined = alert.land_id ? ndviByLand.get(alert.land_id) : undefined;
+              const tone: NdviTone | null = reading && !isHistorical ? ndviTone(reading.ndvi) : null;
 
               return (
                 <motion.div
