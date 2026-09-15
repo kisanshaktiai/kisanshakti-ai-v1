@@ -89,6 +89,35 @@ export function toDeviceVoice(
  * `requireLocal` is set when the farmer is offline or has chosen to keep speech
  * on the handset; a network voice is then never returned.
  */
+/**
+ * Female voices are what farmers in this app expect to hear, so a female voice
+ * wins over a male one of the same tier. Gender is INFERRED from the
+ * identifier, the same way quality is: Android's Google engine encodes it in
+ * codes such as mr-in-x-mrf-local (f = female, m = male) and marks names with
+ * "#female_"/"#male_", while Apple and Samsung ship recognisable given names.
+ * A voice that matches nothing is left unranked rather than guessed at.
+ */
+const FEMALE_NAME_HINTS = [
+  'female', 'woman', 'lekha', 'kalpana', 'veena', 'sangeeta', 'ananya', 'aditi', 'priya',
+  'kore', 'aoede', 'leda', 'zephyr', 'samantha', 'karen', 'moira', 'tessa', 'rishi-female',
+];
+const MALE_NAME_HINTS = ['male', 'man', 'rishi', 'ravi', 'hemant', 'arjun', 'puck', 'charon', 'fenrir', 'daniel', 'alex'];
+
+export function inferFemale(voiceURI: string, name: string): boolean | null {
+  const id = `${voiceURI} ${name}`.toLowerCase();
+
+  if (id.includes('#female_')) return true;
+  if (id.includes('#male_')) return false;
+
+  // Google Android pattern: <lang>-<region>-x-<3 letters ending in f|m>-local
+  const androidCode = id.match(/-x-[a-z]{2}([fm])[a-z]?-/);
+  if (androidCode) return androidCode[1] === 'f';
+
+  if (FEMALE_NAME_HINTS.some((h) => id.includes(h))) return true;
+  if (MALE_NAME_HINTS.some((h) => id.includes(h))) return false;
+  return null;
+}
+
 export function pickBestVoice(
   voices: DeviceVoice[],
   locale: string,
