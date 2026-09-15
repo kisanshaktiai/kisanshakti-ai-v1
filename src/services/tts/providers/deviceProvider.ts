@@ -152,10 +152,13 @@ export const deviceProvider = {
     const requested = toLocale(language);
     const base = baseOf(requested);
     const matching = voices.filter((v) => baseOf(v.lang) === base);
+    // Without an explicit index, rank the same way as bestVoice so the browser
+    // path also gets the best-quality FEMALE voice instead of list order.
+    const ranked = pickBestVoice(voices.map((v, i) => toDeviceVoice(v, i)), requested, false);
     const voice =
       typeof opts.voiceIndex === 'number' && voices[opts.voiceIndex]
         ? voices[opts.voiceIndex]
-        : matching.filter((v) => v.localService)[0] || matching[0] || null;
+        : (ranked ? voices[ranked.index] : null) || matching.filter((v) => v.localService)[0] || matching[0] || null;
     if (!voice) return false;
 
     return new Promise<boolean>((resolve) => {
