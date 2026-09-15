@@ -37,6 +37,7 @@ import {
   NDVI_INTERPRETATION,
 } from '@/lib/ndviScience';
 import { SUPABASE_CONFIG } from '@/config/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useNDVIAnalysis, NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
 
 interface NDVIMapViewProps {
@@ -55,15 +56,72 @@ interface NDVIMapViewProps {
 
 type RenderMode = 'land_thumb' | 'zonal' | 'boundary';
 
-function normalizeNdviAssetUrl(url?: string | null): string | null {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith('/storage/v1/')) return `${SUPABASE_CONFIG.URL}${url}`;
-  if (url.startsWith('/thumbnails/ndvi/')) {
-    return `${SUPABASE_CONFIG.URL}/storage/v1/object/public/ndvi-thumbnails/${url.split('/').pop()}`;
-  }
-  return null;
+/**
+ * ndvi_data.image_url holds two shapes, and the difference matters:
+ *
+ *   v3.1+  a storage PATH inside the PRIVATE ndvi-thumbnails bucket,
+ *          "{tenant_id}/{land_id}/{date}_{scene_id}.png". It is stored as a
+ *          path, not a URL, because a signed URL expires - persisting one
+ *          would put a value in the database that is wrong within the hour.
+ *          These must be signed on read (see useSignedNdviUrl).
+ *
+ *   legacy  an absolute public URL from the v1 pipeline. Those objects live
+ *           outside any tenant folder and are unreachable once the bucket is
+ *           private, so they resolve to null rather than a broken image.
+ *
+ * Returns { kind: 'url' } for something directly usable, or
+ * { kind: 'path' } for something that still needs signing.
+ */
+type NdviAsset = { kind: 'url' | 'path'; value: string } | null;
+
+function classifyNdviAsset(raw?: string | null): NdviAsset {
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return { kind: 'url', value: raw };
+  if (raw.startsWith('/storage/v1/')) return { kind: 'url', value: `${SUPABASE_CONFIG.URL}${raw}` };
+  // v1 wrote a fake local path on upload failure; it was never a real object.
+  if (raw.startsWith('/thumbnails/ndvi/')) return null;
+  return { kind: 'path', value: raw.replace(/^\/+/, '') };
 }
+
+const NDVI_IMAGE_BUCKET = 'ndvi-thumbnails';
+// Matches NDVI_IMAGE_SIGNED_URL_TTL in the pipeline's config.py.
+const NDVI_SIGNED_URL_TTL_SECONDS = 3600;
+
+/**
+ * Mint a signed URL for a private-bucket path. Authorisation happens in
+ * Postgres: the "Tenant read ndvi-thumbnails" policy checks
+ * has_tenant_access() on the first path segment, so a farmer can only ever
+ * sign imagery belonging to their own tenant. A failure here is silent by
+ * design - the map falls back to the zonal fill rather than showing a
+ * broken-image icon over someone's field.
+ */
+function useSignedNdviUrl(asset: NdviAsset): string | null {
+  const [signed, setSigned] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!asset) { setSigned(null); return; }
+    if (asset.kind === 'url') { setSigned(asset.value); return; }
+
+    supabase.storage
+      .from(NDVI_IMAGE_BUCKET)
+      .createSignedUrl(asset.value, NDVI_SIGNED_URL_TTL_SECONDS)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.signedUrl) {
+          console.warn('[NDVIMapView] could not sign NDVI image', asset.value, error?.message);
+          setSigned(null);
+          return;
+        }
+        setSigned(data.signedUrl);
+      });
+
+    return () => { cancelled = true; };
+  }, [asset?.kind, asset?.value]);
+
+  return signed;
+}
+
 
 const ESRI_SAT_STYLE = {
   version: 8 as const,
@@ -170,12 +228,19 @@ export function NDVIMapView({
   // Per-date satellite NDVI thumbnail directly from the actively-updated
   // ndvi_data row (image_url is a public ndvi-thumbnails PNG). This is the
   // single source of truth for the heatmap when no micro-tile raster exists.
-  const activeThumbnailUrl: string | null = useMemo(() => {
-    let base: string | null = null;
+  const activeAsset: NdviAsset = useMemo(() => {
+    let a: NdviAsset = null;
     if (active?.source === 'ndvi_data') {
-      base = normalizeNdviAssetUrl((active.raw as NDVIDataComplete).image_url);
+      a = classifyNdviAsset((active.raw as NDVIDataComplete).image_url);
     }
-    if (!base) base = normalizeNdviAssetUrl(processingThumbnail?.url) ?? normalizeNdviAssetUrl(landThumbnailUrl);
+    if (!a) a = classifyNdviAsset(processingThumbnail?.url) ?? classifyNdviAsset(landThumbnailUrl);
+    return a;
+  }, [active, landThumbnailUrl, processingThumbnail]);
+
+  const signedBase = useSignedNdviUrl(activeAsset);
+
+  const activeThumbnailUrl: string | null = useMemo(() => {
+    const base = signedBase;
     if (!base) return null;
     // Cache-bust by acquisition date + scene_id so the browser and MapLibre
     // re-fetch when the farmer scrubs to a different date even when the storage
@@ -183,7 +248,7 @@ export function NDVIMapView({
     const sceneId = (active?.raw as NDVIDataComplete | undefined)?.scene_id ?? '';
     const v = `${active?.date ?? ''}_${sceneId}`;
     return v.trim() === '_' ? base : `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
-  }, [active, landThumbnailUrl, processingThumbnail]);
+  }, [signedBase, active]);
 
   // Decide render mode for the active acquisition.
   // Priority: micro-tile pixel raster → per-date ndvi_data thumbnail (clipped to boundary bbox)
