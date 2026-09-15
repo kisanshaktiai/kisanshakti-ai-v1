@@ -137,5 +137,12 @@ export function pickBestVoice(
     candidates = local;
   }
 
-  return [...candidates].sort((a, b) => b.score - a.score)[0] || null;
+  const femaleBonus = (v: DeviceVoice) => {
+    const female = inferFemale(v.voiceURI, v.name);
+    return female === true ? 25 : female === false ? -15 : 0;
+  };
+
+  return [...candidates].sort(
+    (a, b) => b.score + femaleBonus(b) - (a.score + femaleBonus(a))
+  )[0] || null;
 }
