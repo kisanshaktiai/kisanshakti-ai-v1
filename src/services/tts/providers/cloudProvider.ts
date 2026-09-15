@@ -104,6 +104,23 @@ export const cloudProvider = {
       return null;
     }
   },
+  /**
+   * Synthesise ahead of time into the same cache, so the next paragraph is
+   * ready while the current one is still playing. Failures are ignored: the
+   * normal path will simply synthesise it again when it is needed.
+   */
+  prefetch(chunk: string, language: string): void {
+    void this.synthesise(chunk, language).catch(() => null);
+  },
+
+  /**
+   * Called when a screen that reads aloud opens, so the vendor check is
+   * already done by the time the farmer taps the speaker icon.
+   */
+  warmUp(): void {
+    void this.status().catch(() => null);
+  },
+
 
   clearCache(): void {
     audioCache.clear();
