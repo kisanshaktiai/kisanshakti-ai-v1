@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     const locale = typeof language === 'string' && language ? language : 'hi-IN';
     const trimmed = text.slice(0, MAX_TEXT_LENGTH);
 
-    const vendors = configuredVendors();
+    const vendors = usableVendors();
     if (vendors.length === 0) {
       // Not an error: the app simply stays on device speech.
       return json({ error: 'no-vendor-configured', available: [] }, 200);
@@ -395,9 +395,11 @@ Deno.serve(async (req) => {
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
+        if (isPermanentFailure(lastError)) coolDown(vendor);
         console.error(`[text-to-speech] ${vendor} failed:`, lastError);
       }
     }
+
 
     return json({ error: lastError || 'synthesis failed' }, 502);
   } catch (error) {
