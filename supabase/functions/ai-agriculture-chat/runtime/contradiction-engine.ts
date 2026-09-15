@@ -121,7 +121,10 @@ export async function detectContradiction(
     // intent_assertion_pattern schema (as of 2026-07-04):
     const { data, error } = await supabase
       .from('intent_assertion_pattern')
-      .select('intent_code, assertion_strength, notes, obs_code_regex')
+      // 2026-09-07 — stage_compatibility / crop_compatibility / das_min / das_max were READ below but never
+      // SELECTED, so STAGE_MISMATCH and CROP_MISMATCH could never fire (live: "when to harvest" at DAS 60 was
+      // answered as if the crop were mature instead of being told it is 40+ days early).
+      .select('intent_code, assertion_strength, notes, obs_code_regex, stage_compatibility, crop_compatibility, das_min, das_max')
       .eq('is_active', true)
       .eq('intent_code', intentUpper)
       .limit(5);
@@ -153,6 +156,23 @@ export async function detectContradiction(
           console.log(`[CONTRADICTION_ENGINE]${trace_id ? '[' + trace_id + ']' : ''} STAGE_MISMATCH intent=${intentUpper} stage=${stageLower} expected=[${allowedStages.join(',')}]`);
           return c;
         }
+      }
+
+      // DAS window (same kind — the stage ontology is the authority, DAS is the secondary check)
+      const dasMin = (row as any).das_min, dasMax = (row as any).das_max;
+      const dasNum = Number(das ?? NaN);
+      if (Number.isFinite(dasNum) && ((dasMin != null && dasNum < Number(dasMin)) || (dasMax != null && dasNum > Number(dasMax)))) {
+        const c: Contradiction = Object.freeze({
+          kind: 'STAGE_MISMATCH',
+          assertion: intentUpper,
+          assertion_label: row.notes || row.assertion_strength || undefined,
+          context_field: 'days_since_sowing',
+          context_value: String(dasNum),
+          expected: Object.freeze([`${dasMin ?? '…'}-${dasMax ?? '…'} DAS`]),
+          reason: `assertion ${intentUpper} outside its DAS window (${dasMin ?? '…'}–${dasMax ?? '…'}) at DAS ${dasNum}`,
+        });
+        console.log(`[CONTRADICTION_ENGINE]${trace_id ? '[' + trace_id + ']' : ''} STAGE_MISMATCH(DAS) intent=${intentUpper} das=${dasNum} window=${dasMin ?? '…'}-${dasMax ?? '…'}`);
+        return c;
       }
 
       // CROP_MISMATCH

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Volume2, VolumeX, Square, Settings2, Loader2, Pause, Play } from 'lucide-react';
+import { Volume2, VolumeX, Square, Settings2, Loader2, Pause, Play, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdvancedTextToSpeech } from '@/hooks/useAdvancedTextToSpeech';
 import { useTTSStore } from '@/stores/ttsStore';
+import { nativeTTSService } from '@/services/nativeTTSService';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TTSSettingsModal } from './TTSSettingsModal';
@@ -32,7 +33,7 @@ export function EnhancedSpeakerButton({
   const setCurrentlyPlaying = useTTSStore(state => state.setCurrentlyPlaying);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  
+
   // Debounce ref to prevent rapid clicks
   const lastClickTimeRef = useRef(0);
   const DEBOUNCE_MS = 300;
@@ -49,6 +50,9 @@ export function EnhancedSpeakerButton({
     currentSentence,
     progress,
     fallbackLanguage,
+    voiceUnavailable,
+    openVoiceInstall,
+    canInstallVoice,
   } = useAdvancedTextToSpeech({
     language,
     onEnd: () => {
@@ -108,19 +112,21 @@ export function EnhancedSpeakerButton({
     }
   }, [isPaused, pause, resume]);
 
-  // Main toggle: if playing → pause, if paused → resume, if stopped → play
+  // Main toggle: if playing → stop, if paused → resume, if stopped → play
   const handleToggle = useCallback(() => {
     if (isThisMessageActive && !isPaused) {
-      // Playing - stop it
       handleStop();
     } else if (isPaused) {
-      // Paused - resume
       handlePauseResume();
     } else {
-      // Not playing - start
       handlePlay();
     }
   }, [isThisMessageActive, isPaused, handleStop, handlePauseResume, handlePlay]);
+
+  // Open the device voice-data screen, then retry once the voice is installed
+  const handleInstallVoice = useCallback(async () => {
+    await openVoiceInstall();
+  }, [openVoiceInstall]);
 
   // Use ref to track state without triggering effects
   const isSpeakingRef = useRef(isSpeaking);
@@ -137,14 +143,16 @@ export function EnhancedSpeakerButton({
     }
   }, [externalIsPlaying, handlePlay, handleStop]);
 
-  const getFallbackLanguageName = (code: string | null): string => {
+  /**
+   * Display name for a BCP-47 tag, taken from the shared language catalogue.
+   * No language-specific sentences are hardcoded here — the label comes from
+   * i18n and the language's own name comes from the catalogue.
+   */
+  const getSpokenLanguageLabel = (code: string | null): string => {
     if (!code) return '';
-    const names: Record<string, string> = {
-      'hi': 'हिंदी में बोल रहा हूं',
-      'mr': 'मराठीत बोलत आहे',
-      'en': 'Speaking in English'
-    };
-    return names[code] || code;
+    const info = nativeTTSService.getLanguageInfo(code);
+    const name = info?.nativeName || code;
+    return t('chat.tts.speakingIn', { defaultValue: '{{language}}', language: name });
   };
 
   // Don't render if TTS not supported
@@ -264,7 +272,7 @@ export function EnhancedSpeakerButton({
                 )}
               </Button>
             )}
-            
+
             {/* Settings Button */}
             <Button
               variant="ghost"
@@ -274,6 +282,28 @@ export function EnhancedSpeakerButton({
               title={t('chat.tts.settings', 'Settings')}
             >
               <Settings2 className="h-3.5 w-3.5" />
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Install-voice action - shown when the device has no offline voice */}
+      <AnimatePresence>
+        {voiceUnavailable && canInstallVoice && (
+          <motion.div
+            initial={{ opacity: 0, x: -10, scale: 0.8 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -10, scale: 0.8 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleInstallVoice}
+              className="h-7 w-7 text-primary hover:bg-muted/50 transition-all"
+              title={t('chat.tts.installVoice', 'Install voice for this language')}
+            >
+              <Download className="h-3.5 w-3.5" />
             </Button>
           </motion.div>
         )}
@@ -315,18 +345,34 @@ export function EnhancedSpeakerButton({
         )}
       </AnimatePresence>
 
-      {/* Fallback Language Badge */}
+      {/* Voice unavailable notice */}
       <AnimatePresence>
-        {isThisMessageActive && isSpeaking && fallbackLanguage && (
+        {voiceUnavailable && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 3 }}
-            className="absolute -top-8 left-0 z-10"
+            className="absolute -top-8 left-0 z-10 whitespace-nowrap"
           >
             <Badge variant="secondary" className="text-xs py-0.5 px-2 shadow-sm">
-              {getFallbackLanguageName(fallbackLanguage)}
+              {t('chat.tts.voiceUnavailable', 'Voice not installed on this device')}
+            </Badge>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fallback Language Badge - names the language actually being spoken */}
+      <AnimatePresence>
+        {isThisMessageActive && isSpeaking && fallbackLanguage && !voiceUnavailable && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="absolute -top-8 left-0 z-10 whitespace-nowrap"
+          >
+            <Badge variant="secondary" className="text-xs py-0.5 px-2 shadow-sm">
+              {getSpokenLanguageLabel(fallbackLanguage)}
             </Badge>
           </motion.div>
         )}

@@ -23,6 +23,8 @@ import { useTenant } from '@/hooks/useTenant';
 import { toast } from '@/hooks/use-toast';
 import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
+import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
+import { ndviTone, formatNdviValue, NdviTone } from '@/lib/ndviColor';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
@@ -95,6 +97,18 @@ export default function ProactiveAlerts() {
     [clarifications],
   );
 
+  // Satellite crop health per land → drives the green→yellow→red card colour.
+  const alertLandIds = useMemo(
+    () => alerts.map(a => a.land_id).filter(Boolean) as string[],
+    [alerts],
+  );
+  const ndviByLand = useLandNdvi(alertLandIds);
+  const avgNdvi = useMemo(() => {
+    const values = Array.from(ndviByLand.values()).map(r => r.ndvi);
+    if (values.length === 0) return undefined;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  }, [ndviByLand]);
+
   // One-tap germination answer → record_germination via edge function.
   const handleGerminationAnswer = async (alert: ProactiveAlert, confirmed: boolean) => {
     if (!alert.land_id) return;
@@ -139,7 +153,9 @@ export default function ProactiveAlerts() {
     const title = getLocalizedText(alert, 'title', lang);
     const message = getLocalizedText(alert, 'message', lang);
     const action = getLocalizedText(alert, 'action_text', lang);
-    speak(`${title}. ${message}. ${action}`, lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN');
+    // The speech engine maps the app language to a device locale itself. The
+    // previous ternary sent every language except Marathi and Hindi to en-IN.
+    speak(`${title}. ${message}. ${action}`, lang);
   };
 
   const handleAskAI = (alert: ProactiveAlert) => {
@@ -270,7 +286,7 @@ export default function ProactiveAlerts() {
         ))}
 
         {/* Mini Report Summary */}
-        <ReportSummary summary={summary} lang={lang} />
+        <ReportSummary summary={summary} lang={lang} avgNdvi={avgNdvi} />
 
         {/* Land cards row — AI-chat style */}
         {(landBuckets.length > 0 || hasUnresolved) && (
@@ -302,6 +318,7 @@ export default function ProactiveAlerts() {
                   count={b.count}
                   counts={b.counts}
                   topPriority={b.topPriority}
+                  ndvi={ndviByLand.get(b.id)?.ndvi}
                   lang={lang}
                 />
               ))}
@@ -351,6 +368,8 @@ export default function ProactiveAlerts() {
               const isHistorical = alert.status === 'ACTED' || alert.status === 'DISMISSED';
               const isCritical = alert.priority === 'CRITICAL';
               const statusLabel = STATUS_LABEL[alert.status];
+              const reading: LandNdviReading | undefined = alert.land_id ? ndviByLand.get(alert.land_id) : undefined;
+              const tone: NdviTone | null = reading && !isHistorical ? ndviTone(reading.ndvi) : null;
 
               return (
                 <motion.div
@@ -363,25 +382,33 @@ export default function ProactiveAlerts() {
                 >
                   <Card
                     onClick={() => isUnread && markSeen(alert.id)}
+                    style={tone ? { backgroundColor: tone.surface, borderColor: tone.border } : undefined}
                     className={cn(
                       'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all',
                       isHistorical && 'opacity-70',
-                      isCritical && 'ring-1 ring-destructive/40',
+                      isCritical && !tone && 'ring-1 ring-destructive/40',
                     )}
                   >
-                    {/* Left priority rail */}
+                    {/* Left crop-health rail (falls back to category tone) */}
                     <span
                       aria-hidden
+                      style={tone ? { backgroundColor: tone.color } : undefined}
                       className={cn(
-                        'absolute left-0 top-0 bottom-0 w-1',
-                        toneRail[isCritical ? 'destructive' : cat.tone],
+                        'absolute left-0 top-0 bottom-0 w-1.5',
+                        !tone && toneRail[isCritical ? 'destructive' : cat.tone],
                       )}
                     />
 
                     <CardContent className="p-3 pl-4">
                       <div className="flex items-start gap-3">
                         {/* Icon bubble */}
-                        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', toneBg[cat.tone])}>
+                        <div
+                          style={tone ? { backgroundColor: tone.softSurface } : undefined}
+                          className={cn(
+                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                            tone ? 'text-foreground' : toneBg[cat.tone],
+                          )}
+                        >
                           <Icon className="h-5 w-5" />
                         </div>
 
@@ -427,12 +454,31 @@ export default function ProactiveAlerts() {
                                 {statusLabel[lang as 'mr' | 'hi' | 'en'] || statusLabel.en}
                               </Badge>
                             )}
+                            {reading ? (
+                              <span
+                                style={tone ? { backgroundColor: tone.softSurface } : undefined}
+                                className="inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-semibold text-foreground"
+                              >
+                                <span
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: ndviTone(reading.ndvi).color }}
+                                />
+                                🛰️ NDVI {formatNdviValue(reading.ndvi)}
+                                <span className="font-normal text-muted-foreground">
+                                  · {new Date(reading.date).toLocaleDateString(lang === 'en' ? 'en-IN' : lang)}
+                                </span>
+                              </span>
+                            ) : alert.land_id ? (
+                              <span className="text-[11px] text-muted-foreground">
+                                🛰️ {localized(lang, 'उपग्रह माहिती उपलब्ध नाही', 'उपग्रह जानकारी उपलब्ध नहीं', 'satellite reading not available')}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
 
                       {/* Message */}
-                      <p className="text-sm text-foreground/85 mt-2.5 leading-relaxed">{message}</p>
+                      <p className="text-[15px] text-foreground mt-2.5 leading-relaxed">{message}</p>
 
                       {/* Action highlight */}
                       {actionText && (
@@ -446,6 +492,9 @@ export default function ProactiveAlerts() {
                       <AlertEvidenceSection
                         triggerData={alert.trigger_data || {}}
                         reasoning={alert.decision_reasoning}
+                        riskBand={tone?.band}
+                        toneSurface={tone?.softSurface}
+                        toneBorder={tone?.border}
                       />
 
                       {/* One-tap germination question (DB-authored options) */}
@@ -549,7 +598,8 @@ function Header({
   );
 }
 
-function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
+function ReportSummary({ summary, lang, avgNdvi }: { summary: any; lang: string; avgNdvi?: number }) {
+  const avgTone = typeof avgNdvi === 'number' ? ndviTone(avgNdvi) : null;
   const total = summary.total || 0;
   const segments = ([
     { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
@@ -559,7 +609,10 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
   ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
 
   return (
-    <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
+    <div
+      style={avgTone ? { backgroundColor: avgTone.surface, borderColor: avgTone.border } : undefined}
+      className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3"
+    >
       <div className="flex items-baseline gap-1 shrink-0">
         <span className="text-xl font-bold leading-none">{total}</span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
@@ -592,6 +645,15 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
           </span>
         ))}
       </div>
+      {avgTone && typeof avgNdvi === 'number' && (
+        <span
+          style={{ backgroundColor: avgTone.softSurface }}
+          className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-[11px] font-semibold text-foreground"
+        >
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: avgTone.color }} />
+          🛰️ {formatNdviValue(avgNdvi)}
+        </span>
+      )}
     </div>
   );
 }
@@ -599,7 +661,7 @@ function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
 
 
 function LandCard({
-  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, lang,
+  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, ndvi, lang,
 }: {
   active: boolean;
   onClick: () => void;
@@ -610,8 +672,10 @@ function LandCard({
   count: number;
   counts: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
   topPriority?: string;
+  ndvi?: number;
   lang: string;
 }) {
+  const landTone = typeof ndvi === 'number' ? ndviTone(ndvi) : null;
   const cropToEmoji = (crop?: string | null): string => {
     if (!crop) return '🌾';
     const c = crop.toLowerCase();
@@ -633,11 +697,15 @@ function LandCard({
   return (
     <button
       onClick={onClick}
+      style={landTone ? { backgroundColor: landTone.surface, borderColor: landTone.border } : undefined}
       className={cn(
         'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-all flex flex-col gap-1.5',
         active
-          ? 'bg-primary/10 border-primary ring-1 ring-primary/40 shadow-sm'
-          : 'bg-card border-border hover:bg-accent/30',
+          ? 'ring-1 ring-primary/40 shadow-sm'
+          : 'hover:bg-accent/30',
+        active && !landTone && 'bg-primary/10 border-primary',
+        !active && !landTone && 'bg-card border-border',
+        active && landTone && 'border-primary',
       )}
     >
       <div className="flex items-center justify-between gap-1.5">
@@ -664,6 +732,14 @@ function LandCard({
               <span className="text-[9px] text-muted-foreground font-medium leading-none">{s.v}</span>
             </span>
           ))}
+        </div>
+      )}
+      {landTone && typeof ndvi === 'number' && (
+        <div className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: landTone.color }} />
+          <span className="text-[9px] font-semibold text-foreground leading-none">
+            NDVI {formatNdviValue(ndvi)}
+          </span>
         </div>
       )}
     </button>

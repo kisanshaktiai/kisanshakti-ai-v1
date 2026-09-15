@@ -7,12 +7,14 @@
 
 // AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PURE PERCEPTION LAYER v7.0.0
 
+import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
 import {
   NLUAgentInput,
   NLUAgentOutput,
   LanguageDetectionResult,
   UrgencyAssessment,
 } from './types.ts';
+
 
 import {
   URGENCY_PATTERNS,
@@ -223,13 +225,13 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
             },
             body: JSON.stringify({
               // LATENCY BATCH L7 (2026-07-29): perception/extraction is a
-              model: 'gpt-4o-mini',
+              model: AI_MODELS.openai.default,
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Extract observations from: "${message}"` }
               ],
-              max_tokens: 300,
-              temperature: 0.1
+              ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 300 } : { max_tokens: 300 }),
+              ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.1 })
             }),
           },
           1,

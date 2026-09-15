@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
@@ -64,6 +64,12 @@ export default function Schedule() {
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  // The retry is scheduled inside a setTimeout closure that captures the render-time state, so the
+  // guard would re-read the value from the render that scheduled it — always 0 — and loop for ever.
+  // A ref carries the true count across those recursive calls; both are kept in step below.
+  const retryCountRef = useRef(0);
+  const resetRetries = () => { retryCountRef.current = 0; setRetryCount(0); };
+  const bumpRetries = () => { retryCountRef.current += 1; setRetryCount(retryCountRef.current); return retryCountRef.current; };
   const [generatingCropName, setGeneratingCropName] = useState('');
   const [generatingFarmingType, setGeneratingFarmingType] = useState('');
   const { scheduleTaskReminder } = useNotifications();
@@ -217,7 +223,7 @@ export default function Schedule() {
         }
 
         if (errorBody?.code === 'LAND_NOT_AVAILABLE') {
-          setRetryCount(0);
+          resetRetries();
           toast({
             title: t('schedule.main.land_not_available_title'),
             description: t('schedule.main.land_not_available_description'),
@@ -235,7 +241,7 @@ export default function Schedule() {
       // LAND_NOT_AVAILABLE is an expected domain result returned over HTTP 200 so
       // Supabase does not promote it to a FunctionsHttpError/runtime failure.
       if (data?.code === 'LAND_NOT_AVAILABLE') {
-        setRetryCount(0);
+        resetRetries();
         toast({
           title: t('schedule.main.land_not_available_title'),
           description: t('schedule.main.land_not_available_description'),
@@ -245,19 +251,21 @@ export default function Schedule() {
       }
 
       if (data?.code === 'FARMER_LANGUAGE_PENDING' && data?.retryable) {
-        if (retryCount < 2) {
-          setRetryCount((previous) => previous + 1);
+        if (retryCountRef.current < 2) {
+          const attempt = bumpRetries();
           toast({
             title: t('schedule.main.retrying'),
-            description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
+            description: t('schedule.main.generating_attempt', { count: attempt }),
             className: 'border-info bg-info text-info-foreground',
           });
+          // Re-send every field the farmer entered — dropping nurseryDays / intercrops /
+          // backdatedConsent / transplantDate would silently build a different schedule.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate);
           }, 3000);
           return;
         }
-        setRetryCount(0);
+        resetRetries();
         throw new Error(data.error || t('schedule.main.generation_failed'));
       }
       
@@ -269,24 +277,25 @@ export default function Schedule() {
       
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
-        if (retryCount < 2) {
-          setRetryCount(prev => prev + 1);
+        if (retryCountRef.current < 2) {
+          const attempt = bumpRetries();
           toast({
             title: t('schedule.main.retrying'),
-            description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
+            description: t('schedule.main.generating_attempt', { count: attempt }),
             className: 'border-accent bg-accent text-accent-foreground',
           });
-          // Retry after 2 seconds
+          // Retry after 2 seconds, with the farmer's full input.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate);
           }, 2000);
           return;
         }
+        resetRetries();
         throw new Error(data?.error || 'Failed to generate schedule after multiple attempts');
       }
 
       // Reset retry count on success
-      setRetryCount(0);
+      resetRetries();
 
       // Farmer-language completion: the schedule is persisted as soon as its agronomy is ready;
       // tasks not yet in the farmer's language are finished by the same function (action=narrate).
@@ -365,7 +374,7 @@ export default function Schedule() {
             size="sm" 
             variant="outline"
             onClick={() => {
-              setRetryCount(0);
+              resetRetries();
               handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >

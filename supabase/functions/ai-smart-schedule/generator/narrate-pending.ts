@@ -17,7 +17,7 @@ export const NARRATE_ENGINE_VERSION = "ai-smart-schedule/narrate-pending@1.0.0";
 const BATCH = 10;                 // tasks per LLM round trip (narrate.ts chunks at 10)
 const PERSIST_RESERVE_MS = 6_000; // headroom for the last update + log
 const MIN_BATCH_BUDGET_MS = 12_000;
-const DEFAULT_SWEEP_LIMIT = 3;
+const DEFAULT_SWEEP_LIMIT = 5;
 const MAX_SWEEP_LIMIT = 10;
 
 export interface NarratePendingOptions {

@@ -14,15 +14,15 @@ const StagePhaseBadge: React.FC<Props> = ({ phase, className }) => {
   if (!phase || phase === 'unknown') return null;
 
   const styles: Record<Exclude<StagePhase, 'unknown'>, string> = {
-    now: 'bg-primary/15 text-primary border-primary/30',
-    past: 'bg-muted text-muted-foreground border-border',
-    upcoming: 'bg-info/10 text-info border-info/30',
+    now: 'bg-primary text-primary-foreground border-primary',
+    past: 'bg-muted text-foreground border-border',
+    upcoming: 'bg-info text-info-foreground border-info',
   };
 
   return (
     <Badge
       variant="outline"
-      className={cn('text-[10px] font-semibold px-1.5 py-0', styles[phase], className)}
+      className={cn('border-2 px-2 py-0.5 text-xs font-bold', styles[phase], className)}
     >
       {t(`schedule.stage_phase.${phase}`)}
     </Badge>

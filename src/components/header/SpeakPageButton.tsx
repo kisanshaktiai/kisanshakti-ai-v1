@@ -39,7 +39,6 @@ export function SpeakPageButton() {
 
   const { speak, stop, isSpeaking, isLoading } = useTTSFacade({
     language: currentLanguage,
-    autoStop: true,
   });
 
   // Auto-stop on route change so speech doesn't bleed across pages.

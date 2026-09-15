@@ -501,6 +501,7 @@ export function EnhancedAIChatInterface() {
           ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
           : null,
         // P0 FIX: Reconstruct clarification options from persisted metadata
+        advisorCard: metadata?.advisor_card ?? undefined,   // 2026-09-09 farmer advisor card
         clarificationOptions: metadata?.clarification_options ? {
           question: metadata.clarification_options.question,
           options: metadata.clarification_options.options?.map((o: any) => ({
@@ -1784,6 +1785,7 @@ export function EnhancedAIChatInterface() {
         id: aiMessageId,
         role: 'assistant',
         content: responseText,
+        advisorCard: (data?.metadata?.advisor_card ?? undefined) as any, // 2026-09-11 live path (Lovable issue 1)
         timestamp: new Date(),
         messageType: isGeneralResponse ? 'text' : 'orchestrator',
         orchestratorType: isGeneralResponse
@@ -1839,6 +1841,7 @@ export function EnhancedAIChatInterface() {
           farmer_id: user?.id,
           role: 'assistant',
           content: responseText,
+          advisorCard: (data?.metadata?.advisor_card ?? undefined) as any,
           created_at: new Date().toISOString(),
           status: 'sent',
           metadata: {

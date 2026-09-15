@@ -1,4 +1,13 @@
 // CHANGE LOG
+// 2026-09-09 — A task returned UNCHANGED in English was being accepted as translated: with no target
+//   script, every Latin word counted as 'carried from the source', the ratio had nothing to judge and
+//   the short-string fallback returned true. Target script is now mandatory for a non-English target.
+// 2026-09-08 — Language-quality ratio now ignores Latin words carried over from the SOURCE (product
+//   names, fertilizer grades, units, codes). A faithful translation of a fact-dense line is mostly
+//   Latin by necessity; counting it as 'untranslated' rejected such tasks permanently, so they stayed
+//   English forever and the narration sweep retried them for ever.
+// 2026-09-08 — farmer-simple register (by meaning, no language-specific words): extension-officer voice, short
+//   sentences, what/when/how much/how to mix/why; numbers, units, dates, product names and grades untouched.
 // 2026-09-07 — DURABLE NARRATION. Live measurement (schedule of 91 tasks, Marathi): 28-task
 //   chunks at maxTokens 3000 overflow the output (Devanagari costs 3-4 tokens per word), the
 //   model returns truncated JSON, every retry burns the budget, 0/91 tasks narrated. Fixes:
@@ -14,7 +23,7 @@
 import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
-const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 10; const MAX_CONCURRENCY = 1; const NARRATION_BUDGET_MS = 90_000; const MAX_OUTPUT_TOKENS = 4_500; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
+const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 4; const MAX_CONCURRENCY = 4; const NARRATION_BUDGET_MS = 90_000; const MAX_OUTPUT_TOKENS = 8_000; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
 const cooldownUntil = new Map<AIProvider, number>();
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { const id = setTimeout(resolve, ms); signal.addEventListener("abort", () => { clearTimeout(id); resolve(); }, { once: true }); });
 function cooldownRemaining(provider: AIProvider) { return (cooldownUntil.get(provider) ?? 0) - Date.now(); }
@@ -34,7 +43,7 @@ function isProvenanceLine(s: string): boolean { return isTechnicalLine(s); }
 function farmerInstructionSource(instructions: string[] | undefined): string[] { return (instructions ?? []).map(String).map((x) => x.trim()).filter(Boolean).filter((x) => !isProvenanceLine(x)); }
 
 /** Reject mixed English output that merely contains one target-language word. */
-function hasFarmerLanguageQuality(value: string, language: string): boolean {
+function hasFarmerLanguageQuality(value: string, language: string, source?: string): boolean {
   if (language === "en") return true;
   const patterns: Record<string, RegExp> = {
     hi: /[\u0900-\u097F]/g, mr: /[\u0900-\u097F]/g, pa: /[\u0A00-\u0A7F]/g,
@@ -44,18 +53,37 @@ function hasFarmerLanguageQuality(value: string, language: string): boolean {
   };
   const target = patterns[language]; if (!target) return false;
   const scriptChars = (value.match(target) || []).length;
-  const latinChars = (value.match(/[A-Za-z]/g) || []).length;
+  // A translation of a farm instruction always contains some target script. Text the model handed
+  // back unchanged has none — and because every Latin word in it is then "carried from the source",
+  // the ratio test below would see nothing left to judge and wave it through. Reject it here, so an
+  // English title can never be stamped as the farmer's language; it stays pending and is retried.
+  if (scriptChars === 0) return false;
+  // Latin that CAME FROM THE SOURCE (product names, grades, units, codes) is a preserved fact, not
+  // untranslated text: excluding it stops a correct line such as "…17.2 kg Muriate of Potash (MOP)
+  // 60% K2O" from being rejected forever for being "mostly English".
+  const carried = source ? new Set((source.match(/[A-Za-z]{2,}/g) || []).map((w) => w.toLowerCase())) : null;
+  const latinWords = value.match(/[A-Za-z]{2,}/g) || [];
+  const untranslatedLatin = carried ? latinWords.filter((w) => !carried.has(w.toLowerCase())) : latinWords;
+  const latinChars = untranslatedLatin.join("").length + (value.match(/(?<![A-Za-z])[A-Za-z](?![A-Za-z])/g) || []).length;
   const totalLetters = scriptChars + latinChars;
-  if (totalLetters < 3) return false;
+  // Floor: a real translation carries target script roughly in proportion to how much ordinary text
+  // the source had. Without this, "Apply Potassium fertilizer <one target word>" passes, because
+  // every Latin word is "carried" and the ratio has nothing left to weigh.
+  const sourceLetters = source ? (source.match(/[A-Za-z]/g) || []).length : 0;
+  if (sourceLetters > 0 && scriptChars < sourceLetters * 0.3) return false;
+  // Fact-only remainder (product names, grades, units carried over verbatim): the checks above
+  // already proved this is a real translation, so accept it.
+  if (totalLetters < 3) return true;
   return scriptChars / totalLetters >= 0.65;
 }
-function containsExpectedScript(value: string, language: string): boolean { return hasFarmerLanguageQuality(value, language); }
+function containsExpectedScript(value: string, language: string, source?: string): boolean { return hasFarmerLanguageQuality(value, language, source); }
 
 async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: farmerInstructionSource(t.instructions) }));
   const prompt = [
     `You are a village agriculture officer explaining farm tasks to a smallholder farmer who left school early.`,
-    language === "en" ? `Rewrite the supplied text in very simple English.` : `Rewrite the supplied text in natural, simple spoken ${language} for an Indian farmer. Use the target language as the main language, not English transliteration. Keep only unavoidable product names, crop names, units and numbers in Latin script.`,
+    language === "en" ? `Rewrite the supplied text in very simple spoken English, as a village extension officer would say it to a farmer with little schooling: short sentences; say what to do, when, how much to buy, how to mix, and why; keep every number, unit, product name and date exactly as given.` : `Rewrite the supplied text in natural, simple spoken ${language}, as a village extension officer would say it to a farmer with little schooling: short sentences; everyday farming words the farmer already uses; say what to do, when, how much to buy, how to mix, and why. Use the target language as the main language, not English transliteration. Keep every number, unit, date, product name and fertilizer grade exactly as given, in Latin script where the farmer reads them that way on the bag.`,
+    language === "en" ? `` : `Translate EVERY ordinary English word, including words like day, days, week, field, spray, apply, seed and fertilizer type names where a common farmer word exists. Keep only numerals, units, brand/product names and fertilizer grades as given. No English word may remain unless it is such a supplied fact.`,
     `The database and deterministic pipeline are the agricultural authority. You only re-word the supplied facts.`,
     `Do NOT use model memory to add agricultural facts, products, doses, timings or treatments.`,
     `Never add, remove, calculate, convert or change a number, unit, date, product, chemical, dose, timing or threshold.`,
@@ -74,12 +102,15 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   for (const { provider, model } of ordered) { const apiKey = getAPIKey(provider); if (!apiKey) continue; try {
     await waitForCooldown(provider, signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
     const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: MAX_OUTPUT_TOKENS, temperature: 0, useJsonMode: true });
-    const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` }, body: JSON.stringify(body), signal });
+    const authHeaders: Record<string, string> = provider === "lovable"
+      ? { "Content-Type": "application/json", "Lovable-API-Key": apiKey }
+      : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+    const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: authHeaders, body: JSON.stringify(body), signal });
     if (!res.ok) { if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
     const responseJson = await res.json(); const raw = parseModelJson(responseJson?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray((raw as any)?.tasks) ? (raw as any).tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
     if (parsed.length < chunk.length) throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null);
     return { items: parsed.map((p) => ({ ...p, i: offset + Number(p.i) })), provider, model };
-  } catch (error) { lastError = error; } }
+  } catch (error) { lastError = error; console.error(`[narrate] ${provider}/${model} failed: ${(error as Error)?.message}`); } }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal) {
@@ -107,10 +138,10 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
     while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal)))); i += MAX_CONCURRENCY; }
     for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const unique = uniqueTasks[item.i]; if (!unique) continue;
       const source = farmerInstructionSource(unique.instructions);
-      const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language);
-      const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language);
+      const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language, unique.task_name);
+      const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language, unique.task_description);
       const translated = Array.isArray(item.instructions) && item.instructions.length === source.length ? item.instructions.map(String) : null;
-      const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language));
+      const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language, source[idx] ?? ""));
       if (!nameOk && !descOk && !stepsOk) continue;
       for (const idx of members[item.i] ?? []) { const target = out[idx]; if (!target) continue; if (nameOk) target.task_name = String(item.name); if (descOk) target.task_description = String(item.desc); if (stepsOk && translated) target.instructions = translated; appliedIndices.add(idx); }
     } }

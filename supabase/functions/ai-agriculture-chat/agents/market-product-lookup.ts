@@ -107,6 +107,64 @@ export function lookupMarketProductsMemoized(
 }
 
 // Look up market product brand names for a given active ingredient and crop.
+/**
+ * 2026-09-09 — PRODUCT DETAILS for the advisor card's collapsed "available in the market" section.
+ * Same exact-ingredient matching as lookupMarketProducts, but returns the row fields the UI shows
+ * (brand, company, pack sizes, image). Images live in master_products.images (admin uploads them to the
+ * `product-images` bucket); a product with no image renders as a name-only row — never a placeholder claim.
+ */
+export interface MarketProductDetail { name: string; brand: string | null; company: string | null; pack_sizes: string | null; image_url: string | null; product_id: string | null; label: string | null; }
+/**
+ * 2026-09-11 — FIX (Lovable issue 2): the previous version selected `company_name`, `pack_sizes`, `is_active` —
+ * none exist on master_products — so PostgREST returned an error on every call and the catch returned [] silently.
+ * Real columns: company_id → master_companies.name · available_pack_sizes (jsonb) · status ('active') ·
+ * ai_recommendable · images (jsonb, admin upload shape) · label_<lang> where authored.
+ */
+export async function lookupMarketProductDetails(
+  supabase: SupabaseClient,
+  activeIngredient: string,
+  lang?: string,
+  limit = 6,
+): Promise<MarketProductDetail[]> {
+  if (!activeIngredient || !supabase) return [];
+  const tokens = extractIngredientTokens(activeIngredient);
+  if (tokens.length === 0) return [];
+  try {
+    const { data, error } = await supabase.from('master_products')
+      .select('id, name, brand, company_id, active_ingredients, available_pack_sizes, images, status, ai_recommendable, label_hi, label_mr, translations')
+      .eq('status', 'active').limit(500);
+    if (error) throw new Error(error.message);
+    const matched = (data || []).filter((p: any) => p?.ai_recommendable !== false && productMatchesIngredient(p?.active_ingredients, tokens)).slice(0, limit);
+    if (matched.length === 0) { console.log(`[MarketProductLookup] details: 0 of ${(data || []).length} products match tokens [${tokens.join(',')}]`); return []; }
+    // company names in one query
+    const companyIds = Array.from(new Set(matched.map((p: any) => p?.company_id).filter(Boolean)));
+    const companyName = new Map<string, string>();
+    if (companyIds.length) {
+      const { data: cos, error: cErr } = await supabase.from('master_companies').select('id, name').in('id', companyIds);
+      if (cErr) console.warn(`[MarketProductLookup] company lookup failed: ${cErr.message}`);
+      for (const c of (cos || [])) if (c?.id) companyName.set(String(c.id), String(c.name ?? ''));
+    }
+    const langKey = String(lang || '').toLowerCase();
+    return matched.map((p: any) => {
+      let image: string | null = null;
+      try {
+        const imgs = Array.isArray(p?.images) ? p.images : (typeof p?.images === 'string' ? JSON.parse(p.images) : []);
+        const primary = imgs.find((i: any) => i?.is_primary) ?? imgs[0];
+        image = primary?.url ?? null;
+      } catch { image = null; }
+      const packs = Array.isArray(p?.available_pack_sizes) && p.available_pack_sizes.length
+        ? p.available_pack_sizes.map((x: any) => typeof x === 'string' ? x : (x?.size ?? x?.label ?? JSON.stringify(x))).join(', ') : null;
+      // a translated label when the DB has one for this language (label_<lang> column or translations jsonb) — never machine-made here
+      const label = (langKey && (p?.[`label_${langKey}`] || p?.translations?.[langKey]?.name)) || null;
+      return { name: String(p?.name ?? p?.brand ?? ''), brand: p?.brand ?? null, company: companyName.get(String(p?.company_id)) ?? null,
+        pack_sizes: packs, image_url: image, product_id: p?.id ?? null, label };
+    }).filter((x: MarketProductDetail) => x.name);
+  } catch (e) {
+    console.warn(`[MarketProductLookup] details failed: ${(e as Error)?.message ?? e}`);
+    return [];
+  }
+}
+
 export async function lookupMarketProducts(
   supabase: SupabaseClient,
   activeIngredient: string,

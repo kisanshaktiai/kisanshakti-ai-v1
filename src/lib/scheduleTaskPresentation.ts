@@ -95,7 +95,17 @@ export function buildScheduleTaskPresentation(
     const value = `${t(labelKey)}: ${q}`;
     if (!seen.has(value)) { seen.add(value); howMuch.push(value); }
   };
-  if (taskType === 'irrigation') pushAmount('schedule.amount.water', task.water_required_liters ?? resources.water_required_liters ?? resources.water_liters);
+  if (taskType === 'irrigation') {
+    // The generator stores the field water volume under resources.water_volume (depth × land area).
+    // The dedicated column is not written by the atomic persist RPC, so read the computed value too
+    // — otherwise a farmer sees a watering card with no quantity even though litres were computed.
+    // Per-event is what he sets the pump to; the stage total is the fallback.
+    const wv = (resources.water_volume ?? null) as { per_event_liters?: number | null; stage_total_liters?: number | null } | null;
+    pushAmount(
+      'schedule.amount.water',
+      task.water_required_liters ?? resources.water_required_liters ?? resources.water_liters ?? wv?.per_event_liters ?? wv?.stage_total_liters,
+    );
+  }
   else {
     pushAmount('schedule.amount.task_quantity', task.quantity ?? resources.quantity);
     pushAmount('schedule.amount.water', task.water_required_liters);

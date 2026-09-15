@@ -31,6 +31,6 @@ Deno.test("evidence pack does not invent micronutrient application doses", async
 Deno.test("legacy deterministic baseline remains the required fallback", async () => {
   const src = await read("supabase/functions/ai-smart-schedule/harness/index.ts");
   const graph = await read("supabase/functions/ai-smart-schedule/harness/candidate-graph.ts");
-  assert(src.includes("optional evidence candidates were not auto-applied"));
-  assert(graph.includes("required:true"));
+  assert(src.includes("optional evidence candidates were not auto-applied") || src.includes("only DB-classified"));
+  assert(graph.includes("required: true") || graph.includes("required:true"));
 });

@@ -1,4 +1,13 @@
 // CHANGE LOG
+// 2026-09-09 — getSeedRate now also returns the row's seed_rate_basis_code and its broadcast band.
+//   The computed rate is the DRILL / line-sown figure; a smallholder broadcasting by hand needs the
+//   broadcast rate, which sits in the same row and was simply never read. The schedule stated one
+//   number with no indication of which sowing method it assumed.
+// 2026-09-08 — methodFilter tolerates a missing methods array (falls back to 'any'); getObservationRules /
+//   getFieldActionRules called with fewer args no longer throw.
+// 2026-09-08 — straight fertilizer = exactly one PRIMARY nutrient (N, P2O5, K2O) in nutrient_analysis; secondary
+//   nutrients (S, Ca, Mg) no longer disqualify a product — SSP (16% P2O5 + 11% S + 20% Ca) was being rejected, so
+//   every P dose shipped with no product equivalent.
 // 2026-09-05 — Completeness fixes (all DB-driven, no agronomy constants):
 //   (1) getFertilizerPlan prefers the row whose cultivation_context matches the farmer's method
 //       or stage clock; a context mismatch is recorded as a named gap, never hidden.
@@ -36,7 +45,11 @@ export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycl
   return rows.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
 }
 
-export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance; }
+export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance;
+  /** What the rate assumes (e.g. drill / line-sown vs nursery), straight from the DB row. */
+  basisCode:string|null;
+  /** The same row's broadcast band, for a farmer sowing by hand rather than with a drill. */
+  broadcastKgPerAcre:{min:number|null;max:number|null}|null; }
 const RPC_TGW_UNVERIFIED="default_20g_UNVERIFIED";
 export async function getSeedRate(
   supabase: SupabaseClient,
@@ -52,7 +65,7 @@ export async function getSeedRate(
   for (const method of candidateMethods) {
     const { data } = await supabase
       .from("variety_cultivation_agronomy")
-      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier")
+      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max")
       .eq("variety_id", varietyId)
       .eq("cultivation_method", method)
       .eq("is_active", true)
@@ -73,6 +86,8 @@ export async function getSeedRate(
     if (r?.seed_rate_kg_per_acre != null && typeof r.tgw_source === "string" && r.tgw_source !== RPC_TGW_UNVERIFIED) {
       return {
         kgPerAcre: Number(r.seed_rate_kg_per_acre),
+        basisCode: vca.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
+        broadcastKgPerAcre: vca.seed_rate_broadcast_kg_per_acre_min != null || vca.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
         rationale: r.rationale ?? null,
         provenance: { table: "fn_calculate_seed_rate", source: `tgw:${r.tgw_source}; method:${vcaMethod}` },
       };
@@ -85,6 +100,8 @@ export async function getSeedRate(
   return {
     kgPerAcre: min != null && max != null ? (min + max) / 2 : (min ?? max) as number,
     rationale: (vca?.seed_rate_rationale as string) ?? null,
+    basisCode: vca?.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
+    broadcastKgPerAcre: vca?.seed_rate_broadcast_kg_per_acre_min != null || vca?.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca?.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca?.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
     provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
   };
 }
@@ -106,7 +123,7 @@ export interface StraightFertilizerProduct { id:string;name:string;nutrient:stri
 /** Single-nutrient fertilizer products from the catalog (exactly one non-zero key in nutrient_analysis). Used only to express a DB-derived nutrient dose as a product quantity. */
 export async function getStraightFertilizerProducts(supabase:SupabaseClient):Promise<StraightFertilizerProduct[]>{
   const {data}=await supabase.from("master_products").select("id, name, nutrient_analysis, organic_certified").eq("product_type","fertilizer").eq("ai_recommendable",true).eq("status","active").limit(500);const out:StraightFertilizerProduct[]=[];
-  for(const r of data||[]){const na=r.nutrient_analysis&&typeof r.nutrient_analysis==="object"?r.nutrient_analysis as Record<string,unknown>:null;if(!na)continue;const nonZero=Object.entries(na).filter(([,v])=>v!=null&&Number.isFinite(Number(v))&&Number(v)>0);if(nonZero.length!==1)continue;const [key,val]=nonZero[0];const pct=Number(val);if(!(pct>0&&pct<=100))continue;out.push({id:String(r.id),name:String(r.name),nutrient:String(key).toUpperCase(),percent:pct,organicCertified:r.organic_certified===true});}
+  for(const r of data||[]){const na=r.nutrient_analysis&&typeof r.nutrient_analysis==="object"?r.nutrient_analysis as Record<string,unknown>:null;if(!na)continue;const PRIMARY=new Set(["N","P2O5","K2O"]);const nonZero=Object.entries(na).filter(([k,v])=>PRIMARY.has(String(k).toUpperCase())&&v!=null&&Number.isFinite(Number(v))&&Number(v)>0);if(nonZero.length!==1)continue;const [key,val]=nonZero[0];const pct=Number(val);if(!(pct>0&&pct<=100))continue;out.push({id:String(r.id),name:String(r.name),nutrient:String(key).toUpperCase(),percent:pct,organicCertified:r.organic_certified===true});}
   return out.sort((a,b)=>b.percent-a.percent||a.name.localeCompare(b.name));
 }
 
@@ -120,7 +137,7 @@ export async function getIrrigationGuidelines(supabase:SupabaseClient,cropCode:s
 
 export interface FieldActionRule {rule_id:string;category:string|null;action_type:string|null;action_text:string|null;stage_applicable:unknown;priority:number|null;phi_days:number|null;chemical_class:string|null;scientific_source:string|null;biological_group:string|null;etl_threshold:string|null;dosage_per_acre:string|null;contraindications:unknown;organic_alternative?:string|null;ipm_level?:number|string|null;}
 const regionFilter=(regionCode:string|null):string=>regionCode?`region_code.is.null,region_code.eq.${regionCode}`:`region_code.is.null`;
-const methodFilter=(methods:string[]):string=>`cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${[...new Set(["any",...methods.filter(Boolean)])].join(",")}}`;
+const methodFilter=(methods:string[]|null|undefined):string=>`cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${[...new Set(["any",...(methods??[]).filter(Boolean)])].join(",")}}`;
 export async function getFieldActionRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<FieldActionRule[]>{
   const FIELD_ACTION_RULE_LIMIT=1000;
   const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);

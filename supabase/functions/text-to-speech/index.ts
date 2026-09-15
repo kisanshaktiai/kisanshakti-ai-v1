@@ -1,188 +1,326 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/**
+ * text-to-speech — the app's only cloud speech endpoint.
+ *
+ * Two actions on one function, per the standing one-feature-one-function rule:
+ *   { action: 'status' }                    -> which vendors are configured
+ *   { action: 'synthesize', text, language} -> base64 audio
+ *
+ * Vendor preference: Bhashini first, Google second. Adding BHASHINI_API_KEY
+ * (and BHASHINI_USER_ID / BHASHINI_PIPELINE_ID) to Supabase secrets is the only
+ * step needed to move the app onto Bhashini. No client change is required.
+ *
+ * The app calls this ONLY when the handset has no voice for the farmer's
+ * language. Device speech remains the primary path and costs nothing.
+ */
+
 import { corsHeaders } from '../_shared/cors.ts';
-import { rateGuard } from '../_shared/rateGuard.ts';
+import { checkRateLimit } from '../_shared/rateGuard.ts';
 
+// Bhashini (Digital India Bhashini Division). Contract per the official docs at
+// dibd-bhashini.gitbook.io/bhashini-apis: a Pipeline Config call, then a
+// Pipeline Compute call.
+//   BHASHINI_USER_ID        userID header, from My Profile on bhashini.gov.in/ulca
+//   BHASHINI_API_KEY        the ULCA / "Udyat" key, ulcaApiKey header on the config call
+//   BHASHINI_PIPELINE_ID    pipeline ID chosen on the ULCA portal
+//   BHASHINI_INFERENCE_KEY  optional. The inference key generated under an app name
+//                           in My Profile. When absent, the one returned by the
+//                           config call is used.
+const BHASHINI_USER_ID = Deno.env.get('BHASHINI_USER_ID');
+const BHASHINI_API_KEY = Deno.env.get('BHASHINI_API_KEY');
+const BHASHINI_PIPELINE_ID = Deno.env.get('BHASHINI_PIPELINE_ID');
+const BHASHINI_INFERENCE_KEY = Deno.env.get('BHASHINI_INFERENCE_KEY');
+const BHASHINI_CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
+const GOOGLE_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
 
-// Language to voice mapping for Google Cloud TTS
-const GOOGLE_VOICE_MAP: Record<string, { languageCode: string; name: string }> = {
-  'hi': { languageCode: 'hi-IN', name: 'hi-IN-Wavenet-A' },
-  'hi-IN': { languageCode: 'hi-IN', name: 'hi-IN-Wavenet-A' },
-  'mr': { languageCode: 'mr-IN', name: 'mr-IN-Wavenet-A' },
-  'mr-IN': { languageCode: 'mr-IN', name: 'mr-IN-Wavenet-A' },
-  'ta': { languageCode: 'ta-IN', name: 'ta-IN-Wavenet-A' },
-  'ta-IN': { languageCode: 'ta-IN', name: 'ta-IN-Wavenet-A' },
-  'te': { languageCode: 'te-IN', name: 'te-IN-Standard-A' },
-  'te-IN': { languageCode: 'te-IN', name: 'te-IN-Standard-A' },
-  'bn': { languageCode: 'bn-IN', name: 'bn-IN-Wavenet-A' },
-  'bn-IN': { languageCode: 'bn-IN', name: 'bn-IN-Wavenet-A' },
-  'gu': { languageCode: 'gu-IN', name: 'gu-IN-Wavenet-A' },
-  'gu-IN': { languageCode: 'gu-IN', name: 'gu-IN-Wavenet-A' },
-  'kn': { languageCode: 'kn-IN', name: 'kn-IN-Wavenet-A' },
-  'kn-IN': { languageCode: 'kn-IN', name: 'kn-IN-Wavenet-A' },
-  'ml': { languageCode: 'ml-IN', name: 'ml-IN-Wavenet-A' },
-  'ml-IN': { languageCode: 'ml-IN', name: 'ml-IN-Wavenet-A' },
-  'pa': { languageCode: 'pa-IN', name: 'pa-IN-Wavenet-A' },
-  'pa-IN': { languageCode: 'pa-IN', name: 'pa-IN-Wavenet-A' },
-  'en': { languageCode: 'en-IN', name: 'en-IN-Wavenet-A' },
-  'en-IN': { languageCode: 'en-IN', name: 'en-IN-Wavenet-A' },
-  'en-US': { languageCode: 'en-US', name: 'en-US-Wavenet-D' },
+const MAX_TEXT_LENGTH = 5000;
+
+/**
+ * Chirp 3: HD is Google's current generative voice tier and is what makes the
+ * reading sound conversational rather than synthetic. Voice names follow
+ * <locale>-Chirp3-HD-<voice>. Locales listed here are the Indian ones Google
+ * documents for this tier; pa-IN is documented as Preview.
+ *
+ * Chirp 3: HD does NOT accept SSML, speakingRate or pitch. Sending those makes
+ * the request fail, which is why audioConfig differs per tier below.
+ */
+const CHIRP3_VOICES: Record<string, string> = {
+  'hi-IN': 'hi-IN-Chirp3-HD-Kore',
+  'mr-IN': 'mr-IN-Chirp3-HD-Kore',
+  'bn-IN': 'bn-IN-Chirp3-HD-Kore',
+  'gu-IN': 'gu-IN-Chirp3-HD-Kore',
+  'kn-IN': 'kn-IN-Chirp3-HD-Kore',
+  'ml-IN': 'ml-IN-Chirp3-HD-Kore',
+  'ta-IN': 'ta-IN-Chirp3-HD-Kore',
+  'te-IN': 'te-IN-Chirp3-HD-Kore',
+  'ur-IN': 'ur-IN-Chirp3-HD-Kore',
+  'pa-IN': 'pa-IN-Chirp3-HD-Kore',
+  'en-IN': 'en-IN-Chirp3-HD-Kore',
 };
 
-// OpenAI voice mapping
-const OPENAI_VOICE = 'alloy'; // Best for multilingual
+/** Older tier, used only where Chirp 3: HD has no voice for the locale. */
+const WAVENET_VOICES: Record<string, string> = {
+  'hi-IN': 'hi-IN-Wavenet-A',
+  'mr-IN': 'mr-IN-Wavenet-A',
+  'ta-IN': 'ta-IN-Wavenet-A',
+  'te-IN': 'te-IN-Standard-A',
+  'bn-IN': 'bn-IN-Wavenet-A',
+  'gu-IN': 'gu-IN-Wavenet-A',
+  'kn-IN': 'kn-IN-Wavenet-A',
+  'ml-IN': 'ml-IN-Wavenet-A',
+  'pa-IN': 'pa-IN-Wavenet-A',
+  'ur-IN': 'ur-IN-Wavenet-A',
+  'en-IN': 'en-IN-Wavenet-A',
+};
 
-async function synthesizeWithGoogle(text: string, language: string, apiKey: string): Promise<ArrayBuffer> {
-  const voiceConfig = GOOGLE_VOICE_MAP[language] || GOOGLE_VOICE_MAP['en-IN'];
-  
-  const requestBody = {
-    input: { text },
-    voice: {
-      languageCode: voiceConfig.languageCode,
-      name: voiceConfig.name,
-    },
-    audioConfig: {
-      audioEncoding: 'MP3',
-      speakingRate: 1.0,
-      pitch: 0,
-    },
-  };
+const GOOGLE_VOICES: Record<string, string> = { ...WAVENET_VOICES, ...CHIRP3_VOICES };
 
-  const response = await fetch(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    }
-  );
+/**
+ * Per-language TTS service resolved from the Pipeline Config call.
+ * Cached in the function instance; refreshed when a language is missing.
+ */
+interface BhashiniTtsService {
+  serviceId: string;
+  voices: string[];
+}
+interface BhashiniConfig {
+  callbackUrl: string;
+  inferenceKey: string;
+  services: Record<string, BhashiniTtsService>;
+  fetchedAt: number;
+}
+let bhashiniConfig: BhashiniConfig | null = null;
+const BHASHINI_CONFIG_TTL_MS = 6 * 60 * 60 * 1000;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Google TTS Error:', response.status, errorText);
-    throw new Error(`Google TTS failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  
-  // Google returns base64 encoded audio
-  const binaryString = atob(data.audioContent);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  
-  return bytes.buffer;
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
-async function synthesizeWithOpenAI(text: string, apiKey: string): Promise<ArrayBuffer> {
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+function configuredVendors(): string[] {
+  const vendors: string[] = [];
+  if (BHASHINI_API_KEY && BHASHINI_USER_ID && BHASHINI_PIPELINE_ID) vendors.push('bhashini');
+  if (GOOGLE_API_KEY) vendors.push('google');
+  return vendors;
+}
+
+/**
+ * Pipeline Config call. Returns the compute endpoint, the inference key, and the
+ * serviceId for TTS in every language this pipeline supports. Asking without a
+ * language filter returns the full list, so one call covers all 14 languages.
+ */
+async function loadBhashiniConfig(force = false): Promise<BhashiniConfig> {
+  if (!force && bhashiniConfig && Date.now() - bhashiniConfig.fetchedAt < BHASHINI_CONFIG_TTL_MS) {
+    return bhashiniConfig;
+  }
+
+  const response = await fetch(BHASHINI_CONFIG_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      userID: BHASHINI_USER_ID!,
+      ulcaApiKey: BHASHINI_API_KEY!,
     },
     body: JSON.stringify({
-      model: 'tts-1',
-      input: text,
-      voice: OPENAI_VOICE,
-      response_format: 'mp3',
+      pipelineTasks: [{ taskType: 'tts' }],
+      pipelineRequestConfig: { pipelineId: BHASHINI_PIPELINE_ID },
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('OpenAI TTS Error:', response.status, errorText);
-    throw new Error(`OpenAI TTS failed: ${response.status}`);
+    throw new Error(`Bhashini config ${response.status}: ${(await response.text()).slice(0, 200)}`);
   }
 
-  return await response.arrayBuffer();
+  const data = await response.json();
+  const endpoint = data?.pipelineInferenceAPIEndPoint;
+  const ttsBlock = (data?.pipelineResponseConfig || []).find((b: { taskType?: string }) => b.taskType === 'tts');
+
+  const services: Record<string, BhashiniTtsService> = {};
+  for (const c of ttsBlock?.config || []) {
+    const lang = c?.language?.sourceLanguage;
+    if (lang && c.serviceId) {
+      services[lang] = { serviceId: c.serviceId, voices: c.supportedVoices || [] };
+    }
+  }
+
+  bhashiniConfig = {
+    callbackUrl: endpoint?.callbackUrl || 'https://dhruva-api.bhashini.gov.in/services/inference/pipeline',
+    inferenceKey: BHASHINI_INFERENCE_KEY || endpoint?.inferenceApiKey?.value || '',
+    services,
+    fetchedAt: Date.now(),
+  };
+  return bhashiniConfig;
 }
 
-serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+/**
+ * Pipeline Compute call for TTS.
+ *
+ * text-normalization is Bhashini's own pre-processor: it renders numbers and
+ * dates as words IN THE TARGET LANGUAGE on the server, which is exactly what a
+ * dose or a date needs and does not require any word table in this codebase.
+ * high-compression returns 64 kbps audio for low-bandwidth rural networks.
+ * Both are optional per the docs; if a service rejects them the call is
+ * retried once without them so a farmer is never left without audio.
+ */
+async function synthesiseBhashini(text: string, locale: string) {
+  const sourceLanguage = locale.split('-')[0].toLowerCase();
+
+  let cfg = await loadBhashiniConfig();
+  let service = cfg.services[sourceLanguage];
+  if (!service) {
+    cfg = await loadBhashiniConfig(true);
+    service = cfg.services[sourceLanguage];
+  }
+  if (!service) throw new Error(`Bhashini has no TTS service for ${sourceLanguage}`);
+  if (!cfg.inferenceKey) throw new Error('Bhashini inference key missing');
+
+  const gender = service.voices.includes('female') ? 'female' : service.voices[0] || 'female';
+
+  const compute = async (withProcessors: boolean) => {
+    const config: Record<string, unknown> = {
+      language: { sourceLanguage },
+      serviceId: service!.serviceId,
+      gender,
+      speed: 1.0,
+      samplingRate: 22050,
+    };
+    if (withProcessors) {
+      config.preProcessors = ['text-normalization'];
+      config.postProcessors = ['high-compression'];
+    }
+    return fetch(cfg.callbackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: cfg.inferenceKey },
+      body: JSON.stringify({
+        pipelineTasks: [{ taskType: 'tts', config }],
+        inputData: { input: [{ source: text }], audio: [{ audioContent: null }] },
+      }),
+    });
+  };
+
+  let response = await compute(true);
+  if (!response.ok) {
+    const firstError = (await response.text()).slice(0, 200);
+    console.warn('[text-to-speech] Bhashini with processors failed, retrying plain:', firstError);
+    response = await compute(false);
+  }
+  if (!response.ok) {
+    throw new Error(`Bhashini compute ${response.status}: ${(await response.text()).slice(0, 200)}`);
   }
 
-  // Sprint 5: cost-control rate limit (Google/OpenAI TTS).
-  const rl = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60, windowMs: 60_000 });
-  if (rl) return rl;
+  const data = await response.json();
+  const tts = (data?.pipelineResponse || []).find((r: { taskType?: string }) => r.taskType === 'tts') || data?.pipelineResponse?.[0];
+  const audio = tts?.audio?.[0]?.audioContent;
+  if (!audio) throw new Error('Bhashini returned no audio');
 
+  const format = String(tts?.config?.audioFormat || 'wav').toLowerCase();
+  const mimeType = format === 'mp3' ? 'audio/mpeg' : format === 'ogg' ? 'audio/ogg' : 'audio/wav';
+
+  return { audioContent: audio, mimeType, vendor: 'bhashini', tier: service.serviceId };
+}
+
+async function synthesiseGoogle(text: string, locale: string) {
+  const chirpVoice = CHIRP3_VOICES[locale];
+  const voiceName = chirpVoice || WAVENET_VOICES[locale];
+  if (!voiceName) throw new Error(`Google has no configured voice for ${locale}`);
+
+  // Chirp 3: HD rejects speakingRate and pitch. Only the older tiers take them.
+  const audioConfig = chirpVoice
+    ? { audioEncoding: 'MP3' }
+    : { audioEncoding: 'MP3', speakingRate: 0.95, pitch: 0 };
+
+  const response = await fetch(
+    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text },
+        voice: { languageCode: locale, name: voiceName },
+        audioConfig,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Google ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  if (!data.audioContent) throw new Error('Google returned no audio');
+
+  return {
+    audioContent: data.audioContent,
+    mimeType: 'audio/mpeg',
+    vendor: 'google',
+    tier: chirpVoice ? 'chirp3-hd' : 'wavenet',
+  };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { text, language = 'en-IN' } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const action = body.action || 'synthesize';
 
-    if (!text || typeof text !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Text is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Limit text length for safety
-    const truncatedText = text.slice(0, 5000);
-
-    const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-
-    let audioBuffer: ArrayBuffer;
-    let provider = 'google';
-
-    // Try Google TTS first
-    if (googleApiKey) {
-      try {
-        console.log(`Attempting Google TTS for language: ${language}`);
-        audioBuffer = await synthesizeWithGoogle(truncatedText, language, googleApiKey);
-        console.log('Google TTS succeeded');
-      } catch (googleError) {
-        console.error('Google TTS failed, falling back to OpenAI:', googleError);
-        
-        // Fallback to OpenAI
-        if (openaiApiKey) {
-          audioBuffer = await synthesizeWithOpenAI(truncatedText, openaiApiKey);
-          provider = 'openai';
-          console.log('OpenAI TTS succeeded as fallback');
-        } else {
-          throw new Error('No TTS provider available');
+    if (action === 'status') {
+      const available = configuredVendors();
+      let languages: string[] = [];
+      if (available[0] === 'bhashini') {
+        try {
+          const cfg = await loadBhashiniConfig();
+          languages = Object.keys(cfg.services).map((l) => `${l}-IN`);
+        } catch (e) {
+          console.error('[text-to-speech] Bhashini config failed:', e);
         }
+      } else if (available[0] === 'google') {
+        languages = Object.keys(GOOGLE_VOICES);
       }
-    } else if (openaiApiKey) {
-      // No Google key, use OpenAI directly
-      console.log('Using OpenAI TTS (no Google key)');
-      audioBuffer = await synthesizeWithOpenAI(truncatedText, openaiApiKey);
-      provider = 'openai';
-    } else {
-      return new Response(
-        JSON.stringify({ error: 'No TTS API keys configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json({ available, languages });
     }
 
-    // Convert to base64 safely (avoid stack overflow with large buffers)
-    const uint8Array = new Uint8Array(audioBuffer);
-    let binaryString = '';
-    const chunkSize = 8192;
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    // Force a fresh config read, e.g. after Bhashini adds a language.
+    if (action === 'discover') {
+      if (!configuredVendors().includes('bhashini')) return json({ error: 'bhashini-not-configured' }, 400);
+      const cfg = await loadBhashiniConfig(true);
+      return json({ callbackUrl: cfg.callbackUrl, services: cfg.services, hasInferenceKey: !!cfg.inferenceKey });
     }
-    const base64Audio = btoa(binaryString);
 
-    return new Response(
-      JSON.stringify({ 
-        audioContent: base64Audio, 
-        provider,
-        language,
-        contentType: 'audio/mp3'
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    const rateLimited = await checkRateLimit(req, 'text-to-speech', 60);
+    if (rateLimited) return rateLimited;
 
+    const { text, language } = body;
+    if (!text || typeof text !== 'string') return json({ error: 'text is required' }, 400);
+
+    const locale = typeof language === 'string' && language ? language : 'hi-IN';
+    const trimmed = text.slice(0, MAX_TEXT_LENGTH);
+
+    const vendors = configuredVendors();
+    if (vendors.length === 0) {
+      // Not an error: the app simply stays on device speech.
+      return json({ error: 'no-vendor-configured', available: [] }, 200);
+    }
+
+    let lastError = '';
+    for (const vendor of vendors) {
+      try {
+        const result =
+          vendor === 'bhashini'
+            ? await synthesiseBhashini(trimmed, locale)
+            : await synthesiseGoogle(trimmed, locale);
+        return json(result);
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+        console.error(`[text-to-speech] ${vendor} failed:`, lastError);
+      }
+    }
+
+    return json({ error: lastError || 'synthesis failed' }, 502);
   } catch (error) {
-    console.error('TTS Error:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'TTS failed' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    const message = error instanceof Error ? error.message : 'unknown error';
+    console.error('[text-to-speech]', message);
+    return json({ error: message }, 500);
   }
 });

@@ -19,9 +19,9 @@ Deno.test("generation refuses to persist an unresolved cultivation method", asyn
 });
 
 Deno.test("reconciler field-condition mutations are stamped and idempotent; dry run writes nothing", async () => {
-  const wx = await read("supabase/functions/schedule-reconciler/weather-adaptation.ts");
+  const wx = await read("supabase/functions/schedule-reconciler/decision-application.ts");
   const rec = await read("supabase/functions/schedule-reconciler/index.ts");
-  for (const stamp of ['stampedToday(task, "deferred_on")', 'stampedToday(next, "deferred_on")', 'stampedToday(task, "last_deferred_on")', "advanced_on: ws.metric_date", "deferred_on: ws.metric_date"]) {
+  for (const stamp of ['stampedToday(task, "deferred_on")', 'stampedToday(next, "deferred_on")', 'stampedToday(task, "last_deferred_on")', "advanced_on: decisionDay", "deferred_on: decisionDay"]) {
     assert(wx.includes(stamp), `missing idempotency stamp: ${stamp}`);
   }
   assert(wx.includes("if (input.dryRun) return true;"));

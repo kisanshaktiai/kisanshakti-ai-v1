@@ -28643,9 +28643,14 @@ export type Database = {
       schedule_monitoring: {
         Row: {
           alerts_generated: number | null
+          changes: Json
           check_date: string
           created_at: string | null
+          decision: Json | null
+          decisions_evaluated: Json
           disease_detected: boolean | null
+          engine: string | null
+          engine_versions: Json | null
           farmer_id: string
           health_score: number | null
           id: string
@@ -28654,17 +28659,27 @@ export type Database = {
           npk_levels: Json | null
           pest_detected: boolean | null
           refinements_applied: number | null
+          run_mode: string | null
           schedule_id: string
+          skipped_reason: string | null
           soil_moisture: number | null
           soil_ph: number | null
+          stage_code: string | null
+          stage_source: string | null
+          state_snapshot: Json | null
           tenant_id: string
           weather_conditions: Json | null
         }
         Insert: {
           alerts_generated?: number | null
+          changes?: Json
           check_date: string
           created_at?: string | null
+          decision?: Json | null
+          decisions_evaluated?: Json
           disease_detected?: boolean | null
+          engine?: string | null
+          engine_versions?: Json | null
           farmer_id: string
           health_score?: number | null
           id?: string
@@ -28673,17 +28688,27 @@ export type Database = {
           npk_levels?: Json | null
           pest_detected?: boolean | null
           refinements_applied?: number | null
+          run_mode?: string | null
           schedule_id: string
+          skipped_reason?: string | null
           soil_moisture?: number | null
           soil_ph?: number | null
+          stage_code?: string | null
+          stage_source?: string | null
+          state_snapshot?: Json | null
           tenant_id: string
           weather_conditions?: Json | null
         }
         Update: {
           alerts_generated?: number | null
+          changes?: Json
           check_date?: string
           created_at?: string | null
+          decision?: Json | null
+          decisions_evaluated?: Json
           disease_detected?: boolean | null
+          engine?: string | null
+          engine_versions?: Json | null
           farmer_id?: string
           health_score?: number | null
           id?: string
@@ -28692,9 +28717,14 @@ export type Database = {
           npk_levels?: Json | null
           pest_detected?: boolean | null
           refinements_applied?: number | null
+          run_mode?: string | null
           schedule_id?: string
+          skipped_reason?: string | null
           soil_moisture?: number | null
           soil_ph?: number | null
+          stage_code?: string | null
+          stage_source?: string | null
+          state_snapshot?: Json | null
           tenant_id?: string
           weather_conditions?: Json | null
         }
@@ -28715,6 +28745,9 @@ export type Database = {
           created_at: string | null
           currency: string | null
           days_from_sowing: number | null
+          decision_evaluated_at: string | null
+          decision_id: string | null
+          decision_state: string | null
           detailed_steps: Json | null
           duration_hours: number | null
           estimated_cost: number | null
@@ -28776,6 +28809,9 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           days_from_sowing?: number | null
+          decision_evaluated_at?: string | null
+          decision_id?: string | null
+          decision_state?: string | null
           detailed_steps?: Json | null
           duration_hours?: number | null
           estimated_cost?: number | null
@@ -28837,6 +28873,9 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           days_from_sowing?: number | null
+          decision_evaluated_at?: string | null
+          decision_id?: string | null
+          decision_state?: string | null
           detailed_steps?: Json | null
           duration_hours?: number | null
           estimated_cost?: number | null
@@ -28885,6 +28924,13 @@ export type Database = {
           yield_impact_details?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "schedule_tasks_decision_id_fkey"
+            columns: ["decision_id"]
+            isOneToOne: false
+            referencedRelation: "farm_decision"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "schedule_tasks_land_crop_id_fkey"
             columns: ["land_crop_id"]
@@ -41630,6 +41676,7 @@ export type Database = {
         Returns: number
       }
       get_super_admin_count: { Args: never; Returns: number }
+      get_sweep_key: { Args: { p_name: string }; Returns: string }
       get_tenant_api_costs: {
         Args: {
           p_end_date?: string

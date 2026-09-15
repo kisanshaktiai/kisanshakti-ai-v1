@@ -8,7 +8,19 @@ import { cn } from '@/lib/utils';
 interface AlertEvidenceSectionProps {
   triggerData: Record<string, any>;
   reasoning: string | null;
+  riskBand?: 'low' | 'moderate' | 'attention' | 'high' | 'critical';
+  /** Crop-health tint inherited from the parent alert card. */
+  toneSurface?: string;
+  toneBorder?: string;
 }
+
+const RISK_SOLUTION_SURFACE = {
+  low: 'border-success bg-success-soft text-foreground',
+  moderate: 'border-primary bg-primary/10 text-foreground',
+  attention: 'border-warning bg-warning-soft text-foreground',
+  high: 'border-destructive bg-destructive-soft text-foreground',
+  critical: 'border-destructive bg-destructive-soft text-foreground',
+} as const;
 
 // All labels are trilingual — no hardcoded sentences
 const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; mr: string; hi: string }> = {
@@ -57,9 +69,9 @@ const SECTION_HEADERS: Record<string, { mr: string; hi: string; en: string }> = 
 };
 
 const URGENCY_LABELS: Record<string, { en: string; mr: string; hi: string; color: string }> = {
-  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-destructive text-white' },
-  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-warning text-white' },
-  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-warning text-white' },
+  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-destructive text-destructive-foreground' },
+  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-warning text-warning-foreground' },
+  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-warning text-warning-foreground' },
 };
 
 function getLabel(key: string, lang: string): string {
@@ -89,7 +101,7 @@ function getSolutionSteps(solution: any, lang: string): string[] {
 }
 
 export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSectionProps>(
-  function AlertEvidenceSection({ triggerData, reasoning }, ref) {
+  function AlertEvidenceSection({ triggerData, reasoning, riskBand = 'moderate', toneSurface, toneBorder }, ref) {
   const { i18n } = useTranslation();
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const lang = i18n.language || 'en';
@@ -111,11 +123,14 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
   const expectedBenefit = getSolutionField(solution, 'expected_benefit', lang);
   const followup = getSolutionField(solution, 'followup', lang);
 
-  const sectionTitle = (icon: React.ReactNode, headerKey: string) => {
+  const sectionTitle = (icon: React.ReactNode, headerKey: string, inverse = false) => {
     return (
       <div className="flex items-center gap-1.5 mb-1">
         {icon}
-        <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wide">{getHeader(headerKey, lang)}</span>
+        <span className={cn(
+          'text-sm font-extrabold uppercase',
+          inverse ? 'text-current' : 'text-foreground',
+        )}>{getHeader(headerKey, lang)}</span>
       </div>
     );
   };
@@ -124,19 +139,25 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
     <div ref={ref} className="mt-3 space-y-2">
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
-        <div className="rounded-xl border border-success/30 dark:border-success bg-gradient-to-br from-success to-success dark:from-success/30 dark:to-success/20 p-3 space-y-3">
+        <div
+          style={toneSurface ? { backgroundColor: toneSurface, borderColor: toneBorder } : undefined}
+          className={cn(
+            'rounded-xl border p-3 space-y-4 shadow-sm',
+            toneSurface ? 'text-foreground' : RISK_SOLUTION_SURFACE[riskBand],
+          )}
+        >
           {(problem || cause) && (
             <div className="space-y-1.5">
               {problem && (
                 <div>
-                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-warning" />, 'problem')}
-                  <p className="text-xs text-foreground/80 leading-relaxed">{problem}</p>
+                  {sectionTitle(<AlertTriangle className="h-3 w-3" />, 'problem', true)}
+                  <p className="text-sm font-semibold text-current leading-relaxed">{problem}</p>
                 </div>
               )}
               {cause && (
                 <div>
-                  {sectionTitle(<Lightbulb className="h-3 w-3 text-warning" />, 'cause')}
-                  <p className="text-xs text-foreground/70 leading-relaxed">{cause}</p>
+                  {sectionTitle(<Lightbulb className="h-3 w-3" />, 'cause', true)}
+                  <p className="text-sm font-semibold text-current leading-relaxed">{cause}</p>
                 </div>
               )}
             </div>
@@ -144,14 +165,14 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
 
           {steps.length > 0 && (
             <div>
-              {sectionTitle(<Target className="h-3 w-3 text-primary" />, 'steps')}
-              <div className="space-y-1.5">
+              {sectionTitle(<Target className="h-3 w-3" />, 'steps', true)}
+              <div className="space-y-2">
                 {steps.map((step, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs">
-                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold mt-0.5">
+                  <div key={i} className="flex items-start gap-3 text-base font-semibold leading-relaxed">
+                    <span className="shrink-0 w-7 h-7 rounded-full bg-background text-foreground flex items-center justify-center text-sm font-extrabold mt-0.5">
                       {i + 1}
                     </span>
-                    <p className="text-foreground/80 leading-relaxed">{step}</p>
+                    <p className="text-current leading-relaxed">{step}</p>
                   </div>
                 ))}
               </div>
@@ -159,31 +180,31 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
           )}
 
           {safety && (
-            <div className="bg-destructive-soft dark:bg-destructive/20 border border-destructive/30 dark:border-destructive rounded-lg p-2">
+            <div className="bg-background text-foreground border border-border rounded-lg p-2">
               {sectionTitle(<Shield className="h-3 w-3 text-destructive" />, 'safety')}
-              <p className="text-[11px] text-destructive dark:text-destructive leading-relaxed">{safety}</p>
+              <p className="text-sm font-semibold text-foreground leading-relaxed">{safety}</p>
             </div>
           )}
 
           {organicAlt && (
-            <div className="bg-success-soft dark:bg-success/20 border border-success/30 dark:border-success rounded-lg p-2">
+            <div className="bg-background text-foreground border border-border rounded-lg p-2">
               {sectionTitle(<Leaf className="h-3 w-3 text-success" />, 'organic_alt')}
-              <p className="text-[11px] text-success dark:text-success leading-relaxed">{organicAlt}</p>
+              <p className="text-sm font-semibold text-foreground leading-relaxed">{organicAlt}</p>
             </div>
           )}
 
           {(expectedBenefit || followup) && (
-            <div className="flex gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {expectedBenefit && (
-                <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
+                <div className="flex-1 bg-background text-foreground rounded-lg p-2">
                   {sectionTitle(<CheckCircle2 className="h-3 w-3 text-success" />, 'expected_benefit')}
-                  <p className="text-[10px] text-foreground/70 leading-relaxed">{expectedBenefit}</p>
+                  <p className="text-sm font-semibold text-foreground leading-relaxed">{expectedBenefit}</p>
                 </div>
               )}
               {followup && (
-                <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
+                <div className="flex-1 bg-background text-foreground rounded-lg p-2">
                   {sectionTitle(<Clock className="h-3 w-3 text-info" />, 'followup')}
-                  <p className="text-[10px] text-foreground/70 leading-relaxed">{followup}</p>
+                  <p className="text-sm font-semibold text-foreground leading-relaxed">{followup}</p>
                 </div>
               )}
             </div>
@@ -193,52 +214,52 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
 
       {/* === IRRIGATION CARD === */}
       {irrigation && (
-        <div className="rounded-lg border border-info/30 bg-info-soft dark:bg-info/30 dark:border-info p-3 space-y-2">
+        <div className="rounded-lg border-2 border-info bg-background p-3 space-y-3 text-foreground">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-info-soft dark:bg-info flex items-center justify-center">
               <Droplets className="h-4 w-4 text-info" />
             </div>
             <div className="flex-1">
-              <p className="text-xs font-semibold text-info dark:text-info">
+              <p className="text-base font-extrabold text-foreground">
                 💧 {getHeader('irrigation', lang)}
               </p>
               {irrigation.urgency && (
-                <Badge className={cn('text-[9px] px-1.5 py-0 mt-0.5', URGENCY_LABELS[irrigation.urgency]?.color || 'bg-muted')}>
+                <Badge className={cn('mt-1 px-2 py-0.5 text-xs font-bold', URGENCY_LABELS[irrigation.urgency]?.color || 'bg-muted text-foreground')}>
                   {URGENCY_LABELS[irrigation.urgency]?.[lang as keyof typeof URGENCY_LABELS['IMMEDIATE']] || irrigation.urgency}
                 </Badge>
               )}
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">{getHeader('total_water', lang)}</p>
-              <p className="font-bold text-info dark:text-info text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded border border-border bg-card px-2 py-2">
+              <p className="text-xs font-bold text-foreground">{getHeader('total_water', lang)}</p>
+              <p className="text-base font-extrabold text-foreground">
                 {Number(irrigation.water_liters_total).toLocaleString()} L
               </p>
             </div>
-            <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">{getHeader('per_acre', lang)}</p>
-              <p className="font-bold text-info dark:text-info text-sm">
+            <div className="rounded border border-border bg-card px-2 py-2">
+              <p className="text-xs font-bold text-foreground">{getHeader('per_acre', lang)}</p>
+              <p className="text-base font-extrabold text-foreground">
                 {Number(irrigation.water_liters_per_acre).toLocaleString()} L
               </p>
             </div>
-            <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">{getHeader('duration', lang)}</p>
-              <p className="font-bold text-info dark:text-info text-sm">
+            <div className="rounded border border-border bg-card px-2 py-2">
+              <p className="text-xs font-bold text-foreground">{getHeader('duration', lang)}</p>
+              <p className="text-base font-extrabold text-foreground">
                 {irrigation.duration_hours} {getHeader('hours', lang)}
               </p>
             </div>
-            <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">{getHeader('method', lang)}</p>
-              <p className="font-bold text-info dark:text-info text-sm">
+            <div className="rounded border border-border bg-card px-2 py-2">
+              <p className="text-xs font-bold text-foreground">{getHeader('method', lang)}</p>
+              <p className="text-base font-extrabold text-foreground">
                 {irrigation.method}
               </p>
             </div>
           </div>
           
           {irrigation.timing && (
-            <p className="text-[10px] text-info/70 dark:text-info/70 italic">
+            <p className="text-sm font-semibold text-foreground">
               ⏰ {irrigation.timing}
             </p>
           )}
@@ -248,15 +269,15 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
       {/* === EVIDENCE COLLAPSIBLE === */}
       {(displayKeys.length > 0 || reasoning) && (
         <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
-          <CollapsibleTrigger className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-            <Eye className="h-3 w-3" />
+          <CollapsibleTrigger className="flex min-h-11 items-center gap-2 text-sm font-bold text-foreground transition-colors">
+            <Eye className="h-4 w-4" />
             <span>{getHeader('evidence', lang)}</span>
-            <ChevronDown className={`h-3 w-3 transition-transform ${isEvidenceOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`h-4 w-4 transition-transform ${isEvidenceOpen ? 'rotate-180' : ''}`} />
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2">
-            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs">
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2 text-sm">
               {reasoning && (
-                <p className="text-foreground/70 italic mb-2">{reasoning}</p>
+                <p className="font-semibold text-foreground mb-2">{reasoning}</p>
               )}
               {displayKeys.map(key => {
                 const config = EVIDENCE_LABELS[key];
@@ -265,17 +286,17 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
                 const displayValue = typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(2)) : String(value);
                 return (
                   <div key={key} className="flex items-center justify-between">
-                    <span className="text-muted-foreground">
+                    <span className="font-semibold text-foreground">
                       {config?.icon || '📊'} {getLabel(key, lang)}
                     </span>
-                    <span className="font-medium text-foreground">
+                    <span className="font-extrabold text-foreground">
                       {displayValue}{config?.unit || ''}
                     </span>
                   </div>
                 );
               })}
               {triggerData.knowledge && (
-                <p className="text-foreground/60 text-[10px] mt-2 pt-2 border-t border-border/30">
+                <p className="text-sm font-semibold text-foreground mt-2 pt-2 border-t border-border">
                   📚 {triggerData.knowledge}
                 </p>
               )}

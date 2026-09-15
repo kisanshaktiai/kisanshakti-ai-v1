@@ -5,6 +5,7 @@ import { Flag, Check, Clock, RotateCcw, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 interface TaskCompletionSectionProps {
   taskId: string;
@@ -23,6 +24,7 @@ export function TaskCompletionSection({
   onUnmark,
   isCompacting = false 
 }: TaskCompletionSectionProps) {
+  const { t } = useTranslation();
   const [isCompleting, setIsCompleting] = React.useState(false);
   const [optimisticStatus, setOptimisticStatus] = React.useState(status);
   const isCompleted = optimisticStatus === 'completed';
@@ -83,7 +85,7 @@ export function TaskCompletionSection({
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.3 }}
-      className="mt-4 pt-4 border-t border-border/50"
+      className="mt-4 border-t-2 border-border pt-4"
     >
       <div className="space-y-3">
         {/* Status Line */}
@@ -94,9 +96,9 @@ export function TaskCompletionSection({
         >
           {isPending ? (
             <>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">
-                Mark as done when completed
+              <Clock className="h-4 w-4 text-foreground" />
+              <span className="text-sm font-bold text-foreground">
+                {t('schedule.completion.mark_when_finished')}
               </span>
             </>
           ) : isCompleted ? (
@@ -109,12 +111,12 @@ export function TaskCompletionSection({
                 <Check className="h-4 w-4 text-success" />
               </motion.div>
               <span className="text-sm font-medium text-success">
-                Completed on {completedAt ? format(new Date(completedAt), 'dd MMM, h:mm a') : 'just now'}
+                {t('schedule.completion.completed_on', { date: completedAt ? format(new Date(completedAt), 'dd MMM, h:mm a') : t('schedule.completion.just_now') })}
               </span>
             </>
           ) : (
             <span className="text-sm font-medium text-muted-foreground">
-              Status: {optimisticStatus}
+              {t('schedule.completion.status', { status: optimisticStatus })}
             </span>
           )}
         </motion.div>
@@ -123,9 +125,9 @@ export function TaskCompletionSection({
         {isCompleted ? (
           <div className="space-y-2">
             {/* Completed Badge */}
-            <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2 font-medium w-fit">
+            <Badge className="w-fit gap-2 border-success bg-success px-3 py-2 font-medium text-success-foreground">
               <Flag className="h-4 w-4 fill-current" />
-              <span className="text-sm">Completed</span>
+               <span className="text-sm">{t('schedule.completion.completed')}</span>
             </Badge>
             
             {/* Unmark Button - Full width and prominent */}
@@ -135,17 +137,17 @@ export function TaskCompletionSection({
               size="sm"
               onClick={handleUnmark}
               disabled={isCompleting || !onUnmark}
-              className="w-full gap-2 pointer-events-auto bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive border-border hover:border-destructive transition-all duration-200"
+              className="min-h-12 w-full gap-2 border-2 border-border bg-card text-card-foreground pointer-events-auto"
             >
               {isCompleting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm font-medium">Undoing...</span>
+                  <span className="text-sm font-bold">{t('schedule.completion.undoing')}</span>
                 </>
               ) : (
                 <>
                   <RotateCcw className="h-4 w-4" />
-                  <span className="text-sm font-medium">Unmark as Done</span>
+                  <span className="text-sm font-bold">{t('schedule.completion.unmark')}</span>
                 </>
               )}
             </Button>
@@ -158,11 +160,10 @@ export function TaskCompletionSection({
           >
             <Button
               type="button"
-              variant="outline"
-              size="sm"
+              variant="default"
               onClick={handleComplete}
               disabled={isCompleting}
-              className="w-full gap-2 transition-all duration-300 pointer-events-auto border-primary/30 hover:bg-primary/5 hover:border-primary text-foreground hover:text-primary"
+              className="min-h-14 w-full gap-2 border-2 border-primary bg-primary text-base font-extrabold text-primary-foreground pointer-events-auto"
             >
               {isCompleting ? (
                 <>
@@ -172,12 +173,12 @@ export function TaskCompletionSection({
                   >
                     <Clock className="h-4 w-4" />
                   </motion.div>
-                  <span className="text-sm font-medium">Syncing...</span>
+                   <span className="text-sm font-bold">{t('schedule.completion.syncing')}</span>
                 </>
               ) : (
                 <>
                   <Flag className="h-4 w-4" />
-                  <span className="text-sm font-medium">Mark Done</span>
+                   <span className="text-base font-extrabold">{t('schedule.completion.mark_done')}</span>
                 </>
               )}
             </Button>
@@ -188,9 +189,9 @@ export function TaskCompletionSection({
       {/* Additional Status Badge */}
       {isCompleted && !isCompacting && (
         <div className="mt-3 flex items-center gap-2">
-          <Badge className="bg-success/10 text-success border-success/20 font-medium">
+          <Badge className="border-success bg-success font-medium text-success-foreground">
             <Check className="h-3 w-3 mr-1" />
-            <span className="text-xs">Task Completed</span>
+            <span className="text-xs">{t('schedule.completion.task_completed')}</span>
           </Badge>
         </div>
       )}

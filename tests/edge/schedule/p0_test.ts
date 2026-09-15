@@ -48,10 +48,10 @@ function makeSupabase() {
     api.select = chain;
     api.order = chain;
     api.limit = chain;
-    api.eq = (col: string, val: unknown) => {
-      filters.push((r) => r[col] === val);
-      return api;
-    };
+    // Governance columns (is_safety_block / is_farmer_servable) postdate these fixtures: a column the
+    // fixture never set passes through, so the mock mirrors PostgREST only for columns that exist.
+    api.eq = (col: string, val: unknown) => { filters.push((r) => !(col in r) || r[col] === val); return api; };
+    api.neq = (col: string, val: unknown) => { filters.push((r) => !(col in r) || r[col] !== val); return api; };
     api.ilike = (col: string, val: string) => {
       filters.push((r) => String(r[col] ?? "").toLowerCase() === String(val).toLowerCase());
       return api;
