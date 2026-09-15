@@ -14,7 +14,7 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { checkRateLimit } from '../_shared/rateGuard.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
 
 // Bhashini (Digital India Bhashini Division). Contract per the official docs at
 // dibd-bhashini.gitbook.io/bhashini-apis: a Pipeline Config call, then a
@@ -31,6 +31,7 @@ const BHASHINI_PIPELINE_ID = Deno.env.get('BHASHINI_PIPELINE_ID');
 const BHASHINI_INFERENCE_KEY = Deno.env.get('BHASHINI_INFERENCE_KEY');
 const BHASHINI_CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
 const GOOGLE_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
 const MAX_TEXT_LENGTH = 5000;
 
@@ -102,6 +103,7 @@ function configuredVendors(): string[] {
   const vendors: string[] = [];
   if (BHASHINI_API_KEY && BHASHINI_USER_ID && BHASHINI_PIPELINE_ID) vendors.push('bhashini');
   if (GOOGLE_API_KEY) vendors.push('google');
+  if (LOVABLE_API_KEY) vendors.push('lovable');
   return vendors;
 }
 
@@ -258,6 +260,37 @@ async function synthesiseGoogle(text: string, locale: string) {
   };
 }
 
+/**
+ * Last-resort natural voice. This is the tier the app was using before Bhashini
+ * was wired in, so it must stay: it is what keeps the reading human-sounding
+ * when Bhashini has no service for the language and Google is unavailable.
+ */
+async function synthesiseLovable(text: string, locale: string) {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/audio/speech', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'openai/gpt-4o-mini-tts',
+      input: text,
+      voice: 'alloy',
+      response_format: 'mp3',
+      instructions: `Speak naturally and warmly in ${locale}, at an unhurried pace, as a helpful rural agriculture advisor talking to a farmer.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Lovable AI ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+
+  return { audioContent: btoa(binary), mimeType: 'audio/mpeg', vendor: 'lovable', tier: 'gpt-4o-mini-tts' };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -275,7 +308,10 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error('[text-to-speech] Bhashini config failed:', e);
         }
-      } else if (available[0] === 'google') {
+      }
+      // Never report an empty language list while another vendor can still
+      // speak: the app would wrongly conclude no cloud voice exists.
+      if (languages.length === 0 && (available.includes('google') || available.includes('lovable'))) {
         languages = Object.keys(GOOGLE_VOICES);
       }
       return json({ available, languages });
@@ -288,7 +324,7 @@ Deno.serve(async (req) => {
       return json({ callbackUrl: cfg.callbackUrl, services: cfg.services, hasInferenceKey: !!cfg.inferenceKey });
     }
 
-    const rateLimited = await checkRateLimit(req, 'text-to-speech', 60);
+    const rateLimited = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60 });
     if (rateLimited) return rateLimited;
 
     const { text, language } = body;
@@ -309,7 +345,9 @@ Deno.serve(async (req) => {
         const result =
           vendor === 'bhashini'
             ? await synthesiseBhashini(trimmed, locale)
-            : await synthesiseGoogle(trimmed, locale);
+            : vendor === 'google'
+              ? await synthesiseGoogle(trimmed, locale)
+              : await synthesiseLovable(trimmed, locale);
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
