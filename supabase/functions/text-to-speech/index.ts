@@ -342,11 +342,14 @@ Deno.serve(async (req) => {
     if (action === 'status') {
       const available = configuredVendors();
       let languages: string[] = [];
-      if (available[0] === 'bhashini') {
+      // Only ask Bhashini when it is not cooling down; a failing config call
+      // here delayed the very first tap on the speaker icon.
+      if (available[0] === 'bhashini' && usableVendors().includes('bhashini')) {
         try {
           const cfg = await loadBhashiniConfig();
           languages = Object.keys(cfg.services).map((l) => `${l}-IN`);
         } catch (e) {
+          coolDown('bhashini');
           console.error('[text-to-speech] Bhashini config failed:', e);
         }
       }
