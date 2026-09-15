@@ -14,7 +14,7 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { checkRateLimit } from '../_shared/rateGuard.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
 
 // Bhashini (Digital India Bhashini Division). Contract per the official docs at
 // dibd-bhashini.gitbook.io/bhashini-apis: a Pipeline Config call, then a
@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
       return json({ callbackUrl: cfg.callbackUrl, services: cfg.services, hasInferenceKey: !!cfg.inferenceKey });
     }
 
-    const rateLimited = await checkRateLimit(req, 'text-to-speech', 60);
+    const rateLimited = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60 });
     if (rateLimited) return rateLimited;
 
     const { text, language } = body;
