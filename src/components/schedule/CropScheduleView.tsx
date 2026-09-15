@@ -82,6 +82,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   // Indian-script text with an English voice.
   const { speak, stop, isSpeaking, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: i18n.language });
+
+  // Warm the natural-voice check when the screen opens, so the speaker icon
+  // starts speaking immediately.
+  useEffect(() => { cloudProvider.warmUp(); }, []);
+
+
   
   // Land stage SSOT (lands.stage_uuid) — read-only; tasks never compute their own stage
   const { stage: landStage, phaseOfTask, hasStageDisagreement } = useLandStage(landId);
