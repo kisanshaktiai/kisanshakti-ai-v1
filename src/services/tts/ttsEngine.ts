@@ -175,10 +175,11 @@ class TTSEngine {
     let isFallback = false;
     let locale = toLocale(language);
 
-    // The handset speaks first whenever it genuinely has the farmer's language:
-    // free, offline and instant. Cloud is the natural-sounding tier, used when
-    // the farmer asks for it or when the device simply cannot speak the language.
-    const preferCloud = cloudAvailable && (mode === 'high_quality' || !deviceLocale);
+    // Natural voice first. The handset's built-in voice is robotic in Indian
+    // languages, so whenever a cloud vendor is configured and the farmer is
+    // online, the natural voice reads. Offline, data_saver, offline_first or a
+    // backend with no vendor keeps everything on the handset exactly as before.
+    const preferCloud = cloudAvailable;
 
     if (preferCloud) {
       source = 'cloud';
