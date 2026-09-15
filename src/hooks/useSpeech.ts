@@ -1,14 +1,14 @@
 /**
  * useSpeech — the one Read Aloud hook.
  *
- * Every screen should use this. The older hooks (useTextToSpeech,
- * useAdvancedTextToSpeech, useTTS, useEnhancedTTS, useCommunityTTS,
- * useTTSFacade) are now thin wrappers over this one so that existing call
- * sites keep working while there is a single implementation underneath.
+ * Every screen should use this. All playback routes through ttsEngine, which is
+ * the single speech orchestration point for device/cloud selection, language,
+ * preparation, settings, pause/resume and voice installation.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ttsEngine, type SpeechSource, type QualityMode } from '@/services/tts/ttsEngine';
+import { useTTSSettingsStore } from '@/stores/ttsSettingsStore';
 
 export interface UseSpeechOptions {
   language?: string;
@@ -16,9 +16,7 @@ export interface UseSpeechOptions {
   pitch?: number;
   volume?: number;
   allowCloud?: boolean;
-  /** Defaults to 'auto': best voice available right now. */
   quality?: QualityMode;
-  /** Default false: a Hindi voice reading Marathi is not Marathi speech. */
   allowCrossLanguageVoice?: boolean;
   onStart?: () => void;
   onEnd?: () => void;
@@ -27,6 +25,12 @@ export interface UseSpeechOptions {
 
 export function useSpeech(options: UseSpeechOptions = {}) {
   const { language = 'hi', rate, pitch, volume, allowCloud, quality, allowCrossLanguageVoice, onStart, onEnd, onError } = options;
+  const settingsRate = useTTSSettingsStore((state) => state.rate);
+  const settingsPitch = useTTSSettingsStore((state) => state.pitch);
+  const settingsVolume = useTTSSettingsStore((state) => state.volume);
+  const effectiveRate = rate ?? settingsRate;
+  const effectivePitch = pitch ?? settingsPitch;
+  const effectiveVolume = volume ?? settingsVolume;
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,7 +67,6 @@ export function useSpeech(options: UseSpeechOptions = {}) {
   const speak = useCallback(
     async (text: string, languageOverride?: string) => {
       const lang = languageOverride || language;
-
       setError(null);
       setVoiceUnavailable(false);
       setIsFallback(false);
@@ -73,7 +76,7 @@ export function useSpeech(options: UseSpeechOptions = {}) {
       const result = await ttsEngine.speak(
         text,
         lang,
-        { rate, pitch, volume, allowCloud, quality, allowCrossLanguageVoice },
+        { rate: effectiveRate, pitch: effectivePitch, volume: effectiveVolume, allowCloud, quality, allowCrossLanguageVoice },
         {
           onStart: (src) => {
             if (!mounted.current) return;
@@ -106,16 +109,14 @@ export function useSpeech(options: UseSpeechOptions = {}) {
       );
 
       if (!mounted.current) return result;
-
       setIsLoading(false);
       setIsFallback(result.isFallback);
       setSpokenLocale(result.locale ?? null);
       if (result.voiceUnavailable) setVoiceUnavailable(true);
       if (!result.success) setIsSpeaking(false);
-
       return result;
     },
-    [language, rate, pitch, volume, allowCloud, quality, allowCrossLanguageVoice, onEnd, onError, reset]
+    [language, effectiveRate, effectivePitch, effectiveVolume, allowCloud, quality, allowCrossLanguageVoice, onStart, onEnd, onError, reset]
   );
 
   const stop = useCallback(() => {
