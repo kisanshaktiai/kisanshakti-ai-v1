@@ -14,9 +14,6 @@ export interface TTSConfig {
 
 export function useTTS(options: UseSpeechOptions = {}) {
   const currentLanguage = useLanguageStore((state) => state.currentLanguage);
-
-  // Read the farmer's saved speech settings so the Profile settings panel keeps
-  // controlling playback. Caller-supplied options take precedence.
   const rate = options.rate ?? useTTSSettingsStore((state) => state.rate);
   const pitch = options.pitch ?? useTTSSettingsStore((state) => state.pitch);
   const volume = options.volume ?? useTTSSettingsStore((state) => state.volume);
@@ -25,9 +22,9 @@ export function useTTS(options: UseSpeechOptions = {}) {
 
   const s = useSpeech({
     language: options.language ?? currentLanguage,
-    rate,
-    pitch,
-    volume,
+    rate: options.rate,
+    pitch: options.pitch,
+    volume: options.volume,
     allowCloud: options.allowCloud,
     quality: options.quality,
     allowCrossLanguageVoice: options.allowCrossLanguageVoice,
