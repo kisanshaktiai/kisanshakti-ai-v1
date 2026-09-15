@@ -5,13 +5,14 @@ import { corsHeaders } from '../_shared/cors.ts';
 /**
  * Farmer TTS gateway.
  *
- * Provider policy:
- *   1. Bhashini — primary Indian-language neural TTS when configured.
- *   2. Google — exact-language fallback only (never another language's voice).
- *   3. OpenAI — English fallback only; never used to fake an Indic language.
+ * Policy:
+ *   1. Bhashini — primary Indian-language neural TTS, FEMALE voice preferred.
+ *   2. Google — exact-language fallback only.
+ *   3. OpenAI — English fallback only.
  *
- * Bhashini credentials stay server-side. The mobile/web client sends only
- * { text, language } using ISO-639 language codes (mr, hi, ta ...).
+ * Bhashini credentials stay server-side. The client sends only text + ISO-639
+ * language code. Bhashini's documented TTS config exposes supportedVoices and
+ * accepts gender in the TTS compute configuration.
  */
 
 const BHASHINI_CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
@@ -23,7 +24,7 @@ interface BhashiniConfig {
   authName: string;
   authValue: string;
   serviceId: string;
-  gender?: 'male' | 'female';
+  gender: 'female';
   expiresAt: number;
 }
 
@@ -36,8 +37,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
 
 function canonicalLanguage(language: unknown): string | null {
   if (typeof language !== 'string') return null;
-  const base = language.trim().toLowerCase().split('-')[0];
-  return LANGUAGE_ALIASES[base] || null;
+  return LANGUAGE_ALIASES[language.trim().toLowerCase().split('-')[0]] || null;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -58,23 +58,19 @@ serve(async (req) => {
 
     if (!text) return jsonResponse({ error: 'No text provided' }, 400);
     if (!language) return jsonResponse({ error: 'Unsupported or missing language' }, 400);
-    if (text.length > MAX_TEXT_CHARS) {
-      return jsonResponse({ error: `Text exceeds ${MAX_TEXT_CHARS} characters` }, 413);
-    }
+    if (text.length > MAX_TEXT_CHARS) return jsonResponse({ error: `Text exceeds ${MAX_TEXT_CHARS} characters` }, 413);
 
-    // Primary: Bhashini. It is intentionally exact-language only.
     const bhashini = await bhashiniTTS(text, language);
     if (bhashini) {
       return jsonResponse({
         audioContent: bhashini.audioContent,
         mimeType: 'audio/wav',
         provider: 'bhashini',
+        voiceGender: 'female',
         language,
       });
     }
 
-    // Exact-language Google fallback. If there is no exact voice mapping, do
-    // not fall back to Hindi/English; native mobile TTS will handle offline.
     const googleKey = Deno.env.get('GOOGLE_AI_API_KEY');
     if (googleKey) {
       try {
@@ -85,8 +81,6 @@ serve(async (req) => {
       }
     }
 
-    // OpenAI is deliberately restricted to English. Never use a generic voice
-    // to pronounce Marathi/Tamil/etc. because that produces misleading speech.
     if (language === 'en') {
       const openAiKey = Deno.env.get('OPENAI_API_KEY');
       if (openAiKey) {
@@ -117,15 +111,9 @@ async function getBhashiniConfig(language: string): Promise<BhashiniConfig | nul
 
   const response = await fetch(BHASHINI_CONFIG_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      userID: userId,
-      ulcaApiKey: apiKey,
-    },
+    headers: { 'Content-Type': 'application/json', userID: userId, ulcaApiKey: apiKey },
     body: JSON.stringify({
-      pipelineTasks: [
-        { taskType: 'tts', config: { language: { sourceLanguage: language } } },
-      ],
+      pipelineTasks: [{ taskType: 'tts', config: { language: { sourceLanguage: language } } }],
       pipelineRequestConfig: { pipelineId },
     }),
   });
@@ -138,25 +126,25 @@ async function getBhashiniConfig(language: string): Promise<BhashiniConfig | nul
   const data = await response.json();
   const endpoint = data?.pipelineInferenceAPIEndPoint;
   const configs = data?.pipelineResponseConfig?.find((x: any) => x?.taskType === 'tts')?.config || [];
-  const languageConfig = configs.find((x: any) => x?.language?.sourceLanguage === language);
-  if (!endpoint?.callbackUrl || !endpoint?.inferenceApiKey?.name || !endpoint?.inferenceApiKey?.value || !languageConfig?.serviceId) {
-    throw new Error(`Bhashini has no exact TTS service for ${language}`);
-  }
 
-  const requestedGender = Deno.env.get('BHASHINI_TTS_GENDER')?.toLowerCase();
-  const supportedVoices = Array.isArray(languageConfig.supportedVoices) ? languageConfig.supportedVoices : [];
-  const gender = requestedGender === 'male' || requestedGender === 'female'
-    ? (supportedVoices.includes(requestedGender) ? requestedGender : undefined)
-    : (supportedVoices.includes('female') ? 'female' : supportedVoices.includes('male') ? 'male' : undefined);
+  // Bhashini documents supportedVoices as a per-service list such as
+  // ['male','female']. Choose a service that actually supports female rather
+  // than selecting the first service and merely asking it for female.
+  const languageConfigs = configs.filter((x: any) => x?.language?.sourceLanguage === language);
+  const languageConfig = languageConfigs.find((x: any) =>
+    Array.isArray(x?.supportedVoices) && x.supportedVoices.includes('female')
+  );
+
+  if (!endpoint?.callbackUrl || !endpoint?.inferenceApiKey?.name || !endpoint?.inferenceApiKey?.value || !languageConfig?.serviceId) {
+    throw new Error(`Bhashini has no exact-language FEMALE TTS service for ${language}`);
+  }
 
   const result: BhashiniConfig = {
     callbackUrl: endpoint.callbackUrl,
     authName: endpoint.inferenceApiKey.name,
     authValue: endpoint.inferenceApiKey.value,
     serviceId: languageConfig.serviceId,
-    gender,
-    // Refresh well before a platform-side credential expires; the config is
-    // dynamically allocated by Bhashini, so never persist it permanently.
+    gender: 'female',
     expiresAt: Date.now() + 15 * 60 * 1000,
   };
   configCache.set(language, result);
@@ -168,24 +156,20 @@ async function bhashiniTTS(text: string, language: string): Promise<{ audioConte
     const config = await getBhashiniConfig(language);
     if (!config) return null;
 
-    const ttsConfig: Record<string, unknown> = {
-      language: { sourceLanguage: language },
-      serviceId: config.serviceId,
-    };
-    if (config.gender) ttsConfig.gender = config.gender;
-
     const response = await fetch(config.callbackUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        [config.authName]: config.authValue,
-      },
+      headers: { 'Content-Type': 'application/json', [config.authName]: config.authValue },
       body: JSON.stringify({
-        pipelineTasks: [{ taskType: 'tts', config: ttsConfig }],
-        inputData: {
-          input: [{ source: text }],
-          audio: [{ audioContent: null }],
-        },
+        pipelineTasks: [{
+          taskType: 'tts',
+          config: {
+            language: { sourceLanguage: language },
+            serviceId: config.serviceId,
+            gender: config.gender,
+            samplingRate: 22050,
+          },
+        }],
+        inputData: { input: [{ source: text }] },
       }),
     });
 
@@ -206,28 +190,22 @@ async function bhashiniTTS(text: string, language: string): Promise<{ audioConte
 
 async function googleTTS(text: string, language: string, apiKey: string): Promise<string | null> {
   const voiceMap: Record<string, { languageCode: string; name: string }> = {
-    'hi': { languageCode: 'hi-IN', name: 'hi-IN-Wavenet-D' },
-    'en': { languageCode: 'en-IN', name: 'en-IN-Wavenet-D' },
-    'mr': { languageCode: 'mr-IN', name: 'mr-IN-Wavenet-A' },
-    'ta': { languageCode: 'ta-IN', name: 'ta-IN-Wavenet-D' },
-    'te': { languageCode: 'te-IN', name: 'te-IN-Standard-A' },
-    'kn': { languageCode: 'kn-IN', name: 'kn-IN-Wavenet-A' },
-    'ml': { languageCode: 'ml-IN', name: 'ml-IN-Wavenet-A' },
-    'gu': { languageCode: 'gu-IN', name: 'gu-IN-Wavenet-A' },
-    'bn': { languageCode: 'bn-IN', name: 'bn-IN-Wavenet-A' },
-    'pa': { languageCode: 'pa-IN', name: 'pa-IN-Wavenet-A' },
+    hi: { languageCode: 'hi-IN', name: 'hi-IN-Wavenet-D' },
+    en: { languageCode: 'en-IN', name: 'en-IN-Wavenet-D' },
+    mr: { languageCode: 'mr-IN', name: 'mr-IN-Wavenet-A' },
+    ta: { languageCode: 'ta-IN', name: 'ta-IN-Wavenet-D' },
+    te: { languageCode: 'te-IN', name: 'te-IN-Standard-A' },
+    kn: { languageCode: 'kn-IN', name: 'kn-IN-Wavenet-A' },
+    ml: { languageCode: 'ml-IN', name: 'ml-IN-Wavenet-A' },
+    gu: { languageCode: 'gu-IN', name: 'gu-IN-Wavenet-A' },
+    bn: { languageCode: 'bn-IN', name: 'bn-IN-Wavenet-A' },
+    pa: { languageCode: 'pa-IN', name: 'pa-IN-Wavenet-A' },
   };
   const voice = voiceMap[language];
   if (!voice) return null;
-
   const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      input: { text },
-      voice: { languageCode: voice.languageCode, name: voice.name },
-      audioConfig: { audioEncoding: 'MP3', speakingRate: 0.94, pitch: 0 },
-    }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: { text }, voice, audioConfig: { audioEncoding: 'MP3', speakingRate: 0.88, pitch: 1.0 } }),
   });
   if (!response.ok) throw new Error(`Google TTS error: ${response.status}`);
   const data = await response.json();
@@ -236,15 +214,8 @@ async function googleTTS(text: string, language: string, apiKey: string): Promis
 
 async function openaiTTS(text: string, apiKey: string): Promise<string | null> {
   const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'tts-1',
-      input: text.slice(0, 4000),
-      voice: 'nova',
-      response_format: 'mp3',
-      speed: 0.94,
-    }),
+    method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'tts-1', input: text.slice(0, 4000), voice: 'nova', response_format: 'mp3', speed: 0.88 }),
   });
   if (!response.ok) throw new Error(`OpenAI TTS error: ${response.status}`);
   return base64Encode(await response.arrayBuffer());
