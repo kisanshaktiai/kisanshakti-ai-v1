@@ -31,6 +31,7 @@ const BHASHINI_PIPELINE_ID = Deno.env.get('BHASHINI_PIPELINE_ID');
 const BHASHINI_INFERENCE_KEY = Deno.env.get('BHASHINI_INFERENCE_KEY');
 const BHASHINI_CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
 const GOOGLE_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
 const MAX_TEXT_LENGTH = 5000;
 
@@ -256,6 +257,37 @@ async function synthesiseGoogle(text: string, locale: string) {
     vendor: 'google',
     tier: chirpVoice ? 'chirp3-hd' : 'wavenet',
   };
+}
+
+/**
+ * Last-resort natural voice. This is the tier the app was using before Bhashini
+ * was wired in, so it must stay: it is what keeps the reading human-sounding
+ * when Bhashini has no service for the language and Google is unavailable.
+ */
+async function synthesiseLovable(text: string, locale: string) {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/audio/speech', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'openai/gpt-4o-mini-tts',
+      input: text,
+      voice: 'alloy',
+      response_format: 'mp3',
+      instructions: `Speak naturally and warmly in ${locale}, at an unhurried pace, as a helpful rural agriculture advisor talking to a farmer.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Lovable AI ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+
+  return { audioContent: btoa(binary), mimeType: 'audio/mpeg', vendor: 'lovable', tier: 'gpt-4o-mini-tts' };
 }
 
 Deno.serve(async (req) => {
