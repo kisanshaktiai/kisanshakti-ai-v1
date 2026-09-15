@@ -103,6 +103,7 @@ function configuredVendors(): string[] {
   const vendors: string[] = [];
   if (BHASHINI_API_KEY && BHASHINI_USER_ID && BHASHINI_PIPELINE_ID) vendors.push('bhashini');
   if (GOOGLE_API_KEY) vendors.push('google');
+  if (LOVABLE_API_KEY) vendors.push('lovable');
   return vendors;
 }
 
@@ -341,7 +342,9 @@ Deno.serve(async (req) => {
         const result =
           vendor === 'bhashini'
             ? await synthesiseBhashini(trimmed, locale)
-            : await synthesiseGoogle(trimmed, locale);
+            : vendor === 'google'
+              ? await synthesiseGoogle(trimmed, locale)
+              : await synthesiseLovable(trimmed, locale);
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
