@@ -1,19 +1,10 @@
-/**
- * Unified farmer-facing TTS facade.
- *
- * Policy:
- *  - ONLINE: prefer Bhashini neural TTS with female voice when available.
- *  - OFFLINE: use the device's exact-language native voice.
- *  - Browser: use an exact-language Web Speech voice only.
- *  - Kokoro is retained only as an explicit/local fallback for en/hi.
- */
-
 import { Capacitor } from '@capacitor/core';
 import { stripForSpeech } from '@/services/tts/ttsTextPrepare';
 
+/** Unified farmer-facing TTS facade. Online Bhashini is preferred; offline uses an exact-language device voice. */
 export interface TTSOptions {
   language?: string;
-  /** Farmer-friendly default is deliberately slower than normal conversation. */
+  /** 0.86 is intentionally slower for clear farmer instructions. */
   rate?: number;
   pitch?: number;
   volume?: number;
@@ -48,13 +39,8 @@ const LANGUAGE_CODES: Record<string, string> = {
   raj: 'raj-IN', awa: 'awa-IN', mag: 'mag-IN', hne: 'hne-IN', gom: 'gom-IN',
 };
 
-function baseLanguage(language: string): string {
-  return language.trim().toLowerCase().split('-')[0];
-}
-
-function isOnline(): boolean {
-  return typeof navigator === 'undefined' || navigator.onLine !== false;
-}
+function baseLanguage(language: string): string { return language.trim().toLowerCase().split('-')[0]; }
+function isOnline(): boolean { return typeof navigator === 'undefined' || navigator.onLine !== false; }
 
 class TTSFacadeService {
   private isPlaying = false;
@@ -64,15 +50,13 @@ class TTSFacadeService {
 
   async speak(text: string, options: TTSOptions = {}): Promise<TTSResult> {
     if (!text?.trim()) return { success: false, provider: 'none', error: 'Empty text' };
-
     const language = baseLanguage(options.language || 'en');
     if (!CANONICAL_LANGUAGES.has(language)) {
-      const result = { success: false, provider: 'none' as const, error: `Unsupported language: ${language}` };
-      options.onError?.(result.error);
-      return result;
+      const error = `Unsupported language: ${language}`;
+      options.onError?.(error);
+      return { success: false, provider: 'none', error };
     }
 
-    // One normalization pass for every provider. Technical values remain intact.
     const speechText = stripForSpeech(text, { targetChars: 1100, maxChars: 1400 });
     if (!speechText.trim()) return { success: false, provider: 'none', error: 'No speakable text' };
 
@@ -94,36 +78,26 @@ class TTSFacadeService {
 
   private async tryProviders(text: string, language: string, options: TTSOptions): Promise<TTSResult> {
     if (options.offlineOnly) {
-      return Capacitor.isNativePlatform()
-        ? this.tryNative(text, language, options)
-        : this.tryWebSpeech(text, language, options);
+      return Capacitor.isNativePlatform() ? this.tryNative(text, language, options) : this.tryWebSpeech(text, language, options);
     }
-
-    // Online-first gives farmers the more natural neural voice.
     if (options.preferNatural !== false && isOnline()) {
       const cloud = await this.tryCloud(text, language, options);
       if (cloud.success) return cloud;
     }
-
-    // Offline/resilience tier: exact-language device voice only.
     if (Capacitor.isNativePlatform()) {
       const native = await this.tryNative(text, language, options);
       if (native.success) return native;
     }
-
     const web = await this.tryWebSpeech(text, language, options);
     if (web.success) return web;
-
     if (LOCAL_KOKORO_LANGUAGES.has(language)) {
-      const kokoro = await this.tryKokoro(text, language, options);
+      const kokoro = await this.tryKokoro(text, language);
       if (kokoro.success) return kokoro;
     }
-
     if (options.preferNatural !== false && !options.offlineOnly) {
       const cloud = await this.tryCloud(text, language, options);
       if (cloud.success) return cloud;
     }
-
     return { success: false, provider: 'none', error: `No exact-language voice available for ${language}` };
   }
 
@@ -133,33 +107,45 @@ class TTSFacadeService {
         const { nativeTTSService } = await import('@/services/nativeTTSService');
         this.nativeService = nativeTTSService;
       }
+      let voiceIndex: number | undefined;
+      try {
+        const voices = await this.nativeService.getDeviceVoices?.();
+        if (Array.isArray(voices) && voices.length) {
+          const target = LANGUAGE_CODES[language] || `${language}-IN`;
+          const base = language.toLowerCase();
+          const matching = voices
+            .map((voice: any, index: number) => ({ voice, index }))
+            .filter(({ voice }: any) => {
+              const lang = String(voice?.lang || '').toLowerCase();
+              return lang === target.toLowerCase() || lang.startsWith(`${base}-`);
+            });
+          // System voice metadata does not standardize gender. Prefer a voice
+          // explicitly named female/woman; otherwise keep the device's locale
+          // default rather than guessing from pitch.
+          const female = matching.find(({ voice }: any) => /female|woman|girl|lady/i.test(String(voice?.name || '')));
+          voiceIndex = female?.index;
+        }
+      } catch (voiceError) {
+        console.warn('[TTSFacade] Could not inspect native voices:', voiceError);
+      }
+
       const result = await this.nativeService.speak(text, language, {
-        // Slow, clear default for rural-farmer instructions.
         rate: options.rate ?? 0.86,
         pitch: options.pitch ?? 1.04,
         volume: options.volume ?? 1,
-        preferredGender: 'female',
+        ...(typeof voiceIndex === 'number' ? { voiceIndex } : {}),
       });
-      return {
-        success: result.success,
-        provider: 'native',
-        error: result.error,
-        language: result.usedLanguage || language,
-      };
+      return { success: result.success, provider: 'native', error: result.error, language: result.usedLanguage || language };
     } catch (error) {
       return { success: false, provider: 'native', error: error instanceof Error ? error.message : 'Native TTS unavailable' };
     }
   }
 
   private async tryWebSpeech(text: string, language: string, options: TTSOptions): Promise<TTSResult> {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      return { success: false, provider: 'web', error: 'Web Speech not supported' };
-    }
-
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return { success: false, provider: 'web', error: 'Web Speech not supported' };
     const targetLang = LANGUAGE_CODES[language] || `${language}-IN`;
     const voice = await this.findVoiceForLang(targetLang, language);
     if (!voice) return { success: false, provider: 'web', error: `No exact-language browser voice for ${targetLang}` };
-
     return new Promise((resolve) => {
       try {
         const utterance = new SpeechSynthesisUtterance(text);
@@ -185,8 +171,6 @@ class TTSFacadeService {
       const base = baseLang.toLowerCase();
       const exact = voices.filter((v) => v.lang?.toLowerCase() === target);
       const sameLanguage = voices.filter((v) => v.lang?.toLowerCase().startsWith(`${base}-`));
-      // Browser voice metadata is inconsistent. Prefer names that explicitly
-      // advertise female voice, then exact language, then same-language voice.
       const female = (list: SpeechSynthesisVoice[]) => list.find((v) => /female|woman|girl|lady/i.test(v.name || ''));
       return female(exact) || exact[0] || female(sameLanguage) || sameLanguage[0] || null;
     };
@@ -205,7 +189,7 @@ class TTSFacadeService {
     });
   }
 
-  private async tryKokoro(text: string, language: string, _options: TTSOptions): Promise<TTSResult> {
+  private async tryKokoro(text: string, language: string): Promise<TTSResult> {
     try {
       if (!this.kokoroService) {
         const { kokoroTTSService } = await import('@/services/kokoroTTSService');
@@ -223,9 +207,7 @@ class TTSFacadeService {
   private async tryCloud(text: string, language: string, _options: TTSOptions): Promise<TTSResult> {
     try {
       const { supabase } = await import('@/integrations/supabase/client');
-      const { data, error } = await supabase.functions.invoke('community-tts', {
-        body: { text, language },
-      });
+      const { data, error } = await supabase.functions.invoke('community-tts', { body: { text, language } });
       if (error) return { success: false, provider: 'cloud', error: error.message };
       const audio = data?.audioContent ?? data?.audio;
       if (!audio) return { success: false, provider: 'cloud', error: data?.error || 'No audio returned' };
@@ -240,6 +222,10 @@ class TTSFacadeService {
     return new Promise((resolve, reject) => {
       this.stop();
       this.audioElement = new Audio(`data:${mimeType};base64,${base64}`);
+      // Bhashini does not expose a standard speech-rate parameter in its public
+      // compute config. Apply a modest playback slowdown to all cloud audio for
+      // clearer farmer instructions. This is deliberately not extreme.
+      this.audioElement.playbackRate = 0.88;
       this.audioElement.onended = () => resolve();
       this.audioElement.onerror = () => reject(new Error('Audio playback failed'));
       void this.audioElement.play().catch(reject);
