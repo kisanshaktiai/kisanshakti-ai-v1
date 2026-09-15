@@ -119,6 +119,31 @@ function configuredVendors(): string[] {
 }
 
 /**
+ * Vendors that just failed permanently (bad pipeline id, API disabled, bad
+ * credentials) are skipped for a while. Without this, every single paragraph
+ * paid for the same two failing round trips before reaching a working voice,
+ * which is what made Read Aloud slow to start.
+ */
+const vendorCooldown = new Map<string, number>();
+const VENDOR_COOLDOWN_MS = 15 * 60 * 1000;
+
+function isPermanentFailure(message: string): boolean {
+  return /\b(400|401|403|404)\b/.test(message) || /not been used|does not exist|missing/i.test(message);
+}
+
+function coolDown(vendor: string) {
+  vendorCooldown.set(vendor, Date.now() + VENDOR_COOLDOWN_MS);
+}
+
+function usableVendors(): string[] {
+  const now = Date.now();
+  const all = configuredVendors();
+  const usable = all.filter((v) => (vendorCooldown.get(v) ?? 0) <= now);
+  // Never end up with nothing to try: if everything is cooling down, retry all.
+  return usable.length > 0 ? usable : all;
+}
+
+/**
  * Pipeline Config call. Returns the compute endpoint, the inference key, and the
  * serviceId for TTS in every language this pipeline supports. Asking without a
  * language filter returns the full list, so one call covers all 14 languages.
