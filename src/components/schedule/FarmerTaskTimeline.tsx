@@ -12,6 +12,7 @@ import TaskEditDialog from './TaskEditDialog';
 import { cn } from '@/lib/utils';
 import { buildScheduleTaskPresentation } from '@/lib/scheduleTaskPresentation';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { cloudProvider } from '@/services/tts/providers/cloudProvider';
 import { toast } from 'sonner';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTranslation } from 'react-i18next';
