@@ -36,6 +36,17 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const MAX_TEXT_LENGTH = 5000;
 
 /**
+ * Spoken-language names. A generative voice needs the language named for it,
+ * otherwise it reads Marathi text with a Hindi speaker's accent.
+ */
+const LANGUAGE_NAMES: Record<string, string> = {
+  'hi-IN': 'Hindi', 'mr-IN': 'Marathi', 'bn-IN': 'Bengali', 'gu-IN': 'Gujarati',
+  'kn-IN': 'Kannada', 'ml-IN': 'Malayalam', 'ta-IN': 'Tamil', 'te-IN': 'Telugu',
+  'ur-IN': 'Urdu', 'pa-IN': 'Punjabi', 'or-IN': 'Odia', 'as-IN': 'Assamese',
+  'en-IN': 'Indian English',
+};
+
+/**
  * Chirp 3: HD is Google's current generative voice tier and is what makes the
  * reading sound conversational rather than synthetic. Voice names follow
  * <locale>-Chirp3-HD-<voice>. Locales listed here are the Indian ones Google
@@ -177,7 +188,12 @@ async function synthesiseBhashini(text: string, locale: string) {
   if (!service) throw new Error(`Bhashini has no TTS service for ${sourceLanguage}`);
   if (!cfg.inferenceKey) throw new Error('Bhashini inference key missing');
 
-  const gender = service.voices.includes('female') ? 'female' : service.voices[0] || 'female';
+  // Farmers in this app hear a woman's voice. Bhashini takes gender in the
+  // compute config, so ask for female unless the service exposes no female
+  // voice at all.
+  const gender = service.voices.length === 0 || service.voices.includes('female')
+    ? 'female'
+    : service.voices[0];
 
   const compute = async (withProcessors: boolean) => {
     const config: Record<string, unknown> = {
@@ -272,9 +288,9 @@ async function synthesiseLovable(text: string, locale: string) {
     body: JSON.stringify({
       model: 'openai/gpt-4o-mini-tts',
       input: text,
-      voice: 'alloy',
+      voice: 'shimmer',
       response_format: 'mp3',
-      instructions: `Speak naturally and warmly in ${locale}, at an unhurried pace, as a helpful rural agriculture advisor talking to a farmer.`,
+      instructions: `You are a woman from rural India who speaks ${LANGUAGE_NAMES[locale] || locale} as her mother tongue. Read the text in ${LANGUAGE_NAMES[locale] || locale} only, with a native accent and native pronunciation — never with the accent of another Indian language and never with an English accent. Warm, calm, unhurried, like a helpful agriculture advisor talking to a farmer.`,
     }),
   });
 
