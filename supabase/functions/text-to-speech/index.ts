@@ -308,7 +308,10 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error('[text-to-speech] Bhashini config failed:', e);
         }
-      } else if (available[0] === 'google') {
+      }
+      // Never report an empty language list while another vendor can still
+      // speak: the app would wrongly conclude no cloud voice exists.
+      if (languages.length === 0 && (available.includes('google') || available.includes('lovable'))) {
         languages = Object.keys(GOOGLE_VOICES);
       }
       return json({ available, languages });
