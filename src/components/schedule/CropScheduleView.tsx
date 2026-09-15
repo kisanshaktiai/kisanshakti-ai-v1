@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { cloudProvider } from '@/services/tts/providers/cloudProvider';
 import { useTranslation } from 'react-i18next';
 import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -82,6 +83,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   // Indian-script text with an English voice.
   const { speak, stop, isSpeaking, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: i18n.language });
+
+  // Warm the natural-voice check when the screen opens, so the speaker icon
+  // starts speaking immediately.
+  useEffect(() => { cloudProvider.warmUp(); }, []);
+
+
   
   // Land stage SSOT (lands.stage_uuid) — read-only; tasks never compute their own stage
   const { stage: landStage, phaseOfTask, hasStageDisagreement } = useLandStage(landId);

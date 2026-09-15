@@ -119,6 +119,31 @@ function configuredVendors(): string[] {
 }
 
 /**
+ * Vendors that just failed permanently (bad pipeline id, API disabled, bad
+ * credentials) are skipped for a while. Without this, every single paragraph
+ * paid for the same two failing round trips before reaching a working voice,
+ * which is what made Read Aloud slow to start.
+ */
+const vendorCooldown = new Map<string, number>();
+const VENDOR_COOLDOWN_MS = 15 * 60 * 1000;
+
+function isPermanentFailure(message: string): boolean {
+  return /\b(400|401|403|404)\b/.test(message) || /not been used|does not exist|missing/i.test(message);
+}
+
+function coolDown(vendor: string) {
+  vendorCooldown.set(vendor, Date.now() + VENDOR_COOLDOWN_MS);
+}
+
+function usableVendors(): string[] {
+  const now = Date.now();
+  const all = configuredVendors();
+  const usable = all.filter((v) => (vendorCooldown.get(v) ?? 0) <= now);
+  // Never end up with nothing to try: if everything is cooling down, retry all.
+  return usable.length > 0 ? usable : all;
+}
+
+/**
  * Pipeline Config call. Returns the compute endpoint, the inference key, and the
  * serviceId for TTS in every language this pipeline supports. Asking without a
  * language filter returns the full list, so one call covers all 14 languages.
@@ -317,11 +342,14 @@ Deno.serve(async (req) => {
     if (action === 'status') {
       const available = configuredVendors();
       let languages: string[] = [];
-      if (available[0] === 'bhashini') {
+      // Only ask Bhashini when it is not cooling down; a failing config call
+      // here delayed the very first tap on the speaker icon.
+      if (available[0] === 'bhashini' && usableVendors().includes('bhashini')) {
         try {
           const cfg = await loadBhashiniConfig();
           languages = Object.keys(cfg.services).map((l) => `${l}-IN`);
         } catch (e) {
+          coolDown('bhashini');
           console.error('[text-to-speech] Bhashini config failed:', e);
         }
       }
@@ -349,7 +377,7 @@ Deno.serve(async (req) => {
     const locale = typeof language === 'string' && language ? language : 'hi-IN';
     const trimmed = text.slice(0, MAX_TEXT_LENGTH);
 
-    const vendors = configuredVendors();
+    const vendors = usableVendors();
     if (vendors.length === 0) {
       // Not an error: the app simply stays on device speech.
       return json({ error: 'no-vendor-configured', available: [] }, 200);
@@ -367,9 +395,11 @@ Deno.serve(async (req) => {
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
+        if (isPermanentFailure(lastError)) coolDown(vendor);
         console.error(`[text-to-speech] ${vendor} failed:`, lastError);
       }
     }
+
 
     return json({ error: lastError || 'synthesis failed' }, 502);
   } catch (error) {

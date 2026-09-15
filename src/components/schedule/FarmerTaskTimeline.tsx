@@ -12,6 +12,7 @@ import TaskEditDialog from './TaskEditDialog';
 import { cn } from '@/lib/utils';
 import { buildScheduleTaskPresentation } from '@/lib/scheduleTaskPresentation';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { cloudProvider } from '@/services/tts/providers/cloudProvider';
 import { toast } from 'sonner';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTranslation } from 'react-i18next';
@@ -53,6 +54,12 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: currentLanguage, rate: 0.9 });
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
+
+  // Ask which natural voices exist as soon as the screen opens, so tapping the
+  // speaker icon starts speaking instead of waiting for that check.
+  useEffect(() => { cloudProvider.warmUp(); }, []);
+
+
 
   const speakTask = (task: Task) => {
     // Only engine support gates playback. The voice inventory is NOT a gate:
