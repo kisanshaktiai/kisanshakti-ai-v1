@@ -211,6 +211,12 @@ class TTSEngine {
         callbacks.onChunk?.(i, chunks.length, chunks[i]);
         callbacks.onProgress?.(Math.round((i / chunks.length) * 100));
 
+        // Prepare the next paragraph while this one plays, so there is no
+        // silent wait between paragraphs.
+        if (source === 'cloud' && i + 1 < chunks.length) {
+          cloudProvider.prefetch(chunks[i + 1], language);
+        }
+
         const ok =
           source === 'device'
             ? await deviceProvider.speakChunk(chunks[i], language, { ...opts, voiceIndex })
