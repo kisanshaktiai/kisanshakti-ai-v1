@@ -2712,6 +2712,9 @@ serve(async (req) => {
       }
     }
     
+    // 2026-09-16 — declared OUTSIDE the storage try/catch: the response wiring below reads it, and a
+    // block-scoped declaration made that read a ReferenceError (swallowed), so the UI never got the card.
+    let advisorCard: any = null;
     // Store user message with preprocessed_content (English normalized)
     try {
       await supabase.from('ai_chat_messages').insert({

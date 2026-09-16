@@ -159,6 +159,10 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   };
 
   // ── IRRIGATION ──────────────────────────────────────────────────────────────
+  // 2026-09-16 — set true ONLY when a water-stress decision actually produced an irrigation action
+  // today. The scouting section below suppresses the stress signal on this flag, never on the mere
+  // presence of a water decision, so a stress warning is never silently dropped.
+  let stressHandledByIrrigation = false;
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   const irrigate = byKey(KEY.IRRIGATE).find((d) => d.status === "DUE") ?? null;
   const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? null;
@@ -196,6 +200,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
       if (windowOpen && (await state(next, irrigate, "DUE", "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, `Field-state decision: ${why} — next declared irrigation event brought forward to today`, { task_date: input.todayIso, projected_date: input.todayIso, original_date: next.original_date ?? next.task_date, auto_rescheduled: true, adjustment_reason: stressConfirmed ? "decision_water_stress_confirmed" : "decision_irrigate_urgent", resources: { ...(next.resources ?? {}), dynamic: { ...dyn(next), advanced_on: decisionDay, advanced_from: next.task_date, advanced_by: irrigate.id, stress_confirmed: stressConfirmed } } }))) {
         record(next, "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, why + " per farm_decision " + String(irrigate.decision_key), irrigate);
         counters.advanced += 1;
+        if (stressConfirmed) stressHandledByIrrigation = true;
       }
     }
   } else if (noWaterData) {
@@ -259,12 +264,11 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   }
 
   // ── SCOUTING ────────────────────────────────────────────────────────────────
-  // Risk = pest/disease scouting decisions, episode ONSET, or canopy stress WITHOUT a water deficit
-  // (with a deficit it was handled as irrigation above). DECLINING never counts as risk.
-  const waterDeficitToday = decisions.some((d) => String(d.decision_key ?? "").startsWith(KEY.IRRIGATE));
+  // Risk = pest/disease scouting decisions, episode ONSET, or canopy stress that was NOT already
+  // acted on as irrigation above. DECLINING never counts as risk.
   const risk = [...byKey(KEY.SCOUT), ...byKey(KEY.STRESS)]
     .filter((d) => (d.status === "WATCH" || d.status === "DUE") && !hasSignal(d, SIGNAL.EPISODE_DECLINING))
-    .filter((d) => !(String(d.decision_key ?? "").startsWith(KEY.STRESS) && waterDeficitToday));
+    .filter((d) => !(String(d.decision_key ?? "").startsWith(KEY.STRESS) && stressHandledByIrrigation));
   const scouting = tasks.filter((t) => SCOUTING_TASK_TYPES.has(t.task_type) && !t.is_pinned);
   const covering = scouting.find((t) => { const rec = (t.resources?.recurrence ?? null) as Record<string, unknown> | null; const a = Number(rec?.window_start), b = Number(rec?.window_end); return todayDas != null && Number.isFinite(a) && Number.isFinite(b) ? todayDas >= a && todayDas <= b : t.task_date >= input.todayIso; }) ?? scouting.find((t) => t.task_date >= input.todayIso) ?? null;
   if (covering) {

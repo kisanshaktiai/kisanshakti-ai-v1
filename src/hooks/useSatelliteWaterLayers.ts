@@ -35,16 +35,18 @@ export function useSatelliteWaterLayers(
     setError(null);
     setLayers([]);
 
-    supabase
-      .from('satellite_water_layers')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('land_id', landId)
-      .eq('layer_code', selectedCode)
-      .eq('status', 'observed')
-      .order('acquisition_date', { ascending: false })
-      .order('acquisition_time', { ascending: false })
-      .limit(12)
+    Promise.resolve(
+      supabase
+        .from('satellite_water_layers')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('land_id', landId)
+        .eq('layer_code', selectedCode)
+        .eq('status', 'observed')
+        .order('acquisition_date', { ascending: false })
+        .order('acquisition_time', { ascending: false })
+        .limit(12)
+    )
       .then(async ({ data, error: queryError }) => {
         if (cancelled) return;
         if (queryError) {
