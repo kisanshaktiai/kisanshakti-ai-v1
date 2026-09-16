@@ -345,10 +345,11 @@ async function processOneTenant(
       .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon')
       .in('land_id', landIds)
       .order('created_at', { ascending: false }),
-    supabase.from('ndvi_data')
-      .select('land_id, ndvi_value, date')
+    supabase.from('v_ndvi_decision_grade')
+      .select('land_id, ndvi_value, acquisition_date, is_fresh, observation_source, quality_score, effective_pixel_count')
       .in('land_id', landIds)
-      .order('date', { ascending: false })
+      .eq('observation_source', 'sentinel-2')
+      .order('acquisition_date', { ascending: false })
       .limit(1000),
     // v125: crop_stage_master is the stage SSOT (full phenology per crop + lane).
     supabase.from('crop_stage_master')
@@ -365,7 +366,7 @@ async function processOneTenant(
   const scheduleMap = buildScheduleMap(cropSchedulesRes.data);
   const alertMap = buildAlertMap(recentAlertsRes.data);
   const soilMap = buildSoilMap(soilRes.data);
-  const ndviMap = buildNdviMap(ndviRes.data);
+  const ndviMap = buildNdviMap((ndviRes.data || []).map((r: any) => ({ ...r, date: r.acquisition_date })));
 
   const stageMap = buildStageMap(stageMasterRes.data);
   const stageFallbackMap = buildStageFallbackMap(stageFallbackRes.data);
