@@ -264,12 +264,11 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   }
 
   // ── SCOUTING ────────────────────────────────────────────────────────────────
-  // Risk = pest/disease scouting decisions, episode ONSET, or canopy stress WITHOUT a water deficit
-  // (with a deficit it was handled as irrigation above). DECLINING never counts as risk.
-  const waterDeficitToday = decisions.some((d) => String(d.decision_key ?? "").startsWith(KEY.IRRIGATE));
+  // Risk = pest/disease scouting decisions, episode ONSET, or canopy stress that was NOT already
+  // acted on as irrigation above. DECLINING never counts as risk.
   const risk = [...byKey(KEY.SCOUT), ...byKey(KEY.STRESS)]
     .filter((d) => (d.status === "WATCH" || d.status === "DUE") && !hasSignal(d, SIGNAL.EPISODE_DECLINING))
-    .filter((d) => !(String(d.decision_key ?? "").startsWith(KEY.STRESS) && waterDeficitToday));
+    .filter((d) => !(String(d.decision_key ?? "").startsWith(KEY.STRESS) && stressHandledByIrrigation));
   const scouting = tasks.filter((t) => SCOUTING_TASK_TYPES.has(t.task_type) && !t.is_pinned);
   const covering = scouting.find((t) => { const rec = (t.resources?.recurrence ?? null) as Record<string, unknown> | null; const a = Number(rec?.window_start), b = Number(rec?.window_end); return todayDas != null && Number.isFinite(a) && Number.isFinite(b) ? todayDas >= a && todayDas <= b : t.task_date >= input.todayIso; }) ?? scouting.find((t) => t.task_date >= input.todayIso) ?? null;
   if (covering) {
