@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-09-16 — v2.2.0: SCHEDULE IDENTITY. Decisions are applied only when the schedule being reconciled
+//   IS the land's lands.active_schedule_id, and current live decisions still carrying a stale (cancelled)
+//   schedule_id/task_id are rebound to the active schedule with task_id cleared before task matching.
+//   Identity only — no agronomy, thresholds, dates or quantities changed.
+
 // 2026-09-16 — v2.1.1: an OVERDUE scouting card is re-dated to today when risk is reported (previously only a
 //   future-dated card moved; the live rice card stayed dated 8 Sept at priority critical).
 // 2026-09-13 — v2.1.0 AGRONOMIC RESPONSE TO PROACTIVE ALERTS. The alert → decision → task chain
