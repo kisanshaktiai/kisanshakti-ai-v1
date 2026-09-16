@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
       - name: Apply fail-closed transformation
         run: python tools/apply_single_brain_fix.py
-      - name: Commit transformed evaluator
+      - name: Commit transformed production sources
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -26,6 +26,6 @@ jobs:
             echo "No source changes required."
             exit 0
           fi
-          git add supabase/functions/proactive-evaluator/index.ts
-          git commit -m "fix: proactive evaluator uses decision-grade NDVI"
+          git add supabase/functions/proactive-evaluator/index.ts src/components/land/NDVIMapView.tsx
+          git commit -m "fix: remove remaining frontend NDVI semantics"
           git push origin HEAD:fix/production-single-brain
