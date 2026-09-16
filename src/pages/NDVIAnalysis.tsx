@@ -7,6 +7,7 @@ import {
   ArrowLeft, RefreshCw, Volume2, Satellite, Calendar,
   TrendingUp, TrendingDown, Minus, AlertTriangle, Sparkles,
   Heart, BarChart3, Map as MapIcon, Lightbulb, CloudOff, Info,
+  Compass,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -81,7 +82,11 @@ export default function NDVIAnalysis() {
 
   const selectedLand = lands.find((l) => l.id === selectedLandId) || null;
   const { current, history, latestRaw, prediction, isLoading, refetch } = useNDVIAnalysis(selectedLandId);
-  const { layers: waterLayers } = useSatelliteWaterLayers(selectedLandId || undefined);
+  const {
+    layers: waterLayers,
+    loading: waterLayersLoading,
+    error: waterLayersError,
+  } = useSatelliteWaterLayers(selectedLandId || undefined, waterLayer);
 
   const stageDays = useMemo(() => {
     const d = selectedLand?.planting_date || selectedLand?.last_sowing_date;
@@ -168,9 +173,42 @@ export default function NDVIAnalysis() {
           {history.length < 2 ? <Card className="rounded-2xl border-dashed"><CardContent className="py-10 text-center text-sm text-muted-foreground">{t('ndvi.trend.need_more', 'Need at least 2 clean observations for trend')}</CardContent></Card> : <><NDVITrendChart data={history.map((d) => ({ date: d.date, ndvi: d.ndvi_value, evi: d.evi_value || 0, ndwi: d.ndwi_value || 0, savi: d.savi_value || 0 }))} selectedIndex="ndvi" />{prediction && <Card className="rounded-2xl border-border/40"><CardContent className="p-3 space-y-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-primary" />{t('ndvi.projection.title', 'Indicative Projection')}</p><Badge variant="outline" className="text-[9px] px-1.5 py-0 flex items-center gap-1"><Info className="h-2.5 w-2.5" />{t('ndvi.projection.indicative', 'Linear · Not AI')}</Badge></div><Forecast label="7d" p={prediction.days7} /><Forecast label="14d" p={prediction.days14} /><p className="text-[10px] text-muted-foreground leading-snug">{t('ndvi.projection.disclaimer', 'Linear extrapolation of recent clean readings only. Not a machine-learning forecast. Confidence drops with longer horizons.')}</p></CardContent></Card>}</>}</TabsContent>
 
         <TabsContent value="map" className="flex-1 px-0 pt-1 pb-16 mt-0">
-          {selectedLandId && <div className="space-y-3"><NDVIMapView landId={selectedLandId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} areaAcres={selectedLand?.area_acres} currentCrop={selectedLand?.current_crop} landThumbnailUrl={selectedLand?.ndvi_thumbnail_url ?? null} landThumbnailDate={selectedLand?.last_ndvi_calculation ?? null} /><div className="px-3"><SatelliteWaterLayerPanel layers={waterLayers} selectedCode={waterLayer} onSelect={setWaterLayer} /></div></div>}
+          {selectedLandId && <div className="space-y-3">
+            <div className="relative">
+              <NDVIMapView landId={selectedLandId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} areaAcres={selectedLand?.area_acres} currentCrop={selectedLand?.current_crop} landThumbnailUrl={selectedLand?.ndvi_thumbnail_url ?? null} landThumbnailDate={selectedLand?.last_ndvi_calculation ?? null} />
+              <FieldCompass />
+            </div>
+            <div className="px-3">
+              <SatelliteWaterLayerPanel
+                layers={waterLayers}
+                selectedCode={waterLayer}
+                onSelect={setWaterLayer}
+                loading={waterLayersLoading}
+                error={waterLayersError}
+              />
+            </div>
+          </div>}
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function FieldCompass() {
+  return (
+    <div
+      className="pointer-events-none absolute left-4 top-4 z-30 h-20 w-20 rounded-full border border-border/50 bg-background/90 p-2 shadow-lg backdrop-blur-sm"
+      aria-label="Field orientation: north, east, south and west"
+    >
+      <div className="relative h-full w-full text-[10px] font-bold">
+        <span className="absolute left-1/2 top-0 -translate-x-1/2 text-primary">N</span>
+        <span className="absolute right-0 top-1/2 -translate-y-1/2">E</span>
+        <span className="absolute bottom-0 left-1/2 -translate-x-1/2">S</span>
+        <span className="absolute left-0 top-1/2 -translate-y-1/2">W</span>
+        <div className="absolute left-1/2 top-1/2 h-10 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/80" />
+        <div className="absolute left-1/2 top-1/2 h-10 w-1 -translate-x-1/2 -translate-y-1/2 rotate-90 rounded-full bg-muted-foreground/35" />
+        <Compass className="absolute inset-0 m-auto h-5 w-5 text-primary" aria-hidden />
+      </div>
     </div>
   );
 }
