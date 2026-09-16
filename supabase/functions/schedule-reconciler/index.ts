@@ -308,7 +308,7 @@ serve(async (req) => {
         failedTaskIds.push(...weather.failedTaskIds);
       } catch (wErr) {
         console.error("[schedule-reconciler] decision application failed (non-fatal):", wErr);
-        weather = { applied: false, skipped: `decision_application_error:${(wErr as Error).message}`, adjustments: [], failedTaskIds: [], counters: { deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0 }, state_snapshot: null, decisions_evaluated: [], outcomes: [], decision_engine_version: null };
+        weather = { applied: false, skipped: `decision_application_error:${(wErr as Error).message}`, adjustments: [], failedTaskIds: [], counters: { deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0, rebound: 0 }, state_snapshot: null, decisions_evaluated: [], outcomes: [], decision_engine_version: null };
       }
       const monitor = (extra: Record<string, unknown>) => writeMonitoring(supabase, dryRun, {
         schedule_id: sched.id, tenant_id: sched.tenant_id ?? null, farmer_id: sched.farmer_id ?? null, land_id: sched.land_id, check_date: todayIso,

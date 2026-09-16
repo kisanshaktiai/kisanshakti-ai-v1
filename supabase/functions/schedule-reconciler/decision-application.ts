@@ -40,7 +40,7 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
-export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.1.1";
+export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.2.0";
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
 const addDays = (dateIso: string, n: number) => iso(new Date(new Date(dateIso).getTime() + n * 86400000));
