@@ -47,8 +47,10 @@ Deno.test("agronomic response table: alerts change the schedule the way an agron
   // 1. water stress = deficit + canopy/heat signal → irrigation advanced regardless of urgency label
   assert(dec.includes("const stressConfirmed = decisions.some("));
   assert(dec.includes('adjustment_reason: stressConfirmed ? "decision_water_stress_confirmed"'));
-  // canopy decline WITHOUT a deficit is scouting, not irrigation
-  assert(dec.includes("const waterDeficitToday = decisions.some("));
+  // canopy decline that did NOT actually produce an irrigation action stays a scouting flag
+  assert(dec.includes("let stressHandledByIrrigation = false;"));
+  assert(dec.includes("if (stressConfirmed) stressHandledByIrrigation = true;"));
+  assert(dec.includes("stressHandledByIrrigation))"));
   // 2. pest/disease onset → scouting card comes to TODAY, restored on decline
   assert(dec.includes("const bringForward = covering.task_date !== input.todayIso;"), "scouting must move to today whether the card is future-dated or overdue");
   assert(dec.includes('adjustment_reason: onset ? "decision_episode_onset"'));
