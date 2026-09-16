@@ -50,7 +50,7 @@ Deno.test("agronomic response table: alerts change the schedule the way an agron
   // canopy decline WITHOUT a deficit is scouting, not irrigation
   assert(dec.includes("const waterDeficitToday = decisions.some("));
   // 2. pest/disease onset → scouting card comes to TODAY, restored on decline
-  assert(dec.includes("const bringForward = covering.task_date > input.todayIso;"));
+  assert(dec.includes("const bringForward = covering.task_date !== input.todayIso;"), "scouting must move to today whether the card is future-dated or overdue");
   assert(dec.includes('adjustment_reason: onset ? "decision_episode_onset"'));
   assert(dec.includes("const restoreDate = typeof current.previous_date"));
   // no spray is ever created from a weather model — only scouting moves
@@ -73,4 +73,27 @@ Deno.test("silent proactive rules are recompiled with their own thresholds only"
   // only ops the engine supports
   const ops = [...sql.matchAll(/'op','([a-z_]+)'/g)].map((m) => m[1]);
   for (const op of ops) assert(["eq", "gt", "gte", "lt", "lte", "gte_field", "lt_field", "not_null"].includes(op), `unsupported op ${op}`);
+});
+
+Deno.test("the farmer can SEE the dynamic change: real reason, field verdict, scouting re-dated to today", async () => {
+  const dec = await read("supabase/functions/schedule-reconciler/decision-application.ts");
+  const notice = await read("src/components/schedule/RescheduledNotice.tsx");
+  const card = await read("src/components/schedule/ModernTaskCard.tsx");
+  // an overdue scouting card is re-dated to today, not just re-prioritised
+  assert(dec.includes("const bringForward = covering.task_date !== input.todayIso;"));
+  // the notice explains decision_* reasons from i18n, never as a stage-drift sentence
+  assert(notice.includes("startsWith('decision_')"));
+  assert(notice.includes("`schedule.rescheduled.reason.${reasonCode}`"));
+  // a verdict-only change (priority raised, date unchanged) still renders
+  assert(notice.includes("if (!autoRescheduled && !verdictText) return null;"));
+  assert(card.includes("fieldVerdict={") && card.includes("decisionState={"));
+  // every reason code the decision layer emits has a string in en, hi and mr
+  // only reason codes actually written to adjustment_reason (column names such as decision_date are not codes)
+  const codes = [...new Set([...dec.matchAll(/adjustment_reason: [^\n]*?"(decision_[a-z_]+)"/g)].flatMap((m) => m.slice(1)))];
+  assert(codes.length >= 6, `expected decision reason codes in the layer, found ${codes.length}`);
+  for (const lang of ["en", "hi", "mr"]) {
+    const j = JSON.parse(await read(`src/i18n/locales/${lang}/schedule.json`));
+    for (const c of codes) assert(j.schedule.rescheduled.reason[c], `${lang} missing reason ${c}`);
+    for (const v of ["scout_now", "water_sufficient", "application_window_exhausted", "label_today", "label_info"]) assert(j.schedule.field_verdict[v], `${lang} missing verdict ${v}`);
+  }
 });

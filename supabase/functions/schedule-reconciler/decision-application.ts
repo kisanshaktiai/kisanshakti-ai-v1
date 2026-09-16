@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-09-16 — v2.1.1: an OVERDUE scouting card is re-dated to today when risk is reported (previously only a
+//   future-dated card moved; the live rice card stayed dated 8 Sept at priority critical).
 // 2026-09-13 — v2.1.0 AGRONOMIC RESPONSE TO PROACTIVE ALERTS. The alert → decision → task chain
 //   existed but responded to only four situations. The response table is now complete for what the
 //   field-state engine actually reports, using only the decision keys and statuses the DB already
@@ -33,7 +35,7 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
-export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.1.0";
+export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.1.1";
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
 const addDays = (dateIso: string, n: number) => iso(new Date(new Date(dateIso).getTime() + n * 86400000));
@@ -278,7 +280,10 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
         // Bring the scouting card to TODAY when it is dated later: the farmer must look now, and the
         // card already carries "if you see X → apply Y" for this stage. Its date is remembered so
         // UNFLAG can restore it when the risk clears.
-        const bringForward = covering.task_date > input.todayIso;
+        // Any date other than today is wrong for "check the field now": a future card is brought
+        // forward, and an OVERDUE card (the common case — the stage's scouting card dated a week ago
+        // and still pending) is re-dated to today as well, so the farmer sees it as today's job.
+        const bringForward = covering.task_date !== input.todayIso;
         const datePatch = bringForward ? { task_date: input.todayIso, projected_date: input.todayIso, original_date: covering.original_date ?? covering.task_date, auto_rescheduled: true, adjustment_reason: onset ? "decision_episode_onset" : "decision_risk_scout_now" } : {};
         const reason = onset ? "Pest/disease episode onset reported — check the field today and treat only what you find" : "Field-state decisions report risk — scouting raised so the farmer checks the crop now";
         if (await state(covering, lead, "DUE", bringForward ? "ADVANCE" : "FLAG", { priority: covering.priority, task_date: covering.task_date }, { priority: raised, task_date: bringForward ? input.todayIso : covering.task_date }, reason, { ...datePatch, priority: raised, resources: { ...(covering.resources ?? {}), dynamic: { ...current, field_verdict: "scout_now", risk_keys: keys, previous_priority: previousPriority, previous_date: bringForward ? covering.task_date : (current.previous_date ?? null), as_of: decisionDay } } })) {

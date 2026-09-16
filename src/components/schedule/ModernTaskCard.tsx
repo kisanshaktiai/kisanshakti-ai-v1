@@ -215,6 +215,8 @@ export default function ModernTaskCard({
 
                     taskDate={task.task_date}
                     adjustmentReason={task.adjustment_reason ?? task.reschedule_reason}
+                    decisionState={(task as any).decision_state ?? null}
+                    fieldVerdict={((task as any).resources?.dynamic?.field_verdict as string | undefined) ?? null}
                   />
                 </div>
               </div>
