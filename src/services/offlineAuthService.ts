@@ -1,13 +1,18 @@
 import { localDB } from './localDB';
 import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
-import CryptoJS from 'crypto-js';
 import { farmerAuthService, FarmerAuthError } from './farmerAuthService';
 
 interface OfflineAuthData {
   farmerId: string;
   tenantId: string;
   mobile: string;
-  pinHash: string;
+  /** PBKDF2 verifier for local offline PIN verification only. Never synced. */
+  pinVerifier?: string;
+  pinSalt?: string;
+  /** Legacy cache field retained only for one-time migration of existing devices. */
+  pinHash?: string;
+  failedAttempts?: number;
+  lockedUntil?: string | null;
   farmerData: any;
   profileData: any;
   lastSyncAt: string;
@@ -15,7 +20,10 @@ interface OfflineAuthData {
 
 class OfflineAuthService {
   private readonly STORAGE_KEY = 'offline_auth_data';
-  private readonly SALT = 'kisan_shakti_2024';
+  private readonly LEGACY_SALT = 'kisan_shakti_2024';
+  private readonly PBKDF2_ITERATIONS = 100_000;
+  private readonly MAX_FAILED_ATTEMPTS = 5;
+  private readonly LOCKOUT_MS = 15 * 60 * 1000;
 
   // Store authenticated farmer data for offline access
   async cacheAuthData(
@@ -26,15 +34,18 @@ class OfflineAuthService {
     farmerData: any,
     profileData: any
   ): Promise<void> {
-    const pinHash = this.hashPin(pin);
-    
+    const pinSalt = this.createSalt();
+    const pinVerifier = await this.derivePinVerifier(pin, pinSalt);
     const authData: OfflineAuthData = {
       farmerId,
       tenantId,
       mobile,
-      pinHash,
-      farmerData,
-      profileData,
+      pinVerifier,
+      pinSalt,
+      failedAttempts: 0,
+      lockedUntil: null,
+      farmerData: this.sanitizeCachedData(farmerData),
+      profileData: this.sanitizeCachedData(profileData),
       lastSyncAt: new Date().toISOString()
     };
 
@@ -48,73 +59,80 @@ class OfflineAuthService {
       });
       await tx.done;
 
-      // Also store in localStorage as backup
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(authData));
     } catch (error) {
-      console.error('Error caching auth data:', error);
-      // Fallback to localStorage only
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(authData));
+      console.error('Error caching offline credential:', error);
+      // Do not fall back to localStorage: offline credentials must not be copied
+      // into a JavaScript-readable plaintext backup.
+      throw error;
     }
   }
 
-  // Hash PIN for secure storage
-  hashPin(pin: string): string {
-    return CryptoJS.SHA256(pin + this.SALT).toString();
+  private createSalt(): string {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
-  // Validate PIN offline
+  private async derivePinVerifier(pin: string, salt: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', encoder.encode(pin), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: encoder.encode(salt), iterations: this.PBKDF2_ITERATIONS, hash: 'SHA-256' },
+      key,
+      256
+    );
+    return Array.from(new Uint8Array(bits), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  private sanitizeCachedData<T>(value: T): T {
+    if (!value || typeof value !== 'object') return value;
+    const clone = { ...(value as Record<string, unknown>) } as Record<string, unknown>;
+    for (const key of ['pin', 'pin_hash', 'pinHash', 'session_token', 'sessionToken', 'reset_code', 'reset_code_hash']) {
+      delete clone[key];
+    }
+    return clone as T;
+  }
+
+  // Validate PIN offline. Credentials live only in IndexedDB metadata and are never synced.
   async validateOfflinePin(mobile: string, pin: string): Promise<{
     isValid: boolean;
     farmerData?: any;
     profileData?: any;
   }> {
     try {
-      // Try to get from IndexedDB first
       await localDB.initialize();
-      const tx = (localDB as any).db.transaction('syncMetadata', 'readonly');
-      const authData = await tx.objectStore('syncMetadata').get(this.STORAGE_KEY);
-      
-      if (!authData) {
-        // Fallback to localStorage
-        const localData = localStorage.getItem(this.STORAGE_KEY);
-        if (!localData) {
-          return { isValid: false };
-        }
-        const parsed = JSON.parse(localData) as OfflineAuthData;
-        return this.validateAuthData(parsed, mobile, pin);
-      }
+      const tx = (localDB as any).db.transaction('syncMetadata', 'readwrite');
+      const authData = await tx.objectStore('syncMetadata').get(this.STORAGE_KEY) as OfflineAuthData | undefined;
+      if (!authData || authData.mobile !== mobile) return { isValid: false };
 
-      return this.validateAuthData(authData, mobile, pin);
-    } catch (error) {
-      console.error('Error validating offline PIN:', error);
-      
-      // Last resort: check localStorage
-      const localData = localStorage.getItem(this.STORAGE_KEY);
-      if (!localData) {
+      if (authData.lockedUntil && new Date(authData.lockedUntil).getTime() > Date.now()) {
         return { isValid: false };
       }
-      
-      const parsed = JSON.parse(localData) as OfflineAuthData;
-      return this.validateAuthData(parsed, mobile, pin);
-    }
-  }
 
-  private validateAuthData(
-    authData: OfflineAuthData,
-    mobile: string,
-    pin: string
-  ): { isValid: boolean; farmerData?: any; profileData?: any } {
-    const pinHash = this.hashPin(pin);
-    
-    if (authData.mobile === mobile && authData.pinHash === pinHash) {
-      return {
-        isValid: true,
-        farmerData: authData.farmerData,
-        profileData: authData.profileData
-      };
+      // Legacy records are intentionally not accepted indefinitely. They are replaced on the next
+      // successful online login, preventing the old static-SHA256 credential format from surviving.
+      if (!authData.pinVerifier || !authData.pinSalt) return { isValid: false };
+
+      const verifier = await this.derivePinVerifier(pin, authData.pinSalt);
+      if (verifier === authData.pinVerifier) {
+        authData.failedAttempts = 0;
+        authData.lockedUntil = null;
+        await tx.objectStore('syncMetadata').put(authData);
+        await tx.done;
+        return { isValid: true, farmerData: authData.farmerData, profileData: authData.profileData };
+      }
+
+      const failedAttempts = (authData.failedAttempts || 0) + 1;
+      authData.failedAttempts = failedAttempts;
+      authData.lockedUntil = failedAttempts >= this.MAX_FAILED_ATTEMPTS
+        ? new Date(Date.now() + this.LOCKOUT_MS).toISOString()
+        : null;
+      await tx.objectStore('syncMetadata').put(authData);
+      await tx.done;
+      return { isValid: false };
+    } catch (error) {
+      console.error('Error validating offline PIN:', error);
+      return { isValid: false };
     }
-    
-    return { isValid: false };
   }
 
   // Attempt online authentication with fallback to offline
@@ -284,8 +302,7 @@ class OfflineAuthService {
       const authData = await tx.objectStore('syncMetadata').get(this.STORAGE_KEY);
       return !!authData;
     } catch {
-      const localData = localStorage.getItem(this.STORAGE_KEY);
-      return !!localData;
+      return false;
     }
   }
 
@@ -300,7 +317,6 @@ class OfflineAuthService {
       console.error('Error clearing cached auth:', error);
     }
     
-    localStorage.removeItem(this.STORAGE_KEY);
   }
 
   // Get cached auth data for auto-login
@@ -315,12 +331,6 @@ class OfflineAuthService {
       }
     } catch (error) {
       console.error('Error getting cached auth:', error);
-    }
-    
-    // Fallback to localStorage
-    const localData = localStorage.getItem(this.STORAGE_KEY);
-    if (localData) {
-      return JSON.parse(localData);
     }
     
     return null;

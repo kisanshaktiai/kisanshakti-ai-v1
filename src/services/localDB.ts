@@ -21,14 +21,8 @@ export interface FarmerData {
   shc_id: string | null;
   location: string | null;
   
-  // Authentication
-  pin?: string | null;
-  pin_hash: string | null;
-  pin_updated_at: string | null;
-  failed_login_attempts: number | null;
-  last_failed_login: string | null;
-  last_login_at: string | null;
-  login_attempts: number | null;
+  // Authentication fields are intentionally excluded from the offline farmer projection.
+  // PIN/session credentials are handled only by OfflineAuthService and are never synced here.
   
   // Farming details
   farming_experience_years: number | null;

@@ -14,6 +14,12 @@ interface SyncResult {
   errors?: string[];
 }
 
+// Authentication state must never move through the generic farmer sync plane.
+const stripFarmerSecurityFields = (farmer: Record<string, any>) => {
+  const { pin, pin_hash, pin_updated_at, failed_login_attempts, last_failed_login, last_login_at, login_attempts, ...safe } = farmer;
+  return safe;
+};
+
 class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
   private syncInProgress: boolean = false;
@@ -296,7 +302,8 @@ class SyncService {
             });
           } else {
             // Local version is newer - update server
-            const { lastModified, syncStatus, ...uploadData } = farmer;
+            const { lastModified, syncStatus, ...rawUploadData } = farmer;
+            const uploadData = stripFarmerSecurityFields(rawUploadData);
             await supabase
               .from('farmers')
               .update({
@@ -309,7 +316,8 @@ class SyncService {
           }
         } else {
           // New farmer - insert to server
-          const { lastModified, syncStatus, ...uploadData } = farmer;
+          const { lastModified, syncStatus, ...rawUploadData } = farmer;
+          const uploadData = stripFarmerSecurityFields(rawUploadData);
           await supabase
             .from('farmers')
             .insert({
@@ -590,12 +598,6 @@ class SyncService {
               aadhaar_number: f.aadhaar_number,
               shc_id: f.shc_id,
               location: f.location,
-              pin_hash: f.pin_hash,
-              pin_updated_at: f.pin_updated_at,
-              failed_login_attempts: f.failed_login_attempts,
-              last_failed_login: f.last_failed_login,
-              last_login_at: f.last_login_at,
-              login_attempts: f.login_attempts,
               farming_experience_years: f.farming_experience_years,
               farm_type: f.farm_type,
               total_land_acres: f.total_land_acres,

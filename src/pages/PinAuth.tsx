@@ -105,7 +105,7 @@ export default function PinAuth() {
         farmerId: farmer.id,
         tenantId: farmer.tenant_id,
         mobile: farmer.mobile_number,
-        token: getSessionToken() || `offline_${Date.now()}`,
+        token: getSessionToken() || 'offline-local',
         createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days for offline
         isPinVerified: true,
