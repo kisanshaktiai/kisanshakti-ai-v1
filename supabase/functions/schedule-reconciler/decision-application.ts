@@ -100,6 +100,15 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   const failedTaskIds: string[] = [];
   const outcomes: TaskOutcome[] = [];
 
+  // 0. AUTHORITATIVE SCHEDULE GATE (lands.active_schedule_id is the land's current schedule SSOT).
+  //    INVARIANT: only the land's ACTIVE schedule may apply or re-link current live decisions. A run
+  //    for a stale / cancelled schedule must never steal or rebind a current decision.
+  const { data: landRow } = await supabase.from("lands").select("active_schedule_id").eq("id", input.landId).maybeSingle();
+  const activeScheduleId = (landRow?.active_schedule_id ?? null) as string | null;
+  if (activeScheduleId && activeScheduleId !== input.scheduleId) {
+    return { applied: false, skipped: "not_active_schedule", adjustments, failedTaskIds, counters, state_snapshot: null, decisions_evaluated: [], outcomes, decision_engine_version: null };
+  }
+
   // 1. Crop-state snapshot (DB engine) — latest on or before today.
   const { data: fs } = await supabase
     .from("land_farm_state")
