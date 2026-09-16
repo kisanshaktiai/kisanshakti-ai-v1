@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useTenant } from '@/contexts/TenantContext';
 import type { SatelliteWaterLayer, SatelliteWaterLayerCode } from '@/types/satelliteWater';
 
 export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
@@ -13,9 +14,10 @@ export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
  */
 export function useSatelliteWaterLayers(
   landId: string | undefined,
-  tenantId: string | undefined,
   selectedCode: SatelliteWaterLayerCode = 'surface_water_trace',
 ) {
+  const { tenant } = useTenant();
+  const tenantId = tenant?.id;
   const [layers, setLayers] = useState<SatelliteWaterLayerView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
