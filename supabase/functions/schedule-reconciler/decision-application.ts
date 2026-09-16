@@ -159,6 +159,10 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   };
 
   // ── IRRIGATION ──────────────────────────────────────────────────────────────
+  // 2026-09-16 — set true ONLY when a water-stress decision actually produced an irrigation action
+  // today. The scouting section below suppresses the stress signal on this flag, never on the mere
+  // presence of a water decision, so a stress warning is never silently dropped.
+  let stressHandledByIrrigation = false;
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   const irrigate = byKey(KEY.IRRIGATE).find((d) => d.status === "DUE") ?? null;
   const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? null;
