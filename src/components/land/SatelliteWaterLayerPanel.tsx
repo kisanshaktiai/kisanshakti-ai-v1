@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Droplets, Waves, Info, Loader2 } from 'lucide-react';
+import { Droplets, Waves, Info, Loader2, Clock3 } from 'lucide-react';
 import type { SatelliteWaterLayerCode } from '@/types/satelliteWater';
 import type { SatelliteWaterLayerView } from '@/hooks/useSatelliteWaterLayers';
 
@@ -126,8 +126,14 @@ export function SatelliteWaterLayerPanel({ layers, selectedCode, onSelect, loadi
           </p>
         </div>
       ) : !loading ? (
-        <div className="rounded-xl border border-dashed px-3 py-4 text-xs text-muted-foreground">
-          {t('ndvi.water.no_observed', 'No observed {{layer}} is available for this field.', { layer: selectedLabel.toLowerCase() })}
+        <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-4">
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <Clock3 className="h-4 w-4 text-amber-600" />
+            {t('ndvi.water.not_processed', 'Satellite water layer not processed yet')}
+          </div>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            {t('ndvi.water.not_processed_detail', 'This is different from “no water”. The field has no observed water-layer record yet, so the app will not invent a water image.')}
+          </p>
         </div>
       ) : null}
     </section>
