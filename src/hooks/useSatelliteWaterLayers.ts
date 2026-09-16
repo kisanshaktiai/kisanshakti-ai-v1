@@ -7,12 +7,13 @@ export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
 }
 
 /**
- * Loads one evidence layer at a time. The UI only needs the latest observed
- * image for the selected layer, so do not mint dozens of signed URLs for
- * historical rows. The query is tenant-scoped by Supabase RLS.
+ * Loads one evidence layer at a time for the active land and tenant.
+ * Only the latest observed image is signed; historical rows remain available
+ * for temporal analysis without an N+1 signed-URL storm.
  */
 export function useSatelliteWaterLayers(
   landId: string | undefined,
+  tenantId: string | undefined,
   selectedCode: SatelliteWaterLayerCode = 'surface_water_trace',
 ) {
   const [layers, setLayers] = useState<SatelliteWaterLayerView[]>([]);
@@ -21,7 +22,7 @@ export function useSatelliteWaterLayers(
 
   useEffect(() => {
     let cancelled = false;
-    if (!landId) {
+    if (!landId || !tenantId) {
       setLayers([]);
       setLoading(false);
       setError(null);
@@ -35,6 +36,7 @@ export function useSatelliteWaterLayers(
     supabase
       .from('satellite_water_layers')
       .select('*')
+      .eq('tenant_id', tenantId)
       .eq('land_id', landId)
       .eq('layer_code', selectedCode)
       .eq('status', 'observed')
@@ -55,8 +57,6 @@ export function useSatelliteWaterLayers(
           return;
         }
 
-        // Only the latest image is displayed. Older rows remain available for
-        // future temporal analysis without causing an N+1 signed-URL storm.
         const latest = rows[0];
         let signedImageUrl: string | null = null;
         if (latest.image_path) {
@@ -70,9 +70,7 @@ export function useSatelliteWaterLayers(
           }
         }
 
-        if (!cancelled) {
-          setLayers([{ ...latest, signedImageUrl }]);
-        }
+        if (!cancelled) setLayers([{ ...latest, signedImageUrl }]);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -87,7 +85,7 @@ export function useSatelliteWaterLayers(
     return () => {
       cancelled = true;
     };
-  }, [landId, selectedCode]);
+  }, [landId, tenantId, selectedCode]);
 
   return { layers, loading, error };
 }
