@@ -200,6 +200,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
       if (windowOpen && (await state(next, irrigate, "DUE", "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, `Field-state decision: ${why} — next declared irrigation event brought forward to today`, { task_date: input.todayIso, projected_date: input.todayIso, original_date: next.original_date ?? next.task_date, auto_rescheduled: true, adjustment_reason: stressConfirmed ? "decision_water_stress_confirmed" : "decision_irrigate_urgent", resources: { ...(next.resources ?? {}), dynamic: { ...dyn(next), advanced_on: decisionDay, advanced_from: next.task_date, advanced_by: irrigate.id, stress_confirmed: stressConfirmed } } }))) {
         record(next, "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, why + " per farm_decision " + String(irrigate.decision_key), irrigate);
         counters.advanced += 1;
+        if (stressConfirmed) stressHandledByIrrigation = true;
       }
     }
   } else if (noWaterData) {
