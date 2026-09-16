@@ -92,7 +92,7 @@ export interface FieldDecisionOutcome {
   decision_engine_version: string | null;
 }
 
-const emptyCounters = () => ({ deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0 });
+const emptyCounters = () => ({ deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0, rebound: 0 });
 
 export async function applyFieldDecisions(supabase: SupabaseClient, input: FieldDecisionInput): Promise<FieldDecisionOutcome> {
   const counters = emptyCounters();
