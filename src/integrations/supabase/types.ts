@@ -20520,6 +20520,183 @@ export type Database = {
           },
         ]
       }
+      ndvi_intelligence: {
+        Row: {
+          acquisition_date: string
+          acquisition_time: string | null
+          context_cloud_fraction: number | null
+          context_effective_pixel_count: number | null
+          context_ndvi_mad: number | null
+          context_ndvi_mean: number | null
+          context_ndvi_median: number | null
+          context_ndvi_p10: number | null
+          context_ndvi_p90: number | null
+          context_ndvi_std: number | null
+          context_observed_fraction: number | null
+          context_purity: number | null
+          context_shadow_fraction: number | null
+          context_water_fraction: number | null
+          created_at: string
+          estimated_ndvi: number | null
+          estimated_ndvi_high: number | null
+          estimated_ndvi_low: number | null
+          estimation_method: string | null
+          evidence_json: Json
+          feature_version: string | null
+          id: string
+          intelligence_status: string
+          land_id: string
+          model_version: string | null
+          observed_ndvi: number | null
+          observed_or_predicted: string | null
+          parcel_context_delta: number | null
+          parcel_context_robust_z: number | null
+          provenance_json: Json
+          scene_id: string
+          spatial_anomaly_json: Json | null
+          tenant_id: string
+          uncertainty_json: Json | null
+          updated_at: string
+          validation_dataset_version: string | null
+          validation_status: string | null
+        }
+        Insert: {
+          acquisition_date: string
+          acquisition_time?: string | null
+          context_cloud_fraction?: number | null
+          context_effective_pixel_count?: number | null
+          context_ndvi_mad?: number | null
+          context_ndvi_mean?: number | null
+          context_ndvi_median?: number | null
+          context_ndvi_p10?: number | null
+          context_ndvi_p90?: number | null
+          context_ndvi_std?: number | null
+          context_observed_fraction?: number | null
+          context_purity?: number | null
+          context_shadow_fraction?: number | null
+          context_water_fraction?: number | null
+          created_at?: string
+          estimated_ndvi?: number | null
+          estimated_ndvi_high?: number | null
+          estimated_ndvi_low?: number | null
+          estimation_method?: string | null
+          evidence_json?: Json
+          feature_version?: string | null
+          id?: string
+          intelligence_status?: string
+          land_id: string
+          model_version?: string | null
+          observed_ndvi?: number | null
+          observed_or_predicted?: string | null
+          parcel_context_delta?: number | null
+          parcel_context_robust_z?: number | null
+          provenance_json?: Json
+          scene_id: string
+          spatial_anomaly_json?: Json | null
+          tenant_id: string
+          uncertainty_json?: Json | null
+          updated_at?: string
+          validation_dataset_version?: string | null
+          validation_status?: string | null
+        }
+        Update: {
+          acquisition_date?: string
+          acquisition_time?: string | null
+          context_cloud_fraction?: number | null
+          context_effective_pixel_count?: number | null
+          context_ndvi_mad?: number | null
+          context_ndvi_mean?: number | null
+          context_ndvi_median?: number | null
+          context_ndvi_p10?: number | null
+          context_ndvi_p90?: number | null
+          context_ndvi_std?: number | null
+          context_observed_fraction?: number | null
+          context_purity?: number | null
+          context_shadow_fraction?: number | null
+          context_water_fraction?: number | null
+          created_at?: string
+          estimated_ndvi?: number | null
+          estimated_ndvi_high?: number | null
+          estimated_ndvi_low?: number | null
+          estimation_method?: string | null
+          evidence_json?: Json
+          feature_version?: string | null
+          id?: string
+          intelligence_status?: string
+          land_id?: string
+          model_version?: string | null
+          observed_ndvi?: number | null
+          observed_or_predicted?: string | null
+          parcel_context_delta?: number | null
+          parcel_context_robust_z?: number | null
+          provenance_json?: Json
+          scene_id?: string
+          spatial_anomaly_json?: Json | null
+          tenant_id?: string
+          uncertainty_json?: Json | null
+          updated_at?: string
+          validation_dataset_version?: string | null
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_intelligence_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       ndvi_micro_tiles: {
         Row: {
           access_count: number | null
@@ -28413,6 +28590,66 @@ export type Database = {
           },
         ]
       }
+      satellite_intelligence_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          description: string | null
+          is_active: boolean
+          source_reference: string | null
+          updated_at: string
+        }
+        Insert: {
+          config_key: string
+          config_value: Json
+          description?: string | null
+          is_active?: boolean
+          source_reference?: string | null
+          updated_at?: string
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          description?: string | null
+          is_active?: boolean
+          source_reference?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      satellite_layer_config: {
+        Row: {
+          color_stops: Json
+          enabled: boolean
+          evidence_min: number | null
+          layer_code: string
+          source: string | null
+          updated_at: string
+          value_max: number
+          value_min: number
+        }
+        Insert: {
+          color_stops: Json
+          enabled?: boolean
+          evidence_min?: number | null
+          layer_code: string
+          source?: string | null
+          updated_at?: string
+          value_max: number
+          value_min: number
+        }
+        Update: {
+          color_stops?: Json
+          enabled?: boolean
+          evidence_min?: number | null
+          layer_code?: string
+          source?: string | null
+          updated_at?: string
+          value_max?: number
+          value_min?: number
+        }
+        Relationships: []
+      }
       satellite_storage_audit: {
         Row: {
           created_at: string
@@ -28595,6 +28832,183 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "mgrs_tiles"
             referencedColumns: ["tile_id", "country_id"]
+          },
+        ]
+      }
+      satellite_validation_reference: {
+        Row: {
+          collector: string | null
+          created_at: string
+          dataset_version: string
+          id: string
+          is_independent: boolean
+          land_id: string
+          observation_date: string
+          reference_payload: Json
+          reference_type: string
+          reference_value: number | null
+          tenant_id: string
+        }
+        Insert: {
+          collector?: string | null
+          created_at?: string
+          dataset_version: string
+          id?: string
+          is_independent?: boolean
+          land_id: string
+          observation_date: string
+          reference_payload?: Json
+          reference_type: string
+          reference_value?: number | null
+          tenant_id: string
+        }
+        Update: {
+          collector?: string | null
+          created_at?: string
+          dataset_version?: string
+          id?: string
+          is_independent?: boolean
+          land_id?: string
+          observation_date?: string
+          reference_payload?: Json
+          reference_type?: string
+          reference_value?: number | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      satellite_water_layers: {
+        Row: {
+          acquisition_date: string
+          acquisition_time: string | null
+          created_at: string
+          effective_pixel_count: number | null
+          evidence_json: Json
+          id: string
+          image_metadata: Json
+          image_path: string | null
+          land_id: string
+          layer_code: string
+          provenance_json: Json
+          scene_id: string
+          status: string
+          tenant_id: string
+          uncertainty_json: Json
+          updated_at: string
+          valid_fraction: number | null
+          value_max: number | null
+          value_mean: number | null
+          value_median: number | null
+          value_min: number | null
+          value_p10: number | null
+          value_p90: number | null
+        }
+        Insert: {
+          acquisition_date: string
+          acquisition_time?: string | null
+          created_at?: string
+          effective_pixel_count?: number | null
+          evidence_json?: Json
+          id?: string
+          image_metadata?: Json
+          image_path?: string | null
+          land_id: string
+          layer_code: string
+          provenance_json?: Json
+          scene_id: string
+          status?: string
+          tenant_id: string
+          uncertainty_json?: Json
+          updated_at?: string
+          valid_fraction?: number | null
+          value_max?: number | null
+          value_mean?: number | null
+          value_median?: number | null
+          value_min?: number | null
+          value_p10?: number | null
+          value_p90?: number | null
+        }
+        Update: {
+          acquisition_date?: string
+          acquisition_time?: string | null
+          created_at?: string
+          effective_pixel_count?: number | null
+          evidence_json?: Json
+          id?: string
+          image_metadata?: Json
+          image_path?: string | null
+          land_id?: string
+          layer_code?: string
+          provenance_json?: Json
+          scene_id?: string
+          status?: string
+          tenant_id?: string
+          uncertainty_json?: Json
+          updated_at?: string
+          valid_fraction?: number | null
+          value_max?: number | null
+          value_mean?: number | null
+          value_median?: number | null
+          value_min?: number | null
+          value_p10?: number | null
+          value_p90?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_water_layers_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
