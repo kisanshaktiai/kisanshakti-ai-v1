@@ -31,7 +31,7 @@ export function SatelliteWaterLayerPanel({ landId, layers, selectedCode, onSelec
   const { t } = useTranslation();
   const latest = useMemo(() => layers.find((item) => item.layer_code === selectedCode) ?? layers[0] ?? null, [layers, selectedCode]);
   const SelectedIcon = ICONS[selectedCode];
-  const selectedLabel = t(LABEL_KEYS[selectedCode], selectedCode.replaceAll('_', ' '));
+  const selectedLabel = t(LABEL_KEYS[selectedCode], selectedCode.replace(/_/g, ' '));
   const evidencePixels = Number(latest?.image_metadata?.drawn_pixels ?? 0);
   const evidenceMin = latest?.image_metadata?.evidence_min;
   const isSpatialEvidence = latest?.layer_code === 'surface_water_trace';
@@ -55,7 +55,7 @@ export function SatelliteWaterLayerPanel({ landId, layers, selectedCode, onSelec
             <button key={code} type="button" onClick={() => onSelect(code)} aria-pressed={selected}
               className={`min-h-20 rounded-xl border px-3 py-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary/50 ${selected ? 'border-primary bg-primary/10 shadow-sm' : 'bg-background hover:bg-muted/40'}`}>
               <Icon className={`h-5 w-5 mb-1 ${selected ? 'text-primary' : 'text-muted-foreground'}`} aria-hidden />
-              <span className="block text-[11px] font-semibold leading-tight">{t(LABEL_KEYS[code], code.replaceAll('_', ' '))}</span>
+              <span className="block text-[11px] font-semibold leading-tight">{t(LABEL_KEYS[code], code.replace(/_/g, ' '))}</span>
             </button>
           );
         })}
