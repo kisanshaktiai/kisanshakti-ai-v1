@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Droplets, Waves, Info, Loader2, Clock3 } from 'lucide-react';
 import type { SatelliteWaterLayerCode } from '@/types/satelliteWater';
 import type { SatelliteWaterLayerView } from '@/hooks/useSatelliteWaterLayers';
+import { SatelliteWaterLayerMap } from '@/components/land/SatelliteWaterLayerMap';
 
 interface Props {
+  landId: string;
   layers: SatelliteWaterLayerView[];
   selectedCode: SatelliteWaterLayerCode;
   onSelect: (code: SatelliteWaterLayerCode) => void;
@@ -27,7 +29,7 @@ const ICONS: Record<SatelliteWaterLayerCode, typeof Droplets> = {
   canopy_moisture_signal: Waves,
 };
 
-export function SatelliteWaterLayerPanel({ layers, selectedCode, onSelect, loading, error }: Props) {
+export function SatelliteWaterLayerPanel({ landId, layers, selectedCode, onSelect, loading, error }: Props) {
   const { t } = useTranslation();
   const latest = useMemo(
     () => layers.find((item) => item.layer_code === selectedCode) ?? layers[0] ?? null,
@@ -35,13 +37,16 @@ export function SatelliteWaterLayerPanel({ layers, selectedCode, onSelect, loadi
   );
   const SelectedIcon = ICONS[selectedCode];
   const selectedLabel = t(LABEL_KEYS[selectedCode], selectedCode.replaceAll('_', ' '));
+  const evidencePixels = Number(latest?.image_metadata?.drawn_pixels ?? 0);
+  const evidenceMin = latest?.image_metadata?.evidence_min;
+  const isSpatialEvidence = latest?.layer_code === 'surface_water_trace';
 
   return (
     <section className="space-y-3 rounded-2xl border border-border/40 bg-card p-3 shadow-sm" aria-label={t('ndvi.water.aria', 'Satellite water evidence')}>
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-semibold">{t('ndvi.water.title', 'Water evidence')}</div>
-          <p className="text-[10px] text-muted-foreground">{t('ndvi.water.select_hint', 'Select a layer to show its field image.')}</p>
+          <p className="text-[10px] text-muted-foreground">{t('ndvi.water.select_hint', 'Select a layer to show its field location.')}</p>
         </div>
         <Info className="h-4 w-4 text-muted-foreground" aria-hidden />
       </div>
@@ -88,39 +93,40 @@ export function SatelliteWaterLayerPanel({ layers, selectedCode, onSelect, loadi
               <p className="text-xs font-semibold">{selectedLabel}</p>
               <p className="text-[10px] text-muted-foreground">
                 {t(DESCRIPTION_KEYS[selectedCode], selectedCode === 'surface_water_trace'
-                  ? 'Satellite MNDWI evidence for surface-water signal.'
-                  : 'Satellite NDMI evidence for canopy moisture signal.')}
+                  ? 'Blue marks show the pixels meeting the configured satellite surface-water evidence rule.'
+                  : 'This shows the observed canopy moisture signal across the field.')}
               </p>
             </div>
           </div>
 
           {latest.signedImageUrl ? (
-            <figure className="overflow-hidden rounded-xl border border-border/40 bg-muted/20">
-              <img
-                key={`${latest.layer_code}:${latest.scene_id}:${latest.acquisition_date}`}
-                src={latest.signedImageUrl}
-                alt={`${selectedLabel} — ${latest.acquisition_date}`}
-                className="block aspect-square w-full object-contain"
-                loading="eager"
-                decoding="async"
-              />
-              <figcaption className="px-2.5 py-2 text-[10px] text-muted-foreground">
+            <>
+              <SatelliteWaterLayerMap landId={landId} layer={latest} height="300px" />
+              <div className="rounded-lg bg-muted/40 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground">
+                {isSpatialEvidence && evidencePixels > 0
+                  ? t('ndvi.water.spatial_trace_help', 'Blue areas are the actual satellite pixels that meet the water-evidence rule. Pan or zoom the map to see exactly where they are in your field.')
+                  : isSpatialEvidence
+                  ? t('ndvi.water.no_spatial_trace', 'No satellite pixels met the current surface-water evidence rule on this date. This does not prove that the field is dry; temporary waterlogging can require radar and ground observation.')
+                  : t('ndvi.water.moisture_help', 'This is a vegetation/canopy moisture signal, not a map of standing water.')}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[10px]">
+                <Metric label={t('ndvi.map.mean', 'Mean')} value={latest.value_mean} />
+                <Metric label={t('ndvi.water.median', 'Median')} value={latest.value_median} />
+                <Metric label={t('ndvi.water.effective_pixels', 'Valid pixels')} value={latest.effective_pixel_count} />
+              </div>
+              <p className="text-[9px] text-muted-foreground leading-snug">
                 {latest.acquisition_date} · Sentinel-2 · {latest.valid_fraction == null
                   ? t('ndvi.water.support_unavailable', 'support unavailable')
                   : t('ndvi.water.valid_support', '{{value}}% valid support', { value: (latest.valid_fraction * 100).toFixed(1) })}
-              </figcaption>
-            </figure>
+                {evidenceMin != null && isSpatialEvidence ? ` · evidence ≥ ${Number(evidenceMin).toFixed(2)}` : ''}
+              </p>
+            </>
           ) : (
             <div className="rounded-xl border border-dashed px-3 py-4 text-xs text-muted-foreground">
               {t('ndvi.water.image_unavailable', 'Evidence record exists, but its private image is not currently available.')}
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2 text-[10px]">
-            <Metric label={t('ndvi.map.mean', 'Mean')} value={latest.value_mean} />
-            <Metric label={t('ndvi.water.median', 'Median')} value={latest.value_median} />
-            <Metric label={t('ndvi.water.effective_pixels', 'Effective pixels')} value={latest.effective_pixel_count} />
-          </div>
           <p className="text-[9px] text-muted-foreground leading-snug">
             {t('ndvi.water.disclaimer', 'Satellite evidence only. This layer does not by itself confirm water stress, pest attack, or disease.')}
           </p>
