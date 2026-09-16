@@ -134,6 +134,30 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   const decisionDay = String(dayRow.decision_date);
   const byKey = (prefix: string) => decisions.filter((d) => String(d.decision_key ?? "").startsWith(prefix));
 
+  // 2b. STALE-SCHEDULE REBIND (identity only — no agronomy, no dates, no quantities).
+  //     derive_farm_decisions upserts with p_sched/p_task NULL, so a live decision written before a new
+  //     schedule was generated can still carry the OLD (now cancelled) schedule_id and one of its task ids.
+  //     INVARIANT: after this land's ACTIVE schedule is reconciled, no current live decision (DUE / WATCH /
+  //     INFO / BLOCKED, not past valid_until) may remain linked to a non-active schedule. A link into a
+  //     different schedule is cleared so the matching logic below can re-link it to a task of THIS schedule.
+  //     Terminal / historical decisions (DONE, MISSED, DISMISSED, EXPIRED, SUPERSEDED, expired validity)
+  //     are never selected here and stay exactly as they are.
+  for (const d of decisions) {
+    if (d.schedule_id === input.scheduleId) continue;
+    if (d.schedule_id === null && d.task_id === null) continue; // never linked — normal linking handles it
+    if (!input.dryRun) {
+      const { error: rErr } = await supabase
+        .from("farm_decision")
+        .update({ schedule_id: input.scheduleId, task_id: null, updated_at: new Date().toISOString() })
+        .eq("id", d.id);
+      if (rErr) throw rErr;
+    }
+    d.schedule_id = input.scheduleId;
+    d.task_id = null; // re-matched below only against a task that belongs to this schedule
+    counters.rebound += 1;
+  }
+
+
   // 3. Pending tasks of this schedule.
   const { data: rows, error } = await supabase
     .from("schedule_tasks")
