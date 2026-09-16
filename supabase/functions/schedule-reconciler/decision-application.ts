@@ -85,7 +85,7 @@ export interface TaskOutcome { task_id: string; task_type: string; decision_id: 
 export interface FieldDecisionOutcome {
   applied: boolean; skipped: string | null;
   adjustments: Array<Record<string, unknown>>; failedTaskIds: string[];
-  counters: { deferred: number; advanced: number; flagged: number; unflagged: number; linked: number; stated: number };
+  counters: { deferred: number; advanced: number; flagged: number; unflagged: number; linked: number; stated: number; rebound: number };
   state_snapshot: Record<string, unknown> | null;
   decisions_evaluated: Array<Record<string, unknown>>;
   outcomes: TaskOutcome[];
