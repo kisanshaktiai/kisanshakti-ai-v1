@@ -1849,7 +1849,10 @@ export function EnhancedAIChatInterface() {
                               (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
             trace_id: data.metadata?.trace_id,
             citations: isGeneralResponse ? (data.metadata?.citations || null) : null,
-            clarification_options: clarificationOptions
+            clarification_options: clarificationOptions,
+            // 2026-09-17 — localDB keeps only metadata (not the top-level advisorCard); the cache-first reload
+            // rebuilds the card from metadata.advisor_card, same as the server row
+            advisor_card: data?.metadata?.advisor_card ?? null
           }
         }
       ]);

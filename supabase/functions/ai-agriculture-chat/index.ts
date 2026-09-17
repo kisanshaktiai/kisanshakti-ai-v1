@@ -2743,7 +2743,8 @@ serve(async (req) => {
       // 2026-09-09 — ADVISOR CARD: the structured farmer contract the UI renders
       // (greeting → what happened → why → how to fix → extras → market products).
       // The LLM is the EXPLAINER of these DB facts only; unbacked numbers fall back to the template.
-      let advisorCard: any = null;
+      // 2026-09-17 — assigns the function-scope advisorCard declared above the storage try; a second
+      // `let` here shadowed it, so the stored message had the card but the live response sent null.
       try {
         const _d = orchestratorResponse.decision_output;
         if (_d?.primary_decision) {

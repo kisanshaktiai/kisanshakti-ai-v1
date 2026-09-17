@@ -292,10 +292,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // Check if this is an analysis response with full details
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
-  const hasCanonicalAdvisory = !isUser && message.structuredAdvisory?.version;
   // 2026-09-09 — the advisor card is the farmer contract (greeting → what → why → how → notes → products).
   // It comes from the backend as metadata.advisor_card and takes precedence over the legacy card set.
   const advisorCard: AdvisorCardData | null = (!isUser && (message as any)?.advisorCard) || null;
+  // 2026-09-17 — the live response also carries structured_advisory on the same turn; without this gate its
+  // plain-text branch is chosen first and the advisor card never renders.
+  const hasCanonicalAdvisory = !isUser && !advisorCard && message.structuredAdvisory?.version;
   // read-aloud speaks what the farmer sees: the card when there is one
   const spokenText = advisorCard
     ? [advisorCard.greeting, advisorCard.what_happened, advisorCard.why, advisorCard.how_to_fix, ...(advisorCard.how_lines ?? [])].filter(Boolean).join('. ')
