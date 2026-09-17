@@ -3508,11 +3508,11 @@ async function forceTranslateResponse(content: string, targetLang: string): Prom
   
   console.log(`🌐 [forceTranslate] Translating to ${langName} via LLM`);
   
-  try {
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    
-    const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+
+  const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
 Speak like you are in the farmer's field explaining advice face-to-face.
 Use local farming vocabulary, not textbook language.
 Use common village words and farming terms that farmers actually use.
@@ -3526,58 +3526,110 @@ You are explaining, not translating.
 Text to rewrite in natural rural ${langName}:
 ${content}`;
 
-    if (OPENAI_API_KEY) {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 8000);
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: AI_MODELS.openai.default,
-          messages: [
-            { role: 'system', content: `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.` },
-            { role: 'user', content: translationPrompt }
-          ],
-          ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 2000 } : { max_tokens: 2000 }),
-          ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.3 })
-        })
-      });
-      clearTimeout(tid);
-      if (resp.ok) {
-        const data = await resp.json();
-        const translatedText = data.choices?.[0]?.message?.content || '';
-        if (translatedText.length > 30) {
-          console.log(`✅ [forceTranslate] LLM translation successful (${translatedText.length} chars)`);
-          return translatedText;
-        }
+  const systemPrompt =
+    `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} ` +
+    `as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. ` +
+    `Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.`;
+
+  // 2026-09-17 — TRANSLATION WIRING FIX. The previous implementation used
+  //   if (OPENAI_API_KEY) {...} else if (GEMINI_API_KEY) {...}
+  // so whenever OPENAI_API_KEY existed the other providers were UNREACHABLE.
+  // Live: the OpenAI key returns 429 insufficient_quota and direct
+  // gemini-2.0-flash is retired (404), so every farmer response silently fell
+  // back to untranslated English. Providers are now tried IN SEQUENCE, managed
+  // Lovable AI Gateway first (the only consistently reachable provider), and a
+  // failure of one provider never blocks the next.
+  const attempt = async (
+    label: string,
+    fn: () => Promise<string>,
+  ): Promise<string | null> => {
+    try {
+      const text = (await fn())?.trim() ?? '';
+      if (text.length > 30) {
+        console.log(`✅ [forceTranslate] ${label} translation successful (${text.length} chars)`);
+        return text;
       }
-    } else if (GEMINI_API_KEY) {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 8000);
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: translationPrompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 }
-        })
-      });
-      clearTimeout(tid);
-      if (resp.ok) {
-        const data = await resp.json();
-        const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (translatedText.length > 30) {
-          console.log(`✅ [forceTranslate] Gemini translation successful (${translatedText.length} chars)`);
-          return translatedText;
-        }
-      }
+      console.warn(`⚠️ [forceTranslate] ${label} returned empty/short output — trying next provider`);
+    } catch (e) {
+      console.warn(`⚠️ [forceTranslate] ${label} failed: ${e instanceof Error ? e.message : 'unknown'}`);
     }
-  } catch (e) {
-    console.warn(`⚠️ [forceTranslate] LLM translation failed:`, e instanceof Error ? e.message : 'unknown');
+    return null;
+  };
+
+  const postJson = async (url: string, headers: Record<string, string>, body: unknown): Promise<any> => {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 8000);
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+      }
+      return await resp.json();
+    } finally {
+      clearTimeout(tid);
+    }
+  };
+
+  const chatMessages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: translationPrompt },
+  ];
+
+  // TIER 1 — managed Lovable AI Gateway
+  if (LOVABLE_API_KEY) {
+    const out = await attempt('Lovable AI Gateway', async () => {
+      const data = await postJson(
+        AI_ENDPOINTS.lovable,
+        { Authorization: `Bearer ${LOVABLE_API_KEY}` },
+        { model: AI_MODELS.lovable.default, messages: chatMessages },
+      );
+      return data.choices?.[0]?.message?.content || '';
+    });
+    if (out) return out;
   }
 
+  // TIER 2 — Gemini direct
+  if (GEMINI_API_KEY) {
+    const out = await attempt('Gemini', async () => {
+      const data = await postJson(
+        `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.default}:generateContent?key=${GEMINI_API_KEY}`,
+        {},
+        {
+          contents: [{ parts: [{ text: translationPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+        },
+      );
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    });
+    if (out) return out;
+  }
+
+  // TIER 3 — OpenAI direct
+  if (OPENAI_API_KEY) {
+    const out = await attempt('OpenAI', async () => {
+      const data = await postJson(
+        AI_ENDPOINTS.openai,
+        { Authorization: `Bearer ${OPENAI_API_KEY}` },
+        {
+          model: AI_MODELS.openai.default,
+          messages: chatMessages,
+          ...(requiresMaxCompletionTokens(AI_MODELS.openai.default)
+            ? { max_completion_tokens: 2000 }
+            : { max_tokens: 2000 }),
+          ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.3 }),
+        },
+      );
+      return data.choices?.[0]?.message?.content || '';
+    });
+    if (out) return out;
+  }
+
+  console.error(`🚨 [forceTranslate] no provider produced a ${langName} rewrite — returning untranslated content`);
   return content;
 }
 
