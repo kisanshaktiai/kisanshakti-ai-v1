@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-09-17 20:30 UTC — TRANSLATION WIRING FIX: forceTranslateResponse used
+//     an exclusive if(OPENAI)/else if(GEMINI) chain, so with an OpenAI key
+//     present (live: 429 insufficient_quota) no other provider was ever tried
+//     and farmer responses shipped untranslated English. Providers are now
+//     tried in sequence: Lovable AI Gateway → Gemini → OpenAI.
 //   2026-08-19 09:10 UTC — FIX 2: locked_context.days_since_sowing is recomputed
 //     from crop_schedules.sowing_date on EVERY turn and overwrites the value
 //     preserved from the session (no more frozen DAS).
@@ -53,7 +58,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
-import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../_shared/aiConfig.ts';
+import { AI_MODELS, AI_ENDPOINTS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../_shared/aiConfig.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 // Organic-preference flow (FIX 1/2): i18n chrome strings + preference vocabulary
