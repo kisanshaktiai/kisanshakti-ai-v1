@@ -21482,6 +21482,30 @@ export type Database = {
         }
         Relationships: []
       }
+      observation_master_reclass_backup_2026_09_16: {
+        Row: {
+          backed_up_at: string | null
+          observation_category: string | null
+          observation_code: string | null
+          semantic_class: string | null
+          symptom_category: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          observation_category?: string | null
+          observation_code?: string | null
+          semantic_class?: string | null
+          symptom_category?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          observation_category?: string | null
+          observation_code?: string | null
+          semantic_class?: string | null
+          symptom_category?: string | null
+        }
+        Relationships: []
+      }
       observation_protocol: {
         Row: {
           created_at: string
