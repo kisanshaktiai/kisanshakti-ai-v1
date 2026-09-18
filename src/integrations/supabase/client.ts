@@ -4,10 +4,7 @@ import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
 const SUPABASE_URL = "https://qfklkkzxemsbeniyugiz.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
-
-// Import the supabase client like this:
-// import { supabase } from "@/integrations/supabase/client";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbYomw1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -38,6 +35,15 @@ export function getSessionToken(): string | null {
   return globalSessionToken;
 }
 
+function applySharedAuthHeaders() {
+  const headers: Record<string, string> = {};
+  if (globalAuthData?.userId) headers['x-farmer-id'] = globalAuthData.userId;
+  if (globalAuthData?.tenantId) headers['x-tenant-id'] = globalAuthData.tenantId;
+  if (globalSessionToken) headers['x-session-token'] = globalSessionToken;
+
+  (supabase as any).rest.headers = headers;
+}
+
 export function setSessionToken(token: string | null) {
   globalSessionToken = token || null;
   try {
@@ -46,43 +52,41 @@ export function setSessionToken(token: string | null) {
   } catch {
     /* storage unavailable (private mode) — in-memory token still works */
   }
-  // Re-apply on the shared client and drop cached clients built without it.
-  (supabase as any).rest.headers = {
-    ...(supabase as any).rest.headers,
-    ...(token ? { 'x-session-token': token } : {}),
-  };
-  if (!token) delete (supabase as any).rest.headers['x-session-token'];
+  // Keep the shared client, including Storage requests, on the same
+  // tenant/farmer/session context as supabaseWithAuth().
+  applySharedAuthHeaders();
   clientCache.clear();
 }
 
 // Client cache to prevent creating multiple GoTrueClient instances
 const clientCache = new Map<string, ReturnType<typeof createClient<Database>>>();
 
-
 /**
- * Set global auth data (called by auth store)
- * This breaks the circular dependency
+ * Set global auth data (called by auth store).
+ * The shared client is deliberately kept in sync because some legacy UI
+ * components (including the NDVI map) use the shared client for Storage.
+ * Without these headers, Storage RLS sees an incomplete tenant context.
  */
 export function setGlobalAuthData(userId: string, tenantId: string) {
   globalAuthData = { userId, tenantId };
+  applySharedAuthHeaders();
   headersReady = true;
 }
 
-/**
- * Clear global auth data (on logout)
- */
+/** Clear global auth data (on logout). */
 export function clearGlobalAuthData() {
   globalAuthData = null;
-  setSessionToken(null);
+  globalSessionToken = null;
+  try { localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY); } catch { /* noop */ }
+  applySharedAuthHeaders();
   headersReady = false;
   headerPromise = null;
-  // Clear client cache to prevent memory leaks
   clientCache.clear();
 }
 
 /**
- * Wait for Supabase headers to be set before making queries
- * This prevents race conditions where queries execute before auth headers are ready
+ * Wait for Supabase headers to be set before making queries.
+ * This prevents race conditions where queries execute before auth headers are ready.
  */
 export function waitForHeaders(): Promise<void> {
   if (globalAuthData && headersReady) {
@@ -110,74 +114,53 @@ export function waitForHeaders(): Promise<void> {
   return headerPromise;
 }
 
-/**
- * Reset headers ready state (useful for testing or logout)
- */
+/** Reset headers ready state (useful for testing or logout). */
 export function resetHeadersState() {
   console.log('🔄 [Headers] Resetting state');
   clearGlobalAuthData();
 }
 
 /**
- * Update Supabase client headers with custom authentication context
- * This enables RLS policies to work with custom auth system
+ * Update Supabase client headers with custom authentication context.
+ * This updates BOTH the shared client and future cached authenticated clients.
  */
 export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
-  const headers: Record<string, string> = {};
-  
-  if (farmerId) {
-    headers['x-farmer-id'] = farmerId;
+  if (farmerId && tenantId) {
+    globalAuthData = { userId: farmerId, tenantId };
   }
-  
-  if (tenantId) {
-    headers['x-tenant-id'] = tenantId;
-  }
-
-  if (globalSessionToken) {
-    headers['x-session-token'] = globalSessionToken;
-  }
-  
-  // Update the global headers on the supabase client
-  (supabase as any).rest.headers = {
-    ...(supabase as any).rest.headers,
-    ...headers
-  };
-
+  applySharedAuthHeaders();
   headersReady = true;
 };
 
 /**
- * Get Supabase client with auth headers automatically set
- * Always use this wrapper for authenticated requests
- * 
- * IMPORTANT: Uses cached clients to prevent "Multiple GoTrueClient instances" warning
- * Clients are cached per userId-tenantId combination for optimal performance
+ * Get Supabase client with auth headers automatically set.
+ * Always use this wrapper for authenticated requests.
+ *
+ * IMPORTANT: Uses cached clients to prevent "Multiple GoTrueClient instances" warning.
+ * Clients are cached per userId-tenantId-session-token combination.
  */
 export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
   const userId = farmerId || globalAuthData?.userId;
   const tenant = tenantId || globalAuthData?.tenantId;
-  
-  // Strict validation: Check for missing OR empty string values
+
   if (!userId || !tenant || userId.trim() === '' || tenant.trim() === '') {
-    console.warn('⚠️ [supabaseWithAuth] Invalid auth data:', { 
-      userId: userId || '(empty)', 
+    console.warn('⚠️ [supabaseWithAuth] Invalid auth data:', {
+      userId: userId || '(empty)',
       tenant: tenant || '(empty)',
       isEmptyString: userId === '' || tenant === ''
     });
     return supabase;
   }
-  
-  // Create cache key from userId, tenantId and session token
+
   const cacheKey = `${userId}-${tenant}-${globalSessionToken ?? 'anon'}`;
-  
-  // Return cached client if exists
+
   if (clientCache.has(cacheKey)) {
     return clientCache.get(cacheKey)!;
   }
 
   const client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
-      persistSession: false, // Don't persist, use custom auth
+      persistSession: false,
     },
     global: {
       headers: {
@@ -191,3 +174,7 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
   clientCache.set(cacheKey, client);
   return client;
 };
+
+// Rehydrate the shared client with the persisted server session token at module load.
+// farmer/tenant values are added later by setGlobalAuthData/updateSupabaseHeaders.
+applySharedAuthHeaders();
