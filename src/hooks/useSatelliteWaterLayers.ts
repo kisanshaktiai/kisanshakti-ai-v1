@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
+import { useAuthStore } from '@/stores/authStore';
 import type { SatelliteWaterLayer, SatelliteWaterLayerCode } from '@/types/satelliteWater';
 
 export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
