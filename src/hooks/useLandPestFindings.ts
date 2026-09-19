@@ -26,9 +26,10 @@ export function useLandPestFindings(landId: string | null | undefined) {
   const { session } = useAuthStore();
   const tenantId = session?.tenantId ?? tenant?.id;
   const farmerId = session?.farmerId;
+  const sessionToken = session?.token;
 
   return useQuery({
-    queryKey: ['land-pest-findings', landId, tenantId],
+    queryKey: ['land-pest-findings', landId, tenantId, sessionToken],
     queryFn: async (): Promise<LandPestFinding[]> => {
       if (!landId || !tenantId) return [];
       const client = supabaseWithAuth(farmerId, tenantId);
