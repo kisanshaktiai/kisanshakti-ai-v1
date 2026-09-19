@@ -202,6 +202,7 @@ export function NDVIMapView({
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
+  const [imageFrame, setImageFrame] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   const { current, history, latestRaw, processingThumbnail } = useNDVIAnalysis(landId);
 
@@ -275,6 +276,25 @@ export function NDVIMapView({
       ? signed.url
       : `${signed.url}${signed.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheKey)}`;
   }, [signed.url, active]);
+
+  const fieldClipPath = useMemo(() => {
+    if (boundary.length < 3) return undefined;
+    const lngs = boundary.map((point) => point.lng);
+    const lats = boundary.map((point) => point.lat);
+    const west = Math.min(...lngs);
+    const east = Math.max(...lngs);
+    const south = Math.min(...lats);
+    const north = Math.max(...lats);
+    const width = east - west;
+    const height = north - south;
+    if (width <= 0 || height <= 0) return undefined;
+    const points = boundary.map((point) => {
+      const x = ((point.lng - west) / width) * 100;
+      const y = ((north - point.lat) / height) * 100;
+      return `${x.toFixed(2)}% ${y.toFixed(2)}%`;
+    });
+    return `polygon(${points.join(', ')})`;
+  }, [boundary]);
 
   // A signed URL can be minted and still fail to LOAD (expired after its TTL,
   // object missing, blocked). MapLibre reports that on the map's 'error'
@@ -374,6 +394,42 @@ export function NDVIMapView({
     else map.once('load', sync);
   }, [boundary]);
 
+  // Keep a native <img> precisely aligned with the field bounds. This is the
+  // reliable farmer-facing path: some low-memory Android WebViews fail to draw
+  // MapLibre image sources even after the private PNG has downloaded correctly.
+  // The map remains the geospatial base, while the browser-native image makes
+  // the same observed pixels visible without depending on WebGL texture upload.
+  useEffect(() => {
+    const map = mapRef.current;
+    const bounds = computeBounds(boundary) as [[number, number], [number, number]] | null;
+    if (!map || !bounds) {
+      setImageFrame(null);
+      return;
+    }
+
+    const updateFrame = () => {
+      const [[west, south], [east, north]] = bounds;
+      const topLeft = map.project([west, north]);
+      const bottomRight = map.project([east, south]);
+      setImageFrame({
+        left: topLeft.x,
+        top: topLeft.y,
+        width: Math.max(1, bottomRight.x - topLeft.x),
+        height: Math.max(1, bottomRight.y - topLeft.y),
+      });
+    };
+
+    if (map.loaded()) updateFrame();
+    else map.once('load', updateFrame);
+    map.on('move', updateFrame);
+    map.on('resize', updateFrame);
+    return () => {
+      map.off('load', updateFrame);
+      map.off('move', updateFrame);
+      map.off('resize', updateFrame);
+    };
+  }, [boundary]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -470,22 +526,42 @@ export function NDVIMapView({
         aria-label={t('ndvi.map.aria', 'NDVI satellite heatmap')}
       />
 
-      <div className="absolute top-2 right-2 z-10 flex flex-col gap-1.5">
+      {thumbnailUsable && imageFrame && (
+        <img
+          key={activeThumbnailUrl}
+          src={activeThumbnailUrl ?? undefined}
+          alt={t('ndvi.map.thumbnail_alt', 'Satellite crop-health image of this field')}
+          className="pointer-events-none absolute z-[2] block object-fill"
+          style={{
+            left: imageFrame.left,
+            top: imageFrame.top,
+            width: imageFrame.width,
+            height: imageFrame.height,
+            opacity: overlayOpacity,
+            clipPath: fieldClipPath,
+          }}
+          onError={() => {
+            if (activeThumbnailUrl) setFailedThumbnailUrl(activeThumbnailUrl);
+          }}
+        />
+      )}
+
+      <div className="absolute top-2 right-2 z-10 flex flex-col gap-2">
         <Button
           variant="secondary"
           size="sm"
-          className="h-8 px-2 rounded-lg shadow-md bg-background/95 text-foreground gap-1"
+          className="min-h-11 min-w-11 px-3 rounded-lg shadow-md bg-background text-foreground gap-2"
           onClick={() => setLegendOpen((v) => !v)}
           aria-label={t('ndvi.map.legend', 'Legend')}
         >
-          <Layers className="h-3.5 w-3.5" />
-          <span className="text-[10px] font-medium">{t('ndvi.map.legend', 'Legend')}</span>
+          <Layers className="h-4 w-4" />
+          <span className="text-xs font-semibold">{t('ndvi.map.legend', 'Legend')}</span>
         </Button>
 
         <Button
           variant="secondary"
           size="sm"
-          className="h-8 px-2 rounded-lg shadow-md bg-background/95 text-foreground gap-1"
+          className="min-h-11 min-w-11 px-3 rounded-lg shadow-md bg-background text-foreground gap-2"
           onClick={() => {
             const map = mapRef.current;
             const b = boundary.length ? computeBounds(boundary) : null;
@@ -493,30 +569,30 @@ export function NDVIMapView({
           }}
           aria-label={t('ndvi.map.recenter', 'Recenter')}
         >
-          <Locate className="h-3.5 w-3.5" />
-          <span className="text-[10px] font-medium">{t('ndvi.map.recenter', 'Center')}</span>
+          <Locate className="h-4 w-4" />
+          <span className="text-xs font-semibold">{t('ndvi.map.recenter', 'Center')}</span>
         </Button>
 
         <Button
           variant="secondary"
           size="sm"
-          className="h-8 px-2 rounded-lg shadow-md bg-background/95 text-foreground gap-1"
+          className="min-h-11 min-w-11 px-3 rounded-lg shadow-md bg-background text-foreground gap-2"
           onClick={() => setFullscreen((v) => !v)}
           aria-label={t('ndvi.map.fullscreen', 'Fullscreen')}
         >
           {fullscreen
-            ? <Minimize2 className="h-3.5 w-3.5" />
-            : <Maximize2 className="h-3.5 w-3.5" />}
-          <span className="text-[10px] font-medium">
+            ? <Minimize2 className="h-4 w-4" />
+            : <Maximize2 className="h-4 w-4" />}
+          <span className="text-xs font-semibold">
             {fullscreen ? t('ndvi.map.exit', 'Exit') : t('ndvi.map.full', 'Full')}
           </span>
         </Button>
       </div>
 
       {renderMode !== 'boundary' && (
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-2 bg-background/95 rounded-lg shadow-md px-2 py-1.5">
-          <Sliders className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <div className="w-24">
+        <div className="absolute top-2 left-2 z-10 flex min-h-11 items-center gap-2 bg-background rounded-lg shadow-md px-3 py-2">
+          <Sliders className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="w-20 sm:w-28">
             <Slider
               value={[overlayOpacity * 100]}
               onValueChange={(v) => setOverlayOpacity(v[0] / 100)}
@@ -526,14 +602,14 @@ export function NDVIMapView({
               aria-label={t('ndvi.map.opacity', 'Heatmap opacity')}
             />
           </div>
-          <span className="text-[10px] text-muted-foreground tabular-nums w-6 text-right">
+          <span className="text-xs font-semibold text-foreground tabular-nums w-8 text-right">
             {Math.round(overlayOpacity * 100)}%
           </span>
         </div>
       )}
 
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
-        <Badge variant="secondary" className="bg-background/95 shadow-md text-[11px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5">
+      <div className="absolute top-16 left-2 z-10 max-w-[calc(100%-7rem)]">
+        <Badge variant="secondary" className="bg-background shadow-md text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
           <Satellite className="h-3 w-3 text-primary" />
           {renderMode === 'land_thumb' && t('ndvi.map.mode_land_thumb', 'Satellite NDVI thumbnail')}
           {renderMode === 'zonal' && t('ndvi.map.mode_zonal', 'Field-level NDVI')}
