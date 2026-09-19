@@ -71,7 +71,7 @@ export function useSatelliteWaterLayers(
         const latest = rows[0];
         let signedImageUrl: string | null = null;
         if (latest.image_path) {
-          const { data: signedData, error: signError } = await supabase.storage
+          const { data: signedData, error: signError } = await client.storage
             .from('ndvi-thumbnails')
             .createSignedUrl(latest.image_path, 300);
           if (signError || !signedData?.signedUrl) {
