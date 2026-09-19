@@ -4,7 +4,7 @@ import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
 const SUPABASE_URL = "https://qfklkkzxemsbeniyugiz.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbYomw1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -36,10 +36,16 @@ export function getSessionToken(): string | null {
 }
 
 function applySharedAuthHeaders() {
-  const headers: Record<string, string> = {};
+  // Preserve the built-in apikey/Authorization headers supabase-js set at
+  // createClient time; only add/replace the custom auth-context headers.
+  const existing = ((supabase as any).rest?.headers ?? {}) as Record<string, string>;
+  const headers: Record<string, string> = { ...existing };
   if (globalAuthData?.userId) headers['x-farmer-id'] = globalAuthData.userId;
+  else delete headers['x-farmer-id'];
   if (globalAuthData?.tenantId) headers['x-tenant-id'] = globalAuthData.tenantId;
+  else delete headers['x-tenant-id'];
   if (globalSessionToken) headers['x-session-token'] = globalSessionToken;
+  else delete headers['x-session-token'];
 
   (supabase as any).rest.headers = headers;
 }

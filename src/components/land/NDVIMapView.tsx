@@ -378,7 +378,7 @@ export function NDVIMapView({
     if (!map || !map.isStyleLoaded()) {
       const onLoad = () => applyRender();
       map?.once('load', onLoad);
-      return () => map?.off('load', onLoad);
+      return () => { map?.off('load', onLoad); };
     }
     applyRender();
     // eslint-disable-next-line react-hooks/exhaustive-deps
