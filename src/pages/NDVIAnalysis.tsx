@@ -15,6 +15,7 @@ import { landsApi } from '@/services/landsApi';
 import { NDVIMapView } from '@/components/land/NDVIMapView';
 import { NDVITrendChart } from '@/components/land/NDVITrendChart';
 import { SatelliteWaterLayerPanel } from '@/components/land/SatelliteWaterLayerPanel';
+import { SatellitePestPanel } from '@/components/land/SatellitePestPanel';
 import { useNDVIAnalysis } from '@/hooks/useNDVIAnalysis';
 import { useSatelliteWaterLayers } from '@/hooks/useSatelliteWaterLayers';
 import { useAuthStore } from '@/stores/authStore';
