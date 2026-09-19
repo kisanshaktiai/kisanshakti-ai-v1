@@ -36,19 +36,35 @@ export function getSessionToken(): string | null {
 }
 
 function applySharedAuthHeaders() {
-  // Preserve the built-in apikey/Authorization headers supabase-js set at
-  // createClient time; only add/replace the custom auth-context headers.
-  const existing = ((supabase as any).rest?.headers ?? {}) as Record<string, string>;
-  const headers: Record<string, string> = { ...existing };
-  if (globalAuthData?.userId) headers['x-farmer-id'] = globalAuthData.userId;
-  else delete headers['x-farmer-id'];
-  if (globalAuthData?.tenantId) headers['x-tenant-id'] = globalAuthData.tenantId;
-  else delete headers['x-tenant-id'];
-  if (globalSessionToken) headers['x-session-token'] = globalSessionToken;
-  else delete headers['x-session-token'];
+  // IMPORTANT: in supabase-js v2 / postgrest-js v2.100+, `rest.headers` is a real
+  // `Headers` instance holding the built-in apikey/Authorization. Never replace it
+  // (and never spread it — spreading a Headers object yields {}), otherwise every
+  // request from the shared client loses its API key and fails with 401.
+  const rest = (supabase as any).rest;
+  if (!rest) return;
 
-  (supabase as any).rest.headers = headers;
+  const custom: Record<string, string | null> = {
+    'x-farmer-id': globalAuthData?.userId ?? null,
+    'x-tenant-id': globalAuthData?.tenantId ?? null,
+    'x-session-token': globalSessionToken ?? null,
+  };
+
+  if (typeof rest.headers?.set === 'function' && typeof rest.headers?.delete === 'function') {
+    for (const [name, value] of Object.entries(custom)) {
+      if (value) rest.headers.set(name, value);
+      else rest.headers.delete(name);
+    }
+    return;
+  }
+
+  // Fallback for plain-object header bags (older clients).
+  const bag = rest.headers as Record<string, string>;
+  for (const [name, value] of Object.entries(custom)) {
+    if (value) bag[name] = value;
+    else delete bag[name];
+  }
 }
+
 
 export function setSessionToken(token: string | null) {
   globalSessionToken = token || null;
