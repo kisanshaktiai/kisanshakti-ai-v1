@@ -36,10 +36,16 @@ export function getSessionToken(): string | null {
 }
 
 function applySharedAuthHeaders() {
-  const headers: Record<string, string> = {};
+  // Preserve the built-in apikey/Authorization headers supabase-js set at
+  // createClient time; only add/replace the custom auth-context headers.
+  const existing = ((supabase as any).rest?.headers ?? {}) as Record<string, string>;
+  const headers: Record<string, string> = { ...existing };
   if (globalAuthData?.userId) headers['x-farmer-id'] = globalAuthData.userId;
+  else delete headers['x-farmer-id'];
   if (globalAuthData?.tenantId) headers['x-tenant-id'] = globalAuthData.tenantId;
+  else delete headers['x-tenant-id'];
   if (globalSessionToken) headers['x-session-token'] = globalSessionToken;
+  else delete headers['x-session-token'];
 
   (supabase as any).rest.headers = headers;
 }
