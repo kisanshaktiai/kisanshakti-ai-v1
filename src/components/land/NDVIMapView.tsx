@@ -276,11 +276,19 @@ export function NDVIMapView({
       : `${signed.url}${signed.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheKey)}`;
   }, [signed.url, active]);
 
+  // A signed URL can be minted and still fail to LOAD (expired after its TTL,
+  // object missing, blocked). MapLibre reports that on the map's 'error'
+  // event with the source id; without handling it the map stays in
+  // land_thumb mode showing nothing. Track the failed URL so the mode drops
+  // to the zonal fill for that observation instead.
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
+  const thumbnailUsable = !!activeThumbnailUrl && activeThumbnailUrl !== failedThumbnailUrl;
+
   const renderMode: RenderMode = useMemo(() => {
-    if (activeThumbnailUrl) return 'land_thumb';
+    if (thumbnailUsable) return 'land_thumb';
     if (active?.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
-  }, [active, activeThumbnailUrl]);
+  }, [active, thumbnailUsable]);
 
   const [overlayOpacity, setOverlayOpacity] = useState(0.75);
   const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(0);
@@ -398,6 +406,16 @@ export function NDVIMapView({
       if (b) {
         const [[w, s], [e, n]] = b;
         clearRaster();
+
+        const onSourceError = (event: any) => {
+          if (event?.sourceId !== 'ndvi-raster-src') return;
+          console.error('[NDVIMapView] NDVI thumbnail failed to load; falling back to field-level fill', {
+            url: activeThumbnailUrl, message: event?.error?.message,
+          });
+          map.off('error', onSourceError);
+          setFailedThumbnailUrl(activeThumbnailUrl);
+        };
+        map.on('error', onSourceError);
 
         map.addSource('ndvi-raster-src', {
           type: 'image',
@@ -649,9 +667,9 @@ export function NDVIMapView({
 
           {expandedSheet >= 1 && active?.reliable && active.ndvi != null && (
             <div className="grid grid-cols-3 gap-2 pt-2">
-              <Stat label={t('ndvi.map.min', 'Min')} value={active.raw.min_ndvi ?? active.raw.ndvi_min} />
-              <Stat label={t('ndvi.map.mean', 'Mean')} value={active.raw.mean_ndvi ?? active.raw.ndvi_value} emphasis />
-              <Stat label={t('ndvi.map.max', 'Max')} value={active.raw.max_ndvi ?? active.raw.ndvi_max} />
+              <Stat label={t('ndvi.map.min', 'Min')} value={active.raw.ndvi_spatial_min ?? active.raw.min_ndvi ?? active.raw.ndvi_min} />
+              <Stat label={t('ndvi.map.mean', 'Mean')} value={active.raw.ndvi_value ?? active.raw.mean_ndvi} emphasis />
+              <Stat label={t('ndvi.map.max', 'Max')} value={active.raw.ndvi_spatial_max ?? active.raw.max_ndvi ?? active.raw.ndvi_max} />
             </div>
           )}
 
