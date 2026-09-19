@@ -38,8 +38,12 @@ export function useSatelliteWaterLayers(
     setError(null);
     setLayers([]);
 
+    // Farmer-scoped access needs the authenticated request context (farmer/tenant/session
+    // headers); the plain client is refused by the row rules and returns nothing.
+    const client = supabaseWithAuth(farmerId, tenantId);
+
     Promise.resolve(
-      supabase
+      client
         .from('satellite_water_layers')
         .select('*')
         .eq('tenant_id', tenantId)
