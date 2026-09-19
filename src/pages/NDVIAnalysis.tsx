@@ -32,9 +32,13 @@ function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toL
 export default function NDVIAnalysis() {
   const { t } = useTranslation(); const navigate = useNavigate(); const { id: urlLandId } = useParams<{ id?: string }>();
   const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech();
-  const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null); const [isRefreshing, setIsRefreshing] = useState(false); const [tab, setTab] = useState<'now'|'trend'|'map'>('now'); const [waterLayer, setWaterLayer] = useState<SatelliteWaterLayerCode>('surface_water_trace');
+  const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null); const [isRefreshing, setIsRefreshing] = useState(false); const [tab, setTab] = useState<'now'|'trend'|'map'>('now'); const [waterLayer, setWaterLayer] = useState<SatelliteWaterLayerCode>('surface_water_trace'); const [mapLayer, setMapLayer] = useState<'health'|'water'|'pest'>('health');
   const { data: lands = [], isLoading: landsLoading, refetch: refetchLands } = useQuery({ queryKey: ['lands', session?.farmerId, tenant?.id], queryFn: async () => ((await landsApi.fetchLands()) || []) as LandRow[], enabled: !!session?.farmerId && !!tenant?.id });
-  useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId(lands[0].id); }, [lands, selectedLandId]);
+  const hasSatellite = (l: LandRow) => l.last_ndvi_value != null || !!l.last_ndvi_calculation;
+  const landsWithData = useMemo(() => lands.filter(hasSatellite), [lands]);
+  // Open on a field that actually has a satellite reading; otherwise the screen shows
+  // "no data" for a field that simply was never observed while other fields do have data.
+  useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId((landsWithData[0] ?? lands[0]).id); }, [lands, landsWithData, selectedLandId]);
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
   const { current, history, latestRaw, isLoading, error: ndviError, refetch } = useNDVIAnalysis(selectedLandId);
   const { layers: waterLayers, loading: waterLayersLoading, error: waterLayersError } = useSatelliteWaterLayers(selectedLandId || undefined, waterLayer);
