@@ -21,6 +21,7 @@ export function useSatelliteWaterLayers(
   const { session } = useAuthStore();
   const tenantId = session?.tenantId ?? tenant?.id;
   const farmerId = session?.farmerId;
+  const sessionToken = session?.token;
   const [layers, setLayers] = useState<SatelliteWaterLayerView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +97,7 @@ export function useSatelliteWaterLayers(
     return () => {
       cancelled = true;
     };
-  }, [landId, tenantId, farmerId, selectedCode]);
+  }, [landId, tenantId, farmerId, sessionToken, selectedCode]);
 
   return { layers, loading, error };
 }
