@@ -42575,10 +42575,6 @@ export type Database = {
         }
         Returns: Json
       }
-      current_farmer_owns_land: {
-        Args: { p_land_id: string; p_tenant_id: string }
-        Returns: boolean
-      }
       debug_auth_state: {
         Args: never
         Returns: {
