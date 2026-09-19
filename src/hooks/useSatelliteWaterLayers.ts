@@ -18,7 +18,9 @@ export function useSatelliteWaterLayers(
   selectedCode: SatelliteWaterLayerCode = 'surface_water_trace',
 ) {
   const { tenant } = useTenant();
-  const tenantId = tenant?.id;
+  const { session } = useAuthStore();
+  const tenantId = session?.tenantId ?? tenant?.id;
+  const farmerId = session?.farmerId;
   const [layers, setLayers] = useState<SatelliteWaterLayerView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
