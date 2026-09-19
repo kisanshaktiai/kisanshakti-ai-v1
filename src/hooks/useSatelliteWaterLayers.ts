@@ -96,7 +96,7 @@ export function useSatelliteWaterLayers(
     return () => {
       cancelled = true;
     };
-  }, [landId, tenantId, selectedCode]);
+  }, [landId, tenantId, farmerId, selectedCode]);
 
   return { layers, loading, error };
 }
