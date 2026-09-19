@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
+import { useAuthStore } from '@/stores/authStore';
 import type { SatelliteWaterLayer, SatelliteWaterLayerCode } from '@/types/satelliteWater';
 
 export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
@@ -17,7 +18,9 @@ export function useSatelliteWaterLayers(
   selectedCode: SatelliteWaterLayerCode = 'surface_water_trace',
 ) {
   const { tenant } = useTenant();
-  const tenantId = tenant?.id;
+  const { session } = useAuthStore();
+  const tenantId = session?.tenantId ?? tenant?.id;
+  const farmerId = session?.farmerId;
   const [layers, setLayers] = useState<SatelliteWaterLayerView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +38,12 @@ export function useSatelliteWaterLayers(
     setError(null);
     setLayers([]);
 
+    // Farmer-scoped access needs the authenticated request context (farmer/tenant/session
+    // headers); the plain client is refused by the row rules and returns nothing.
+    const client = supabaseWithAuth(farmerId, tenantId);
+
     Promise.resolve(
-      supabase
+      client
         .from('satellite_water_layers')
         .select('*')
         .eq('tenant_id', tenantId)
@@ -64,7 +71,7 @@ export function useSatelliteWaterLayers(
         const latest = rows[0];
         let signedImageUrl: string | null = null;
         if (latest.image_path) {
-          const { data: signedData, error: signError } = await supabase.storage
+          const { data: signedData, error: signError } = await client.storage
             .from('ndvi-thumbnails')
             .createSignedUrl(latest.image_path, 300);
           if (signError || !signedData?.signedUrl) {
@@ -89,7 +96,7 @@ export function useSatelliteWaterLayers(
     return () => {
       cancelled = true;
     };
-  }, [landId, tenantId, selectedCode]);
+  }, [landId, tenantId, farmerId, selectedCode]);
 
   return { layers, loading, error };
 }

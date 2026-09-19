@@ -15,7 +15,9 @@ export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
   const {tenant}=useTenant(); const {session}=useAuthStore(); const tenantId=session?.tenantId??tenant?.id; const farmerId=session?.farmerId;
   const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis',landId,tenantId],queryFn:async()=>{
     if(!landId||!tenantId)return{current:null,history:[],latestRaw:null,latestProcessingLog:null,processingThumbnail:null};
-    const client=supabaseWithAuth(farmerId,tenantId); const cutoffDate=new Date(Date.now()-45*86400000); const cutoffDay=cutoffDate.toISOString().slice(0,10);
+    // 90-day window: Sentinel-2 revisit plus cloud loss often leaves fewer than two
+    // usable observations inside 45 days, which made the trend permanently unavailable.
+    const client=supabaseWithAuth(farmerId,tenantId); const cutoffDate=new Date(Date.now()-90*86400000); const cutoffDay=cutoffDate.toISOString().slice(0,10);
     const [decisionResult,logResult]=await Promise.all([
       client.from(DECISION_VIEW).select('land_id,tenant_id,acquisition_date,acquisition_time,scene_id,ndvi_value,savi_value,ndre_value,ndmi_value,uniformity_cv,quality_score,confidence_level,cloud_cover,observation_source,effective_pixel_count,coverage_weighted_purity,boundary_contamination_fraction,ndvi_spatial_se,evidence_confidence,measurement_status,spatial_stat_method,age_days,is_fresh').eq('land_id',landId).eq('tenant_id',tenantId).gte('acquisition_date',cutoffDay).order('acquisition_date',{ascending:false}).limit(60),
       client.from('ndvi_processing_logs').select('id,land_id,processing_step,step_status,completed_at,created_at,error_message,metadata').eq('land_id',landId).eq('tenant_id',tenantId).gte('created_at',cutoffDate.toISOString()).order('created_at',{ascending:false}).limit(30)
@@ -26,7 +28,9 @@ export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
     const parsed=decisionRows.map((d:any,index:number)=>{const a=assetsByScene.get(d.scene_id)||{};const metadata=a.metadata?(typeof a.metadata==='string'?JSON.parse(a.metadata):a.metadata):null;return{...a,...d,id:`${d.land_id}:${d.scene_id||d.acquisition_date}:${index}`,date:d.acquisition_date,cloud_coverage:d.cloud_cover??null,coverage_percentage:null,metadata} as NDVIDataComplete;});
     const latestRaw=parsed[0]||null;
     // `current` is the newest decision-grade measurement even when stale. Freshness is a separate evidence dimension and is surfaced to the farmer; it must not turn a valid historical measurement into "no data".
-    const history=parsed.filter(r=>r.is_fresh===true); const current=latestRaw;
+    // Every row here already passed the decision-grade view. `is_fresh` is an age flag only:
+    // filtering the trend by it discarded valid older measurements and left a single point.
+    const history=parsed; const current=latestRaw;
     const logs=((logResult.data||[])as any[]).map(item=>({...item,metadata:item.metadata?(typeof item.metadata==='string'?JSON.parse(item.metadata):item.metadata):null}))as NDVIProcessingLog[];
     const latestProcessingLog=logs[0]||null; const successfulThumb=logs.find(log=>log.processing_step==='PROCESS_END'&&log.step_status==='completed'&&!!log.metadata?.thumbnail_url); const processingThumbnail=successfulThumb?.metadata?.thumbnail_url?{url:successfulThumb.metadata.thumbnail_url,date:successfulThumb.completed_at||successfulThumb.created_at||cutoffDay,geotiffUrl:successfulThumb.metadata.geotiff_url}:null;
     return{current,history,latestRaw,latestProcessingLog,processingThumbnail};
