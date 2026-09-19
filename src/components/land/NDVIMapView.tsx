@@ -460,31 +460,7 @@ export function NDVIMapView({
     if (renderMode === 'land_thumb' && activeThumbnailUrl) {
       const b = computeBounds(boundary) as [[number, number], [number, number]] | null;
       if (b) {
-        const [[w, s], [e, n]] = b;
         clearRaster();
-
-        const onSourceError = (event: any) => {
-          if (event?.sourceId !== 'ndvi-raster-src') return;
-          console.error('[NDVIMapView] NDVI thumbnail failed to load; falling back to field-level fill', {
-            url: activeThumbnailUrl, message: event?.error?.message,
-          });
-          map.off('error', onSourceError);
-          setFailedThumbnailUrl(activeThumbnailUrl);
-        };
-        map.on('error', onSourceError);
-
-        map.addSource('ndvi-raster-src', {
-          type: 'image',
-          url: activeThumbnailUrl,
-          coordinates: [[w, n], [e, n], [e, s], [w, s]],
-        });
-        map.addLayer({
-          id: 'ndvi-raster',
-          type: 'raster',
-          source: 'ndvi-raster-src',
-          paint: { 'raster-opacity': overlayOpacity, 'raster-fade-duration': 200 },
-        });
-
         if (map.getLayer('land-fill')) {
           map.setPaintProperty('land-fill', 'fill-opacity', 0);
         }

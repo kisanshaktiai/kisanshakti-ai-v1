@@ -63,8 +63,8 @@ export default function NDVIAnalysis() {
       <TabsContent value="map" className="flex-1 px-0 pt-1 pb-16 mt-0">
         <div className="px-3 pb-1"><div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/40 p-1">
           {([['health',t('ndvi.layer.health','Crop health')],['water',t('ndvi.layer.water','Water')],['pest',t('ndvi.layer.pest','Pest')]] as const).map(([code,label])=>(
-            <button key={code} type="button" onClick={()=>setMapLayer(code)} aria-pressed={mapLayer===code}
-              className={cn('h-8 rounded-lg text-[11px] font-semibold transition-all', mapLayer===code?'bg-background shadow-sm text-foreground':'text-muted-foreground')}>{label}</button>
+            <Button key={code} type="button" variant={mapLayer===code?'secondary':'ghost'} onClick={()=>setMapLayer(code)} aria-pressed={mapLayer===code}
+              className={cn('min-h-11 rounded-lg px-2 text-xs font-semibold', mapLayer===code?'bg-background shadow-sm text-foreground':'text-muted-foreground')}>{label}</Button>
           ))}
         </div></div>
         {mapLayer==='health'&&selectedLandId&&<NDVIMapView landId={selectedLandId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} areaAcres={selectedLand?.area_acres} currentCrop={selectedLand?.current_crop} landThumbnailUrl={selectedLand?.ndvi_thumbnail_url} landThumbnailDate={selectedLand?.last_ndvi_calculation}/>}
