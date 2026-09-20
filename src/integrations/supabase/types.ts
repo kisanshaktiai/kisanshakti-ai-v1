@@ -6076,6 +6076,121 @@ export type Database = {
           },
         ]
       }
+      cost_component_standard: {
+        Row: {
+          amount_per_acre: number
+          component_code: string
+          cost_basis: string
+          created_at: string
+          crop_code: string
+          cultivation_method: string | null
+          currency_code: string
+          district_id: string | null
+          effective_from: string
+          effective_to: string | null
+          id: string
+          is_active: boolean
+          knowledge_source_id: string | null
+          origin: string
+          reference_season: string | null
+          scope_level: string
+          source_note: string | null
+          state_id: string | null
+          taluka_id: string | null
+          updated_at: string
+          village_id: string | null
+        }
+        Insert: {
+          amount_per_acre: number
+          component_code: string
+          cost_basis: string
+          created_at?: string
+          crop_code: string
+          cultivation_method?: string | null
+          currency_code: string
+          district_id?: string | null
+          effective_from: string
+          effective_to?: string | null
+          id?: string
+          is_active?: boolean
+          knowledge_source_id?: string | null
+          origin: string
+          reference_season?: string | null
+          scope_level: string
+          source_note?: string | null
+          state_id?: string | null
+          taluka_id?: string | null
+          updated_at?: string
+          village_id?: string | null
+        }
+        Update: {
+          amount_per_acre?: number
+          component_code?: string
+          cost_basis?: string
+          created_at?: string
+          crop_code?: string
+          cultivation_method?: string | null
+          currency_code?: string
+          district_id?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          is_active?: boolean
+          knowledge_source_id?: string | null
+          origin?: string
+          reference_season?: string | null
+          scope_level?: string
+          source_note?: string | null
+          state_id?: string | null
+          taluka_id?: string | null
+          updated_at?: string
+          village_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_component_standard_component_code_fkey"
+            columns: ["component_code"]
+            isOneToOne: false
+            referencedRelation: "expense_component_master"
+            referencedColumns: ["component_code"]
+          },
+          {
+            foreignKeyName: "cost_component_standard_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_component_standard_knowledge_source_id_fkey"
+            columns: ["knowledge_source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_component_standard_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_component_standard_taluka_id_fkey"
+            columns: ["taluka_id"]
+            isOneToOne: false
+            referencedRelation: "talukas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_component_standard_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       countries: {
         Row: {
           code: string
@@ -8266,9 +8381,11 @@ export type Database = {
           gdd_max: number | null
           gdd_min: number | null
           growth_stage: string
+          heat_damage_threshold_c: number | null
           id: string
           is_active: boolean
           is_concurrent_window: boolean
+          is_heat_critical: boolean | null
           is_moisture_critical: boolean | null
           is_photoperiod_sensitive: boolean
           is_pre_emergence_gate_target: boolean | null
@@ -8284,6 +8401,8 @@ export type Database = {
           stage_description: string | null
           stage_node_type: string
           updated_at: string
+          yield_response_ky: number | null
+          yield_sensitivity_source_id: string | null
         }
         Insert: {
           base_temperature_c?: number | null
@@ -8306,9 +8425,11 @@ export type Database = {
           gdd_max?: number | null
           gdd_min?: number | null
           growth_stage: string
+          heat_damage_threshold_c?: number | null
           id?: string
           is_active?: boolean
           is_concurrent_window?: boolean
+          is_heat_critical?: boolean | null
           is_moisture_critical?: boolean | null
           is_photoperiod_sensitive?: boolean
           is_pre_emergence_gate_target?: boolean | null
@@ -8324,6 +8445,8 @@ export type Database = {
           stage_description?: string | null
           stage_node_type?: string
           updated_at?: string
+          yield_response_ky?: number | null
+          yield_sensitivity_source_id?: string | null
         }
         Update: {
           base_temperature_c?: number | null
@@ -8346,9 +8469,11 @@ export type Database = {
           gdd_max?: number | null
           gdd_min?: number | null
           growth_stage?: string
+          heat_damage_threshold_c?: number | null
           id?: string
           is_active?: boolean
           is_concurrent_window?: boolean
+          is_heat_critical?: boolean | null
           is_moisture_critical?: boolean | null
           is_photoperiod_sensitive?: boolean
           is_pre_emergence_gate_target?: boolean | null
@@ -8364,6 +8489,8 @@ export type Database = {
           stage_description?: string | null
           stage_node_type?: string
           updated_at?: string
+          yield_response_ky?: number | null
+          yield_sensitivity_source_id?: string | null
         }
         Relationships: [
           {
@@ -8441,6 +8568,13 @@ export type Database = {
             columns: ["prev_stage_id"]
             isOneToOne: false
             referencedRelation: "v_crop_stage_master_null_method"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_stage_master_yield_sensitivity_source_id_fkey"
+            columns: ["yield_sensitivity_source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sources"
             referencedColumns: ["id"]
           },
         ]
@@ -8739,6 +8873,79 @@ export type Database = {
           },
         ]
       }
+      crop_yield_potential: {
+        Row: {
+          created_at: string
+          crop_code: string
+          cultivation_method: string | null
+          district_id: string | null
+          effective_from: string
+          id: string
+          is_active: boolean
+          knowledge_source_id: string | null
+          origin: string
+          scope_level: string
+          state_id: string | null
+          water_regime: string
+          yield_basis: string
+          yield_qtl_per_acre: number
+        }
+        Insert: {
+          created_at?: string
+          crop_code: string
+          cultivation_method?: string | null
+          district_id?: string | null
+          effective_from: string
+          id?: string
+          is_active?: boolean
+          knowledge_source_id?: string | null
+          origin: string
+          scope_level: string
+          state_id?: string | null
+          water_regime: string
+          yield_basis: string
+          yield_qtl_per_acre: number
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string
+          cultivation_method?: string | null
+          district_id?: string | null
+          effective_from?: string
+          id?: string
+          is_active?: boolean
+          knowledge_source_id?: string | null
+          origin?: string
+          scope_level?: string
+          state_id?: string | null
+          water_regime?: string
+          yield_basis?: string
+          yield_qtl_per_acre?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_yield_potential_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_yield_potential_knowledge_source_id_fkey"
+            columns: ["knowledge_source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_yield_potential_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crops: {
         Row: {
           created_at: string | null
@@ -8902,6 +9109,53 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "cultivation_method_master"
             referencedColumns: ["method_code"]
+          },
+        ]
+      }
+      cultivation_operation_norm: {
+        Row: {
+          created_at: string
+          crop_code: string
+          cultivation_method: string | null
+          id: string
+          is_active: boolean
+          knowledge_source_id: string | null
+          machine_hours_per_acre: number | null
+          origin: string
+          person_days_per_acre: number | null
+          task_type: string
+        }
+        Insert: {
+          created_at?: string
+          crop_code: string
+          cultivation_method?: string | null
+          id?: string
+          is_active?: boolean
+          knowledge_source_id?: string | null
+          machine_hours_per_acre?: number | null
+          origin: string
+          person_days_per_acre?: number | null
+          task_type: string
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string
+          cultivation_method?: string | null
+          id?: string
+          is_active?: boolean
+          knowledge_source_id?: string | null
+          machine_hours_per_acre?: number | null
+          origin?: string
+          person_days_per_acre?: number | null
+          task_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cultivation_operation_norm_knowledge_source_id_fkey"
+            columns: ["knowledge_source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sources"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -12878,6 +13132,93 @@ export type Database = {
           },
         ]
       }
+      expense_component_master: {
+        Row: {
+          component_code: string
+          created_at: string
+          display_order: number
+          is_active: boolean
+        }
+        Insert: {
+          component_code: string
+          created_at?: string
+          display_order: number
+          is_active?: boolean
+        }
+        Update: {
+          component_code?: string
+          created_at?: string
+          display_order?: number
+          is_active?: boolean
+        }
+        Relationships: []
+      }
+      expense_component_product_category_map: {
+        Row: {
+          component_code: string
+          master_product_category_id: string
+        }
+        Insert: {
+          component_code: string
+          master_product_category_id: string
+        }
+        Update: {
+          component_code?: string
+          master_product_category_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_component_product_categ_master_product_category_id_fkey"
+            columns: ["master_product_category_id"]
+            isOneToOne: true
+            referencedRelation: "master_product_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_component_product_category_map_component_code_fkey"
+            columns: ["component_code"]
+            isOneToOne: false
+            referencedRelation: "expense_component_master"
+            referencedColumns: ["component_code"]
+          },
+        ]
+      }
+      expense_component_task_map: {
+        Row: {
+          is_active: boolean
+          labor_component: string
+          material_component: string | null
+          task_type: string
+        }
+        Insert: {
+          is_active?: boolean
+          labor_component: string
+          material_component?: string | null
+          task_type: string
+        }
+        Update: {
+          is_active?: boolean
+          labor_component?: string
+          material_component?: string | null
+          task_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_component_task_map_labor_component_fkey"
+            columns: ["labor_component"]
+            isOneToOne: false
+            referencedRelation: "expense_component_master"
+            referencedColumns: ["component_code"]
+          },
+          {
+            foreignKeyName: "expense_component_task_map_material_component_fkey"
+            columns: ["material_component"]
+            isOneToOne: false
+            referencedRelation: "expense_component_master"
+            referencedColumns: ["component_code"]
+          },
+        ]
+      }
       expert_escalations: {
         Row: {
           context_data: Json | null
@@ -14859,16 +15200,20 @@ export type Database = {
         Row: {
           amount: number
           category: string
+          component_code: string | null
           created_at: string
           crop_name: string | null
           currency: string
           description: string | null
+          entry_source: string | null
+          estimate_id: string | null
           farmer_id: string
           id: string
           land_id: string | null
           metadata: Json | null
           payment_method: string | null
           receipt_url: string | null
+          schedule_id: string | null
           season: string | null
           tenant_id: string
           transaction_date: string
@@ -14878,16 +15223,20 @@ export type Database = {
         Insert: {
           amount: number
           category: string
+          component_code?: string | null
           created_at?: string
           crop_name?: string | null
           currency?: string
           description?: string | null
+          entry_source?: string | null
+          estimate_id?: string | null
           farmer_id: string
           id?: string
           land_id?: string | null
           metadata?: Json | null
           payment_method?: string | null
           receipt_url?: string | null
+          schedule_id?: string | null
           season?: string | null
           tenant_id: string
           transaction_date: string
@@ -14897,23 +15246,49 @@ export type Database = {
         Update: {
           amount?: number
           category?: string
+          component_code?: string | null
           created_at?: string
           crop_name?: string | null
           currency?: string
           description?: string | null
+          entry_source?: string | null
+          estimate_id?: string | null
           farmer_id?: string
           id?: string
           land_id?: string | null
           metadata?: Json | null
           payment_method?: string | null
           receipt_url?: string | null
+          schedule_id?: string | null
           season?: string | null
           tenant_id?: string
           transaction_date?: string
           transaction_type?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "financial_transactions_component_code_fkey"
+            columns: ["component_code"]
+            isOneToOne: false
+            referencedRelation: "expense_component_master"
+            referencedColumns: ["component_code"]
+          },
+          {
+            foreignKeyName: "financial_transactions_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "land_expense_estimate"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_transactions_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       followers: {
         Row: {
@@ -16277,43 +16652,97 @@ export type Database = {
         Row: {
           created_at: string
           effective_date: string
+          effective_to: string | null
           id: string
           is_active: boolean
+          knowledge_source_id: string | null
+          master_product_id: string | null
+          origin: string | null
+          pack_size: number | null
           price: number
           product_code: string
           product_name: string
           source: string
           state: string | null
+          state_id: string | null
           unit: string
           updated_at: string
         }
         Insert: {
           created_at?: string
           effective_date: string
+          effective_to?: string | null
           id?: string
           is_active?: boolean
+          knowledge_source_id?: string | null
+          master_product_id?: string | null
+          origin?: string | null
+          pack_size?: number | null
           price: number
           product_code: string
           product_name: string
           source: string
           state?: string | null
+          state_id?: string | null
           unit: string
           updated_at?: string
         }
         Update: {
           created_at?: string
           effective_date?: string
+          effective_to?: string | null
           id?: string
           is_active?: boolean
+          knowledge_source_id?: string | null
+          master_product_id?: string | null
+          origin?: string | null
+          pack_size?: number | null
           price?: number
           product_code?: string
           product_name?: string
           source?: string
           state?: string | null
+          state_id?: string | null
           unit?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "input_prices_knowledge_source_id_fkey"
+            columns: ["knowledge_source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "input_prices_master_product_id_fkey"
+            columns: ["master_product_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "input_prices_master_product_id_fkey"
+            columns: ["master_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "input_prices_master_product_id_fkey"
+            columns: ["master_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "input_prices_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       integration_sync_logs: {
         Row: {
@@ -17171,45 +17600,108 @@ export type Database = {
           created_at: string
           currency: string
           daily_wage: number
+          district_id: string | null
           effective_date: string
+          effective_to: string | null
           id: string
           is_active: boolean
+          knowledge_source_id: string | null
+          observation_count: number | null
           operation_type: string | null
+          origin: string | null
+          scope_level: string | null
           season: string | null
           skill_tier: string | null
           source: string
           state: string
+          state_id: string | null
+          taluka_id: string | null
           updated_at: string
+          village_id: string | null
         }
         Insert: {
           created_at?: string
           currency?: string
           daily_wage: number
+          district_id?: string | null
           effective_date: string
+          effective_to?: string | null
           id?: string
           is_active?: boolean
+          knowledge_source_id?: string | null
+          observation_count?: number | null
           operation_type?: string | null
+          origin?: string | null
+          scope_level?: string | null
           season?: string | null
           skill_tier?: string | null
           source: string
           state: string
+          state_id?: string | null
+          taluka_id?: string | null
           updated_at?: string
+          village_id?: string | null
         }
         Update: {
           created_at?: string
           currency?: string
           daily_wage?: number
+          district_id?: string | null
           effective_date?: string
+          effective_to?: string | null
           id?: string
           is_active?: boolean
+          knowledge_source_id?: string | null
+          observation_count?: number | null
           operation_type?: string | null
+          origin?: string | null
+          scope_level?: string | null
           season?: string | null
           skill_tier?: string | null
           source?: string
           state?: string
+          state_id?: string | null
+          taluka_id?: string | null
           updated_at?: string
+          village_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "labor_rates_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_rates_knowledge_source_id_fkey"
+            columns: ["knowledge_source_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_rates_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_rates_taluka_id_fkey"
+            columns: ["taluka_id"]
+            isOneToOne: false
+            referencedRelation: "talukas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_rates_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       land_activities: {
         Row: {
@@ -17551,6 +18043,155 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_variety_data_quality"
             referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      land_expense_estimate: {
+        Row: {
+          amount: number
+          basis: Json
+          component_code: string
+          computed_at: string
+          currency_code: string
+          engine_version: string
+          expected_on: string
+          farmer_id: string
+          financial_transaction_id: string | null
+          id: string
+          land_id: string
+          resolved_at: string | null
+          schedule_id: string
+          schedule_task_id: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          basis: Json
+          component_code: string
+          computed_at?: string
+          currency_code: string
+          engine_version: string
+          expected_on: string
+          farmer_id: string
+          financial_transaction_id?: string | null
+          id?: string
+          land_id: string
+          resolved_at?: string | null
+          schedule_id: string
+          schedule_task_id?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          basis?: Json
+          component_code?: string
+          computed_at?: string
+          currency_code?: string
+          engine_version?: string
+          expected_on?: string
+          farmer_id?: string
+          financial_transaction_id?: string | null
+          id?: string
+          land_id?: string
+          resolved_at?: string | null
+          schedule_id?: string
+          schedule_task_id?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_expense_estimate_component_code_fkey"
+            columns: ["component_code"]
+            isOneToOne: false
+            referencedRelation: "expense_component_master"
+            referencedColumns: ["component_code"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_financial_transaction_id_fkey"
+            columns: ["financial_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "financial_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_schedule_task_id_fkey"
+            columns: ["schedule_task_id"]
+            isOneToOne: false
+            referencedRelation: "farmer_upcoming_needs"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "land_expense_estimate_schedule_task_id_fkey"
+            columns: ["schedule_task_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_tasks"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -19559,6 +20200,42 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: true
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      market_location_map: {
+        Row: {
+          created_at: string
+          district_id: string | null
+          market_location: string
+          state_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          district_id?: string | null
+          market_location: string
+          state_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          district_id?: string | null
+          market_location?: string
+          state_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_location_map_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "market_location_map_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
             referencedColumns: ["id"]
           },
         ]
@@ -38602,57 +39279,99 @@ export type Database = {
       yield_predictions: {
         Row: {
           actual_yield_per_acre: number | null
+          area_acres: number | null
+          computed_at: string | null
           confidence_score: number | null
           created_at: string
+          crop_code: string | null
           crop_name: string
+          cultivation_method: string | null
+          evidence: Json | null
+          explanation: Json | null
+          factors: Json | null
           factors_considered: Json | null
           farmer_id: string
+          gaps: string[] | null
           harvest_date_estimate: string | null
           id: string
           land_id: string
           model_version: string | null
+          potential_source: Json | null
+          potential_yield_per_acre: number | null
+          predicted_yield_high_per_acre: number | null
+          predicted_yield_low_per_acre: number | null
           predicted_yield_per_acre: number
           prediction_accuracy: number | null
           prediction_date: string
+          schedule_id: string | null
           tenant_id: string
           updated_at: string
           variety: string | null
+          week_start: string | null
         }
         Insert: {
           actual_yield_per_acre?: number | null
+          area_acres?: number | null
+          computed_at?: string | null
           confidence_score?: number | null
           created_at?: string
+          crop_code?: string | null
           crop_name: string
+          cultivation_method?: string | null
+          evidence?: Json | null
+          explanation?: Json | null
+          factors?: Json | null
           factors_considered?: Json | null
           farmer_id: string
+          gaps?: string[] | null
           harvest_date_estimate?: string | null
           id?: string
           land_id: string
           model_version?: string | null
+          potential_source?: Json | null
+          potential_yield_per_acre?: number | null
+          predicted_yield_high_per_acre?: number | null
+          predicted_yield_low_per_acre?: number | null
           predicted_yield_per_acre: number
           prediction_accuracy?: number | null
           prediction_date: string
+          schedule_id?: string | null
           tenant_id: string
           updated_at?: string
           variety?: string | null
+          week_start?: string | null
         }
         Update: {
           actual_yield_per_acre?: number | null
+          area_acres?: number | null
+          computed_at?: string | null
           confidence_score?: number | null
           created_at?: string
+          crop_code?: string | null
           crop_name?: string
+          cultivation_method?: string | null
+          evidence?: Json | null
+          explanation?: Json | null
+          factors?: Json | null
           factors_considered?: Json | null
           farmer_id?: string
+          gaps?: string[] | null
           harvest_date_estimate?: string | null
           id?: string
           land_id?: string
           model_version?: string | null
+          potential_source?: Json | null
+          potential_yield_per_acre?: number | null
+          predicted_yield_high_per_acre?: number | null
+          predicted_yield_low_per_acre?: number | null
           predicted_yield_per_acre?: number
           prediction_accuracy?: number | null
           prediction_date?: string
+          schedule_id?: string | null
           tenant_id?: string
           updated_at?: string
           variety?: string | null
+          week_start?: string | null
         }
         Relationships: [
           {
@@ -38660,6 +39379,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "yield_predictions_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
             referencedColumns: ["id"]
           },
         ]
