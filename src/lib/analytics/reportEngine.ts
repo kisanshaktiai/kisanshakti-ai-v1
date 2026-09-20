@@ -49,8 +49,6 @@ export interface CropBaselineRow {
   phosphorus_max: number | null;
   potassium_min: number | null;
   potassium_max: number | null;
-  ph_min: number | null;
-  ph_max: number | null;
 }
 
 export interface ScheduleTaskRow {
@@ -250,7 +248,6 @@ export function computeLandAnalytics(
   if (latestNdvi != null && latestNdvi < 0.35) recs.push('recommendations.low_ndvi');
   if (nutrientLevel(opts.soil?.nitrogen_kg_per_ha, nutrientBands.N.min, nutrientBands.N.max) === 'low') recs.push('recommendations.low_nitrogen');
   if (delayed > 0) recs.push('recommendations.tasks_delayed');
-  if (opts.soil?.ph_level != null && opts.baseline?.ph_min != null && opts.baseline?.ph_max != null && (opts.soil.ph_level < opts.baseline.ph_min || opts.soil.ph_level > opts.baseline.ph_max)) recs.push('recommendations.ph_out_of_range');
   if (!marketPrice && land.current_crop) recs.push('recommendations.no_market_price');
 
   return {

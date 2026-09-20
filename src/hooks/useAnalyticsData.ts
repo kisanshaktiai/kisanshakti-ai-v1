@@ -27,14 +27,16 @@ export function useAnalyticsData(range: DateRange = '30d') {
   const { tenant } = useTenant();
   const { lands: rawLands = [], isLoading: landsLoading } = useLands();
   const farmerId = session?.farmerId;
+  const sessionToken = session?.token;
   const tenantId = tenant?.id;
 
   const query = useQuery({
-    queryKey: ['analytics-data', farmerId, tenantId, range, rawLands.map((l: any) => l.id).join(',')],
+    queryKey: ['analytics-data', 'db-ssot-v2', farmerId, tenantId, sessionToken, range, rawLands.map((l: any) => l.id).join(',')],
     enabled: !!farmerId && !!tenantId && !landsLoading,
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const lands = rawLands as unknown as LandRow[];
+      if (!farmerId) throw new Error('Farmer session unavailable');
       const landIds = lands.map((l) => l.id);
       if (!landIds.length) {
         return {
@@ -47,18 +49,13 @@ export function useAnalyticsData(range: DateRange = '30d') {
       const since = rangeStart(range);
 
       // Fetch in parallel; tolerate per-table failures.
-      const [
-        tasksRes,
-        weatherRes,
-        soilRes,
-        ndviRes,
-        financeRes,
-        marketRes,
-      ] = await Promise.all([
+      const activeScheduleIds = lands.map((land) => land.active_schedule_id).filter((id): id is string => Boolean(id));
+      const cropCodes = [...new Set(lands.map((land) => land.current_crop?.trim().toLowerCase()).filter((crop): crop is string => Boolean(crop)))];
+      const [tasksRes, weatherRes, soilRes, ndviRes, financeRes, schedulesRes, baselinesRes, linksRes] = await Promise.all([
         supabase
           .from('schedule_tasks')
           .select('id, schedule_id, status, task_date, completed_at, estimated_cost, task_type, farmer_id')
-          .eq('farmer_id', farmerId!)
+          .in('schedule_id', activeScheduleIds.length ? activeScheduleIds : ['00000000-0000-0000-0000-000000000000'])
           .gte('task_date', since.slice(0, 10))
           .limit(2000),
         supabase
@@ -83,28 +80,17 @@ export function useAnalyticsData(range: DateRange = '30d') {
         supabase
           .from('financial_transactions')
           .select('land_id, transaction_type, category, amount, transaction_date')
-          .eq('farmer_id', farmerId!)
+          .eq('farmer_id', farmerId)
           .gte('transaction_date', since.slice(0, 10))
           .limit(2000),
-        supabase
-          .from('market_prices')
-          .select('commodity_name_normalized, crop_name, modal_price, price_per_unit, price_date, market_location')
-          .gte('price_date', new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10))
-          .order('price_date', { ascending: false })
-          .limit(500),
+        supabase.from('crop_schedules').select('id, land_id, total_estimated_cost, actual_total_cost, expected_yield_quintals, expected_yield_per_acre, expected_market_price_per_quintal, total_water_requirement_liters, water_requirement_liters_total, water_per_irrigation_liters, cost_by_category').in('id', activeScheduleIds.length ? activeScheduleIds : ['00000000-0000-0000-0000-000000000000']),
+        supabase.from('crop_baseline_guidelines_v2').select('crop_code, growth_stage, nitrogen_min, nitrogen_max, phosphorus_min, phosphorus_max, potassium_min, potassium_max').in('crop_code', cropCodes.length ? cropCodes : ['__none__']),
+        supabase.from('crop_commodity_link').select('crop_code, commodity_global_code').in('crop_code', cropCodes.length ? cropCodes : ['__none__']),
       ]);
 
-      // Map schedule task → land via schedule_id lookup (best effort)
       const tasks = (tasksRes.data || []) as any[];
-      let scheduleLandMap = new Map<string, string>();
-      const scheduleIds = [...new Set(tasks.map((t) => t.schedule_id).filter(Boolean))];
-      if (scheduleIds.length) {
-        const { data: schedules } = await supabase
-          .from('crop_schedules')
-          .select('id, land_id')
-          .in('id', scheduleIds);
-        scheduleLandMap = new Map((schedules || []).map((s: any) => [s.id, s.land_id]));
-      }
+      const schedules = (schedulesRes.data || []) as any[];
+      const scheduleLandMap = new Map(schedules.map((schedule) => [schedule.id, schedule.land_id]));
       const tasksWithLand = tasks.map((t) => ({
         ...t,
         land_id: t.land_id || scheduleLandMap.get(t.schedule_id) || null,
@@ -120,18 +106,36 @@ export function useAnalyticsData(range: DateRange = '30d') {
       });
       const ndviAll = (ndviRes.data || []) as any[];
       const financeAll = (financeRes.data || []) as any[];
+      const links = (linksRes.data || []) as Array<{ crop_code: string; commodity_global_code: string }>;
+      const commodityCodes = [...new Set(links.map((link) => link.commodity_global_code))];
+      const marketRes = await supabase
+        .from('market_prices')
+        .select('global_commodity_code, commodity_name_normalized, crop_name, modal_price, price_per_unit, price_date, market_location')
+        .in('global_commodity_code', commodityCodes.length ? commodityCodes : ['__none__'])
+        .gte('price_date', new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10))
+        .order('price_date', { ascending: false })
+        .limit(500);
       const market = (marketRes.data || []) as any[];
+      const commodityByCrop = new Map(links.map((link) => [link.crop_code, link.commodity_global_code]));
 
       const perLand: LandAnalytics[] = lands.map((land) => {
-        const tasksForLand = tasksWithLand.filter((t) => t.land_id === land.id);
+        const tasksForLand = tasksWithLand.filter((t) => t.land_id === land.id && t.schedule_id === land.active_schedule_id);
         const financeForLand = financeAll.filter((f) => f.land_id === land.id);
+        const cropCode = land.current_crop?.trim().toLowerCase() ?? '';
+        const commodityCode = commodityByCrop.get(cropCode);
+        const marketForLand = market.filter((row) => row.global_commodity_code === commodityCode);
+        const baseline = ((baselinesRes.data || []) as any[]).find((row) =>
+          row.crop_code === cropCode && row.growth_stage === land.crop_stage?.trim().toLowerCase(),
+        ) ?? null;
         return computeLandAnalytics(land, {
           tasks: tasksForLand,
           weather: weatherByLand.get(land.id) || null,
           soil: soilByLand.get(land.id) || null,
           ndvi: ndviAll,
           finance: financeForLand,
-          market,
+          market: marketForLand,
+          schedule: schedules.find((schedule) => schedule.id === land.active_schedule_id) ?? null,
+          baseline,
         });
       });
 

@@ -1,12 +1,4 @@
-/**
- * Agronomic formula constants & helpers.
- *
- * Values reflect commonly-used Indian agronomy references (CACP Cost of
- * Cultivation Studies, ICAR field bulletins, state DoA package-of-practices).
- * They are applied to REAL per-land data (NDVI, soil, weather, schedules,
- * market_prices) — never used as final values, only as projection baselines
- * with an explicit disclaimer in the UI.
- */
+/** Display and classification helpers. Agronomic limits are supplied by DB rows. */
 
 export const ACRE_TO_HA = 0.404686;
 export const HA_TO_ACRE = 1 / ACRE_TO_HA;
@@ -23,12 +15,12 @@ export function nutrientLevel(
   return 'medium';
 }
 
-export function formatINR(n: number): string {
-  if (!Number.isFinite(n)) return '—';
+export function formatINR(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 }
 
-export function formatNumber(n: number, digits = 0): string {
-  if (!Number.isFinite(n)) return '—';
+export function formatNumber(n: number | null | undefined, digits = 0): string {
+  if (n == null || !Number.isFinite(n)) return '—';
   return new Intl.NumberFormat('en-IN', { maximumFractionDigits: digits }).format(n);
 }
