@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { resolveVerifiedCaller, sessionRequiredResponse } from '../_shared/sessionVerify.ts';
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -17,6 +18,30 @@ serve(async (req) => {
     // Extract tenant and farmer IDs from headers
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');
+
+    // 2026-09-21 (F-SEC-1): identity comes from the verified session token,
+    // never from these headers. Service-role callers (cron) are trusted as-is.
+    const caller = await resolveVerifiedCaller(req);
+    if (!caller) {
+      console.warn('🚫 [SchedulesAPI] request without a verifiable session');
+      return sessionRequiredResponse(corsHeaders);
+    }
+    if (caller.kind === 'farmer') {
+      if (farmerId && farmerId !== caller.farmerId) {
+        console.error('🚨 [SchedulesAPI] x-farmer-id does not match verified session', { header: farmerId, session: caller.farmerId });
+        return new Response(
+          JSON.stringify({ error: 'Forbidden', details: 'Farmer header does not match the session', code: 'FARMER_IDENTITY_MISMATCH' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+      if (caller.tenantId && tenantId && tenantId !== caller.tenantId) {
+        console.error('🚨 [SchedulesAPI] x-tenant-id does not match verified session', { header: tenantId, session: caller.tenantId });
+        return new Response(
+          JSON.stringify({ error: 'Forbidden', details: 'Tenant header does not match the session. Please log in again.', code: 'TENANT_IDENTITY_MISMATCH' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
     
     if (!tenantId || !farmerId) {
       console.error('❌ [SchedulesAPI] Missing required headers:', { tenantId, farmerId });

@@ -6,6 +6,7 @@ import {
   validateAuthHeaders,
   validateTenantFarmerAssociation,
 } from './authMiddleware.ts';
+import { resolveVerifiedCaller, sessionRequiredResponse } from './sessionVerify.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -117,8 +118,23 @@ export async function guardTenantAccess(
     jwtUserId = jwtResult.userId ?? null;
   } else if (isServiceRole) {
     console.log('🔑 [TenantAccessGuard] Service-role request — JWT/spoof checks bypassed');
-  } else {
-    console.log('🔓 [TenantAccessGuard] Anon-key request — relying on custom-auth headers (x-farmer-id / x-tenant-id)');
+  }
+
+  // 2026-09-21 (F-SEC-1): an anon-key request is only trusted through its
+  // x-session-token, verified by the database exactly as RLS verifies it. The
+  // x-farmer-id / x-tenant-id headers are checked for AGREEMENT with the
+  // verified session below; they never establish identity on their own.
+  let verifiedFarmerId: string | null = null;
+  let verifiedTenantId: string | null = null;
+  if (isAnonKey) {
+    const caller = await resolveVerifiedCaller(req);
+    if (!caller || caller.kind !== 'farmer') {
+      console.warn('🚫 [TenantAccessGuard] Anon-key request without a verifiable session');
+      return sessionRequiredResponse(corsHeaders);
+    }
+    verifiedFarmerId = caller.farmerId;
+    verifiedTenantId = caller.tenantId;
+    console.log('🔐 [TenantAccessGuard] Session verified for farmer', verifiedFarmerId.slice(0, 8));
   }
 
   // ── Step 2: Header validation (always required) ────────────────────────
@@ -127,6 +143,25 @@ export async function guardTenantAccess(
   });
   if (headerResult instanceof Response) return headerResult;
   const { tenantId, farmerId, sessionToken } = headerResult;
+
+  // Header/session agreement (anon path). A mismatch is either a stale client
+  // (persisted tenant no longer the farmer's) or spoofing; both are refused.
+  if (verifiedFarmerId) {
+    if (farmerId && farmerId !== verifiedFarmerId) {
+      console.error('🚨 [TenantAccessGuard] x-farmer-id does not match verified session', { header: farmerId, session: verifiedFarmerId });
+      return new Response(
+        JSON.stringify({ error: 'Forbidden', details: 'Farmer header does not match the session', code: 'FARMER_IDENTITY_MISMATCH', timestamp: new Date().toISOString() }),
+        { status: 403, headers: corsHeaders },
+      );
+    }
+    if (verifiedTenantId && tenantId !== verifiedTenantId) {
+      console.error('🚨 [TenantAccessGuard] x-tenant-id does not match verified session', { header: tenantId, session: verifiedTenantId });
+      return new Response(
+        JSON.stringify({ error: 'Forbidden', details: 'Tenant header does not match the session. Please log in again.', code: 'TENANT_IDENTITY_MISMATCH', timestamp: new Date().toISOString() }),
+        { status: 403, headers: corsHeaders },
+      );
+    }
+  }
 
   // ── Step 3: Farmer ↔ Tenant association ────────────────────────────────
   if (farmerId) {

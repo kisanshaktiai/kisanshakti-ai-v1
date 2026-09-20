@@ -65,7 +65,7 @@ export function ForecastChart({ landId }: Props) {
               {t('analytics.forecast.title', '6-Month Forecast')}
             </h3>
             <p className="text-[11px] text-muted-foreground">
-              {t('analytics.forecast.empty', 'No AI forecast yet. Generate one to see projections.')}
+              {t('analytics.forecast.notReady', 'Your income and expense forecast is being prepared. It will appear here once it is ready.')}
             </p>
           </div>
         </div>
@@ -109,6 +109,17 @@ export function ForecastChart({ landId }: Props) {
           <RefreshCw className={cn('w-3.5 h-3.5', refresh.isPending && 'animate-spin')} />
         </button>
       </div>
+
+      {refresh.data?.status === 'paused' && (
+        <p className="text-[11px] text-muted-foreground">
+          {t('analytics.forecast.notReady', 'Your income and expense forecast is being prepared. It will appear here once it is ready.')}
+        </p>
+      )}
+      {refresh.data?.status === 'unauthenticated' && (
+        <p className="text-[11px] text-destructive">
+          {t('analytics.forecast.sessionExpired', 'Please sign in again to refresh the forecast.')}
+        </p>
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-3 gap-2 text-center">
