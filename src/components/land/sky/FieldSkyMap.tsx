@@ -58,6 +58,7 @@ export function FieldSkyMap(props: {
         </div>
         <span className="text-muted-foreground">{t('sky.map.blocks', '10 m blocks · nothing smoothed')}</span>
       </div>
+      <p className="px-3 pt-1 text-[11px] text-muted-foreground">{t('sky.map.north_hint', 'Top of the map is north. Your field is outlined.')}</p>
     </div>
   );
 }

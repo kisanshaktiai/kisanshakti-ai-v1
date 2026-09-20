@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ComposedChart, Area, Line, XAxis, YAxis, ReferenceArea, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardContent } from '@/components/ui/card';
 import type { FieldSky } from '@/hooks/useFieldSky';
+import { CropStageFigure } from '@/components/land/sky/CropStageFigure';
 
 /**
  * "Season so far, and the next two weeks." The field's own curve on top of the
@@ -40,11 +41,14 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
     return t('sky.season.no_band', 'No expected range is set for this stage yet.');
   })();
 
+  const figure = sky.stage.index != null ? <CropStageFigure sky={sky} /> : null;
+
   if (sky.history.length < 2) {
-    return <Card className="rounded-3xl border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">{t('sky.season.need_more', 'Once the satellite has two clear views, your season curve appears here.')}</CardContent></Card>;
+    return <>{figure}<Card className="rounded-3xl border-dashed"><CardContent className="py-8 text-center text-sm text-muted-foreground">{t('sky.season.need_more', 'Once the satellite has two clear views, your season curve appears here.')}</CardContent></Card></>;
   }
 
-  return (
+  return (<>
+    {figure}
     <Card className="rounded-3xl border-border/40">
       <CardContent className="p-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{t('sky.season.title', 'Season so far')}</p>
@@ -70,5 +74,5 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
         <p className="text-sm font-medium mt-2">{caption}</p>
       </CardContent>
     </Card>
-  );
+  </>);
 }

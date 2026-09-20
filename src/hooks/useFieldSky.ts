@@ -30,7 +30,8 @@ export type SkyState = 'clear' | 'hazy' | 'cloudy' | 'radar_only' | 'none';
 
 interface IntelRow { acquisition_date: string; observed_or_predicted: string | null; parcel_context_robust_z: number | null; parcel_context_delta: number | null; evidence_json: Record<string, unknown> | null; estimated_ndvi_low: number | null; estimated_ndvi_high: number | null; intelligence_status: string | null; }
 interface RadarRow { acquisition_date: string; rvi_value: number | null; cross_ratio_db: number | null; }
-interface StageRow { stage_code: string; growth_stage: string | null; das_min: number | null; das_max: number | null; expected_ndvi_min: number | null; expected_ndvi_max: number | null; cultivation_method: string | null; }
+interface StageRow { stage_code: string; growth_stage: string | null; das_min: number | null; das_max: number | null; expected_ndvi_min: number | null; expected_ndvi_max: number | null; cultivation_method: string | null; phenology_index: number | null; expected_height_cm_min: number | null; expected_height_cm_max: number | null; expected_leaf_count_min: number | null; expected_leaf_count_max: number | null; stage_node_type: string | null; }
+interface ScheduleRow { sowing_date: string | null; transplant_date: string | null; cultivation_method: string | null; crop_name: string | null; }
 interface LandCtxRow { id: string; current_crop: string | null; current_crop_id: string | null; last_sowing_date: string | null; planting_date: string | null; transplant_date: string | null; das: number | null; crop_cycle: string | null; }
 interface WaterRowLite { image_path?: string | null; image_metadata?: Record<string, unknown> }
 
@@ -45,7 +46,9 @@ export interface FieldSky {
   /** newest radar pass, for cloudy days */
   radar: { date: string; rvi: number | null; cross_ratio_db: number | null } | null;
   sky: { state: SkyState; ageDays: number | null; cloudPct: number | null; fieldSeenPct: number | null; evidence: string | null; epc: number | null; purity: number | null };
-  stage: { state: StageState; das: number | null; stageCode: string | null; stageName: string | null; expectedMin: number | null; expectedMax: number | null; sowingDate: string | null; cropCode: string | null };
+  stage: { state: StageState; das: number | null; stageCode: string | null; stageName: string | null; expectedMin: number | null; expectedMax: number | null; sowingDate: string | null; cropCode: string | null;
+           /** ordered ladder of this crop's stages (crop_stage_master) and where the field sits on it — drives the crop figure */
+           ladder: Array<{ code: string; name: string | null; dasMin: number | null; dasMax: number | null; heightCm: number | null; leaves: number | null }>; index: number | null; heightCm: number | null; leaves: number | null; sowingSource: 'schedule' | 'land' | null };
   neighbours: { state: CohortState; z: number | null; delta: number | null; contextPresent: boolean; asOf: string | null };
   forecast: { low: number | null; high: number | null; targetDate: string | null; daysAhead: number | null } | null;
   /** weather side comes from the `weather` edge function (useLandWeatherState): governed FAO-56 balance flags, not raw table columns */
@@ -109,18 +112,38 @@ export function useFieldSky(landId: string | null): FieldSky {
     },
   });
 
-  const sowingDate: string | null = landQ.data?.last_sowing_date ?? landQ.data?.planting_date ?? landQ.data?.transplant_date ?? null;
-  const cropCode: string | null = landQ.data?.current_crop ? String(landQ.data.current_crop).toUpperCase().trim() : null;
+  // The proactive evaluator takes the sowing date from the ACTIVE crop schedule
+  // first and only then from the land row; the Season card must agree with it.
+  const scheduleQ = useQuery({
+    queryKey: ['field-sky-schedule', landId, tenantId],
+    enabled: !!landId && !!tenantId,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('crop_schedules')
+        .select('sowing_date, transplant_date, cultivation_method, crop_name')
+        .eq('land_id', landId!).eq('tenant_id', tenantId!).eq('is_active', true)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error; return data as ScheduleRow | null;
+    },
+  });
+  const scheduleSowing: string | null = scheduleQ.data?.sowing_date ?? scheduleQ.data?.transplant_date ?? null;
+  const landSowing: string | null = landQ.data?.last_sowing_date ?? landQ.data?.planting_date ?? landQ.data?.transplant_date ?? null;
+  const sowingDate: string | null = scheduleSowing ?? landSowing;
+  const sowingSource: 'schedule' | 'land' | null = scheduleSowing ? 'schedule' : landSowing ? 'land' : null;
+  const cropCode: string | null = (landQ.data?.current_crop ?? scheduleQ.data?.crop_name) ? String(landQ.data?.current_crop ?? scheduleQ.data?.crop_name).toUpperCase().trim() : null;
   const das = sowingDate ? daysBetween(new Date().toISOString().slice(0, 10), sowingDate) : (n(landQ.data?.das));
 
   const stageQ = useQuery({
-    queryKey: ['field-sky-stage', cropCode, das],
-    enabled: !!cropCode && das != null,
+    queryKey: ['field-sky-stage-ladder', cropCode],
+    enabled: !!cropCode,
     staleTime: 60 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase.from('crop_stage_master')
-        .select('stage_code, growth_stage, das_min, das_max, expected_ndvi_min, expected_ndvi_max, cultivation_method')
-        .eq('crop_code', cropCode!).lte('das_min', das!).gte('das_max', das!).limit(3);
+        .select('stage_code, growth_stage, das_min, das_max, expected_ndvi_min, expected_ndvi_max, cultivation_method, phenology_index, expected_height_cm_min, expected_height_cm_max, expected_leaf_count_min, expected_leaf_count_max, stage_node_type')
+        .eq('crop_code', cropCode!).eq('is_active', true)
+        .not('das_min', 'is', null)
+        .order('phenology_index', { ascending: true, nullsFirst: false })
+        .order('das_min', { ascending: true });
       if (error) throw error; return (data || []) as StageRow[];
     },
   });
@@ -146,11 +169,22 @@ export function useFieldSky(landId: string | null): FieldSky {
     else if (radar && daysBetween(new Date().toISOString().slice(0, 10), radar.date)! <= 14) skyState = 'radar_only';
     else if (latest) skyState = 'cloudy';
 
-    // stage band (DB-governed)
-    const band = (stageQ.data || []).find((r) => r.expected_ndvi_min != null && r.expected_ndvi_max != null) ?? (stageQ.data || [])[0] ?? null;
+    // stage ladder (DB-governed): prefer the lane matching the schedule's cultivation method, else any
+    const method = scheduleQ.data?.cultivation_method ? String(scheduleQ.data.cultivation_method).toLowerCase() : null;
+    const allStages = stageQ.data || [];
+    const laneStages = method ? allStages.filter((r) => !r.cultivation_method || String(r.cultivation_method).toLowerCase() === method) : allStages;
+    const ladderRows = (laneStages.length ? laneStages : allStages);
+    const mid = (a: number | null, b: number | null): number | null => (a != null && b != null ? (a + b) / 2 : a ?? b);
+    const ladder = ladderRows.map((r) => ({ code: r.stage_code, name: r.growth_stage, dasMin: r.das_min, dasMax: r.das_max, heightCm: mid(r.expected_height_cm_min, r.expected_height_cm_max), leaves: mid(r.expected_leaf_count_min, r.expected_leaf_count_max) }));
+    let stageIndex: number | null = null;
+    if (das != null) {
+      stageIndex = ladderRows.findIndex((r) => r.das_min != null && r.das_max != null && das >= r.das_min && das <= r.das_max);
+      if (stageIndex < 0) stageIndex = ladderRows.length && das > (ladderRows[ladderRows.length - 1].das_max ?? -1) ? ladderRows.length - 1 : null;
+    }
+    const band = stageIndex != null ? ladderRows[stageIndex] : null;
     let stageState: StageState = 'no_sowing_date';
     if (sowingDate || das != null) {
-      if (!band || band.expected_ndvi_min == null) stageState = 'no_band';
+      if (!band || band.expected_ndvi_min == null || band.expected_ndvi_max == null) stageState = 'no_band';
       else if (latest?.ndvi_value != null) stageState = latest.ndvi_value < band.expected_ndvi_min ? 'below' : latest.ndvi_value > band.expected_ndvi_max ? 'above' : 'within';
       else stageState = 'no_band';
     }
@@ -189,12 +223,13 @@ export function useFieldSky(landId: string | null): FieldSky {
     else state = 'as_expected';
 
     return {
-      landId, loading: ndviLoading || landQ.isLoading || intelQ.isLoading, error: ndviError ?? landQ.error ?? intelQ.error ?? null,
+      landId, loading: ndviLoading || landQ.isLoading || intelQ.isLoading || scheduleQ.isLoading, error: ndviError ?? landQ.error ?? intelQ.error ?? null,
       latest, previous: prevRow,
       history: (history || []).filter((h) => h.ndvi_value != null).map((h) => ({ date: h.date, ndvi: Number(h.ndvi_value), quality: h.quality_score ?? null })),
       radar,
       sky: { state: skyState, ageDays, cloudPct, fieldSeenPct: fieldSeen ?? null, evidence: latest?.evidence_confidence ?? null, epc: n(latest?.effective_pixel_count), purity: n(latest?.coverage_weighted_purity) },
-      stage: { state: stageState, das, stageCode: band?.stage_code ?? null, stageName: band?.growth_stage ?? null, expectedMin: n(band?.expected_ndvi_min), expectedMax: n(band?.expected_ndvi_max), sowingDate, cropCode },
+      stage: { state: stageState, das, stageCode: band?.stage_code ?? null, stageName: band?.growth_stage ?? null, expectedMin: n(band?.expected_ndvi_min), expectedMax: n(band?.expected_ndvi_max), sowingDate, cropCode,
+               ladder, index: stageIndex, heightCm: band ? mid(band.expected_height_cm_min, band.expected_height_cm_max) : null, leaves: band ? mid(band.expected_leaf_count_min, band.expected_leaf_count_max) : null, sowingSource },
       neighbours: { state: cohort, z, delta: n(obs?.parcel_context_delta), contextPresent: obs ? ctxPresent(obs) : false, asOf: obs?.acquisition_date ?? null },
       forecast,
       water: { ndmi, ndmiPrev, ndmiDrop, passGapDays: daysBetween(passDate(latest), passDate(prevRow)), waterDeficitMm: waterDeficit, irrigationNeeded, balanceStatus: st?.water_balance_status ?? null, rainMm, urgency: st?.irrigation_urgency ?? null, asOf: st?.metric_date ?? null, agreeing,
@@ -202,5 +237,5 @@ export function useFieldSky(landId: string | null): FieldSky {
       greenness: { ndre, ndrePrev, ndreDrop: ndre != null && ndrePrev != null ? ndrePrev - ndre : null },
       state,
     };
-  }, [landId, latestRaw, current, history, ndviLoading, ndviError, landQ.isLoading, landQ.error, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
+  }, [landId, latestRaw, current, history, ndviLoading, ndviError, landQ.isLoading, landQ.error, scheduleQ.data, scheduleQ.isLoading, sowingSource, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
 }

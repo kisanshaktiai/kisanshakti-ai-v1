@@ -150,6 +150,7 @@ const ESRI_SAT_STYLE = {
     esri: {
       type: 'raster' as const,
       tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      maxzoom: 19,
       tileSize: 256,
       attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
     },
@@ -356,7 +357,7 @@ export function NDVIMapView({
       });
 
       const b = computeBounds(boundary);
-      if (b) map.fitBounds(b, { padding: 32, duration: 0, maxZoom: 17 });
+      if (b) map.fitBounds(b, { padding: 24, duration: 0, maxZoom: 19 });
     });
 
     mapRef.current = map;
@@ -395,7 +396,7 @@ export function NDVIMapView({
       }
 
       const b = computeBounds(boundary);
-      if (b) map.fitBounds(b, { padding: 32, duration: 300, maxZoom: 17 });
+      if (b) map.fitBounds(b, { padding: 24, duration: 300, maxZoom: 19 });
     };
 
     if (map.isStyleLoaded()) sync();
@@ -510,6 +511,14 @@ export function NDVIMapView({
         aria-label={t('ndvi.map.aria', 'NDVI satellite heatmap')}
       />
 
+      {/* Direction guide: the map is always north-up; the words are the farmer's own */}
+      <div className="pointer-events-none absolute inset-0 z-[3]" aria-hidden>
+        <span className="absolute top-14 left-1/2 -translate-x-1/2 rounded-full bg-background/90 px-2.5 py-0.5 text-[11px] font-bold text-foreground shadow">{t('sky.map.north', 'north')} ↑</span>
+        <span className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full bg-background/90 px-2.5 py-0.5 text-[11px] font-bold text-foreground shadow">{t('sky.map.south', 'south')}</span>
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 px-2.5 py-0.5 text-[11px] font-bold text-foreground shadow">{t('sky.map.west', 'west')}</span>
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/90 px-2.5 py-0.5 text-[11px] font-bold text-foreground shadow">{t('sky.map.east', 'east')}</span>
+      </div>
+
       {thumbnailUsable && imageFrame && (
         <img
           key={activeThumbnailUrl}
@@ -549,7 +558,7 @@ export function NDVIMapView({
           onClick={() => {
             const map = mapRef.current;
             const b = boundary.length ? computeBounds(boundary) : null;
-            if (map && b) map.fitBounds(b, { padding: 32, duration: 400, maxZoom: 17 });
+            if (map && b) map.fitBounds(b, { padding: 24, duration: 400, maxZoom: 19 });
           }}
           aria-label={t('ndvi.map.recenter', 'Recenter')}
         >

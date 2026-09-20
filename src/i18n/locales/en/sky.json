@@ -1,0 +1,149 @@
+{
+  "__meta": {
+    "page": "sky",
+    "version": "1.0",
+    "updated_by": "AI drafting in plain spoken register",
+    "last_updated": "2026-09-21",
+    "translation_status": "SOURCE",
+    "note": "Source language."
+  },
+  "sky": {
+    "title": "My field from the sky",
+    "your_field": "your field",
+    "read_aloud": "Read aloud",
+    "tab": {
+      "today": "Today",
+      "map": "Map",
+      "season": "Season"
+    },
+    "state": {
+      "as_expected": "{{land}} is growing as it should for this stage.",
+      "slower": "{{land}} is growing a little slower than the fields around it.",
+      "something_wrong": "Something looks off in {{land}}. Worth a walk through the field.",
+      "unclear": "Clouds have hidden {{land}} for a while. We will look again on the next clear day.",
+      "no_data": "The satellite has not had a clear look at {{land}} yet.",
+      "radar_note": "Radar can see through cloud: the crop is still standing.",
+      "need_sowing": "Tell us when you sowed, and we can compare with how the crop should look now.",
+      "stage_line": "Day {{das}} · {{stage}}"
+    },
+    "sky": {
+      "clear": "Clear view {{days}} days ago",
+      "hazy": "Partly cloudy view {{days}} days ago",
+      "cloudy": "Last clear view was {{days}} days ago",
+      "radar": "Clouds — radar view only",
+      "none": "No clear view yet",
+      "seen": "{{pct}}% of the field seen clearly",
+      "radar_line": "Radar on {{date}}: crop is standing.",
+      "evidence_high": "strong reading",
+      "evidence_medium": "fair reading",
+      "evidence_low": "weak reading — small field",
+      "evidence_insufficient": "too small to read well"
+    },
+    "nb": {
+      "title": "Compared to nearby crop",
+      "mine": "My field",
+      "around": "Crop around it",
+      "as_of": "Seen on {{date}}",
+      "well_behind": "Your field is clearly behind the crop around it.",
+      "behind": "Your field is a little behind the crop around it.",
+      "with": "Your field is keeping pace with the crop around it.",
+      "ahead": "Your field is doing better than the crop around it.",
+      "unknown": "Not enough crop nearby was seen clearly to compare yet."
+    },
+    "water": {
+      "title": "Water in the field",
+      "warn": "Soil water is running low and the crop's moisture signal has fallen since the last view. Check for wilting and irrigate if you can.",
+      "depleted": "The soil water balance says the field needs water. The satellite has not seen a change yet.",
+      "ndmi_drop": "The crop's moisture signal fell since the last view. Keep an eye on the field this week.",
+      "watch": "One sign of drying, not confirmed yet. Keep an eye on the field.",
+      "ok": "No sign of water shortage right now.",
+      "none": "Not enough weather and satellite data yet to judge water.",
+      "as_of": "Weather balance as of {{date}}",
+      "chip_sat": "satellite moisture",
+      "chip_soil": "soil water",
+      "chip_rain": "no recent rain",
+      "chip_standing": "standing water seen"
+    },
+    "ask": {
+      "title": "What to check",
+      "cta": "Take a photo of the field",
+      "urgent": "Please walk the field and send a photo of the weakest-looking spot. That tells us more than the satellite can.",
+      "routine": "A photo now and then helps the satellite view stay accurate for your field."
+    },
+    "season": {
+      "title": "Season so far",
+      "need_more": "Once the satellite has two clear views, your season curve appears here.",
+      "need_sowing": "Add your sowing date to see how the crop should look at each stage.",
+      "below": "Below the expected range for {{stage}}.",
+      "within": "Within the expected range for {{stage}}.",
+      "above": "Above the expected range for {{stage}}.",
+      "no_band": "No expected range is set for this stage yet.",
+      "legend_band": "expected now",
+      "legend_seen": "seen",
+      "legend_forecast": "forecast",
+      "figure_title": "Your crop today",
+      "figure_caption": "Day {{das}} since sowing · {{stage}}",
+      "figure_height": "about {{cm}} cm tall",
+      "figure_next": "Next: {{stage}} from day {{das}}",
+      "figure_note": "Illustration from the crop's stage table — not a photo of your field."
+    },
+    "layer": {
+      "vigour": "Crop growth",
+      "moisture": "Crop moisture",
+      "standing": "Standing water"
+    },
+    "legend": {
+      "weak": "weak",
+      "fair": "fair",
+      "strong": "strong",
+      "dry": "dry",
+      "ok": "ok",
+      "moist": "moist",
+      "none": "none",
+      "some": "some",
+      "water": "water"
+    },
+    "map": {
+      "blocks": "10 m blocks · nothing smoothed",
+      "north_hint": "Top of the map is north. Your field is outlined.",
+      "n": "N",
+      "e": "E",
+      "s": "S",
+      "w": "W",
+      "north": "north",
+      "east": "east",
+      "south": "south",
+      "west": "west",
+      "which_side": "Which side of my field?",
+      "fill_screen": "Fill screen"
+    },
+    "stage": {
+      "germination": "Germination",
+      "emergence": "Emergence",
+      "seedling": "Seedling",
+      "nursery": "Nursery",
+      "transplanting": "Transplanting",
+      "establishment": "Establishment",
+      "tillering": "Tillering",
+      "vegetative": "Vegetative growth",
+      "stem_elongation": "Stem elongation",
+      "booting": "Booting",
+      "panicle_initiation": "Panicle initiation",
+      "heading": "Heading",
+      "flowering": "Flowering",
+      "anthesis": "Flowering",
+      "grain_filling": "Grain filling",
+      "milk": "Milk stage",
+      "dough": "Dough stage",
+      "maturity": "Maturity",
+      "ripening": "Ripening",
+      "harvest": "Harvest",
+      "grand_growth": "Grand growth",
+      "boll_development": "Boll development",
+      "tuber_bulking": "Tuber bulking",
+      "fruit_set": "Fruit set",
+      "fruit_development": "Fruit development",
+      "pod_filling": "Pod filling"
+    }
+  }
+}
