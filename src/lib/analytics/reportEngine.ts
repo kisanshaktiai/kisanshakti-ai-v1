@@ -6,14 +6,7 @@
  * are missing instead of inventing numbers.
  */
 
-import {
-  cropKey,
-  DAILY_WATER_L_PER_ACRE,
-  EXPECTED_YIELD_Q_PER_ACRE,
-  EXPECTED_COST_PER_ACRE,
-  projectedCostBreakdown,
-  nutrientLevel,
-} from './formulas';
+import { nutrientLevel } from './formulas';
 
 export interface LandRow {
   id: string;
@@ -30,6 +23,34 @@ export interface LandRow {
   nitrogen_kg_per_ha: number | null;
   phosphorus_kg_per_ha: number | null;
   potassium_kg_per_ha: number | null;
+  active_schedule_id?: string | null;
+}
+
+export interface ScheduleEconomicsRow {
+  id: string;
+  land_id: string;
+  total_estimated_cost: number | null;
+  actual_total_cost: number | null;
+  expected_yield_quintals: number | null;
+  expected_yield_per_acre: number | null;
+  expected_market_price_per_quintal: number | null;
+  total_water_requirement_liters: number | null;
+  water_requirement_liters_total: number | null;
+  water_per_irrigation_liters: number | null;
+  cost_by_category: Record<string, number> | null;
+}
+
+export interface CropBaselineRow {
+  crop_code: string;
+  growth_stage: string;
+  nitrogen_min: number | null;
+  nitrogen_max: number | null;
+  phosphorus_min: number | null;
+  phosphorus_max: number | null;
+  potassium_min: number | null;
+  potassium_max: number | null;
+  ph_min: number | null;
+  ph_max: number | null;
 }
 
 export interface ScheduleTaskRow {
@@ -112,10 +133,11 @@ export interface LandAnalytics {
   };
   marketPrice: number | null;
   marketSource: string | null;
-  expectedYieldQuintals: number;
-  projectedRevenue: number;
-  projectedProfit: number;
-  waterRequirementL: number;
+  expectedYieldQuintals: number | null;
+  projectedRevenue: number | null;
+  projectedProfit: number | null;
+  waterRequirementL: number | null;
+  nutrientBands: Record<'N' | 'P' | 'K', { min: number | null; max: number | null }>;
   recommendations: string[];
 }
 
@@ -123,8 +145,8 @@ export interface FarmAggregate {
   totalLands: number;
   totalAreaAcres: number;
   activeCrops: number;
-  projectedRevenue: number;
-  projectedProfit: number;
+  projectedRevenue: number | null;
+  projectedProfit: number | null;
   totalExpense: number;
   taskCompletionRate: number;
 }
@@ -144,10 +166,11 @@ export function computeLandAnalytics(
     ndvi: NdviRow[];
     finance: FinancialRow[];
     market: MarketPriceRow[];
+    schedule: ScheduleEconomicsRow | null;
+    baseline: CropBaselineRow | null;
   },
 ): LandAnalytics {
   const area = Number(land.area_acres) || 0;
-  const ck = cropKey(land.current_crop);
 
   // NDVI trend (most recent first → reverse for chart)
   const ndviSorted = [...opts.ndvi]
@@ -190,51 +213,44 @@ export function computeLandAnalytics(
     .map(([category, amount]) => ({ category, amount }))
     .sort((a, b) => b.amount - a.amount);
 
-  // Market price: prefer normalized commodity matching current crop
-  const cropLc = (land.current_crop || '').toLowerCase();
-  const priceRow = cropLc
-    ? opts.market.find(
-        (m) =>
-          (m.commodity_name_normalized || m.crop_name || '').toLowerCase().includes(cropLc) &&
-          (m.modal_price || m.price_per_unit),
-      )
-    : null;
-  const marketPrice = Number(priceRow?.modal_price ?? priceRow?.price_per_unit ?? 0) || null;
+  const priceRow = opts.market[0] ?? null;
+  const marketPrice = Number(opts.schedule?.expected_market_price_per_quintal ?? priceRow?.modal_price ?? priceRow?.price_per_unit ?? 0) || null;
   const marketSource = priceRow?.market_location ?? null;
 
-  // Yield (quintal/acre × area), boosted/penalised by NDVI deviation from 0.6
-  const baseYieldPerAcre = EXPECTED_YIELD_Q_PER_ACRE[ck] ?? EXPECTED_YIELD_Q_PER_ACRE.default;
-  const ndviFactor =
-    latestNdvi != null ? Math.max(0.5, Math.min(1.25, 0.7 + latestNdvi * 0.5)) : 1;
-  const expectedYieldQuintals = Math.max(0, area * baseYieldPerAcre * ndviFactor);
-
-  const projectedRevenue = Math.max(0, marketPrice ? expectedYieldQuintals * marketPrice : 0);
-
-  // Projected expense — derived from crop CoC baseline (₹/acre × area).
-  // We use it when actual expense logged < 60% of baseline (sparse data).
-  const baselineCost = Math.max(0, (EXPECTED_COST_PER_ACRE[ck] ?? EXPECTED_COST_PER_ACRE.default) * area);
-  const useProjected = totalExpense < baselineCost * 0.6;
-  const projectedExpense = Math.max(0, useProjected ? baselineCost : totalExpense);
-  const projectedExpenseBreakdown = useProjected
-    ? projectedCostBreakdown(land.current_crop, area)
-    : byCategory;
+  const scheduleYield = Number(opts.schedule?.expected_yield_quintals) ||
+    ((Number(opts.schedule?.expected_yield_per_acre) || 0) * area);
+  const expectedYieldQuintals = scheduleYield > 0 ? scheduleYield : null;
+  const projectedRevenue = marketPrice && expectedYieldQuintals != null
+    ? Math.max(0, expectedYieldQuintals * marketPrice)
+    : null;
+  const scheduleCost = Number(opts.schedule?.actual_total_cost ?? opts.schedule?.total_estimated_cost) || 0;
+  const projectedExpense = scheduleCost > 0 ? scheduleCost : totalExpense;
+  const scheduleBreakdown = Object.entries(opts.schedule?.cost_by_category ?? {})
+    .map(([category, amount]) => ({ category, amount: Number(amount) || 0 }))
+    .filter((item) => item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const projectedExpenseBreakdown = scheduleBreakdown.length ? scheduleBreakdown : byCategory;
+  const useProjected = scheduleCost > 0;
   const expenseSource: 'actual' | 'projected' | 'mixed' =
     totalExpense === 0 ? 'projected' : useProjected ? 'mixed' : 'actual';
 
-  const projectedProfit = projectedRevenue - projectedExpense;
+  const projectedProfit = projectedRevenue == null ? null : projectedRevenue - projectedExpense;
 
-  // Water: daily L × 7 days (weekly horizon), minus last 24 h rainfall benefit
-  const daily = DAILY_WATER_L_PER_ACRE[ck] ?? DAILY_WATER_L_PER_ACRE.default;
-  const rainfallOffsetL = (opts.weather?.rain_24h_mm || 0) * 4046.86 * area;
-  const waterRequirementL = Math.max(0, daily * area * 7 - rainfallOffsetL);
+  const storedWater = Number(opts.schedule?.water_per_irrigation_liters ?? opts.schedule?.water_requirement_liters_total ?? opts.schedule?.total_water_requirement_liters) || 0;
+  const waterRequirementL = storedWater > 0 ? storedWater : null;
+
+  const nutrientBands = {
+    N: { min: opts.baseline?.nitrogen_min ?? null, max: opts.baseline?.nitrogen_max ?? null },
+    P: { min: opts.baseline?.phosphorus_min ?? null, max: opts.baseline?.phosphorus_max ?? null },
+    K: { min: opts.baseline?.potassium_min ?? null, max: opts.baseline?.potassium_max ?? null },
+  };
 
   // Recommendations
   const recs: string[] = [];
   if (latestNdvi != null && latestNdvi < 0.35) recs.push('recommendations.low_ndvi');
-  if ((opts.weather?.rain_24h_mm ?? 0) < 1 && waterRequirementL > 0) recs.push('recommendations.irrigate_soon');
-  if (nutrientLevel(opts.soil?.nitrogen_kg_per_ha ?? null, 'N') === 'low') recs.push('recommendations.low_nitrogen');
+  if (nutrientLevel(opts.soil?.nitrogen_kg_per_ha, nutrientBands.N.min, nutrientBands.N.max) === 'low') recs.push('recommendations.low_nitrogen');
   if (delayed > 0) recs.push('recommendations.tasks_delayed');
-  if (opts.soil?.ph_level != null && (opts.soil.ph_level < 5.5 || opts.soil.ph_level > 8.2)) recs.push('recommendations.ph_out_of_range');
+  if (opts.soil?.ph_level != null && opts.baseline?.ph_min != null && opts.baseline?.ph_max != null && (opts.soil.ph_level < opts.baseline.ph_min || opts.soil.ph_level > opts.baseline.ph_max)) recs.push('recommendations.ph_out_of_range');
   if (!marketPrice && land.current_crop) recs.push('recommendations.no_market_price');
 
   return {
@@ -265,6 +281,7 @@ export function computeLandAnalytics(
     projectedRevenue,
     projectedProfit,
     waterRequirementL,
+    nutrientBands,
     recommendations: recs,
   };
 }
@@ -275,7 +292,9 @@ export function aggregateFarm(items: LandAnalytics[]): FarmAggregate {
     if (i.land.current_crop) crops.add(i.land.current_crop.toLowerCase());
   });
   const totalArea = items.reduce((s, i) => s + (Number(i.land.area_acres) || 0), 0);
-  const projectedRevenue = items.reduce((s, i) => s + i.projectedRevenue, 0);
+  const revenueItems = items.map((i) => i.projectedRevenue).filter((v): v is number => v != null);
+  const profitItems = items.map((i) => i.projectedProfit).filter((v): v is number => v != null);
+  const projectedRevenue = revenueItems.length ? revenueItems.reduce((s, value) => s + value, 0) : null;
   const totalExpense = items.reduce((s, i) => s + i.finance.projectedExpense, 0);
   const taskCompletion = safeAvg(items.map((i) => i.tasks.completionRate));
 
@@ -284,7 +303,7 @@ export function aggregateFarm(items: LandAnalytics[]): FarmAggregate {
     totalAreaAcres: totalArea,
     activeCrops: crops.size,
     projectedRevenue,
-    projectedProfit: projectedRevenue - totalExpense,
+    projectedProfit: profitItems.length ? profitItems.reduce((s, value) => s + value, 0) : null,
     totalExpense,
     taskCompletionRate: taskCompletion,
   };
