@@ -78,7 +78,7 @@ export default function Analytics() {
             type="button"
             onClick={() => navigate(-1)}
             aria-label={t('common.back', 'Back')}
-            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-foreground"
+             className="w-11 h-11 rounded-full bg-muted flex items-center justify-center text-foreground"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -96,7 +96,7 @@ export default function Analytics() {
             onClick={() => refetch()}
             disabled={isFetching}
             aria-label={t('common.refresh', 'Refresh')}
-            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-foreground"
+             className="w-11 h-11 rounded-full bg-muted flex items-center justify-center text-foreground"
           >
             <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
           </button>
@@ -145,13 +145,13 @@ export default function Analytics() {
           <KpiTile
             icon={<TrendingUp className="w-4 h-4" />}
             label={t('analytics.kpi.revenue', 'Projected revenue')}
-            value={formatINR(scope ? scope.projectedRevenue : aggregate.projectedRevenue)}
+             value={formatINR(scope ? scope.projectedRevenue : aggregate.projectedRevenue)}
           />
           <KpiTile
             icon={<Wallet className="w-4 h-4" />}
             label={t('analytics.kpi.profit', 'Projected profit')}
             value={formatINR(scope ? scope.projectedProfit : aggregate.projectedProfit)}
-            accent={(scope ? scope.projectedProfit : aggregate.projectedProfit) >= 0}
+             accent={(scope ? scope.projectedProfit : aggregate.projectedProfit) == null ? undefined : (scope ? scope.projectedProfit : aggregate.projectedProfit)! >= 0}
           />
         </div>
 
@@ -209,7 +209,7 @@ export default function Analytics() {
                     <p
                       className={cn(
                         'text-sm font-bold',
-                        a.projectedProfit >= 0 ? 'text-primary' : 'text-destructive',
+                         a.projectedProfit == null ? 'text-muted-foreground' : a.projectedProfit >= 0 ? 'text-primary' : 'text-destructive',
                       )}
                     >
                       {formatINR(a.projectedProfit)}
@@ -219,7 +219,7 @@ export default function Analytics() {
                 <div className="grid grid-cols-3 gap-2 mt-3 text-center text-[10px]">
                   <Mini label={t('analytics.kpi.ndvi', 'NDVI')} value={a.latestNdvi != null ? Math.round(a.latestNdvi * 100) + '%' : '—'} />
                   <Mini label={t('analytics.completion', 'Tasks')} value={a.tasks.total ? a.tasks.completionRate.toFixed(0) + '%' : '—'} />
-                  <Mini label={t('analytics.kpi.yield', 'Yield')} value={formatNumber(a.expectedYieldQuintals, 0) + ' q'} />
+                   <Mini label={t('analytics.kpi.yield', 'Yield')} value={a.expectedYieldQuintals == null ? '—' : formatNumber(a.expectedYieldQuintals, 0) + ' q'} />
                 </div>
               </Card>
             ))}

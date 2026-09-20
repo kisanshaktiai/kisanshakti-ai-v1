@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { forwardRef, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -34,6 +34,7 @@ import { Line, Bar, Doughnut, Radar } from 'react-chartjs-2';
 import { useTranslation } from 'react-i18next';
 import type { LandAnalytics } from '@/lib/analytics/reportEngine';
 import { formatINR, formatNumber, nutrientLevel } from '@/lib/analytics/formulas';
+import { useChartTheme } from '@/hooks/useChartTheme';
 
 ChartJS.register(
   CategoryScale,
@@ -91,6 +92,7 @@ function EmptyHint({ label }: { label: string }) {
 
 export function CropStageCard({ a }: { a: LandAnalytics }) {
   const { t } = useTranslation();
+  const chartTheme = useChartTheme();
   const ndvi = a.latestNdvi;
   const ndviPct = ndvi != null ? Math.max(0, Math.min(100, Math.round(ndvi * 100))) : null;
   return (
@@ -125,8 +127,8 @@ export function CropStageCard({ a }: { a: LandAnalytics }) {
               datasets: [
                 {
                   data: a.ndviTrend.map((p) => p.value),
-                  borderColor: 'hsl(var(--primary))',
-                  backgroundColor: 'hsl(var(--primary) / 0.15)',
+                   borderColor: chartTheme.chart1,
+                   backgroundColor: chartTheme.chart2,
                   tension: 0.4,
                   fill: true,
                   borderWidth: 2,
@@ -179,6 +181,7 @@ export function WaterWeatherCard({ a }: { a: LandAnalytics }) {
 
 export function SoilHealthCard({ a }: { a: LandAnalytics }) {
   const { t } = useTranslation();
+  const chartTheme = useChartTheme();
   const s = a.soil;
   if (!s) {
     return (
@@ -198,8 +201,8 @@ export function SoilHealthCard({ a }: { a: LandAnalytics }) {
           ((s.ph_level || 0) / 14) * 100,
           Math.min(100, ((s.organic_carbon || 0) / 1.5) * 100),
         ],
-        backgroundColor: 'hsl(var(--primary) / 0.25)',
-        borderColor: 'hsl(var(--primary))',
+         backgroundColor: chartTheme.chart2,
+         borderColor: chartTheme.chart1,
         borderWidth: 2,
       },
     ],
@@ -215,14 +218,15 @@ export function SoilHealthCard({ a }: { a: LandAnalytics }) {
           data={data}
           options={{
             ...chartBase,
-            scales: { r: { suggestedMin: 0, suggestedMax: 100, ticks: { display: false }, grid: { color: 'hsl(var(--border))' }, angleLines: { color: 'hsl(var(--border))' } } },
+             scales: { r: { suggestedMin: 0, suggestedMax: 100, ticks: { display: false }, grid: { color: chartTheme.border }, angleLines: { color: chartTheme.border }, pointLabels: { color: chartTheme.foreground } } },
           }}
         />
       </div>
       <div className="flex gap-2 mt-2 flex-wrap text-[10px]">
         {(['N', 'P', 'K'] as const).map((n) => {
           const val = n === 'N' ? s.nitrogen_kg_per_ha : n === 'P' ? s.phosphorus_kg_per_ha : s.potassium_kg_per_ha;
-          const level = nutrientLevel(val ?? null, n);
+           const band = a.nutrientBands[n];
+           const level = nutrientLevel(val, band.min, band.max);
           return (
             <Badge
               key={n}
@@ -283,6 +287,7 @@ export function TaskPerfCard({ a }: { a: LandAnalytics }) {
 
 export function FinancialCard({ a }: { a: LandAnalytics }) {
   const { t } = useTranslation();
+  const chartTheme = useChartTheme();
   const cats = a.finance.projectedExpenseBreakdown.slice(0, 6);
   const hasAny = cats.length > 0 || a.projectedRevenue > 0 || a.finance.totalExpense > 0;
   const sourceBadge =
@@ -328,19 +333,19 @@ export function FinancialCard({ a }: { a: LandAnalytics }) {
                 {
                   data: cats.map((c) => c.amount),
                   backgroundColor: [
-                    'hsl(var(--primary))',
-                    'hsl(var(--primary) / 0.75)',
-                    'hsl(var(--primary) / 0.55)',
-                    'hsl(var(--primary) / 0.4)',
-                    'hsl(var(--muted-foreground))',
-                    'hsl(var(--muted-foreground) / 0.6)',
+                     chartTheme.chart1,
+                     chartTheme.chart2,
+                     chartTheme.chart3,
+                     chartTheme.chart4,
+                     chartTheme.chart5,
+                     chartTheme.mutedForeground,
                   ],
-                  borderColor: 'hsl(var(--card))',
+                   borderColor: chartTheme.card,
                   borderWidth: 2,
                 },
               ],
             }}
-            options={{ ...chartBase, plugins: { legend: { display: true, position: 'right', labels: { boxWidth: 10, font: { size: 10 }, color: 'hsl(var(--foreground))' } } } }}
+             options={{ ...chartBase, plugins: { legend: { display: true, position: 'right', labels: { boxWidth: 10, font: { size: 12 }, color: chartTheme.foreground } } } }}
           />
         </div>
       ) : (
@@ -381,10 +386,10 @@ export function MarketPulseCard({ a }: { a: LandAnalytics }) {
   );
 }
 
-export function DisclaimerCard() {
+export const DisclaimerCard = forwardRef<HTMLDivElement>(function DisclaimerCard(_, ref) {
   const { t } = useTranslation();
   return (
-    <Card className="bg-muted/40 border-dashed border-border/60 p-3">
+    <Card ref={ref} className="bg-muted/40 border-dashed border-border/60 p-3">
       <div className="flex gap-2">
         <AlertTriangle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
         <div className="flex-1">
@@ -401,7 +406,7 @@ export function DisclaimerCard() {
       </div>
     </Card>
   );
-}
+});
 
 export function RecommendationsCard({ a }: { a: LandAnalytics }) {
   const { t } = useTranslation();

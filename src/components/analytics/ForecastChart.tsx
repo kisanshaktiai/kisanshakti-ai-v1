@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { formatINR } from '@/lib/analytics/formulas';
 import { useAnalyticsForecast, type ForecastRow } from '@/hooks/useAnalyticsForecast';
+import { useChartTheme } from '@/hooks/useChartTheme';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend);
 
@@ -36,6 +37,7 @@ function monthLabel(iso: string, lang: string): string {
 
 export function ForecastChart({ landId }: Props) {
   const { t, i18n } = useTranslation();
+  const chartTheme = useChartTheme();
   const { data: rows, isLoading, refresh, dataUpdatedAt } = useAnalyticsForecast(6);
 
   const scoped = useMemo<ForecastRow[]>(() => {
@@ -66,17 +68,6 @@ export function ForecastChart({ landId }: Props) {
               {t('analytics.forecast.empty', 'No AI forecast yet. Generate one to see projections.')}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => refresh.mutate()}
-            disabled={refresh.isPending}
-            className="h-8 px-3 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-1"
-          >
-            <Sparkles className="w-3 h-3" />
-            {refresh.isPending
-              ? t('analytics.forecast.generating', 'Generating…')
-              : t('analytics.forecast.generate', 'Generate')}
-          </button>
         </div>
       </Card>
     );
@@ -146,7 +137,7 @@ export function ForecastChart({ landId }: Props) {
               {
                 label: t('analytics.forecast.income', 'Income'),
                 data: income,
-                backgroundColor: 'hsl(var(--primary) / 0.85)',
+                 backgroundColor: chartTheme.chart1,
                 borderRadius: 6,
                 borderSkipped: false,
                 stack: 'flow',
@@ -155,7 +146,7 @@ export function ForecastChart({ landId }: Props) {
               {
                 label: t('analytics.forecast.expense', 'Expense'),
                 data: expense.map((v) => -v),
-                backgroundColor: 'hsl(var(--destructive) / 0.7)',
+                 backgroundColor: chartTheme.chart5,
                 borderRadius: 6,
                 borderSkipped: false,
                 stack: 'flow',
@@ -165,12 +156,12 @@ export function ForecastChart({ landId }: Props) {
                 type: 'line' as const,
                 label: t('analytics.forecast.profit', 'Profit'),
                 data: profit,
-                borderColor: 'hsl(var(--foreground))',
-                backgroundColor: 'hsl(var(--foreground))',
+                 borderColor: chartTheme.chart3,
+                 backgroundColor: chartTheme.chart3,
                 tension: 0.35,
                 borderWidth: 2,
                 pointRadius: 3,
-                pointBackgroundColor: 'hsl(var(--background))',
+                 pointBackgroundColor: chartTheme.card,
                 order: 1,
               } as any,
             ],
@@ -183,7 +174,7 @@ export function ForecastChart({ landId }: Props) {
               legend: {
                 display: true,
                 position: 'bottom',
-                labels: { boxWidth: 10, font: { size: 10 }, color: 'hsl(var(--foreground))' },
+                 labels: { boxWidth: 10, font: { size: 12 }, color: chartTheme.foreground },
               },
               tooltip: {
                 callbacks: {
@@ -198,13 +189,13 @@ export function ForecastChart({ landId }: Props) {
               x: {
                 stacked: false,
                 grid: { display: false },
-                ticks: { color: 'hsl(var(--muted-foreground))', font: { size: 10 } },
+                 ticks: { color: chartTheme.mutedForeground, font: { size: 12 } },
               },
               y: {
-                grid: { color: 'hsl(var(--border) / 0.5)' },
+                 grid: { color: chartTheme.border },
                 ticks: {
-                  color: 'hsl(var(--muted-foreground))',
-                  font: { size: 10 },
+                   color: chartTheme.mutedForeground,
+                   font: { size: 12 },
                   callback: (v) => {
                     const n = Math.abs(Number(v));
                     if (n >= 1_00_000) return `₹${(Number(v) / 1_00_000).toFixed(1)}L`;
