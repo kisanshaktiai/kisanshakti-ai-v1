@@ -66,6 +66,7 @@ export default function Analytics() {
     if (selectedLandId === 'all') return null;
     return perLand.find((a) => a.land.id === selectedLandId) ?? null;
   }, [selectedLandId, perLand]);
+  const displayedProfit = scope ? scope.projectedProfit : aggregate.projectedProfit;
 
   if (isLoading) return <AnalyticsSkeleton />;
 
@@ -145,13 +146,13 @@ export default function Analytics() {
           <KpiTile
             icon={<TrendingUp className="w-4 h-4" />}
             label={t('analytics.kpi.revenue', 'Projected revenue')}
-             value={formatINR(scope ? scope.projectedRevenue : aggregate.projectedRevenue)}
+            value={formatINR(scope ? scope.projectedRevenue : aggregate.projectedRevenue)}
           />
           <KpiTile
             icon={<Wallet className="w-4 h-4" />}
             label={t('analytics.kpi.profit', 'Projected profit')}
             value={formatINR(scope ? scope.projectedProfit : aggregate.projectedProfit)}
-             accent={(scope ? scope.projectedProfit : aggregate.projectedProfit) == null ? undefined : (scope ? scope.projectedProfit : aggregate.projectedProfit)! >= 0}
+            accent={displayedProfit == null ? undefined : displayedProfit >= 0}
           />
         </div>
 
