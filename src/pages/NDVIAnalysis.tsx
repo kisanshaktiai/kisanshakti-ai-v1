@@ -1,79 +1,107 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Volume2, Satellite, Calendar, BarChart3, Map as MapIcon, CloudOff, Compass, Info } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Satellite, Sun, Map as MapIcon, LineChart, CloudOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { landsApi } from '@/services/landsApi';
-import { NDVIMapView } from '@/components/land/NDVIMapView';
-import { NDVITrendChart } from '@/components/land/NDVITrendChart';
-import { SatelliteWaterLayerPanel } from '@/components/land/SatelliteWaterLayerPanel';
-import { SatellitePestPanel } from '@/components/land/SatellitePestPanel';
-import { useNDVIAnalysis } from '@/hooks/useNDVIAnalysis';
-import { useSatelliteWaterLayers } from '@/hooks/useSatelliteWaterLayers';
+import { useFieldSky } from '@/hooks/useFieldSky';
+import { FieldStateCard } from '@/components/land/sky/FieldStateCard';
+import { NeighbourCard } from '@/components/land/sky/NeighbourCard';
+import { WaterCard } from '@/components/land/sky/WaterCard';
+import { SkyCard } from '@/components/land/sky/SkyCard';
+import { AskCard } from '@/components/land/sky/AskCard';
+import { SeasonCard } from '@/components/land/sky/SeasonCard';
+import { FieldSkyMap } from '@/components/land/sky/FieldSkyMap';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
-import type { SatelliteWaterLayerCode } from '@/types/satelliteWater';
 
-interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; boundary_polygon_old?: any; center_point_old?: any; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
+interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; boundary_polygon_old?: { coordinates?: number[][][] } | null; center_point_old?: { coordinates?: number[] } | null; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
 const CROP_EMOJI: Record<string, string> = { sugarcane: '🎋', maize: '🌽', corn: '🌽', wheat: '🌾', rice: '🌾', cotton: '🪻' };
 function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toLowerCase(); for (const key of Object.keys(CROP_EMOJI)) if (k.includes(key)) return CROP_EMOJI[key]; return '🌱'; }
 
-/** Presentation-only satellite screen. No agronomic thresholding, prediction, trend classification or recommendations occur here. */
+/**
+ * "My field from the sky." Every card shows a picture, a comparison and one
+ * sentence. Values are read from governed sources (see useFieldSky); this page
+ * holds no agronomic thresholds and issues no recommendations — the ask-back
+ * card hands the question to the farmer's own eyes and camera.
+ */
 export default function NDVIAnalysis() {
   const { t } = useTranslation(); const navigate = useNavigate(); const { id: urlLandId } = useParams<{ id?: string }>();
   const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech();
-  const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null); const [isRefreshing, setIsRefreshing] = useState(false); const [tab, setTab] = useState<'now'|'trend'|'map'>('now'); const [waterLayer, setWaterLayer] = useState<SatelliteWaterLayerCode>('surface_water_trace'); const [mapLayer, setMapLayer] = useState<'health'|'water'|'pest'>('health');
-  const { data: lands = [], isLoading: landsLoading, refetch: refetchLands } = useQuery({ queryKey: ['lands', session?.farmerId, tenant?.id], queryFn: async () => ((await landsApi.fetchLands()) || []) as LandRow[], enabled: !!session?.farmerId && !!tenant?.id });
+  const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [tab, setTab] = useState<'today' | 'map' | 'season'>('today');
+  type SkyTab = 'today' | 'map' | 'season';
+
+  const tenantId = session?.tenantId ?? tenant?.id;
+  const { data: lands = [], isLoading: landsLoading, refetch: refetchLands } = useQuery({ queryKey: ['lands', session?.farmerId, tenantId], queryFn: async () => ((await landsApi.fetchLands()) || []) as LandRow[], enabled: !!session?.farmerId && !!tenantId });
   const hasSatellite = (l: LandRow) => l.last_ndvi_value != null || !!l.last_ndvi_calculation;
   const landsWithData = useMemo(() => lands.filter(hasSatellite), [lands]);
-  // Open on a field that actually has a satellite reading; otherwise the screen shows
-  // "no data" for a field that simply was never observed while other fields do have data.
   useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId((landsWithData[0] ?? lands[0]).id); }, [lands, landsWithData, selectedLandId]);
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
-  const { current, history, latestRaw, isLoading, error: ndviError, refetch } = useNDVIAnalysis(selectedLandId);
-  const { layers: waterLayers, loading: waterLayersLoading, error: waterLayersError } = useSatelliteWaterLayers(selectedLandId || undefined, waterLayer);
-  const onRefresh = async () => { setIsRefreshing(true); await Promise.all([refetchLands(), refetch()]); toast({ title: t('ndvi.refresh.data_refreshed', 'Data refreshed') }); setIsRefreshing(false); };
-  const speakSummary = () => { if (isSpeaking) return stop(); if (!current) return; speak(`${t('ndvi.speech.observed', 'Satellite observation')}. NDVI ${current.ndvi_value.toFixed(2)}.`); };
+
+  const sky = useFieldSky(selectedLandId);
+
+  const onRefresh = async () => { setIsRefreshing(true); await refetchLands(); toast({ title: t('ndvi.refresh.data_refreshed', 'Data refreshed') }); setIsRefreshing(false); };
+  const onSpeak = (text: string) => { if (isSpeaking) return stop(); speak(text); };
+
   const boundary = useMemo(() => { const coords = selectedLand?.boundary_polygon_old?.coordinates?.[0]; return coords ? coords.map((c: number[]) => ({ lat: c[1], lng: c[0] })) : []; }, [selectedLand]);
   const centerPoint = useMemo(() => { const c = selectedLand?.center_point_old?.coordinates; return c ? { lat: c[1], lng: c[0] } : { lat: 20.5937, lng: 78.9629 }; }, [selectedLand]);
-  const hasStale = !!latestRaw && latestRaw.is_fresh !== true;
+  const landName = selectedLand?.name || t('sky.your_field', 'your field');
+
   return <div className="min-h-full bg-background flex flex-col">
-    <header className="sticky top-0 z-30 bg-background/95 border-b border-border/40"><div className="flex items-center justify-between px-2 h-10"><div className="flex items-center gap-1.5 min-w-0"><Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-8 w-8 rounded-lg shrink-0"><ArrowLeft className="h-4 w-4" /></Button><h1 className="text-sm font-bold truncate">{t('ndvi.title','Satellite observation')}</h1><Satellite className="h-3 w-3 text-primary shrink-0" /></div><div className="flex items-center gap-0.5 shrink-0"><Button variant="ghost" size="icon" onClick={speakSummary} className="h-8 w-8 rounded-lg"><Volume2 className={cn('h-3.5 w-3.5', isSpeaking && 'text-primary animate-pulse')} /></Button><Button variant="ghost" size="icon" onClick={onRefresh} disabled={isRefreshing} className="h-8 w-8 rounded-lg"><RefreshCw className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')} /></Button></div></div></header>
-    <ScrollArea className="w-full shrink-0 border-b border-border/40 bg-card/40"><div className="flex gap-1.5 px-2 py-1.5">{landsLoading ? [1,2,3].map(i => <Skeleton key={i} className="h-10 w-[100px] rounded-lg shrink-0" />) : lands.map(land => <button key={land.id} onClick={() => setSelectedLandId(land.id)} className={cn('shrink-0 flex items-center gap-1.5 h-10 px-2 rounded-lg text-left transition-all', land.id===selectedLandId?'bg-primary/10 ring-2 ring-primary shadow-sm':'bg-card ring-1 ring-border/40')}><span className="text-sm leading-none">{cropEmoji(land.current_crop)}</span><div className="min-w-0"><p className="text-[11px] font-semibold truncate max-w-[80px] flex items-center gap-1">{land.name}{!hasSatellite(land) && <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 shrink-0" aria-hidden />}</p><p className="text-[9px] text-muted-foreground truncate">{land.area_acres?.toFixed(2)} ac{!hasSatellite(land) && ` · ${t('ndvi.land.no_satellite','no satellite yet')}`}</p></div></button>)}</div><ScrollBar orientation="horizontal" className="hidden" /></ScrollArea>
-    {hasStale && <div className="px-3 pt-2"><div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-2.5 py-1.5"><CloudOff className="h-3.5 w-3.5 text-warning shrink-0" /><p className="text-[11px] text-warning-foreground leading-tight">{t('ndvi.reliability.stale','Latest satellite observation is outside the current decision-grade freshness window.')}</p></div></div>}
-    <Tabs value={tab} onValueChange={v => setTab(v as any)} className="flex-1 flex flex-col"><div className="px-3 pt-2"><TabsList className="w-full grid grid-cols-3 h-10 rounded-xl bg-muted/40"><TabsTrigger value="now" className="rounded-lg text-xs">{t('ndvi.tab.now','Now')}</TabsTrigger><TabsTrigger value="trend" className="rounded-lg text-xs"><BarChart3 className="h-3.5 w-3.5" /> {t('ndvi.tab.trend','Trend')}</TabsTrigger><TabsTrigger value="map" className="rounded-lg text-xs"><MapIcon className="h-3.5 w-3.5" /> {t('ndvi.tab.map','Map')}</TabsTrigger></TabsList></div>
-      <TabsContent value="now" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">{isLoading?<Skeleton className="h-40 rounded-2xl" />:ndviError?<Card className="rounded-2xl border-destructive/40"><CardContent className="py-8 text-center space-y-2"><CloudOff className="h-5 w-5 mx-auto text-destructive" /><p className="text-sm text-destructive">{t('ndvi.error.load_failed','Could not load satellite data. Please try again.')}</p><Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing} className="rounded-lg">{t('ndvi.error.retry','Retry')}</Button></CardContent></Card>:!current?<NoData others={landsWithData.filter(l=>l.id!==selectedLandId).map(l=>l.name)} onPick={()=>{const other=landsWithData.find(l=>l.id!==selectedLandId); if(other) setSelectedLandId(other.id);}}/>:<>
-        <Card className="rounded-2xl border-border/40"><CardContent className="p-4"><div className="flex items-center gap-4"><ObservationRing ndvi={current.ndvi_value}/><div className="flex-1 min-w-0"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('ndvi.now.observed','Observed NDVI')}</p><p className="text-lg font-bold">{current.ndvi_value.toFixed(2)}</p><p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1"><Calendar className="h-3 w-3" />{new Date(current.date).toLocaleDateString()}</p><p className="text-[9px] text-muted-foreground mt-1">{t('ndvi.provenance.source','Source')}: {(current as any).observation_source || current.satellite_source || '—'}</p></div></div></CardContent></Card>
-        <div className="grid grid-cols-4 gap-2"><Vital label="NDVI" value={current.ndvi_value}/><Vital label="NDRE" value={current.ndre_value}/><Vital label="NDMI" value={current.ndmi_value}/><Vital label={t('ndvi.now.cloud','Cloud')} value={current.cloud_coverage} suffix="%"/></div>
-        <Card className="rounded-2xl border-border/40"><CardContent className="p-3"><p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{t('ndvi.now.evidence','Evidence quality')}</p><div className="grid grid-cols-3 gap-2"><Mini label={t('ndvi.now.quality','Quality')} value={current.quality_score!=null?current.quality_score*100:null} suffix="%"/><Mini label={t('ndvi.now.support','Pixel support')} value={current.effective_pixel_count}/><Mini label={t('ndvi.now.purity','Field support')} value={current.coverage_weighted_purity!=null?current.coverage_weighted_purity*100:null} suffix="%"/></div></CardContent></Card>
-        <Card className="rounded-2xl border-border/40"><CardContent className="p-3"><p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{t('ndvi.now.field_stats','Field statistics')}</p><div className="grid grid-cols-3 gap-2"><Mini label="Min" value={current.ndvi_spatial_min ?? current.min_ndvi ?? null}/><Mini label="Mean" value={current.ndvi_value}/><Mini label="Max" value={current.ndvi_spatial_max ?? current.max_ndvi ?? null}/></div></CardContent></Card>
-      </>}</TabsContent>
-      <TabsContent value="trend" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">{history.length<2?<Card className="rounded-2xl border-dashed"><CardContent className="py-10 text-center text-sm text-muted-foreground">{t('ndvi.trend.need_more','Not enough decision-grade observations')}</CardContent></Card>:<NDVITrendChart data={history.map(d=>({date:d.date,ndvi:d.ndvi_value,evi:(d.evi_value??0),ndwi:(d.ndwi_value??0),savi:(d.savi_value??0)}))} selectedIndex="ndvi"/>}</TabsContent>
-      <TabsContent value="map" className="flex-1 px-0 pt-1 pb-16 mt-0">
-        <div className="px-3 pb-1"><div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/40 p-1">
-          {([['health',t('ndvi.layer.health','Crop health')],['water',t('ndvi.layer.water','Water')],['pest',t('ndvi.layer.pest','Pest')]] as const).map(([code,label])=>(
-            <Button key={code} type="button" variant={mapLayer===code?'secondary':'ghost'} onClick={()=>setMapLayer(code)} aria-pressed={mapLayer===code}
-              className={cn('min-h-11 rounded-lg px-2 text-xs font-semibold', mapLayer===code?'bg-background shadow-sm text-foreground':'text-muted-foreground')}>{label}</Button>
-          ))}
-        </div></div>
-        {mapLayer==='health'&&selectedLandId&&<NDVIMapView landId={selectedLandId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} areaAcres={selectedLand?.area_acres} currentCrop={selectedLand?.current_crop} landThumbnailUrl={selectedLand?.ndvi_thumbnail_url} landThumbnailDate={selectedLand?.last_ndvi_calculation}/>}
-        {mapLayer==='water'&&<div className="px-3 pt-2"><SatelliteWaterLayerPanel landId={selectedLandId||undefined} layers={waterLayers} selectedCode={waterLayer} onSelect={setWaterLayer} loading={waterLayersLoading} error={waterLayersError}/></div>}
-        {mapLayer==='pest'&&<div className="px-3 pt-2"><SatellitePestPanel landId={selectedLandId||undefined}/></div>}
+    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border/40">
+      <div className="flex items-center justify-between px-2 h-11">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-9 w-9 rounded-xl shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
+          <h1 className="text-sm font-bold truncate">{t('sky.title', 'My field from the sky')}</h1><Satellite className="h-3.5 w-3.5 text-primary shrink-0" />
+        </div>
+        <Button variant="ghost" size="icon" onClick={onRefresh} disabled={isRefreshing} className="h-9 w-9 rounded-xl"><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /></Button>
+      </div>
+    </header>
+
+    <ScrollArea className="w-full shrink-0 border-b border-border/40 bg-card/40"><div className="flex gap-1.5 px-2 py-2">
+      {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-11 w-[110px] rounded-xl shrink-0" />) : lands.map(land => (
+        <button key={land.id} onClick={() => setSelectedLandId(land.id)} className={cn('shrink-0 flex items-center gap-2 px-3 h-11 rounded-xl border text-left transition', land.id === selectedLandId ? 'bg-primary/10 border-primary text-foreground' : 'bg-card border-border/40 text-muted-foreground')}>
+          <span className="text-base">{cropEmoji(land.current_crop)}</span>
+          <span className="min-w-0"><span className="block text-xs font-semibold truncate max-w-[96px]">{land.name}</span><span className="block text-[10px] opacity-70">{land.area_acres} ac</span></span>
+        </button>))}
+    </div><ScrollBar orientation="horizontal" /></ScrollArea>
+
+    <Tabs value={tab} onValueChange={v => setTab(v as SkyTab)} className="flex-1 flex flex-col">
+      <div className="px-3 pt-2"><TabsList className="w-full grid grid-cols-3 h-11 rounded-2xl bg-muted/40">
+        <TabsTrigger value="today" className="rounded-xl text-xs gap-1"><Sun className="h-3.5 w-3.5" />{t('sky.tab.today', 'Today')}</TabsTrigger>
+        <TabsTrigger value="map" className="rounded-xl text-xs gap-1"><MapIcon className="h-3.5 w-3.5" />{t('sky.tab.map', 'Map')}</TabsTrigger>
+        <TabsTrigger value="season" className="rounded-xl text-xs gap-1"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
+      </TabsList></div>
+
+      <TabsContent value="today" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">
+        {sky.loading ? <><Skeleton className="h-24 rounded-3xl" /><Skeleton className="h-32 rounded-3xl" /><Skeleton className="h-24 rounded-3xl" /></>
+        : sky.error ? <Card className="rounded-3xl border-destructive/40"><CardContent className="py-8 text-center space-y-2"><CloudOff className="h-5 w-5 mx-auto text-destructive" /><p className="text-sm text-destructive">{t('ndvi.error.load_failed', 'Could not load satellite data. Please try again.')}</p><Button variant="outline" size="sm" onClick={onRefresh} className="rounded-lg">{t('ndvi.error.retry', 'Retry')}</Button></CardContent></Card>
+        : <>
+          <FieldStateCard sky={sky} landName={landName} onSpeak={onSpeak} isSpeaking={isSpeaking} />
+          <SkyCard sky={sky} />
+          <NeighbourCard sky={sky} />
+          <WaterCard sky={sky} />
+          {selectedLandId && session?.farmerId && tenantId && <AskCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} />}
+        </>}
       </TabsContent>
-    </Tabs></div>;
+
+      <TabsContent value="map" className="flex-1 px-0 pt-1 pb-16 mt-0">
+        {selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} areaAcres={selectedLand?.area_acres} currentCrop={selectedLand?.current_crop} landThumbnailUrl={selectedLand?.ndvi_thumbnail_url} landThumbnailDate={selectedLand?.last_ndvi_calculation} />}
+      </TabsContent>
+
+      <TabsContent value="season" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">
+        {sky.loading ? <Skeleton className="h-56 rounded-3xl" /> : <><SeasonCard sky={sky} /><SkyCard sky={sky} /></>}
+      </TabsContent>
+    </Tabs>
+  </div>;
 }
-function ObservationRing({ndvi}:{ndvi:number}){const size=96,stroke=8,r=(size-stroke)/2,c=r*2*Math.PI,offset=c-Math.max(0,Math.min(1,ndvi))*c;return <div className="relative shrink-0" style={{width:size,height:size}}><svg width={size} height={size} className="-rotate-90"><circle cx={size/2} cy={size/2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={stroke}/><motion.circle cx={size/2} cy={size/2} r={r} fill="none" strokeWidth={stroke} strokeLinecap="round" stroke="hsl(var(--primary))" initial={{strokeDashoffset:c}} animate={{strokeDashoffset:offset}} style={{strokeDasharray:c}}/></svg><div className="absolute inset-0 flex items-center justify-center"><span className="text-2xl font-black">{ndvi.toFixed(2)}</span></div></div>}
-function Vital({label,value,suffix}:{label:string,value:number|null|undefined,suffix?:string}){return <div className="rounded-xl bg-card border border-border/40 p-2 text-center"><p className="text-[9px] uppercase text-muted-foreground tracking-wider truncate">{label}</p><p className="text-sm font-bold">{value!=null?`${value.toFixed(value>=1?0:2)}${suffix??''}`:'—'}</p></div>}
-function Mini({label,value,suffix}:{label:string,value:number|null|undefined,suffix?:string}){return <div className="text-center p-2 rounded-lg bg-muted/40"><p className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p><p className="text-sm font-bold">{value!=null?`${value.toFixed(value>=1?0:2)}${suffix??''}`:'—'}</p></div>}
-function NoData({others=[],onPick}:{others?:string[];onPick?:()=>void}){const {t}=useTranslation();return <Card className="rounded-2xl border-dashed"><CardContent className="py-10 text-center space-y-2"><Satellite className="h-8 w-8 text-muted-foreground/40 mx-auto"/><p className="text-sm text-muted-foreground">{t('ndvi.no_clean','No decision-grade satellite observation available')}</p><p className="text-[11px] text-muted-foreground">{t('ndvi.check_back','Check after the next satellite pass')}</p>{others.length>0&&<div className="pt-1 space-y-1"><p className="text-[11px] text-muted-foreground">{t('ndvi.other_fields','These fields do have satellite readings')}: {others.join(', ')}</p>{onPick&&<Button variant="outline" size="sm" className="rounded-lg" onClick={onPick}>{t('ndvi.open_other','Open {{name}}',{name:others[0]})}</Button>}</div>}</CardContent></Card>}

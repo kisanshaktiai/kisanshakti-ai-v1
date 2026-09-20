@@ -251,8 +251,14 @@ export interface EnvEvalContext {
   weather: Record<string, any>;
   forecast: Record<string, any>;
   /** v124: satellite evidence namespace — DATA PATHS ONLY, thresholds come
-   *  from rule rows (paths: ndvi.value, ndvi.previous, ndvi.drop). */
-  ndvi?: { value: number | null; previous: number | null; drop: number | null };
+   *  from rule rows (paths: ndvi.value, ndvi.previous, ndvi.drop).
+   *  v127: widened with the pipeline's evidence fields, all numeric so the
+   *  same ops apply: ndvi.age_days, ndvi.is_fresh (1/0), ndvi.evidence_rank
+   *  (3/2/1/0), ndvi.epc, ndvi.purity, ndvi.cv, ndvi.ndre, ndvi.ndre_drop,
+   *  ndvi.ndmi, ndvi.ndmi_drop, ndvi.pass_gap_days, ndvi.cohort_z,
+   *  ndvi.cohort_delta, ndvi.context_present (1/0), ndvi.forecast_low,
+   *  ndvi.forecast_high, ndvi.forecast_days_ahead. */
+  ndvi?: { value: number | null; previous: number | null; drop: number | null; [evidencePath: string]: number | null };
 }
 
 export interface EnvEvalResult {

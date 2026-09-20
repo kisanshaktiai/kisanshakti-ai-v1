@@ -151,6 +151,11 @@ interface LandContext {
   };
   ndvi: number | null;
   ndvi_previous: number | null;
+  /** v127: satellite evidence namespace — DATA PATHS ONLY, thresholds live in
+   *  proactive_rules.conditions. Sourced from v_ndvi_decision_grade (newest two
+   *  optical passes) and ndvi_intelligence (parcel-context z, forecast band).
+   *  Booleans are 1/0 so the env engine's numeric ops apply. */
+  ndvi_evidence: NdviEvidence;
   land_name: string | null;
   soil_n: number | null;
   soil_p: number | null;
@@ -169,6 +174,29 @@ interface LandContext {
   forecast_tmin_night: number | null;
   /** v125: cultivation lane (transplanted / direct_seeded) for stage series choice. */
   cultivation_method: string | null;
+}
+
+/** v127: every field is a number|null so rules can use gte/lte/eq/lt_field on it. */
+interface NdviEvidence {
+  age_days: number | null;          // days since the newest optical pass
+  is_fresh: number | null;          // 1 when age_days <= view freshness window, else 0
+  evidence_rank: number | null;     // high=3 medium=2 low=1 insufficient/unrated=0
+  epc: number | null;               // effective pixel count behind the value
+  purity: number | null;            // coverage-weighted purity 0..1
+  cv: number | null;                // within-field uniformity (coefficient of variation)
+  ndre: number | null;              // red-edge chlorophyll proxy, newest pass
+  ndre_previous: number | null;
+  ndre_drop: number | null;         // previous - newest (positive = greenness fell)
+  ndmi: number | null;              // canopy moisture proxy, newest pass
+  ndmi_previous: number | null;
+  ndmi_drop: number | null;         // previous - newest (positive = moisture fell)
+  pass_gap_days: number | null;     // days between the two passes used for drops
+  cohort_z: number | null;          // parcel vs surrounding-context robust z (ndvi_intelligence)
+  cohort_delta: number | null;      // parcel - context median NDVI
+  context_present: number | null;   // 1 when a context ring was computed for the newest pass
+  forecast_low: number | null;      // predicted NDVI band, newest forecast target
+  forecast_high: number | null;
+  forecast_days_ahead: number | null;
 }
 
 interface RuleEvalResult {
@@ -331,6 +359,7 @@ async function processOneTenant(
     ndviRes,
     stageMasterRes,
     stageFallbackRes,
+    ndviIntelRes,
   ] = await Promise.all([
     supabase.from('crop_schedules')
       .select('land_id, sowing_date, crop_name, status, is_active, cultivation_method')
@@ -346,7 +375,7 @@ async function processOneTenant(
       .in('land_id', landIds)
       .order('created_at', { ascending: false }),
     supabase.from('v_ndvi_decision_grade')
-      .select('land_id, ndvi_value, acquisition_date, is_fresh, observation_source, quality_score, effective_pixel_count')
+      .select('land_id, ndvi_value, acquisition_date, is_fresh, age_days, observation_source, quality_score, effective_pixel_count, coverage_weighted_purity, evidence_confidence, uniformity_cv, ndre_value, ndmi_value')
       .in('land_id', landIds)
       .eq('observation_source', 'sentinel-2')
       .order('acquisition_date', { ascending: false })
@@ -361,12 +390,20 @@ async function processOneTenant(
       .select('crop_code, growth_stage, das_min, das_max')
       .not('das_min', 'is', null)
       .neq('growth_stage', 'ALL'),
+    // v127: parcel-vs-surroundings z (observed rows) and the forecast band
+    // (predicted rows) written nightly by the satellite pipeline.
+    supabase.from('ndvi_intelligence')
+      .select('land_id, acquisition_date, observed_or_predicted, parcel_context_robust_z, parcel_context_delta, evidence_json, estimated_ndvi_low, estimated_ndvi_high, intelligence_status')
+      .in('land_id', landIds)
+      .order('acquisition_date', { ascending: false })
+      .limit(2000),
   ]);
 
   const scheduleMap = buildScheduleMap(cropSchedulesRes.data);
   const alertMap = buildAlertMap(recentAlertsRes.data);
   const soilMap = buildSoilMap(soilRes.data);
   const ndviMap = buildNdviMap((ndviRes.data || []).map((r: any) => ({ ...r, date: r.acquisition_date })));
+  const ndviIntelMap = buildNdviIntelMap(ndviIntelRes.data);
 
   const stageMap = buildStageMap(stageMasterRes.data);
   const stageFallbackMap = buildStageFallbackMap(stageFallbackRes.data);
@@ -442,6 +479,7 @@ async function processOneTenant(
     const ndviArr = ndviMap.get(land.id) || [];
     const ndvi = ndviArr[0]?.ndvi_value ?? null;
     const ndvi_previous = ndviArr[1]?.ndvi_value ?? null;
+    const ndvi_evidence = buildNdviEvidence(ndviArr, ndviIntelMap.get(land.id));
     const soil = soilMap.get(land.id);
     const forecastRain = forecastMap.get(land.id) ?? null;
     const derived = derivedMap.get(land.id) || emptyDerived();
@@ -459,6 +497,7 @@ async function processOneTenant(
       weather,
       ndvi,
       ndvi_previous,
+      ndvi_evidence,
       land_name: land.name,
       soil_n: soil?.nitrogen_kg_per_ha ?? null,
       soil_p: soil?.phosphorus_kg_per_ha ?? null,
@@ -515,7 +554,8 @@ async function processOneTenant(
           weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h, tmin_forecast_night: ctx.forecast_tmin_night },
           forecast: { tmax_mean_5d: ctx.forecast_tmax_mean_5d },
           ndvi: { value: ctx.ndvi, previous: ctx.ndvi_previous,
-                  drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null },
+                  drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null,
+                  ...ctx.ndvi_evidence },
         });
         envPhase = envRes.episodePhase;
         result = { fired: envRes.fired, riskScore: envRes.riskScore, confidence: envRes.confidence, reasoning: envRes.reasoning, triggerData: envRes.triggerData };
@@ -826,6 +866,58 @@ function buildSoilMap(data: any[] | null): Map<string, any> {
     if (!map.has(s.land_id)) map.set(s.land_id, s);
   }
   return map;
+}
+
+/** v127: newest observed intelligence row (context z) and newest predicted row per land. */
+function buildNdviIntelMap(data: any[] | null): Map<string, { observed: any | null; predicted: any | null }> {
+  const map = new Map<string, { observed: any | null; predicted: any | null }>();
+  if (!data) return map;
+  for (const r of data) {
+    if (!map.has(r.land_id)) map.set(r.land_id, { observed: null, predicted: null });
+    const e = map.get(r.land_id)!;
+    if (r.observed_or_predicted === 'predicted') { if (!e.predicted) e.predicted = r; }
+    // context_present lives inside evidence_json (pipeline writer), not as a column.
+    else if (!e.observed && (r.evidence_json?.context_present === true || r.parcel_context_robust_z != null)) e.observed = r;
+  }
+  return map;
+}
+
+const EVIDENCE_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+function daysBetween(a: string | null | undefined, b: string | null | undefined): number | null {
+  if (!a || !b) return null;
+  const ms = new Date(a).getTime() - new Date(b).getTime();
+  return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
+}
+
+/** v127: pure mapping from the two newest optical passes + intelligence rows to
+ *  numeric data paths. No thresholds here — they belong to rule rows. */
+function buildNdviEvidence(ndviArr: any[], intel: { observed: any | null; predicted: any | null } | undefined): NdviEvidence {
+  const a = ndviArr[0] ?? null;
+  const b = ndviArr[1] ?? null;
+  const n = (v: any): number | null => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const ndre = n(a?.ndre_value), ndrePrev = n(b?.ndre_value);
+  const ndmi = n(a?.ndmi_value), ndmiPrev = n(b?.ndmi_value);
+  const fcst = intel?.predicted ?? null;
+  return {
+    age_days: n(a?.age_days),
+    is_fresh: a == null ? null : (a.is_fresh === true ? 1 : 0),
+    evidence_rank: a == null ? null : (EVIDENCE_RANK[String(a.evidence_confidence || '').toLowerCase()] ?? 0),
+    epc: n(a?.effective_pixel_count),
+    purity: n(a?.coverage_weighted_purity),
+    cv: n(a?.uniformity_cv),
+    ndre, ndre_previous: ndrePrev,
+    ndre_drop: (ndre != null && ndrePrev != null) ? ndrePrev - ndre : null,
+    ndmi, ndmi_previous: ndmiPrev,
+    ndmi_drop: (ndmi != null && ndmiPrev != null) ? ndmiPrev - ndmi : null,
+    pass_gap_days: daysBetween(a?.acquisition_date, b?.acquisition_date),
+    cohort_z: n(intel?.observed?.parcel_context_robust_z),
+    cohort_delta: n(intel?.observed?.parcel_context_delta),
+    context_present: intel?.observed == null ? null : ((intel.observed.evidence_json?.context_present === true || intel.observed.parcel_context_robust_z != null) ? 1 : 0),
+    forecast_low: n(fcst?.estimated_ndvi_low),
+    forecast_high: n(fcst?.estimated_ndvi_high),
+    forecast_days_ahead: fcst ? daysBetween(fcst.acquisition_date, new Date().toISOString().slice(0, 10)) : null,
+  };
 }
 
 function buildNdviMap(data: any[] | null): Map<string, any[]> {
@@ -1272,6 +1364,16 @@ function evaluateRule(rule: ProactiveRule, ctx: LandContext): RuleEvalResult {
     }
 
     case 'NDVI': {
+      // v127: a satellite value that is stale (older than the decision-grade
+      // freshness window) or has no spatial support must not raise an alert.
+      // This is the same gate the env rules express in data; legacy rules get
+      // it here so both paths judge NDVI by the same evidence.
+      if (ctx.ndvi_evidence.is_fresh === 0) {
+        return { fired: false, riskScore: 0, confidence: 0, reasoning: `NDVI stale (${ctx.ndvi_evidence.age_days ?? '?'} d)`, triggerData };
+      }
+      if ((ctx.ndvi_evidence.evidence_rank ?? 0) < 1) {
+        return { fired: false, riskScore: 0, confidence: 0, reasoning: 'NDVI evidence insufficient', triggerData };
+      }
       if (conditions.ndvi_below != null && ctx.ndvi != null) {
         if (ctx.ndvi < conditions.ndvi_below) {
           triggerData.ndvi = ctx.ndvi; triggerData.threshold = conditions.ndvi_below;
@@ -2267,6 +2369,9 @@ function buildTemplateVars(ctx: LandContext): Record<string, string> {
     '{{rain}}': ctx.weather.rain_mm?.toString() || '0',
     '{{wind}}': ctx.weather.wind_speed?.toString() || '--',
     '{{ndvi}}': ctx.ndvi?.toFixed(2) || '--',
+    '{{ndvi_age_days}}': ctx.ndvi_evidence.age_days?.toString() || '--',
+    '{{ndmi_drop}}': ctx.ndvi_evidence.ndmi_drop?.toFixed(2) || '--',
+    '{{pass_gap_days}}': ctx.ndvi_evidence.pass_gap_days?.toString() || '--',
     '{{das}}': ctx.das.toString(),
     '{{stage}}': ctx.current_stage || 'unknown',
     '{{land}}': ctx.land_name || 'your field',

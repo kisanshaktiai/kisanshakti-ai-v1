@@ -46,6 +46,11 @@ interface NDVIMapViewProps {
   currentCrop?: string;
   landThumbnailUrl?: string | null;
   landThumbnailDate?: string | null;
+  /** v3.2: when set, this storage path (same {tenant}/{land}/... layout and the same
+   *  polygon-bbox georeferencing as the NDVI PNG) is drawn INSTEAD of the NDVI
+   *  image, so the moisture / standing-water layers share this one map. Pass
+   *  null to fall back to the NDVI image for the active date. */
+  overlayAssetPath?: string | null;
 }
 
 type RenderMode = 'land_thumb' | 'zonal' | 'boundary';
@@ -192,8 +197,7 @@ export function NDVIMapView({
   areaAcres,
   currentCrop,
   landThumbnailUrl,
-  landThumbnailDate,
-}: NDVIMapViewProps) {
+  landThumbnailDate, overlayAssetPath = null }: NDVIMapViewProps) {
   const { t } = useTranslation();
   const { tenant } = useTenant();
   const { session } = useAuthStore();
@@ -251,6 +255,10 @@ export function NDVIMapView({
   // The selected observation is the authoritative image source.
   // Fallback images are allowed only when their date agrees with the active observation.
   const activeAsset = useMemo<NdviAsset>(() => {
+    if (overlayAssetPath) {
+      const forced = classifyNdviAsset(overlayAssetPath);
+      if (forced) return forced;
+    }
     if (active) {
       const selected = classifyNdviAsset(active.raw.image_url);
       if (selected) return selected;
@@ -264,7 +272,7 @@ export function NDVIMapView({
       return classifyNdviAsset(landThumbnailUrl);
     }
     return null;
-  }, [active, landThumbnailUrl, landThumbnailDate, processingThumbnail]);
+  }, [active, landThumbnailUrl, landThumbnailDate, processingThumbnail, overlayAssetPath]);
 
   const signed = useSignedNdviUrl(activeAsset, farmerId, tenantId, landId);
 

@@ -1,0 +1,206 @@
+/**
+ * useFieldSky — one model for the farmer-facing satellite view.
+ *
+ * Reads only governed sources and reports what they say; it does not invent
+ * agronomic thresholds:
+ *   - v_ndvi_decision_grade / ndvi_data   (via useNDVIAnalysis)   observed optical passes
+ *   - ndvi_data radar rows                                          cloud-proof structure (RVI)
+ *   - ndvi_intelligence                    parcel-vs-surroundings robust z, forecast band
+ *   - crop_stage_master                    expected NDVI band for the crop at this DAS (DB-governed)
+ *   - land_weather_state                   FAO-56 water balance (root depletion vs RAW, rain)
+ *   - lands                                crop and sowing/transplant date
+ *
+ * The words it produces ("behind", "with", "ahead") are statistical descriptors
+ * of a robust z-score, and the stage position is the row's own expected band.
+ * Everything else the screen shows is a picture of the data, not a judgement.
+ */
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
+import { useTenant } from '@/contexts/TenantContext';
+import { useNDVIAnalysis, type NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
+import { useLandWeatherState, type LandWeatherState } from '@/hooks/useLandWeatherState';
+import { useSatelliteWaterLayers } from '@/hooks/useSatelliteWaterLayers';
+
+export type FieldState = 'as_expected' | 'slower' | 'something_wrong' | 'unclear' | 'no_data';
+export type CohortState = 'well_behind' | 'behind' | 'with' | 'ahead' | 'unknown';
+export type StageState = 'below' | 'within' | 'above' | 'no_sowing_date' | 'no_band';
+export type SkyState = 'clear' | 'hazy' | 'cloudy' | 'radar_only' | 'none';
+
+interface IntelRow { acquisition_date: string; observed_or_predicted: string | null; parcel_context_robust_z: number | null; parcel_context_delta: number | null; evidence_json: Record<string, unknown> | null; estimated_ndvi_low: number | null; estimated_ndvi_high: number | null; intelligence_status: string | null; }
+interface RadarRow { acquisition_date: string; rvi_value: number | null; cross_ratio_db: number | null; }
+interface StageRow { stage_code: string; growth_stage: string | null; das_min: number | null; das_max: number | null; expected_ndvi_min: number | null; expected_ndvi_max: number | null; cultivation_method: string | null; }
+interface LandCtxRow { id: string; current_crop: string | null; current_crop_id: string | null; last_sowing_date: string | null; planting_date: string | null; transplant_date: string | null; das: number | null; crop_cycle: string | null; }
+interface WaterRowLite { image_path?: string | null; image_metadata?: Record<string, unknown> }
+
+export interface FieldSky {
+  landId: string | null;
+  loading: boolean;
+  error: unknown;
+  /** newest decision-grade optical pass (all v3 columns) */
+  latest: NDVIDataComplete | null;
+  previous: NDVIDataComplete | null;
+  history: Array<{ date: string; ndvi: number; quality?: number | null }>;
+  /** newest radar pass, for cloudy days */
+  radar: { date: string; rvi: number | null; cross_ratio_db: number | null } | null;
+  sky: { state: SkyState; ageDays: number | null; cloudPct: number | null; fieldSeenPct: number | null; evidence: string | null; epc: number | null; purity: number | null };
+  stage: { state: StageState; das: number | null; stageCode: string | null; stageName: string | null; expectedMin: number | null; expectedMax: number | null; sowingDate: string | null; cropCode: string | null };
+  neighbours: { state: CohortState; z: number | null; delta: number | null; contextPresent: boolean; asOf: string | null };
+  forecast: { low: number | null; high: number | null; targetDate: string | null; daysAhead: number | null } | null;
+  /** weather side comes from the `weather` edge function (useLandWeatherState): governed FAO-56 balance flags, not raw table columns */
+  water: { ndmi: number | null; ndmiPrev: number | null; ndmiDrop: number | null; passGapDays: number | null; waterDeficitMm: number | null; irrigationNeeded: boolean | null; balanceStatus: string | null; rainMm: number | null; urgency: string | null; asOf: string | null; agreeing: number; canopyImagePath: string | null; surfaceImagePath: string | null; surfaceEvidencePx: number | null };
+  greenness: { ndre: number | null; ndrePrev: number | null; ndreDrop: number | null };
+  state: FieldState;
+}
+
+const n = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+const daysBetween = (a?: string | null, b?: string | null): number | null => {
+  if (!a || !b) return null; const ms = new Date(a).getTime() - new Date(b).getTime();
+  return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
+};
+
+export function useFieldSky(landId: string | null): FieldSky {
+  const { session } = useAuthStore();
+  const { tenant } = useTenant();
+  const tenantId = session?.tenantId ?? tenant?.id;
+
+  const ndvi = useNDVIAnalysis(landId);
+  const weather = useLandWeatherState(landId);
+  const canopy = useSatelliteWaterLayers(landId || undefined, 'canopy_moisture_signal');
+  const surface = useSatelliteWaterLayers(landId || undefined, 'surface_water_trace');
+
+  const landQ = useQuery({
+    queryKey: ['field-sky-land', landId, tenantId],
+    enabled: !!landId && !!tenantId,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('lands')
+        .select('id, current_crop, current_crop_id, last_sowing_date, planting_date, transplant_date, das, crop_cycle')
+        .eq('id', landId!).eq('tenant_id', tenantId!).maybeSingle();
+      if (error) throw error; return data as LandCtxRow | null;
+    },
+  });
+
+  const intelQ = useQuery({
+    queryKey: ['field-sky-intel', landId, tenantId],
+    enabled: !!landId && !!tenantId,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ndvi_intelligence')
+        .select('acquisition_date, observed_or_predicted, parcel_context_robust_z, parcel_context_delta, evidence_json, estimated_ndvi_low, estimated_ndvi_high, intelligence_status')
+        .eq('land_id', landId!).eq('tenant_id', tenantId!)
+        .order('acquisition_date', { ascending: false }).limit(40);
+      if (error) throw error; return (data || []) as IntelRow[];
+    },
+  });
+
+  const radarQ = useQuery({
+    queryKey: ['field-sky-radar', landId, tenantId],
+    enabled: !!landId && !!tenantId,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('ndvi_data')
+        .select('acquisition_date, rvi_value, cross_ratio_db')
+        .eq('land_id', landId!).eq('tenant_id', tenantId!).eq('observation_source', 'sentinel-1')
+        .not('rvi_value', 'is', null)
+        .order('acquisition_date', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error; return data as RadarRow | null;
+    },
+  });
+
+  const sowingDate: string | null = landQ.data?.last_sowing_date ?? landQ.data?.planting_date ?? landQ.data?.transplant_date ?? null;
+  const cropCode: string | null = landQ.data?.current_crop ? String(landQ.data.current_crop).toUpperCase().trim() : null;
+  const das = sowingDate ? daysBetween(new Date().toISOString().slice(0, 10), sowingDate) : (n(landQ.data?.das));
+
+  const stageQ = useQuery({
+    queryKey: ['field-sky-stage', cropCode, das],
+    enabled: !!cropCode && das != null,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('crop_stage_master')
+        .select('stage_code, growth_stage, das_min, das_max, expected_ndvi_min, expected_ndvi_max, cultivation_method')
+        .eq('crop_code', cropCode!).lte('das_min', das!).gte('das_max', das!).limit(3);
+      if (error) throw error; return (data || []) as StageRow[];
+    },
+  });
+
+  const { latestRaw, current, history, isLoading: ndviLoading, error: ndviError } = ndvi;
+
+  return useMemo<FieldSky>(() => {
+    // useNDVIAnalysis.history is the full decision-grade series, newest first,
+    // each row merged with its ndvi_data asset columns (ndre/ndmi/spatial stats).
+    const latest: NDVIDataComplete | null = latestRaw ?? current ?? null;
+    const prevRow: NDVIDataComplete | null = (history || [])[1] ?? null;
+
+    const passDate = (r: NDVIDataComplete | null): string | null => r?.date ?? null;
+    const ageDays = latest ? (n(latest.age_days) ?? daysBetween(new Date().toISOString().slice(0, 10), passDate(latest))) : null;
+    const cloudPct = n(latest?.cloud_cover);
+    const vp = n(latest?.valid_pixels), tp = n(latest?.total_pixels);
+    const fieldSeen = vp != null && tp ? Math.round((vp / tp) * 100) : n(latest?.coverage_percentage);
+    const fresh = latest ? latest.is_fresh === true || (ageDays != null && ageDays <= 14) : false;
+    const radar = radarQ.data ? { date: radarQ.data.acquisition_date, rvi: n(radarQ.data.rvi_value), cross_ratio_db: n(radarQ.data.cross_ratio_db) } : null;
+
+    let skyState: SkyState = 'none';
+    if (latest && fresh) skyState = (cloudPct ?? 0) > 10 ? 'hazy' : 'clear';
+    else if (radar && daysBetween(new Date().toISOString().slice(0, 10), radar.date)! <= 14) skyState = 'radar_only';
+    else if (latest) skyState = 'cloudy';
+
+    // stage band (DB-governed)
+    const band = (stageQ.data || []).find((r) => r.expected_ndvi_min != null && r.expected_ndvi_max != null) ?? (stageQ.data || [])[0] ?? null;
+    let stageState: StageState = 'no_sowing_date';
+    if (sowingDate || das != null) {
+      if (!band || band.expected_ndvi_min == null) stageState = 'no_band';
+      else if (latest?.ndvi_value != null) stageState = latest.ndvi_value < band.expected_ndvi_min ? 'below' : latest.ndvi_value > band.expected_ndvi_max ? 'above' : 'within';
+      else stageState = 'no_band';
+    }
+
+    // neighbours (pipeline robust z)
+    // context_present is written inside evidence_json by the pipeline (not a column)
+    const ctxPresent = (r: IntelRow): boolean => r.evidence_json?.context_present === true || r.parcel_context_robust_z != null;
+    const obs = (intelQ.data || []).find((r) => r.observed_or_predicted !== 'predicted' && ctxPresent(r)) ?? null;
+    const z = n(obs?.parcel_context_robust_z);
+    let cohort: CohortState = 'unknown';
+    if (z != null) cohort = z <= -2 ? 'well_behind' : z <= -1 ? 'behind' : z >= 1 ? 'ahead' : 'with';
+
+    const pred = (intelQ.data || []).find((r) => r.observed_or_predicted === 'predicted') ?? null;
+    const forecast = pred ? { low: n(pred.estimated_ndvi_low), high: n(pred.estimated_ndvi_high), targetDate: pred.acquisition_date, daysAhead: daysBetween(pred.acquisition_date, new Date().toISOString().slice(0, 10)) } : null;
+
+    // water: satellite moisture + FAO-56 balance
+    const st: LandWeatherState | null = weather.state ?? null;
+    const ndmi = n(latest?.ndmi_value), ndmiPrev = n(prevRow?.ndmi_value);
+    const ndmiDrop = ndmi != null && ndmiPrev != null ? ndmiPrev - ndmi : null;
+    const waterDeficit = n(st?.water_deficit_mm);
+    const irrigationNeeded: boolean | null = st ? (st.irrigation_needed ?? null) : null;
+    const rainMm = n(st?.effective_rainfall_mm ?? st?.total_rainfall_mm);
+    const canopyRow = (canopy.layers?.[0] ?? null) as WaterRowLite | null;
+    const surfaceRow = (surface.layers?.[0] ?? null) as WaterRowLite | null;
+    // independent signs of drying: satellite moisture fell; governed water balance says irrigate;
+    // no effective rain on the balance date; balance status names a deficit
+    const agreeing = [ndmiDrop != null && ndmiDrop >= 0.05, irrigationNeeded === true, rainMm != null && rainMm < 1, /deficit|dry|stress/i.test(String(st?.water_balance_status ?? ''))].filter(Boolean).length;
+
+    const ndre = n(latest?.ndre_value), ndrePrev = n(prevRow?.ndre_value);
+
+    let state: FieldState = 'no_data';
+    if (!latest) state = radar ? 'unclear' : 'no_data';
+    else if (!fresh) state = 'unclear';
+    else if (stageState === 'below' || cohort === 'well_behind') state = 'something_wrong';
+    else if (cohort === 'behind') state = 'slower';
+    else state = 'as_expected';
+
+    return {
+      landId, loading: ndviLoading || landQ.isLoading || intelQ.isLoading, error: ndviError ?? landQ.error ?? intelQ.error ?? null,
+      latest, previous: prevRow,
+      history: (history || []).filter((h) => h.ndvi_value != null).map((h) => ({ date: h.date, ndvi: Number(h.ndvi_value), quality: h.quality_score ?? null })),
+      radar,
+      sky: { state: skyState, ageDays, cloudPct, fieldSeenPct: fieldSeen ?? null, evidence: latest?.evidence_confidence ?? null, epc: n(latest?.effective_pixel_count), purity: n(latest?.coverage_weighted_purity) },
+      stage: { state: stageState, das, stageCode: band?.stage_code ?? null, stageName: band?.growth_stage ?? null, expectedMin: n(band?.expected_ndvi_min), expectedMax: n(band?.expected_ndvi_max), sowingDate, cropCode },
+      neighbours: { state: cohort, z, delta: n(obs?.parcel_context_delta), contextPresent: obs ? ctxPresent(obs) : false, asOf: obs?.acquisition_date ?? null },
+      forecast,
+      water: { ndmi, ndmiPrev, ndmiDrop, passGapDays: daysBetween(passDate(latest), passDate(prevRow)), waterDeficitMm: waterDeficit, irrigationNeeded, balanceStatus: st?.water_balance_status ?? null, rainMm, urgency: st?.irrigation_urgency ?? null, asOf: st?.metric_date ?? null, agreeing,
+               canopyImagePath: canopyRow?.image_path ?? null, surfaceImagePath: surfaceRow?.image_path ?? null, surfaceEvidencePx: n(surfaceRow?.image_metadata?.drawn_pixels) },
+      greenness: { ndre, ndrePrev, ndreDrop: ndre != null && ndrePrev != null ? ndrePrev - ndre : null },
+      state,
+    };
+  }, [landId, latestRaw, current, history, ndviLoading, ndviError, landQ.isLoading, landQ.error, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
+}
