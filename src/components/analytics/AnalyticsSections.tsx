@@ -424,29 +424,10 @@ export function RecommendationsCard({ a }: { a: LandAnalytics }) {
         {items.map((key) => (
           <li key={key} className="flex items-start gap-2 text-sm text-foreground">
             <AlertTriangle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-            <span>{t(`analytics.${key}`, defaultRec(key))}</span>
+            <span>{key}</span>
           </li>
         ))}
       </ul>
     </SectionCard>
   );
-}
-
-function defaultRec(key: string): string {
-  switch (key) {
-    case 'recommendations.low_ndvi':
-      return 'Vegetation index is low — inspect for nutrient or pest stress.';
-    case 'recommendations.irrigate_soon':
-      return 'Soil likely dry — plan irrigation within 1–2 days.';
-    case 'recommendations.low_nitrogen':
-      return 'Nitrogen is low — schedule a top-dressing of urea.';
-    case 'recommendations.tasks_delayed':
-      return 'You have delayed tasks. Catch up to avoid yield loss.';
-    case 'recommendations.ph_out_of_range':
-      return 'Soil pH is out of crop’s ideal range. Consider lime or gypsum.';
-    case 'recommendations.no_market_price':
-      return 'No recent mandi price for this crop — revenue projection unavailable.';
-    default:
-      return key;
-  }
 }

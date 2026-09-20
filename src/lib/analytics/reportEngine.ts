@@ -1,12 +1,10 @@
 /**
  * Report engine — pure functions that turn real per-land data into derived
- * metrics (yield, water need, profit, risk, recommendations).
+ * metrics from database-backed land, schedule, market, and observation rows.
  *
  * Every function fails gracefully (returns null / 0 / 'unknown') when inputs
  * are missing instead of inventing numbers.
  */
-
-import { nutrientLevel } from './formulas';
 
 export interface LandRow {
   id: string;
@@ -49,6 +47,12 @@ export interface CropBaselineRow {
   phosphorus_max: number | null;
   potassium_min: number | null;
   potassium_max: number | null;
+}
+
+export interface FarmDecisionRow {
+  land_id: string;
+  title_en: string | null;
+  action_text_en: string | null;
 }
 
 export interface ScheduleTaskRow {
@@ -166,6 +170,7 @@ export function computeLandAnalytics(
     market: MarketPriceRow[];
     schedule: ScheduleEconomicsRow | null;
     baseline: CropBaselineRow | null;
+    decisions: FarmDecisionRow[];
   },
 ): LandAnalytics {
   const area = Number(land.area_acres) || 0;
@@ -243,12 +248,11 @@ export function computeLandAnalytics(
     K: { min: opts.baseline?.potassium_min ?? null, max: opts.baseline?.potassium_max ?? null },
   };
 
-  // Recommendations
-  const recs: string[] = [];
-  if (latestNdvi != null && latestNdvi < 0.35) recs.push('recommendations.low_ndvi');
-  if (nutrientLevel(opts.soil?.nitrogen_kg_per_ha, nutrientBands.N.min, nutrientBands.N.max) === 'low') recs.push('recommendations.low_nitrogen');
-  if (delayed > 0) recs.push('recommendations.tasks_delayed');
-  if (!marketPrice && land.current_crop) recs.push('recommendations.no_market_price');
+  // Farmer actions must come from the symbolic decision table, never local thresholds.
+  const recs = opts.decisions
+    .filter((decision) => decision.land_id === land.id)
+    .map((decision) => decision.action_text_en || decision.title_en)
+    .filter((text): text is string => Boolean(text));
 
   return {
     land,

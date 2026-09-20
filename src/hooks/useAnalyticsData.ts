@@ -51,7 +51,7 @@ export function useAnalyticsData(range: DateRange = '30d') {
       // Fetch in parallel; tolerate per-table failures.
       const activeScheduleIds = lands.map((land) => land.active_schedule_id).filter((id): id is string => Boolean(id));
       const cropCodes = [...new Set(lands.map((land) => land.current_crop?.trim().toLowerCase()).filter((crop): crop is string => Boolean(crop)))];
-      const [tasksRes, weatherRes, soilRes, ndviRes, financeRes, schedulesRes, baselinesRes, linksRes] = await Promise.all([
+      const [tasksRes, weatherRes, soilRes, ndviRes, financeRes, schedulesRes, baselinesRes, linksRes, decisionsRes] = await Promise.all([
         supabase
           .from('schedule_tasks')
           .select('id, schedule_id, status, task_date, completed_at, estimated_cost, task_type, farmer_id')
@@ -86,6 +86,7 @@ export function useAnalyticsData(range: DateRange = '30d') {
         supabase.from('crop_schedules').select('id, land_id, total_estimated_cost, actual_total_cost, expected_yield_quintals, expected_yield_per_acre, expected_market_price_per_quintal, total_water_requirement_liters, water_requirement_liters_total, water_per_irrigation_liters, cost_by_category').in('id', activeScheduleIds.length ? activeScheduleIds : ['00000000-0000-0000-0000-000000000000']),
         supabase.from('crop_baseline_guidelines_v2').select('crop_code, growth_stage, nitrogen_min, nitrogen_max, phosphorus_min, phosphorus_max, potassium_min, potassium_max').in('crop_code', cropCodes.length ? cropCodes : ['__none__']),
         supabase.from('crop_commodity_link').select('crop_code, commodity_global_code').in('crop_code', cropCodes.length ? cropCodes : ['__none__']),
+        supabase.from('farm_decision').select('land_id, title_en, action_text_en').eq('farmer_id', farmerId).in('land_id', landIds).in('status', ['DUE', 'WATCH', 'INFO', 'BLOCKED']).or(`valid_until.is.null,valid_until.gte.${new Date().toISOString().slice(0, 10)}`).order('priority', { ascending: false }).limit(100),
       ]);
 
       const tasks = (tasksRes.data || []) as any[];
@@ -136,6 +137,7 @@ export function useAnalyticsData(range: DateRange = '30d') {
           market: marketForLand,
           schedule: schedules.find((schedule) => schedule.id === land.active_schedule_id) ?? null,
           baseline,
+          decisions: (decisionsRes.data || []) as any[],
         });
       });
 
