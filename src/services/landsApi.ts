@@ -58,6 +58,7 @@ interface LandData {
   deleted_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  active_schedule_id?: string | null;
 }
 
 
