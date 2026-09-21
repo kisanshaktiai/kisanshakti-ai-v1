@@ -21,6 +21,29 @@ serve(async (req) => {
 
     const { tenantId, farmerId, sessionToken, supabase } = guard;
 
+    // Postgres statement/lock timeouts (57014 / 55P03) must NOT surface as a
+    // generic 400 — the client treats that as a hard failure and blanks the
+    // screen. Return 503 with a retryable, human-readable message instead.
+    const isTimeoutError = (err: any) =>
+      err?.code === '57014' ||
+      err?.code === '55P03' ||
+      /statement timeout|lock timeout|canceling statement/i.test(err?.message || '');
+
+    const dbErrorResponse = (err: any, fallbackStatus = 400) =>
+      isTimeoutError(err)
+        ? new Response(
+            JSON.stringify({
+              error: 'The server took too long to respond. Please try again.',
+              code: 'DB_TIMEOUT',
+              retryable: true,
+            }),
+            { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        : new Response(
+            JSON.stringify({ error: err?.message || 'Request failed', details: err?.details, hint: err?.hint }),
+            { status: fallbackStatus, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+
 
     // Parse request URL - extract only the path after '/lands-api'
     const url = new URL(req.url);
