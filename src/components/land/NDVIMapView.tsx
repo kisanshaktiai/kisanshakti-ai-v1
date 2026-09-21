@@ -27,7 +27,6 @@ import {
   NDVI_GRADIENT_CSS,
   isObservationReliable,
   formatNDVI,
-  NDVI_INTERPRETATION,
 } from '@/lib/ndviScience';
 import { SUPABASE_CONFIG } from '@/config/supabase';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
