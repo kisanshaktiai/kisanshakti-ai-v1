@@ -25,7 +25,6 @@ import { cn } from '@/lib/utils';
 import {
   ndviToColor,
   NDVI_GRADIENT_CSS,
-  getScientificHealthStatus,
   isObservationReliable,
   formatNDVI,
   NDVI_INTERPRETATION,
@@ -493,7 +492,6 @@ export function NDVIMapView({
   }
 
   const sheetHeights = ['96px', '220px', '70vh'];
-  const currentStatus = current ? getScientificHealthStatus(current.ndvi_value) : null;
   const hasData = !!current;
   const hasStale = !!latestRaw && !isObservationReliable(latestRaw);
   const heatmapDate = active?.date ?? current?.date ?? latestRaw?.date ?? null;
@@ -637,11 +635,10 @@ export function NDVIMapView({
             <div className="flex gap-3">
               <div className="w-4 rounded-md" style={{ height: 140, background: NDVI_GRADIENT_CSS }} aria-hidden />
               <div className="flex-1 flex flex-col justify-between text-[10px] leading-tight">
-                {NDVI_INTERPRETATION.ranges.map((r) => (
-                  <div key={r.level} className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-sm" style={{ background: ndviToColor((r.min + r.max) / 2) }} />
-                    <span className="font-medium">{r.min.toFixed(2)}–{r.max.toFixed(2)}</span>
-                    <span className="text-muted-foreground truncate">{t(`ndvi.health_status.${r.level}`, r.label)}</span>
+                {[-1, -0.5, 0, 0.5, 1].map((value) => (
+                  <div key={value} className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-sm" style={{ background: ndviToColor(value) }} />
+                    <span className="font-medium">{value.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -717,7 +714,11 @@ export function NDVIMapView({
 
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold truncate">
-                {currentStatus ? t(currentStatus.labelKey, currentStatus.label) : t('ndvi.map.no_data', 'No clean reading')}
+                {current?.metadata?.health_label
+                  ? String(current.metadata.health_label)
+                  : current
+                    ? t('ndvi.observed', 'Observed')
+                    : t('ndvi.map.no_data', 'No clean reading')}
               </p>
               <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
