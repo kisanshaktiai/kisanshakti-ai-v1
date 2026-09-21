@@ -638,14 +638,7 @@ serve(async (req) => {
             details: error.details,
             hint: error.hint
           });
-          return new Response(
-            JSON.stringify({ 
-              error: error.message,
-              details: error.details,
-              hint: error.hint 
-            }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return dbErrorResponse(error);
         }
 
         console.log('✅ [LandsAPI] Land created successfully:', {
