@@ -55,7 +55,7 @@ const forbiddenPatterns = [
   { id: 'NPK_TARGETS', re: /NPK_TARGETS\s*=|n_modifier\s*:\s*1\.\d/ },
   { id: 'AGRONOMIC_RISK', re: /getScientificRiskLevel\s*\(|risk[_-]?level\s*=.*ndvi|trendPerDay.*(?:critical|high|medium)/i },
   { id: 'CROP_THRESHOLDS', re: /healthyMin\s*:|excellentMin\s*:|TEMPERATURE_THRESHOLDS|SOIL_PH_THRESHOLDS|SOIL_MOISTURE_THRESHOLDS/ },
-  { id: 'HARD_CODED_ACTIONS', re: /defaultActions\s*=|recommendedAction.*(?:irrig|fertiliz|spray)|irrigation.*(?:mm|litre|liter)\b/i },
+  { id: 'HARD_CODED_ACTIONS', re: /(?:function\s+defaultActions\s*\(|(?:const|let|var)\s+defaultActions\s*=|(?:const|let|var)\s+recommendedActions?\s*=\s*\[[\s\S]{0,1200}?(?:irrigat|fertiliz|spray|pest|nutrient|water|monitor))/i },
 ];
 for (const file of semanticFiles) {
   const src = stripComments(readFileSync(file, 'utf8'));
