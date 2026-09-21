@@ -45,17 +45,22 @@ export function LandSelectorRail({ perLand, selectedId, onSelect, totalAreaAcres
                   : 'bg-card text-foreground border-border/60',
               )}
             >
-              <div className="w-full h-14 rounded-lg overflow-hidden bg-muted flex items-center justify-center mb-1">
-                {a.land.ndvi_thumbnail_url ? (
+              <div className="relative w-full h-14 rounded-lg overflow-hidden bg-muted flex items-center justify-center mb-1">
+                {/* The thumbnail sits in a private bucket; when the session cannot fetch it the icon stays visible instead of a broken image. */}
+                <MapPin className="w-5 h-5 opacity-60" />
+                {a.land.ndvi_thumbnail_url && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.land.ndvi_thumbnail_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <MapPin className="w-5 h-5 opacity-60" />
+                  <img
+                    src={a.land.ndvi_thumbnail_url}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
                 )}
               </div>
               <p className="text-[11px] font-bold leading-tight truncate">{a.land.name || '—'}</p>
               <p className="text-[10px] opacity-80 truncate">
-                {(a.land.area_acres ?? 0).toFixed(1)} ac · {a.land.current_crop || t('analytics.no_crop_short', 'fallow')}
+                {(a.land.area_acres ?? 0).toFixed(1)} {t('analytics.units.acre', 'ac')} · {a.land.current_crop || t('analytics.no_crop_short', 'fallow')}
               </p>
             </button>
           );

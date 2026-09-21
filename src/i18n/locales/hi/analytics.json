@@ -1,6 +1,16 @@
 {
   "__meta": { "page": "analytics", "version": "2.0", "last_updated": "2026-06-01" },
   "analytics": {
+    "units": {"acre": "एकड़", "quintal": "क्विं.", "mm": "मिमी"},
+    "economics": {"title": "आपकी फसल, पैसों में", "updated_on": "{{date}} को अपडेट", "not_ready": "इस खेत का अनुमान तैयार हो रहा है। खेत का डेटा आते ही यह अपने आप यहाँ दिखेगा।", "spent_so_far": "अब तक खर्च", "nothing_recorded": "अभी कुछ दर्ज नहीं", "more_till_harvest": "कटाई तक और", "not_available": "अभी उपलब्ध नहीं", "expected_harvest": "अनुमानित उपज", "expected_income": "अनुमानित आय", "price_not_available": "भाव अभी उपलब्ध नहीं", "preparing": "तैयार हो रहा है…"},
+    "why": {"canopy_below_normal": "इस अवस्था में फसल की बढ़त सामान्य से कम है (उपग्रह {{observed_on}}), इसलिए अनुमान थोड़ा कम है।", "canopy_normal": "इस अवस्था में फसल की बढ़त सामान्य है (उपग्रह {{observed_on}})।", "trend_down": "पिछले हफ्ते से कम।", "trend_up": "पिछले हफ्ते से ज़्यादा।", "trend_flat": "पिछले हफ्ते जितना ही।"},
+    "factor": {"canopy": "फसल की बढ़त", "water": "पानी", "thermal": "गर्मी", "soil": "मिट्टी", "pest": "कीट व रोग"},
+    "canopy": {"below": "सामान्य से कम", "within": "सामान्य", "above": "सामान्य से ज़्यादा"},
+    "stage": {"flowering": "फूल आना"},
+    "field": {"title": "फसल कैसी चल रही है", "no_state": "खेत का डेटा अभी नहीं आया।", "stage": "अवस्था", "days_since_sowing": "{{n}} दिन", "growth": "बढ़त", "satellite_on": "उपग्रह {{date}}", "harvest": "कटाई", "open_satellite": "खेत को उपग्रह से देखें"},
+    "water": {"title": "पानी", "as_of": "{{date}} तक", "no_data": "इस खेत का पानी का डेटा अभी नहीं आया।", "crop_use_today": "आज फसल ने लिया", "rain_today": "आज बारिश", "soil_short_by": "मिट्टी में कमी", "see_farm_today": "पानी देना है या नहीं, यह 'आज का खेत' स्क्रीन पर तय होता है।"},
+    "watch": {"title": "ध्यान देने की बातें", "none": "इस खेत के लिए अभी कुछ नहीं।", "open_farm_today": "'आज का खेत' में देखें", "category": {"disease": "रोग", "water": "पानी", "general": "सामान्य", "observation": "खेत देखें"}},
+    "soil": {"estimated": "मिट्टी के नक्शे से अनुमान — प्रयोगशाला जाँच नहीं", "get_tested": "प्रयोगशाला की मिट्टी जाँच से यह सटीक होगा।", "ph": "pH", "n": "N", "p": "P", "k": "K"},
     "title": "खेत विश्लेषण",
     "subtitle": "अपनी खेती का प्रदर्शन ट्रैक करें",
     "all_farm": "पूरा खेत",

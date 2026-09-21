@@ -5,6 +5,16 @@
     "last_updated": "2026-06-01"
   },
   "analytics": {
+    "units": {"acre": "ac", "quintal": "q", "mm": "mm"},
+    "economics": {"title": "Your crop, in money", "updated_on": "Updated {{date}}", "not_ready": "The estimate for this field is being prepared. It will appear here by itself once the field data is in.", "spent_so_far": "Spent so far", "nothing_recorded": "nothing recorded yet", "more_till_harvest": "More till harvest", "not_available": "not available yet", "expected_harvest": "Expected harvest", "expected_income": "Expected income", "price_not_available": "price not available yet", "preparing": "preparing…"},
+    "why": {"canopy_below_normal": "The crop has grown less than normal for this stage (satellite {{observed_on}}), so the estimate is a little lower.", "canopy_normal": "The crop is growing normally for this stage (satellite {{observed_on}}).", "trend_down": "Lower than last week.", "trend_up": "Higher than last week.", "trend_flat": "About the same as last week."},
+    "factor": {"canopy": "Crop growth", "water": "Water", "thermal": "Heat", "soil": "Soil", "pest": "Pest & disease"},
+    "canopy": {"below": "less than normal", "within": "normal", "above": "more than normal"},
+    "stage": {"flowering": "Flowering"},
+    "field": {"title": "How the crop is doing", "no_state": "Field data is not in yet.", "stage": "Stage", "days_since_sowing": "{{n}} days", "growth": "Growth", "satellite_on": "satellite {{date}}", "harvest": "Harvest", "open_satellite": "See the field from the satellite"},
+    "water": {"title": "Water", "as_of": "as of {{date}}", "no_data": "Water data for this field is not in yet.", "crop_use_today": "Crop used today", "rain_today": "Rain today", "soil_short_by": "Soil short by", "see_farm_today": "Whether to irrigate is decided on the Farm Today screen."},
+    "watch": {"title": "Things to watch", "none": "Nothing open for this field right now.", "open_farm_today": "See them on Farm Today", "category": {"disease": "Disease", "water": "Water", "general": "General", "observation": "Check the field"}},
+    "soil": {"estimated": "Estimated from soil maps — not a lab test", "get_tested": "A soil test from the lab will make this exact.", "ph": "pH", "n": "N", "p": "P", "k": "K"},
     "title": "Farm Analytics",
     "subtitle": "Track your farming performance",
     "all_farm": "All Farm",

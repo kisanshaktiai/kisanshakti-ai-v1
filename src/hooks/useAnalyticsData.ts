@@ -1,6 +1,19 @@
 /**
- * useAnalyticsData — per-land + farm-aggregate analytics from REAL DB tables.
- * No hardcoded numbers. Parallel fetches, react-query cached.
+ * useAnalyticsData — reads what the server computed for the farmer's lands.
+ *
+ * Sources (all farmer-scoped by RLS through the session token the shared client
+ * sends; the client never supplies its own farmer_id as a filter):
+ *   v_land_economics        weekly yield estimate, income range, spend so far
+ *   land_farm_state         stage, canopy vs expected, evidence date
+ *   land_weather_state      FAO-56 water numbers for the land
+ *   v_ndvi_decision_grade   decision-grade NDVI series (trend chart only)
+ *   schedule_tasks          task counts for the active schedule (whole cycle)
+ *   farm_decision           open decisions, de-duplicated by decision_key
+ *   soil_health             latest soil row with its source
+ *   crop_stage_master       growth_stage name for the stage_code
+ *
+ * The date-range chip filters ONLY the NDVI trend. Season figures always cover
+ * the active crop cycle.
  */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,146 +21,109 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useLands } from '@/hooks/useLands';
 import {
-  aggregateFarm,
-  computeLandAnalytics,
-  type LandAnalytics,
-  type LandRow,
-  type FarmAggregate,
+  computeLandAnalytics, aggregateFarm,
+  type LandRow, type LandEconomicsRow, type FarmStateRow, type WeatherStateRow,
+  type NdviPoint, type TaskRow, type DecisionRow, type SoilRow, type LandAnalytics, type FarmAggregate,
 } from '@/lib/analytics/reportEngine';
 
-export type DateRange = '7d' | '30d' | 'season' | 'year';
+export type DateRange = '7d' | '30d' | 'season' | '1y';
 
 function rangeStart(range: DateRange): string {
   const days = range === '7d' ? 7 : range === '30d' ? 30 : range === 'season' ? 120 : 365;
-  return new Date(Date.now() - days * 86_400_000).toISOString();
+  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+const OPEN_DECISION_STATUSES = ['DUE', 'WATCH', 'INFO', 'BLOCKED'];
+const NONE = '00000000-0000-0000-0000-000000000000';
+
+export interface AnalyticsData {
+  perLand: LandAnalytics[];
+  aggregate: FarmAggregate;
+  computedAt: string | null;
 }
 
 export function useAnalyticsData(range: DateRange = '30d') {
   const { session } = useAuthStore();
   const { tenant } = useTenant();
-  const { lands: rawLands = [], isLoading: landsLoading } = useLands();
   const farmerId = session?.farmerId;
-  const sessionToken = session?.token;
-  const tenantId = tenant?.id;
+  const tenantId = tenant?.id ?? session?.tenantId;
+  const { lands: rawLands = [], isLoading: landsLoading } = useLands();
 
-  const query = useQuery({
-    queryKey: ['analytics-data', 'db-ssot-v2', farmerId, tenantId, sessionToken, range, rawLands.map((l: any) => l.id).join(',')],
+  return useQuery<AnalyticsData>({
+    queryKey: ['analytics-data', 'v-land-economics-v1', farmerId, tenantId, range, rawLands.map((l: any) => l.id).join(',')],
     enabled: !!farmerId && !!tenantId && !landsLoading,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const lands = rawLands as unknown as LandRow[];
-      if (!farmerId) throw new Error('Farmer session unavailable');
-      const landIds = lands.map((l) => l.id);
-      if (!landIds.length) {
-        return {
-          perLand: [] as LandAnalytics[],
-          aggregate: aggregateFarm([]),
-          lands,
-        };
-      }
-
+      const lands = (rawLands as unknown as LandRow[]).filter((l) => !!l.id);
+      const landIds = lands.length ? lands.map((l) => l.id) : [NONE];
+      const scheduleIds = lands.map((l) => l.active_schedule_id).filter((id): id is string => !!id);
       const since = rangeStart(range);
 
-      // Fetch in parallel; tolerate per-table failures.
-      const activeScheduleIds = lands.map((land) => land.active_schedule_id).filter((id): id is string => Boolean(id));
-      const cropCodes = [...new Set(lands.map((land) => land.current_crop?.trim().toLowerCase()).filter((crop): crop is string => Boolean(crop)))];
-      const [tasksRes, weatherRes, soilRes, ndviRes, financeRes, schedulesRes, baselinesRes, linksRes, decisionsRes] = await Promise.all([
-        supabase
-          .from('schedule_tasks')
-          .select('id, schedule_id, status, task_date, completed_at, estimated_cost, task_type, farmer_id')
-          .in('schedule_id', activeScheduleIds.length ? activeScheduleIds : ['00000000-0000-0000-0000-000000000000'])
-          .gte('task_date', since.slice(0, 10))
-          .limit(2000),
-        supabase
-          .from('weather_current')
-          .select('land_id, temperature_celsius, humidity_percent, rain_24h_mm, observation_time')
-          .in('land_id', landIds)
-          .order('observation_time', { ascending: false })
-          .limit(landIds.length * 4),
-        supabase
-          .from('soil_health')
-          .select('land_id, ph_level, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, organic_carbon, test_date, soil_moisture_surface_percent')
-          .in('land_id', landIds)
-          .order('test_date', { ascending: false })
-          .limit(landIds.length * 3),
-        supabase
-          .from('ndvi_data')
-          .select('land_id, date, mean_ndvi, ndvi_value, image_url, cloud_coverage')
-          .in('land_id', landIds)
-          .gte('date', since.slice(0, 10))
-          .order('date', { ascending: true })
-          .limit(2000),
-        supabase
-          .from('financial_transactions')
-          .select('land_id, transaction_type, category, amount, transaction_date')
-          .eq('farmer_id', farmerId)
-          .gte('transaction_date', since.slice(0, 10))
-          .limit(2000),
-        supabase.from('crop_schedules').select('id, land_id, total_estimated_cost, actual_total_cost, expected_yield_quintals, expected_yield_per_acre, expected_market_price_per_quintal, total_water_requirement_liters, water_requirement_liters_total, water_per_irrigation_liters, cost_by_category').in('id', activeScheduleIds.length ? activeScheduleIds : ['00000000-0000-0000-0000-000000000000']),
-        supabase.from('crop_baseline_guidelines_v2').select('crop_code, growth_stage, nitrogen_min, nitrogen_max, phosphorus_min, phosphorus_max, potassium_min, potassium_max').in('crop_code', cropCodes.length ? cropCodes : ['__none__']),
-        supabase.from('crop_commodity_link').select('crop_code, commodity_global_code').in('crop_code', cropCodes.length ? cropCodes : ['__none__']),
-        supabase.from('farm_decision').select('land_id, title_en, action_text_en').eq('farmer_id', farmerId).in('land_id', landIds).in('status', ['DUE', 'WATCH', 'INFO', 'BLOCKED']).or(`valid_until.is.null,valid_until.gte.${new Date().toISOString().slice(0, 10)}`).order('priority', { ascending: false }).limit(100),
+      const [econ, farmState, weather, ndvi, tasks, decisions, soil] = await Promise.all([
+        supabase.from('v_land_economics' as any).select('*').in('land_id', landIds),
+        supabase.from('land_farm_state' as any)
+          .select('land_id, state_date, crop_code, stage_code, das, canopy, gaps')
+          .in('land_id', landIds).order('state_date', { ascending: false }).limit(landIds.length * 3),
+        supabase.from('land_weather_state' as any)
+          .select('land_id, metric_date, total_rainfall_mm, etc_mm, root_depletion_mm, water_balance_status')
+          .in('land_id', landIds).order('metric_date', { ascending: false }).limit(landIds.length * 3),
+        supabase.from('v_ndvi_decision_grade' as any)
+          .select('land_id, acquisition_date, ndvi_value, is_fresh')
+          .in('land_id', landIds).gte('acquisition_date', since).order('acquisition_date', { ascending: true }).limit(2000),
+        supabase.from('schedule_tasks')
+          .select('id, schedule_id, status, task_date, completed_at, task_type')
+          .in('schedule_id', scheduleIds.length ? scheduleIds : [NONE]).limit(2000),
+        supabase.from('farm_decision' as any)
+          .select('land_id, decision_key, category, status, created_at')
+          .in('land_id', landIds).in('status', OPEN_DECISION_STATUSES).order('created_at', { ascending: false }).limit(500),
+        supabase.from('soil_health')
+          .select('land_id, test_date, source, ph_level, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, organic_carbon')
+          .in('land_id', landIds).order('test_date', { ascending: false }).limit(landIds.length * 3),
       ]);
+      for (const r of [econ, farmState, weather, ndvi, tasks, decisions, soil]) if (r.error) throw r.error;
 
-      const tasks = (tasksRes.data || []) as any[];
-      const schedules = (schedulesRes.data || []) as any[];
-      const scheduleLandMap = new Map(schedules.map((schedule) => [schedule.id, schedule.land_id]));
-      const tasksWithLand = tasks.map((t) => ({
-        ...t,
-        land_id: t.land_id || scheduleLandMap.get(t.schedule_id) || null,
-      }));
+      // Stage name for the codes present (crop_stage_master is public reference data)
+      const stageCodes = [...new Set(((farmState.data ?? []) as any[]).map((f) => f.stage_code).filter(Boolean))];
+      const stages = stageCodes.length
+        ? await supabase.from('crop_stage_master' as any).select('stage_code, growth_stage').in('stage_code', stageCodes)
+        : { data: [], error: null };
+      if (stages.error) throw stages.error;
+      const stageName = new Map<string, string>(((stages.data ?? []) as any[]).map((s) => [s.stage_code, s.growth_stage]));
 
-      const weatherByLand = new Map<string, any>();
-      (weatherRes.data || []).forEach((w: any) => {
-        if (!weatherByLand.has(w.land_id)) weatherByLand.set(w.land_id, w);
-      });
-      const soilByLand = new Map<string, any>();
-      (soilRes.data || []).forEach((s: any) => {
-        if (!soilByLand.has(s.land_id)) soilByLand.set(s.land_id, s);
-      });
-      const ndviAll = (ndviRes.data || []) as any[];
-      const financeAll = (financeRes.data || []) as any[];
-      const links = (linksRes.data || []) as Array<{ crop_code: string; commodity_global_code: string }>;
-      const commodityCodes = [...new Set(links.map((link) => link.commodity_global_code))];
-      const marketRes = await supabase
-        .from('market_prices')
-        .select('global_commodity_code, commodity_name_normalized, crop_name, modal_price, price_per_unit, price_date, market_location')
-        .in('global_commodity_code', commodityCodes.length ? commodityCodes : ['__none__'])
-        .gte('price_date', new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10))
-        .order('price_date', { ascending: false })
-        .limit(500);
-      const market = (marketRes.data || []) as any[];
-      const commodityByCrop = new Map(links.map((link) => [link.crop_code, link.commodity_global_code]));
+      const latestBy = <T extends { land_id: string }>(rows: T[]) => {
+        const m = new Map<string, T>();
+        for (const r of rows) if (!m.has(r.land_id)) m.set(r.land_id, r); // rows arrive newest first
+        return m;
+      };
+      const econBy = new Map<string, LandEconomicsRow>(((econ.data ?? []) as unknown as LandEconomicsRow[]).map((e) => [e.land_id, e]));
+      const stateBy = latestBy((farmState.data ?? []) as any[]);
+      const weatherBy = latestBy((weather.data ?? []) as unknown as WeatherStateRow[]);
+      const soilBy = latestBy((soil.data ?? []) as unknown as SoilRow[]);
+      const taskRows = (tasks.data ?? []) as unknown as TaskRow[];
+      const decisionRows = (decisions.data ?? []) as unknown as DecisionRow[];
+      const ndviRows = (ndvi.data ?? []) as unknown as { land_id: string; acquisition_date: string; ndvi_value: number | null; is_fresh: boolean | null }[];
 
-      const perLand: LandAnalytics[] = lands.map((land) => {
-        const tasksForLand = tasksWithLand.filter((t) => t.land_id === land.id && t.schedule_id === land.active_schedule_id);
-        const financeForLand = financeAll.filter((f) => f.land_id === land.id);
-        const cropCode = land.current_crop?.trim().toLowerCase() ?? '';
-        const commodityCode = commodityByCrop.get(cropCode);
-        const marketForLand = market.filter((row) => row.global_commodity_code === commodityCode);
-        const baseline = ((baselinesRes.data || []) as any[]).find((row) =>
-          row.crop_code === cropCode && row.growth_stage === land.crop_stage?.trim().toLowerCase(),
-        ) ?? null;
+      const perLand = lands.map((land) => {
+        const fs = stateBy.get(land.id) as any;
+        const farmStateRow: FarmStateRow | null = fs
+          ? { ...fs, growth_stage: fs.stage_code ? stageName.get(fs.stage_code) ?? null : null }
+          : null;
+        const points: NdviPoint[] = ndviRows
+          .filter((n) => n.land_id === land.id && n.ndvi_value != null)
+          .map((n) => ({ date: n.acquisition_date, value: Number(n.ndvi_value), fresh: !!n.is_fresh }));
         return computeLandAnalytics(land, {
-          tasks: tasksForLand,
-          weather: weatherByLand.get(land.id) || null,
-          soil: soilByLand.get(land.id) || null,
-          ndvi: ndviAll,
-          finance: financeForLand,
-          market: marketForLand,
-          schedule: schedules.find((schedule) => schedule.id === land.active_schedule_id) ?? null,
-          baseline,
-          decisions: (decisionsRes.data || []) as any[],
+          economics: econBy.get(land.id) ?? null,
+          farmState: farmStateRow,
+          weather: weatherBy.get(land.id) ?? null,
+          ndvi: points,
+          tasks: taskRows.filter((t) => t.schedule_id === land.active_schedule_id),
+          decisions: decisionRows.filter((d) => d.land_id === land.id),
+          soil: soilBy.get(land.id) ?? null,
         });
       });
 
-      const aggregate: FarmAggregate = aggregateFarm(perLand);
-      return { perLand, aggregate, lands };
+      const computedAt = perLand.map((a) => a.economics?.computed_at ?? null).filter(Boolean).sort().pop() ?? null;
+      return { perLand, aggregate: aggregateFarm(perLand), computedAt };
     },
   });
-
-  return {
-    ...query,
-    isLoading: query.isLoading || landsLoading,
-  };
 }

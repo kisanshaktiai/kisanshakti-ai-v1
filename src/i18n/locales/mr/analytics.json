@@ -1,6 +1,16 @@
 {
   "__meta": { "page": "analytics", "version": "2.0", "last_updated": "2026-06-01" },
   "analytics": {
+    "units": {"acre": "एकर", "quintal": "क्विं.", "mm": "मिमी"},
+    "economics": {"title": "तुमचे पीक, पैशात", "updated_on": "{{date}} रोजी अपडेट", "not_ready": "या शेताचा अंदाज तयार होत आहे. शेताची माहिती आली की तो आपोआप येथे दिसेल.", "spent_so_far": "आतापर्यंत खर्च", "nothing_recorded": "अजून काही नोंदवलेले नाही", "more_till_harvest": "काढणीपर्यंत अजून", "not_available": "अजून उपलब्ध नाही", "expected_harvest": "अंदाजे काढणी", "expected_income": "अंदाजे उत्पन्न", "price_not_available": "भाव अजून उपलब्ध नाही", "preparing": "तयार होत आहे…"},
+    "why": {"canopy_below_normal": "या टप्प्यात पिकाची वाढ नेहमीपेक्षा कमी आहे (उपग्रह {{observed_on}}), म्हणून अंदाज थोडा कमी आहे.", "canopy_normal": "या टप्प्यात पिकाची वाढ नेहमीप्रमाणे आहे (उपग्रह {{observed_on}}).", "trend_down": "गेल्या आठवड्यापेक्षा कमी.", "trend_up": "गेल्या आठवड्यापेक्षा जास्त.", "trend_flat": "गेल्या आठवड्याइतकेच."},
+    "factor": {"canopy": "पिकाची वाढ", "water": "पाणी", "thermal": "उष्णता", "soil": "माती", "pest": "कीड व रोग"},
+    "canopy": {"below": "नेहमीपेक्षा कमी", "within": "नेहमीप्रमाणे", "above": "नेहमीपेक्षा जास्त"},
+    "stage": {"flowering": "फुलोरा"},
+    "field": {"title": "पीक कसे चालले आहे", "no_state": "शेताची माहिती अजून आलेली नाही.", "stage": "टप्पा", "days_since_sowing": "{{n}} दिवस", "growth": "वाढ", "satellite_on": "उपग्रह {{date}}", "harvest": "काढणी", "open_satellite": "शेत उपग्रहातून पहा"},
+    "water": {"title": "पाणी", "as_of": "{{date}} पर्यंत", "no_data": "या शेताची पाण्याची माहिती अजून आलेली नाही.", "crop_use_today": "आज पिकाने घेतले", "rain_today": "आज पाऊस", "soil_short_by": "मातीत कमी", "see_farm_today": "पाणी द्यायचे की नाही हे 'आजचे शेत' पानावर ठरते."},
+    "watch": {"title": "लक्ष ठेवायच्या गोष्टी", "none": "या शेतासाठी सध्या काही नाही.", "open_farm_today": "'आजचे शेत' मध्ये पहा", "category": {"disease": "रोग", "water": "पाणी", "general": "सामान्य", "observation": "शेत पहा"}},
+    "soil": {"estimated": "मातीच्या नकाशावरून अंदाज — प्रयोगशाळा तपासणी नाही", "get_tested": "प्रयोगशाळेतील माती तपासणीने हे अचूक होईल.", "ph": "pH", "n": "N", "p": "P", "k": "K"},
     "title": "शेत विश्लेषण",
     "subtitle": "तुमची शेती कामगिरी ट्रॅक करा",
     "all_farm": "संपूर्ण शेत",

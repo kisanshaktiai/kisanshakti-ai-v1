@@ -1,140 +1,192 @@
-import { forwardRef, useMemo } from 'react';
-import { cn } from '@/lib/utils';
+/**
+ * Analytics cards. Every number here was computed on the server; every word
+ * comes from i18n (analytics.*) with numbers interpolated. Colours and type
+ * are theme tokens only.
+ */
+import React, { forwardRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { Line } from 'react-chartjs-2';
 import {
-  Sprout,
-  Droplets,
-  TestTube,
-  CheckCircle2,
-  Wallet,
-  LineChart,
-  Lightbulb,
-  CloudRain,
-  TrendingUp,
-  TrendingDown,
-  Clock,
-  AlertTriangle,
-} from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Tooltip,
-  Legend,
-  Filler,
-  RadialLinearScale,
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler,
 } from 'chart.js';
-import { Line, Bar, Doughnut, Radar } from 'react-chartjs-2';
-import { useTranslation } from 'react-i18next';
-import type { LandAnalytics } from '@/lib/analytics/reportEngine';
-import { formatINR, formatNumber, nutrientLevel } from '@/lib/analytics/formulas';
-import { useChartTheme } from '@/hooks/useChartTheme';
+import { Wallet, Sprout, Droplets, TestTube, CheckCircle2, Eye, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
+import type { LandAnalytics, ExplanationItem } from '@/lib/analytics/reportEngine';
+import { formatNumber, formatMoney, formatRange } from '@/lib/analytics/formulas';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  RadialLinearScale,
-  Tooltip,
-  Legend,
-  Filler,
-);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
-const chartBase = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
-};
+const chartBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
 
-function SectionCard({
-  icon,
-  title,
-  subtitle,
-  children,
-  empty,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  empty?: boolean;
+export function SectionCard({ icon, title, subtitle, children, tone = 'default' }: {
+  icon: React.ReactNode; title: string; subtitle?: string; children: React.ReactNode; tone?: 'default' | 'primary';
 }) {
   return (
-    <Card className="bg-card border-border/60 p-4 space-y-3">
+    <Card className={cn('bg-card border-border/60 p-4 space-y-3', tone === 'primary' && 'border-primary/40')}>
       <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          {icon}
-        </div>
+        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">{icon}</div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-bold text-foreground leading-tight">{title}</h3>
           {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
       </div>
-      <div className={cn(empty && 'opacity-70')}>{children}</div>
+      {children}
     </Card>
   );
 }
 
-function EmptyHint({ label }: { label: string }) {
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-muted-foreground leading-relaxed">{children}</p>;
+}
+
+function Chip({ label, state }: { label: string; state: 'good' | 'warn' | 'none' }) {
   return (
-    <p className="text-xs text-muted-foreground italic">{label}</p>
+    <span className={cn(
+      'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium',
+      state === 'good' && 'bg-primary/10 text-primary',
+      state === 'warn' && 'bg-destructive/10 text-destructive',
+      state === 'none' && 'bg-muted text-muted-foreground',
+    )}>{label}</span>
   );
 }
 
-export function CropStageCard({ a }: { a: LandAnalytics }) {
-  const { t } = useTranslation();
-  const chartTheme = useChartTheme();
-  const ndvi = a.latestNdvi;
-  const ndviPct = ndvi != null ? Math.max(0, Math.min(100, Math.round(ndvi * 100))) : null;
+/** Farmer-language sentence for an explanation code. Unknown codes are not shown. */
+function useWhy() {
+  const { t, i18n } = useTranslation();
+  return (items: ExplanationItem[] | null | undefined): string[] =>
+    (items ?? [])
+      .map((e) => {
+        const key = `analytics.why.${e.code}`;
+        const text = t(key, { ...e, defaultValue: '' });
+        return text ? String(text) : '';
+      })
+      .filter(Boolean)
+      .map((s) => s.replace(/\{\{date\}\}/g, new Date().toLocaleDateString(i18n.language)));
+}
+
+// ─── 1. Money & harvest ────────────────────────────────────────────────────
+export function MoneyHarvestCard({ a }: { a: LandAnalytics }) {
+  const { t, i18n } = useTranslation();
+  const why = useWhy();
+  const e = a.economics;
+  const locale = i18n.language;
+  const hasEstimate = e?.predicted_total_qtl != null;
+  const trend = e?.explanation?.find((x) => x.code.startsWith('trend_'))?.code;
+  const TrendIcon = trend === 'trend_up' ? TrendingUp : trend === 'trend_down' ? TrendingDown : Minus;
+
+  return (
+    <SectionCard
+      icon={<Wallet className="w-4 h-4" />}
+      title={t('analytics.economics.title', 'Your crop, in money')}
+      subtitle={e?.computed_at
+        ? t('analytics.economics.updated_on', 'Updated {{date}}', { date: new Date(e.computed_at).toLocaleDateString(locale) })
+        : undefined}
+      tone="primary"
+    >
+      {!hasEstimate ? (
+        <Hint>{t('analytics.economics.not_ready', 'The estimate for this field is being prepared. It will appear here by itself once the field data is in.')}</Hint>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[11px] text-muted-foreground">{t('analytics.economics.spent_so_far', 'Spent so far')}</p>
+              <p className="text-base font-bold text-foreground">
+                {e!.spent_rows > 0 ? formatMoney(e!.spent_confirmed, locale) : t('analytics.economics.nothing_recorded', 'nothing recorded yet')}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">{t('analytics.economics.more_till_harvest', 'More till harvest')}</p>
+              <p className="text-base font-bold text-foreground">
+                {e!.estimate_rows > 0 ? formatMoney(e!.estimated_remaining, locale) : t('analytics.economics.not_available', 'not available yet')}
+              </p>
+            </div>
+          </div>
+          <div className="rounded-xl bg-primary/5 p-3 space-y-1">
+            <p className="text-[11px] text-muted-foreground">{t('analytics.economics.expected_harvest', 'Expected harvest')}</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-bold text-foreground">
+                {formatRange(e!.predicted_total_low_qtl, e!.predicted_total_high_qtl, 1, locale)}{' '}
+                <span className="text-sm font-medium text-muted-foreground">{t('analytics.units.quintal', 'q')}</span>
+              </p>
+              {trend && <TrendIcon className={cn('w-4 h-4', trend === 'trend_down' ? 'text-destructive' : 'text-primary')} />}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {t('analytics.economics.expected_income', 'Expected income')}:{' '}
+              <span className="font-semibold text-foreground">
+                {e!.income_low != null
+                  ? `${formatMoney(e!.income_low, locale)} – ${formatMoney(e!.income_high, locale)}`
+                  : t('analytics.economics.price_not_available', 'price not available yet')}
+              </span>
+            </p>
+          </div>
+          {why(e!.explanation).slice(0, 2).map((line, i) => <Hint key={i}>{line}</Hint>)}
+          <div className="flex flex-wrap gap-1.5">
+            <Chip
+              label={t('analytics.factor.canopy', 'Crop growth')}
+              state={e!.factors?.canopy ? (e!.factors.canopy.vs_expected === 'below' ? 'warn' : 'good') : 'none'}
+            />
+            {['water', 'thermal', 'soil', 'pest'].map((f) => (
+              <Chip key={f} label={t(`analytics.factor.${f}`, f)} state={e!.factors?.[f] ? (e!.factors[f].value < 1 ? 'warn' : 'good') : 'none'} />
+            ))}
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+}
+
+// ─── 2. Field condition ────────────────────────────────────────────────────
+export function FieldConditionCard({ a }: { a: LandAnalytics }) {
+  const { t, i18n } = useTranslation();
+  const fs = a.farmState;
+  const c = fs?.canopy ?? null;
+  const canopyWord = c?.vs_expected === 'below'
+    ? t('analytics.canopy.below', 'less than normal')
+    : c?.vs_expected === 'above'
+      ? t('analytics.canopy.above', 'more than normal')
+      : c?.vs_expected ? t('analytics.canopy.within', 'normal') : null;
+  const stageLabel = fs?.growth_stage ? t(`analytics.stage.${fs.growth_stage}`, fs.growth_stage) : null;
+
   return (
     <SectionCard
       icon={<Sprout className="w-4 h-4" />}
-      title={t('analytics.sections.crop_stage', 'Crop & Stage')}
+      title={t('analytics.field.title', 'How the crop is doing')}
       subtitle={a.land.current_crop || t('analytics.no_crop', 'No active crop')}
     >
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <div className="bg-muted/40 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.crop_stage_label', 'Stage')}</p>
-          <p className="text-sm font-bold text-foreground truncate">{a.land.crop_stage || '—'}</p>
+      {!fs ? (
+        <Hint>{t('analytics.field.no_state', 'Field data is not in yet.')}</Hint>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t('analytics.field.stage', 'Stage')}</p>
+            <p className="text-sm font-bold text-foreground truncate">{stageLabel ?? '—'}</p>
+            {fs.das != null && <p className="text-[10px] text-muted-foreground">{t('analytics.field.days_since_sowing', '{{n}} days', { n: fs.das })}</p>}
+          </div>
+          <div className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t('analytics.field.growth', 'Growth')}</p>
+            <p className={cn('text-sm font-bold', c?.vs_expected === 'below' ? 'text-destructive' : 'text-foreground')}>{canopyWord ?? '—'}</p>
+            {c?.date && <p className="text-[10px] text-muted-foreground">{t('analytics.field.satellite_on', 'satellite {{date}}', { date: new Date(c.date).toLocaleDateString(i18n.language) })}</p>}
+          </div>
+          <div className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t('analytics.field.harvest', 'Harvest')}</p>
+            <p className="text-sm font-bold text-foreground">
+              {a.economics?.expected_harvest_date ? new Date(a.economics.expected_harvest_date).toLocaleDateString(i18n.language) : '—'}
+            </p>
+          </div>
         </div>
-        <div className="bg-muted/40 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.harvest_in', 'Harvest in')}</p>
-          <p className="text-sm font-bold text-foreground">
-            {a.land.expected_harvest_date
-              ? Math.max(0, Math.round((new Date(a.land.expected_harvest_date).getTime() - Date.now()) / 86_400_000)) + ' d'
-              : '—'}
-          </p>
-        </div>
-        <div className="bg-muted/40 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">NDVI</p>
-          <p className="text-sm font-bold text-foreground">{ndviPct != null ? ndviPct + '%' : '—'}</p>
-        </div>
-      </div>
+      )}
       {a.ndviTrend.length > 1 && (
-        <div className="h-24 mt-3">
+        <div className="h-20">
           <Line
             data={{
-              labels: a.ndviTrend.map((p) => p.date.slice(5)),
-              datasets: [
-                {
-                  data: a.ndviTrend.map((p) => p.value),
-                   borderColor: chartTheme.chart1,
-                   backgroundColor: chartTheme.chart2,
-                  tension: 0.4,
-                  fill: true,
-                  borderWidth: 2,
-                  pointRadius: 0,
-                },
-              ],
+              labels: a.ndviTrend.map((p) => new Date(p.date).toLocaleDateString(i18n.language, { day: '2-digit', month: 'short' })),
+              datasets: [{
+                data: a.ndviTrend.map((p) => p.value),
+                borderColor: 'hsl(var(--primary))', backgroundColor: 'hsl(var(--primary) / 0.15)',
+                fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2,
+              }],
             }}
             options={{ ...chartBase, scales: { x: { display: false }, y: { display: false, min: 0, max: 1 } } }}
           />
@@ -144,244 +196,115 @@ export function CropStageCard({ a }: { a: LandAnalytics }) {
   );
 }
 
-export function WaterWeatherCard({ a }: { a: LandAnalytics }) {
-  const { t } = useTranslation();
-  const rain = a.weather?.rain_24h_mm ?? null;
+// ─── 3. Water ──────────────────────────────────────────────────────────────
+export function WaterCard({ a }: { a: LandAnalytics }) {
+  const { t, i18n } = useTranslation();
+  const w = a.weather;
   return (
     <SectionCard
-      icon={<CloudRain className="w-4 h-4" />}
-      title={t('analytics.sections.water_weather', 'Water & Weather')}
-      subtitle={a.weather?.observation_time ? new Date(a.weather.observation_time).toLocaleString() : t('analytics.no_weather', 'No live weather')}
+      icon={<Droplets className="w-4 h-4" />}
+      title={t('analytics.water.title', 'Water')}
+      subtitle={w ? t('analytics.water.as_of', 'as of {{date}}', { date: new Date(w.metric_date).toLocaleDateString(i18n.language) }) : undefined}
     >
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-muted/40 rounded-lg p-3">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.water_need', 'Water need / wk')}</p>
-          <p className="text-base font-bold text-foreground">{formatNumber(a.waterRequirementL)} L</p>
+      {!w ? (
+        <Hint>{t('analytics.water.no_data', 'Water data for this field is not in yet.')}</Hint>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t('analytics.water.crop_use_today', 'Crop used today')}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(w.etc_mm, 1, i18n.language)} <span className="text-[10px] font-normal">{t('analytics.units.mm', 'mm')}</span></p>
+          </div>
+          <div className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t('analytics.water.rain_today', 'Rain today')}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(w.total_rainfall_mm, 1, i18n.language)} <span className="text-[10px] font-normal">{t('analytics.units.mm', 'mm')}</span></p>
+          </div>
+          <div className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t('analytics.water.soil_short_by', 'Soil short by')}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(w.root_depletion_mm, 0, i18n.language)} <span className="text-[10px] font-normal">{t('analytics.units.mm', 'mm')}</span></p>
+          </div>
         </div>
-        <div className="bg-muted/40 rounded-lg p-3">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.rain_24h', 'Rain (24h)')}</p>
-          <p className="text-base font-bold text-foreground">{rain != null ? rain.toFixed(1) + ' mm' : '—'}</p>
-        </div>
-        <div className="bg-muted/40 rounded-lg p-3">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.temp', 'Temperature')}</p>
-          <p className="text-base font-bold text-foreground">
-            {a.weather?.temperature_celsius != null ? a.weather.temperature_celsius.toFixed(0) + '°C' : '—'}
-          </p>
-        </div>
-        <div className="bg-muted/40 rounded-lg p-3">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.humidity', 'Humidity')}</p>
-          <p className="text-base font-bold text-foreground">
-            {a.weather?.humidity_percent != null ? a.weather.humidity_percent.toFixed(0) + '%' : '—'}
-          </p>
-        </div>
-      </div>
+      )}
+      <Hint>{t('analytics.water.see_farm_today', 'Whether to irrigate is decided on the Farm Today screen.')}</Hint>
     </SectionCard>
   );
 }
 
-export function SoilHealthCard({ a }: { a: LandAnalytics }) {
+// ─── 4. Watch (open decisions, de-duplicated) ──────────────────────────────
+export function WatchCard({ a, onOpen }: { a: LandAnalytics; onOpen: () => void }) {
   const { t } = useTranslation();
-  const chartTheme = useChartTheme();
-  const s = a.soil;
-  if (!s) {
-    return (
-      <SectionCard icon={<TestTube className="w-4 h-4" />} title={t('analytics.sections.soil', 'Soil Health')} empty>
-        <EmptyHint label={t('analytics.soil_empty', 'No soil test data. Run a soil test for accurate insights.')} />
-      </SectionCard>
-    );
-  }
-  const data = {
-    labels: ['N', 'P', 'K', 'pH', 'OC'],
-    datasets: [
-      {
-        data: [
-          Math.min(100, ((s.nitrogen_kg_per_ha || 0) / 560) * 100),
-          Math.min(100, ((s.phosphorus_kg_per_ha || 0) / 22) * 100),
-          Math.min(100, ((s.potassium_kg_per_ha || 0) / 280) * 100),
-          ((s.ph_level || 0) / 14) * 100,
-          Math.min(100, ((s.organic_carbon || 0) / 1.5) * 100),
-        ],
-         backgroundColor: chartTheme.chart2,
-         borderColor: chartTheme.chart1,
-        borderWidth: 2,
-      },
-    ],
-  };
+  const cats = Object.entries(a.watch.byCategory);
   return (
-    <SectionCard
-      icon={<TestTube className="w-4 h-4" />}
-      title={t('analytics.sections.soil', 'Soil Health')}
-      subtitle={s.test_date ? t('analytics.tested_on', 'Tested {{date}}', { date: new Date(s.test_date).toLocaleDateString() }) : undefined}
-    >
-      <div className="h-36">
-        <Radar
-          data={data}
-          options={{
-            ...chartBase,
-             scales: { r: { suggestedMin: 0, suggestedMax: 100, ticks: { display: false }, grid: { color: chartTheme.border }, angleLines: { color: chartTheme.border }, pointLabels: { color: chartTheme.foreground } } },
-          }}
-        />
-      </div>
-      <div className="flex gap-2 mt-2 flex-wrap text-[10px]">
-        {(['N', 'P', 'K'] as const).map((n) => {
-          const val = n === 'N' ? s.nitrogen_kg_per_ha : n === 'P' ? s.phosphorus_kg_per_ha : s.potassium_kg_per_ha;
-           const band = a.nutrientBands[n];
-           const level = nutrientLevel(val, band.min, band.max);
-          return (
-            <Badge
-              key={n}
-              variant="secondary"
-              className={cn(
-                'border-0',
-                level === 'low' && 'bg-destructive/15 text-destructive',
-                level === 'high' && 'bg-primary/15 text-primary',
-                level === 'medium' && 'bg-muted text-foreground',
-              )}
-            >
-              {n}: {val != null ? Math.round(val) : '—'} ({level})
-            </Badge>
-          );
-        })}
-      </div>
+    <SectionCard icon={<Eye className="w-4 h-4" />} title={t('analytics.watch.title', 'Things to watch')}>
+      {a.watch.count === 0 ? (
+        <Hint>{t('analytics.watch.none', 'Nothing open for this field right now.')}</Hint>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {cats.map(([cat, n]) => (
+              <Chip key={cat} label={`${t(`analytics.watch.category.${cat}`, cat)} · ${n}`} state={n > 0 ? 'warn' : 'none'} />
+            ))}
+          </div>
+          <button type="button" onClick={onOpen} className="text-xs font-semibold text-primary underline-offset-2 hover:underline">
+            {t('analytics.watch.open_farm_today', 'See them on Farm Today')}
+          </button>
+        </>
+      )}
     </SectionCard>
   );
 }
 
+// ─── 5. Tasks ──────────────────────────────────────────────────────────────
 export function TaskPerfCard({ a }: { a: LandAnalytics }) {
   const { t } = useTranslation();
   return (
-    <SectionCard
-      icon={<CheckCircle2 className="w-4 h-4" />}
-      title={t('analytics.sections.tasks', 'Task Performance')}
-      subtitle={t('analytics.tasks_total', '{{n}} tasks', { n: a.tasks.total })}
-      empty={a.tasks.total === 0}
-    >
+    <SectionCard icon={<CheckCircle2 className="w-4 h-4" />} title={t('analytics.sections.tasks', 'Task Performance')}
+      subtitle={t('analytics.tasks_total', '{{n}} tasks', { n: a.tasks.total })}>
       {a.tasks.total === 0 ? (
-        <EmptyHint label={t('analytics.tasks_empty', 'No scheduled tasks yet.')} />
+        <Hint>{t('analytics.tasks_empty', 'No tasks yet')}</Hint>
       ) : (
-        <>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-muted-foreground">{t('analytics.completion', 'Completion')}</span>
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">{t('analytics.completion', 'Completion')}</span>
             <span className="text-sm font-bold text-foreground">{a.tasks.completionRate.toFixed(0)}%</span>
           </div>
           <Progress value={a.tasks.completionRate} className="h-2" />
-          <div className="grid grid-cols-3 gap-2 mt-3 text-center text-[11px]">
-            <div className="bg-muted/40 rounded p-2">
-              <p className="text-muted-foreground">{t('analytics.on_time', 'On time')}</p>
-              <p className="font-bold text-foreground">{a.tasks.onTimeRate.toFixed(0)}%</p>
-            </div>
-            <div className="bg-muted/40 rounded p-2">
-              <p className="text-muted-foreground">{t('analytics.delayed', 'Delayed')}</p>
-              <p className="font-bold text-destructive">{a.tasks.delayed}</p>
-            </div>
-            <div className="bg-muted/40 rounded p-2">
-              <p className="text-muted-foreground">{t('analytics.pending', 'Pending')}</p>
-              <p className="font-bold text-foreground">{a.tasks.pending}</p>
-            </div>
+          <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+            <div><p className="text-muted-foreground">{t('analytics.on_time', 'On time')}</p><p className="font-bold text-foreground">{a.tasks.onTimeRate.toFixed(0)}%</p></div>
+            <div><p className="text-muted-foreground">{t('analytics.delayed', 'Delayed')}</p><p className="font-bold text-destructive">{a.tasks.delayed}</p></div>
+            <div><p className="text-muted-foreground">{t('analytics.pending', 'Pending')}</p><p className="font-bold text-foreground">{a.tasks.pending}</p></div>
           </div>
-        </>
+        </div>
       )}
     </SectionCard>
   );
 }
 
-export function FinancialCard({ a }: { a: LandAnalytics }) {
-  const { t } = useTranslation();
-  const chartTheme = useChartTheme();
-  const cats = a.finance.projectedExpenseBreakdown.slice(0, 6);
-  const hasAny = cats.length > 0 || a.projectedRevenue > 0 || a.finance.totalExpense > 0;
-  const sourceBadge =
-    a.finance.expenseSource === 'actual'
-      ? t('analytics.expense_source_actual', 'Actuals')
-      : a.finance.expenseSource === 'mixed'
-        ? t('analytics.expense_source_mixed', 'Actuals + CoC baseline')
-        : t('analytics.expense_source_projected', 'Crop CoC baseline');
+// ─── 6. Soil (source-aware) ────────────────────────────────────────────────
+export function SoilHealthCard({ a }: { a: LandAnalytics }) {
+  const { t, i18n } = useTranslation();
+  const s = a.soil;
+  if (!s) {
+    return (
+      <SectionCard icon={<TestTube className="w-4 h-4" />} title={t('analytics.sections.soil', 'Soil Health')}>
+        <Hint>{t('analytics.soil_empty', 'No soil data yet')}</Hint>
+      </SectionCard>
+    );
+  }
+  const isTest = !!s.test_date && !!s.source && !/soilgrids|model|estimate/i.test(s.source);
   return (
-    <SectionCard
-      icon={<Wallet className="w-4 h-4" />}
-      title={t('analytics.sections.financial', 'Financial')}
-      subtitle={t('analytics.financial_subtitle', 'Per-crop projection · {{src}}', { src: sourceBadge })}
-      empty={!hasAny}
-    >
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="bg-muted/40 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.expenses_projected', 'Expenses (proj.)')}</p>
-          <p className="text-sm font-bold text-foreground">{formatINR(a.finance.projectedExpense)}</p>
-          {a.finance.totalExpense > 0 && (
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              {t('analytics.actuals', 'Actual')}: {formatINR(a.finance.totalExpense)}
-            </p>
-          )}
-        </div>
-        <div className="bg-muted/40 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.projected_revenue', 'Projected revenue')}</p>
-          <p className="text-sm font-bold text-foreground">{formatINR(a.projectedRevenue)}</p>
-        </div>
-        <div className="col-span-2 bg-primary/10 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.projected_profit', 'Projected profit')}</p>
-          <p className={cn('text-base font-bold', a.projectedProfit >= 0 ? 'text-primary' : 'text-destructive')}>
-            {formatINR(a.projectedProfit)}
-          </p>
-        </div>
-      </div>
-      {cats.length > 0 ? (
-        <div className="h-32">
-          <Doughnut
-            data={{
-              labels: cats.map((c) => t(`analytics.financial.${c.category}`, c.category)),
-              datasets: [
-                {
-                  data: cats.map((c) => c.amount),
-                  backgroundColor: [
-                     chartTheme.chart1,
-                     chartTheme.chart2,
-                     chartTheme.chart3,
-                     chartTheme.chart4,
-                     chartTheme.chart5,
-                     chartTheme.mutedForeground,
-                  ],
-                   borderColor: chartTheme.card,
-                  borderWidth: 2,
-                },
-              ],
-            }}
-             options={{ ...chartBase, plugins: { legend: { display: true, position: 'right', labels: { boxWidth: 10, font: { size: 12 }, color: chartTheme.foreground } } } }}
-          />
-        </div>
-      ) : (
-        <EmptyHint label={t('analytics.finance_empty', 'No expense records logged for this period.')} />
-      )}
-    </SectionCard>
-  );
-}
-
-export function MarketPulseCard({ a }: { a: LandAnalytics }) {
-  const { t } = useTranslation();
-  return (
-    <SectionCard
-      icon={<LineChart className="w-4 h-4" />}
-      title={t('analytics.sections.market', 'Market Pulse')}
-      subtitle={a.land.current_crop || undefined}
-      empty={!a.marketPrice}
-    >
-      {a.marketPrice ? (
-        <>
-          <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold text-foreground">{formatINR(a.marketPrice)}</p>
-            <span className="text-xs text-muted-foreground">/ {t('analytics.per_quintal', 'quintal')}</span>
+    <SectionCard icon={<TestTube className="w-4 h-4" />} title={t('analytics.sections.soil', 'Soil Health')}
+      subtitle={isTest
+        ? t('analytics.tested_on', 'Tested {{date}}', { date: new Date(s.test_date!).toLocaleDateString(i18n.language) })
+        : t('analytics.soil.estimated', 'Estimated from soil maps — not a lab test')}>
+      <div className="grid grid-cols-4 gap-2 text-center">
+        {([['ph', s.ph_level, 1], ['n', s.nitrogen_kg_per_ha, 0], ['p', s.phosphorus_kg_per_ha, 0], ['k', s.potassium_kg_per_ha, 0]] as const).map(([k, v, d]) => (
+          <div key={k} className="rounded-lg bg-muted/40 p-2">
+            <p className="text-[10px] text-muted-foreground">{t(`analytics.soil.${k}`, k.toUpperCase())}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(v, d, i18n.language)}</p>
           </div>
-          {a.marketSource && (
-            <p className="text-[11px] text-muted-foreground mt-1">
-              {t('analytics.market_source', 'Source')}: {a.marketSource}
-            </p>
-          )}
-        </>
-      ) : (
-        <EmptyHint label={t('analytics.market_empty', 'No recent market price available for this crop.')} />
-      )}
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        {t('analytics.expected_yield', 'Expected yield')}: <span className="text-foreground font-semibold">{formatNumber(a.expectedYieldQuintals, 1)} q</span>
+        ))}
       </div>
+      {!isTest && <Hint><AlertTriangle className="inline w-3 h-3 mr-1" />{t('analytics.soil.get_tested', 'A soil test from the lab will make this exact.')}</Hint>}
     </SectionCard>
   );
 }
@@ -389,45 +312,8 @@ export function MarketPulseCard({ a }: { a: LandAnalytics }) {
 export const DisclaimerCard = forwardRef<HTMLDivElement>(function DisclaimerCard(_, ref) {
   const { t } = useTranslation();
   return (
-    <Card ref={ref} className="bg-muted/40 border-dashed border-border/60 p-3">
-      <div className="flex gap-2">
-        <AlertTriangle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-        <div className="flex-1">
-          <p className="text-[11px] font-bold text-foreground mb-1">
-            {t('analytics.disclaimer.title', 'Projection notice')}
-          </p>
-          <p className="text-[11px] text-muted-foreground leading-snug">
-            {t(
-              'analytics.disclaimer.body',
-              'These numbers are forecasts based on your land data, NDVI, weather and mandi prices. Actual results may vary with soil condition, water stress, pest or disease attacks, rainfall and labour rates. Use this as guidance — not a guarantee.',
-            )}
-          </p>
-        </div>
-      </div>
+    <Card ref={ref} className="bg-muted/40 border-border/60 p-3">
+      <p className="text-[11px] text-muted-foreground leading-relaxed">{t('analytics.disclaimer.body', '')}</p>
     </Card>
   );
 });
-
-export function RecommendationsCard({ a }: { a: LandAnalytics }) {
-  const { t } = useTranslation();
-  const items = useMemo(() => a.recommendations, [a.recommendations]);
-  if (!items.length) {
-    return (
-      <SectionCard icon={<Lightbulb className="w-4 h-4" />} title={t('analytics.sections.recommendations', 'Smart Recommendations')}>
-        <p className="text-xs text-muted-foreground">{t('analytics.all_good', 'No urgent actions. Keep monitoring.')}</p>
-      </SectionCard>
-    );
-  }
-  return (
-    <SectionCard icon={<Lightbulb className="w-4 h-4" />} title={t('analytics.sections.recommendations', 'Smart Recommendations')}>
-      <ul className="space-y-2">
-        {items.map((key) => (
-          <li key={key} className="flex items-start gap-2 text-sm text-foreground">
-            <AlertTriangle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-            <span>{key}</span>
-          </li>
-        ))}
-      </ul>
-    </SectionCard>
-  );
-}
