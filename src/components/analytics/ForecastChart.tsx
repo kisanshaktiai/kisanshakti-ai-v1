@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { TrendingUp, RefreshCw, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { formatINR } from '@/lib/analytics/formulas';
+import { formatMoney as formatINR } from '@/lib/analytics/formulas';
 import { useAnalyticsForecast, type ForecastRow } from '@/hooks/useAnalyticsForecast';
 import { useChartTheme } from '@/hooks/useChartTheme';
 
