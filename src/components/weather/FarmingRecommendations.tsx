@@ -31,58 +31,23 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
   const { t } = useTranslation();
 
   const getIrrigationAdvice = () => {
-    // DB-derived (authoritative) path.
-    if (landState) {
-      const urgency = (landState.irrigation_urgency ?? '').toUpperCase();
-      if (urgency === 'CRITICAL' || urgency === 'HIGH' || urgency === 'URGENT') {
-        return { status: 'high', icon: AlertTriangle, color: 'text-destructive', bgColor: 'bg-destructive/10', fromField: true };
-      }
-      if (urgency === 'MEDIUM' || urgency === 'MODERATE' || landState.irrigation_needed) {
-        return { status: 'medium', icon: Droplets, color: 'text-info', bgColor: 'bg-info/10', fromField: true };
-      }
-      if (urgency === 'LOW' || urgency === 'NONE' || landState.irrigation_needed === false) {
-        return { status: 'low', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10', fromField: true };
-      }
+    if (!landState || landState.irrigation_needed == null) {
+      return { status: 'unknown', icon: Droplets, color: 'text-muted-foreground', bgColor: 'bg-muted/30', fromField: false };
     }
-
-    const temp = currentWeather.temp;
-    const humidity = currentWeather.humidity;
-    const rainChance = forecast[0]?.pop || 0;
-
-    if (rainChance > 0.6) {
-      return { status: 'low', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10', fromField: false };
-    } else if (temp > 32 && humidity < 40) {
-      return { status: 'high', icon: AlertTriangle, color: 'text-destructive', bgColor: 'bg-destructive/10', fromField: false };
-    } else {
-      return { status: 'medium', icon: Droplets, color: 'text-info', bgColor: 'bg-info/10', fromField: false };
+    const urgency = (landState.irrigation_urgency ?? '').toUpperCase();
+    if (urgency === 'CRITICAL' || urgency === 'HIGH' || urgency === 'URGENT') {
+      return { status: 'high', icon: AlertTriangle, color: 'text-destructive', bgColor: 'bg-destructive/10', fromField: true };
     }
+    if (urgency === 'MEDIUM' || urgency === 'MODERATE') {
+      return { status: 'medium', icon: Droplets, color: 'text-info', bgColor: 'bg-info/10', fromField: true };
+    }
+    return landState.irrigation_needed
+      ? { status: 'medium', icon: Droplets, color: 'text-info', bgColor: 'bg-info/10', fromField: true }
+      : { status: 'low', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10', fromField: true };
   };
 
-  const getSprayingAdvice = () => {
-    const windSpeed = currentWeather.wind_speed * 3.6;
-    const rainChance = forecast[0]?.pop || 0;
-
-    if (rainChance > 0.5 || windSpeed > 15) {
-      return { status: 'bad', icon: XCircle, color: 'text-destructive', bgColor: 'bg-destructive/10', fromField: false };
-    } else if (windSpeed < 8 && rainChance < 0.2) {
-      return { status: 'good', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10', fromField: false };
-    } else {
-      return { status: 'moderate', icon: Bug, color: 'text-warning', bgColor: 'bg-warning/10', fromField: false };
-    }
-  };
-
-  const getPlantingAdvice = () => {
-    const temp = currentWeather.temp;
-    const humidity = currentWeather.humidity;
-
-    if (temp > 15 && temp < 35 && humidity > 30 && humidity < 80) {
-      return { status: 'good', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10', fromField: false };
-    } else if (temp < 10 || temp > 40) {
-      return { status: 'bad', icon: XCircle, color: 'text-destructive', bgColor: 'bg-destructive/10', fromField: false };
-    } else {
-      return { status: 'moderate', icon: Sprout, color: 'text-warning', bgColor: 'bg-warning/10', fromField: false };
-    }
-  };
+  const spraying = { status: 'unknown', icon: Bug, color: 'text-muted-foreground', bgColor: 'bg-muted/30', fromField: false };
+  const planting = { status: 'unknown', icon: Sprout, color: 'text-muted-foreground', bgColor: 'bg-muted/30', fromField: false };
 
   const irrigation = getIrrigationAdvice();
   const spraying = getSprayingAdvice();
@@ -100,25 +65,22 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
       sub: irrigationSub,
       label: irrigation.status === 'high' ? t('weather.farming.high') :
              irrigation.status === 'medium' ? t('weather.farming.medium') :
-             t('weather.farming.low')
+             irrigation.status === 'low' ? t('weather.farming.low') :
+             t('weather.farming.unavailable', 'Decision unavailable')
     },
     {
       icon: Bug,
       title: t('weather.farming.spraying'),
       ...spraying,
       sub: undefined,
-      label: spraying.status === 'good' ? t('weather.farming.good') :
-             spraying.status === 'moderate' ? t('weather.farming.moderate') :
-             t('weather.farming.avoid')
+      label: t('weather.farming.unavailable', 'Decision unavailable')
     },
     {
       icon: Sprout,
       title: t('weather.farming.planting'),
       ...planting,
       sub: undefined,
-      label: planting.status === 'good' ? t('weather.farming.favorable') :
-             planting.status === 'moderate' ? t('weather.farming.ok') :
-             t('weather.farming.not_recommended')
+      label: t('weather.farming.unavailable', 'Decision unavailable')
     }
   ];
 
