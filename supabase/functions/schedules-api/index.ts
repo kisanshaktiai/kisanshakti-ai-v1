@@ -321,11 +321,12 @@ serve(async (req) => {
 
         const body = await req.json().catch(() => ({}));
         const completed = body?.completed !== false;
+        const completedAt = completed ? (body?.completed_at || new Date().toISOString()) : null;
         const { data, error } = await supabase
           .from('schedule_tasks')
           .update({
             status: completed ? 'completed' : 'pending',
-            completed_at: completed ? (body?.completed_at || new Date().toISOString()) : null,
+            completed_at: completedAt,
             updated_at: new Date().toISOString(),
           })
           .eq('id', taskId)
@@ -335,6 +336,36 @@ serve(async (req) => {
         if (error) {
           console.error('❌ [SchedulesAPI] Task completion failed:', error);
           return json({ error: 'Failed to update task status', details: error.message }, 500);
+        }
+
+        // 2026-09-21 — EXECUTION LEDGER. schedule_tasks.status is the current UI state;
+        // task_completions is the durable farmer-action ledger used by downstream refinement.
+        // Do not copy planned quantities into actual_resources: an actual field dose must come
+        // from the farmer, not from the schedule's recommendation.
+        if (completed) {
+          const { error: ledgerError } = await supabase
+            .from('task_completions')
+            .insert({
+              task_id: taskId,
+              farmer_id: farmerId,
+              action: 'completed',
+              action_date: completedAt || new Date().toISOString(),
+              actual_resources: body?.actual_resources ?? null,
+              actual_cost: body?.actual_cost ?? null,
+              notes: body?.notes ?? null,
+              photos: Array.isArray(body?.photos) ? body.photos : null,
+              weather_conditions: body?.weather_conditions ?? null,
+              difficulty_rating: body?.difficulty_rating ?? null,
+              effectiveness_rating: body?.effectiveness_rating ?? null,
+            });
+          if (ledgerError) {
+            console.error('❌ [SchedulesAPI] Task completion ledger write failed:', ledgerError);
+            await supabase
+              .from('schedule_tasks')
+              .update({ status: 'pending', completed_at: null, updated_at: new Date().toISOString() })
+              .eq('id', taskId);
+            return json({ error: 'Failed to record task completion', details: ledgerError.message, code: 'TASK_COMPLETION_LEDGER_FAILED' }, 500);
+          }
         }
         return json({ data });
       }
