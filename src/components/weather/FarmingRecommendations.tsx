@@ -50,8 +50,6 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
   const planting = { status: 'unknown', icon: Sprout, color: 'text-muted-foreground', bgColor: 'bg-muted/30', fromField: false };
 
   const irrigation = getIrrigationAdvice();
-  const spraying = getSprayingAdvice();
-  const planting = getPlantingAdvice();
 
   const irrigationSub = irrigation.fromField && landState?.water_deficit_mm !== null && landState?.water_deficit_mm !== undefined
     ? t('weather.farming.deficit_mm', { value: Number(landState.water_deficit_mm).toFixed(1) })
