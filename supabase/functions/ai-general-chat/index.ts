@@ -708,12 +708,13 @@ serve(async (req: Request) => {
         // ragRetrieve logs its own errors; this one happened before it ran (normaliser /
         // filter resolution), so record it here under the same purpose (§30).
         try {
-          await supabase.from('rag_retrieval_logs').insert({
+          const { error: logErr } = await supabase.from('rag_retrieval_logs').insert({
             session_id: sessionId, trace_id: traceId, tenant_id: tenantId, farmer_id: farmerId,
             query_text: userText, query_language: language, retrieval_purpose: 'GENERAL_CHAT',
             retrieval_mode: 'error', filters_applied: { stage: 'pre_retrieval', error: retrievalError },
             chunks_returned: [], candidates: [], below_threshold: true, latency_ms: 0, document_ids: [], chunk_ids: [],
           });
+          if (logErr) console.warn(`[${traceId}] retrieval error log failed`, logErr.message);
         } catch (logErr) {
           console.warn(`[${traceId}] retrieval error log failed`, (logErr as Error).message);
         }

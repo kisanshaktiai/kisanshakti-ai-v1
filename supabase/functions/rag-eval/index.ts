@@ -232,7 +232,8 @@ serve(async (req: Request) => {
       p95_latency_ms: percentile(latencies, 0.95),
       per_question: outcomes,
     };
-    await supabase.from('rag_eval_runs').update(summary).eq('id', runId);
+    const { error: writeErr } = await supabase.from('rag_eval_runs').update(summary).eq('id', runId);
+    if (writeErr) throw new Error(`eval run write failed: ${writeErr.message}`);
     console.log(`📊 rag-eval run=${runId} n=${outcomes.length}/${questions.length} recall@10=${summary.recall_at_10} mrr=${summary.mrr} ndcg@10=${summary.ndcg_at_10} id-recall=${summary.identifier_recall_at_10} errors=${summary.error_rate}`);
     return json(200, { run_id: runId, ...summary, per_question: undefined });
   } catch (e) {

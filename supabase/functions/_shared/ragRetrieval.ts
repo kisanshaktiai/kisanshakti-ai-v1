@@ -251,7 +251,7 @@ function compareCandidates(a: Candidate, b: Candidate, tieBreak: boolean): numbe
  * score order — diversity never makes the answer thinner than the corpus can
  * support.
  */
-function applyDiversity(sorted: Candidate[], maxEvidence: number): Candidate[] {
+function applyDiversity(sorted: Candidate[], maxEvidence: number, compare: (a: Candidate, b: Candidate) => number): Candidate[] {
   const perDoc = new Map<string, number>();
   const picked: Candidate[] = [];
   const skipped: Candidate[] = [];
@@ -268,7 +268,9 @@ function applyDiversity(sorted: Candidate[], maxEvidence: number): Candidate[] {
     c.gate = 'kept';
     picked.push(c);
   }
-  return picked;
+  // Back-filled candidates were appended after the first pass; the evidence
+  // the model sees (and its [EVIDENCE n] numbering) must still be in score order.
+  return picked.sort(compare);
 }
 
 export async function ragRetrieve(
@@ -435,8 +437,9 @@ export async function ragRetrieve(
       if (!passesGate(c)) { c.gate = 'below_gate'; continue; }
       passing.push(c);
     }
-    passing.sort((a, b) => compareCandidates(a, b, reranked));
-    const cut = applyDiversity(passing, maxEvidence);
+    const compare = (a: Candidate, b: Candidate) => compareCandidates(a, b, reranked);
+    passing.sort(compare);
+    const cut = applyDiversity(passing, maxEvidence, compare);
 
     // A candidate that passes the explicit gates is evidence. Do not apply a second
     // global cosine floor after this point: that previously turned valid evidence
@@ -478,8 +481,9 @@ export async function ragRetrieve(
       lex_rank: c.lexRank, lex: c.lex, id_rank: c.idRank, id_hits: c.identifierHits, sem_rank: c.semRank, sem: c.sem,
       rrf: Number(c.rrf.toFixed(6)), rerank: c.rerank, final: Number(c.final.toFixed(6)), gate: c.gate,
     }));
+    // supabase-js returns the failure in `error` rather than throwing; both must be reported.
     try {
-      await logRow({
+      const { error: logErr } = await logRow({
         filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null,
           terms, identifiers, rerank: { requested: !!audit.rerank, applied: reranked, model: rerankModel },
           gates: { min_semantic_score: tun.min_semantic_score, gap_semantic_score: tun.gap_semantic_score, min_rerank_score: tun.min_rerank_score },
@@ -491,6 +495,7 @@ export async function ragRetrieve(
         latency_ms: latencyMs,
         document_ids: [...new Set(evidence.map((ev) => ev.documentId))], chunk_ids: evidence.map((ev) => ev.chunkId),
       });
+      if (logErr) console.warn('[ragRetrieval] audit log failed:', logErr.message);
     } catch (e) {
       console.warn('[ragRetrieval] audit log failed:', (e as Error).message);
     }
@@ -503,11 +508,12 @@ export async function ragRetrieve(
     const latencyMs = Date.now() - startedAt;
     console.error(`[ragRetrieval] retrieval error (${purpose}):`, message);
     try {
-      await logRow({
+      const { error: logErr } = await logRow({
         filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null, error: message },
         retrieval_mode: 'error', chunks_returned: [], candidates: [], top_score: null, below_threshold: true,
         embedding_model: null, latency_ms: latencyMs, document_ids: [], chunk_ids: [],
       });
+      if (logErr) console.warn('[ragRetrieval] audit log failed:', logErr.message);
     } catch (logErr) {
       console.warn('[ragRetrieval] audit log failed:', (logErr as Error).message);
     }
