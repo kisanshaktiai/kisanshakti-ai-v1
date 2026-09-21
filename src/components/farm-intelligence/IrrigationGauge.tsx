@@ -24,6 +24,7 @@ export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm }: Irrigation
   const { t } = useTranslation();
 
   const taw = Number(tawMm ?? 0);
+  const raw = Number(rawMm ?? 0);
   const depletion = Math.max(0, Number(depletionMm ?? 0));
 
   if (!taw) {
