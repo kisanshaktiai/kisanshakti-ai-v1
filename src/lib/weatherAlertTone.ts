@@ -20,6 +20,26 @@ const TONES = {
   purple: 'text-chat-section-purple-icon bg-chat-section-purple-bg border-chat-section-purple-border',
 } as const;
 
+/** Probability colors are deliberately simple for quick field decisions. */
+export function resolveRainProbabilityTone(probability: number): string {
+  const value = Math.max(0, Math.min(100, probability));
+  if (value <= 20) return TONES.blue;
+  if (value <= 40) return TONES.green;
+  if (value <= 60) return TONES.yellow;
+  if (value <= 80) return TONES.orange;
+  return TONES.red;
+}
+
+/** Temperature bands use familiar cool-to-hot semantic colors. */
+export function resolveTemperatureTone(temperatureC: number | null | undefined): string {
+  if (temperatureC == null || !Number.isFinite(temperatureC)) return 'text-foreground';
+  if (temperatureC <= 15) return 'text-chat-section-blue-icon';
+  if (temperatureC <= 25) return 'text-chat-section-green-icon';
+  if (temperatureC <= 32) return 'text-chat-section-yellow-icon';
+  if (temperatureC <= 38) return 'text-warning';
+  return 'text-chat-section-red-icon';
+}
+
 /**
  * Uses only classifications supplied by an authenticated weather provider.
  * Rain probability is deliberately excluded: a percentage is not an alert level.

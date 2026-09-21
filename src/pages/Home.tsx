@@ -38,7 +38,8 @@ import { useMinuteTick } from '@/hooks/useMinuteTick';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useFeatures } from '@/hooks/useFeatures';
 import { Button } from '@/components/ui/button';
-import { resolveWeatherAlertTone } from '@/lib/weatherAlertTone';
+import { resolveRainProbabilityTone, resolveTemperatureTone } from '@/lib/weatherAlertTone';
+import { resolveFarmerDisplayName } from '@/lib/farmerDisplayName';
 
 // Lazy-load the heavy video card (carousel + lazy images) to keep initial JS small.
 const VideoHelpCard = lazy(() =>
@@ -97,7 +98,8 @@ export default function Home() {
     const pop = forecast?.[0]?.pop;
     return pop != null ? { value: Math.round(Number(pop) * 100), hours: 24 } : null;
   })();
-  const rainAlertTone = resolveWeatherAlertTone(currentAlert, currentWeather);
+  const rainAlertTone = rainForecast ? resolveRainProbabilityTone(rainForecast.value) : '';
+  const temperatureTone = resolveTemperatureTone(currentWeather?.temp);
 
 
   const currentTime = useMinuteTick();
@@ -288,11 +290,7 @@ export default function Home() {
     return <HomeSkeleton />;
   }
 
-  const farmerName =
-    user?.fullName?.split(' ')[0] ||
-    (user as any)?.farmerName?.split(' ')[0] ||
-    user?.name?.split(' ')[0] ||
-    t('home.default_name');
+  const farmerName = resolveFarmerDisplayName(user, t('home.default_name'));
   const formattedDate = currentTime.toLocaleDateString('en-US', {
     weekday: 'short',
     day: 'numeric',
@@ -529,9 +527,9 @@ export default function Home() {
                 </div>
 
                 {rainForecast && (
-                  <div className={`mb-1.5 flex items-start gap-2 rounded-md border px-3 py-1.5 text-sm font-bold leading-5 ${rainAlertTone}`}>
-                    <CloudRain className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{t('weather.widget.rain_probability_line', { value: rainForecast.value, hours: rainForecast.hours })}</span>
+                  <div className={`mb-1.5 flex h-8 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md border px-3 text-sm font-bold ${rainAlertTone}`}>
+                    <CloudRain className="h-4 w-4 shrink-0" />
+                    <span>{t('weather.widget.rain_period', { value: rainForecast.value, hours: rainForecast.hours })}</span>
                   </div>
                 )}
 
@@ -542,7 +540,7 @@ export default function Home() {
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
-                      className="text-5xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent"
+                      className={`text-5xl font-bold ${temperatureTone}`}
                     >
                       {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}
                     </motion.span>
