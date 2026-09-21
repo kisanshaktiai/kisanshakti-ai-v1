@@ -1,4 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
+
+const THUMB_BUCKET = 'ndvi-thumbnails';
+const THUMB_TTL = 6 * 60 * 60; // 6 h signed URL; the image itself never changes
+const ownUrlCache = new Map<string, string>();
+
+/** Sign the pipeline's one-time thumbnail (private bucket, tenant/land ownership enforced by RLS). */
+function useOwnThumbnail(path: string | null | undefined, landId?: string): string | null {
+  const { session } = useAuthStore();
+  const [url, setUrl] = useState<string | null>(() => (path ? ownUrlCache.get(path) ?? null : null));
+  useEffect(() => {
+    let cancelled = false;
+    if (!path || !landId || !session?.farmerId || !session?.tenantId) { setUrl(null); return; }
+    if (/^https?:\/\//i.test(path)) { setUrl(path); return; }
+    const clean = path.replace(/^\/+/, '');
+    const parts = clean.split('/');
+    if (parts.length < 3 || parts[0] !== session.tenantId || parts[1] !== landId) { setUrl(null); return; }
+    const cached = ownUrlCache.get(clean); if (cached) { setUrl(cached); return; }
+    supabaseWithAuth(session.farmerId, session.tenantId).storage.from(THUMB_BUCKET).createSignedUrl(clean, THUMB_TTL)
+      .then(({ data }) => { if (cancelled || !data?.signedUrl) return; ownUrlCache.set(clean, data.signedUrl); setUrl(data.signedUrl); })
+      .catch(() => { /* fall back to the static map below */ });
+    return () => { cancelled = true; };
+  }, [path, landId, session?.farmerId, session?.tenantId]);
+  return url;
+}
 import { Skeleton } from '@/components/ui/skeleton';
 import { MapPin } from 'lucide-react';
 import { useGoogleMaps } from '@/contexts/GoogleMapsContext';
@@ -12,6 +38,11 @@ interface LandThumbnailProps {
   } | null;
   landName: string;
   className?: string;
+  /** v3.3: one-time true-colour thumbnail written by the satellite pipeline
+   *  (lands.ndvi_thumbnail_url, a storage path {tenant}/{land}/truecolor_*.png).
+   *  When present it is used instead of a Google Static Map request. */
+  thumbnailPath?: string | null;
+  landId?: string;
 }
 
 // Cache for static map URLs to avoid regenerating
@@ -67,7 +98,8 @@ function generateBoundarySvg(coordinates: number[][]): string {
   `)}`;
 }
 
-export function LandThumbnail({ boundary, centerPoint, landName, className = '' }: LandThumbnailProps) {
+export function LandThumbnail({ boundary, centerPoint, landName, className = '', thumbnailPath = null, landId }: LandThumbnailProps) {
+  const ownThumbnail = useOwnThumbnail(thumbnailPath, landId);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -200,8 +232,9 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
   // Priority: 1) Show SVG fallback immediately while loading
   //           2) Upgrade to static map when API key is ready + online
   //           3) Fall back to SVG if image fails or offline
-  const shouldUseFallback = !isOnline || !mapUrl || imageError;
-  const displayUrl = shouldUseFallback ? fallbackSvg : mapUrl;
+  // Own one-time thumbnail first (no Google request at all); Static Map only while a land has none yet.
+  const shouldUseFallback = !isOnline || (!ownThumbnail && !mapUrl) || imageError;
+  const displayUrl = shouldUseFallback ? fallbackSvg : (ownThumbnail ?? mapUrl);
 
   // Handle no boundary and no center point
   if (!displayUrl && !isApiKeyLoading) {
