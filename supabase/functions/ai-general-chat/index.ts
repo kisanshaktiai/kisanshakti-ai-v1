@@ -649,9 +649,15 @@ serve(async (req: Request) => {
         if (ragResult.belowThreshold && ragResult.mode !== 'error' && filters.stateCodes) {
           ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null, cropCodes: filters.cropCodes, topicCodes: filters.topicCodes }, audit);
         }
+        // Fallback A2: TOPIC filter too narrow ⇒ retry without topics, keeping crop scope.
+        // Every live document carries topic_codes (verified 2026-09-21), so one wrong
+        // code from the interpreter would exclude the answering document outright.
+        if (ragResult.belowThreshold && ragResult.mode !== 'error' && filters.topicCodes) {
+          ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null, cropCodes: filters.cropCodes }, audit);
+        }
         // Fallback B: the farmer's own words (covers native-language documents in the corpus).
         if (ragResult.belowThreshold && ragResult.mode !== 'error' && normalized.query !== userText) {
-          ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null, cropCodes: filters.cropCodes, topicCodes: filters.topicCodes }, { ...audit, queryOriginal: null });
+          ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null, cropCodes: filters.cropCodes }, { ...audit, queryOriginal: null });
         }
         if (ragResult.mode === 'error') retrievalError = ragResult.error;
         // Trust gate: unverified sources are retrieved (and logged) but never served/cited.
@@ -699,6 +705,18 @@ serve(async (req: Request) => {
         console.error(`[${traceId}] rag retrieval failed — answering as NO_EVIDENCE:`, retrievalError);
         ragResult = { evidence: [], mode: 'error', belowThreshold: true, bestSemanticScore: null, embeddingModel: null, latencyMs: 0, traceNote: `error:${retrievalError};`, error: retrievalError };
         ragEvidence = [];
+        // ragRetrieve logs its own errors; this one happened before it ran (normaliser /
+        // filter resolution), so record it here under the same purpose (§30).
+        try {
+          await supabase.from('rag_retrieval_logs').insert({
+            session_id: sessionId, trace_id: traceId, tenant_id: tenantId, farmer_id: farmerId,
+            query_text: userText, query_language: language, retrieval_purpose: 'GENERAL_CHAT',
+            retrieval_mode: 'error', filters_applied: { stage: 'pre_retrieval', error: retrievalError },
+            chunks_returned: [], candidates: [], below_threshold: true, latency_ms: 0, document_ids: [], chunk_ids: [],
+          });
+        } catch (logErr) {
+          console.warn(`[${traceId}] retrieval error log failed`, (logErr as Error).message);
+        }
       }
     }
 

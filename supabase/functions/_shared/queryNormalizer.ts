@@ -100,7 +100,7 @@ function extractJson(text: string): Record<string, unknown> | null {
  * so this is script-agnostic by construction. Bare numbers are not identifiers
  * (they are farmer-supplied quantities and are preserved separately).
  */
-const CODE_TOKEN_RE = /(?<![\p{L}\p{M}\p{N}])(?:[A-Z]{2,6}[-\s]?\d{2,6}[A-Z0-9-]*|[A-Za-z]{2,8}-\d{2,6}[A-Za-z0-9-]*|[A-Za-z]{1,6}\d{2,6}[A-Za-z0-9]*)(?![\p{L}\p{M}\p{N}])/gu;
+const CODE_TOKEN_RE = /(?<![\p{L}\p{M}\p{N}])(?:[A-Z]{2,6}[-\s]?\d{2,6}[A-Z0-9-]*|[A-Za-z]{2,8}-\d{2,6}[A-Za-z0-9-]*|[A-Z][A-Za-z]{0,5}\d{2,6}[A-Za-z0-9]*)(?![\p{L}\p{M}\p{N}])/gu;
 
 export function extractIdentifiers(text: string): string[] {
   const out = new Set<string>();

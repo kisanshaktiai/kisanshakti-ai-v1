@@ -36,7 +36,7 @@ Deno.test("S1: ragRetrieve surfaces mode 'error' and logs it instead of throwing
 Deno.test("S1: fallbacks A and B never run after a retrieval error", async () => {
   const src = await Deno.readTextFile(GENERAL_CHAT);
   const fallbacks = src.match(/if \(ragResult\.belowThreshold && ragResult\.mode !== 'error'/g) || [];
-  assertEquals(fallbacks.length, 2, "both fallbacks must be guarded by mode !== 'error'");
+  assertEquals(fallbacks.length, 3, "all three fallbacks (state, topic, original text) must be guarded by mode !== 'error'");
 });
 
 // ── S4: topic filter wired end to end ──────────────────────────────────────
@@ -104,9 +104,14 @@ Deno.test("S6: ingest dedupes on (source_id, doc_version, content_hash)", async 
 });
 
 // ── Language / crop agnosticism of what Phase 0 added ─────────────────────
+/** Code only: comments (older change-log entries name the documents they fixed) are not rules. */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:'"`])\/\/.*$/gm, "$1");
+}
 Deno.test("Phase 0 additions carry no crop or language vocabulary", async () => {
-  const rerank = await Deno.readTextFile(RERANK);
-  const ingestNew = (await Deno.readTextFile(INGEST)).slice(0, (await Deno.readTextFile(INGEST)).indexOf("interface EntityDictionaries"));
+  const rerank = stripComments(await Deno.readTextFile(RERANK));
+  const ingestSrc = await Deno.readTextFile(INGEST);
+  const ingestNew = stripComments(ingestSrc.slice(0, ingestSrc.indexOf("interface EntityDictionaries")));
   const normPrompt = (await Deno.readTextFile(NORMALIZER)).match(/const SYSTEM = `[\s\S]*?`;/)?.[0] ?? "";
   const cropWords = /\b(soybean|soyabean|rice|paddy|wheat|sugarcane|cotton|maize|groundnut)\b/i;
   assert(!cropWords.test(rerank), "crop word in rerankProvider.ts");
@@ -122,6 +127,17 @@ Deno.test("extractIdentifiers finds code-shaped tokens in any script and ignores
   assertEquals(extractIdentifiers("मला JS-335 बद्दल माहिती द्या"), ["JS-335"]);
   assertEquals(extractIdentifiers("Pusa44 and CO 86032 and 25 kg"), ["Pusa44", "CO 86032"]);
   assertEquals(extractIdentifiers("२५ किलो प्रति एकर"), []);
+  assertEquals(extractIdentifiers("apply kg25 and 20 ml/ha"), []);        // a unit glued to a number is not a code
+});
+
+Deno.test("Schedule path treats a retrieval error as NOT_EVALUATED, never as a corpus gap", async () => {
+  const src = await Deno.readTextFile("supabase/functions/ai-smart-schedule/db/rag-evidence.ts");
+  assert(src.includes('if (result.mode === "error") throw new Error('), "mode 'error' must route to the group_err handler");
+});
+
+Deno.test("rag-eval is registered with the gateway so the sweep-key bearer reaches the function", async () => {
+  const cfg = await Deno.readTextFile("supabase/config.toml");
+  assert(/\[functions\.rag-eval\]\s*\n\s*verify_jwt = false/.test(cfg), "config.toml must declare [functions.rag-eval] verify_jwt = false");
 });
 
 Deno.test("queryTerms keeps script-agnostic tokens, drops one-character noise, caps the count", () => {

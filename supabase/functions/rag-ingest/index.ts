@@ -27,16 +27,18 @@
  *       PGRST116 once two such records existed. The same bytes under a
  *       different scope now become their own record sharing the storage object.
  *   R4  Running headers that sit INSIDE a line are stripped. The line-based
- *       strip only removes a header that is a line of its own; in the ICAR
- *       e-book (verified live: 136 of 341 chunks still carry
+ *       strip only removes a header that is a line of its own; in the largest
+ *       live document (verified: 136 of 341 chunks still carry
  *       "E-book on '…' Page N") the extractor glues the header onto the first
  *       words of the page, so it survived. stripRunningShingles() finds word
  *       n-grams that repeat at the top or bottom edge of ≥30 % of pages and
  *       removes them wherever they sit in the line. Edge position is what
  *       separates a running header from a layout label that legitimately
- *       repeats mid-page on every variety card.
+ *       repeats mid-page on every card, and a shingle is words only: a
+ *       number is never part of a header key, so a table that starts right
+ *       under a repeated column header keeps its figures.
  *   R3  Table rows and card titles are chunk boundaries of their own:
- *       - a numbered line whose title part is unbalanced ("… CVRC(WB,") or
+ *       - a numbered line whose title part is unbalanced ("… ABC(XY,") or
  *         whose next line continues it is a row, not a heading — the
  *         variety-list document had half of each row in section_path and the
  *         other half in chunk_text, and every row under 80 characters was
@@ -44,9 +46,11 @@
  *       - a dense run of serially numbered lines is a table: each row (with
  *         its continuation lines) becomes one chunk, minimum ROW_MIN_CHARS,
  *         so an identifier query lands on the row that names it;
- *       - a short line that is an identifier code with an optional
- *         parenthesised name ("Code (Name)", "Title – Name (Code)") is a card
- *         title and starts a new chunk even without a serial number.
+ *       - a short line that is a serial plus an identifier code, a code with
+ *         a parenthesised name ("AB 1234 (Name)"), or "Title – Name (AB 12)"
+ *         is a card title and starts a new chunk. A bare word plus a number
+ *         ("Table 12") is neither, and a "Label – value (note)" line whose
+ *         bracket holds no code is a fact line, not a title.
  *       All three rules are layout rules; no vocabulary, language or crop
  *       appears in them.
  * 2026-08-27 — CHUNK CROP TAGGING FIXED (verified on the 341-chunk ICAR soybean
@@ -82,13 +86,16 @@ const PAGE_EDGE_TOKENS = 40;
 // ── Heading heuristics: numbered ("4.2 ..."), SHORT ALL-CAPS, or Devanagari-short lines
 const NUMBERED_HEADING = /^\s*(\d+(?:\.\d+)*)[.)]?\s+(.{3,80})$/;
 const CAPS_HEADING = /^[A-Z][A-Z0-9 \-:&()]{4,60}$/;
-// ── Card titles: an identifier code with an optional parenthesised name,
-//    with or without a serial ("CoPk 05191 (Pratap Ganna-1)", "8 CO 86032")
-const CARD_TITLE = /^(?:\d{1,4}[.)]?\s+)?[A-Z][A-Za-z]{0,7}[-\s]?\d{2,6}[A-Za-z0-9-]*(?:\s*\([^()]{2,60}\))?$/;
-// ── "Title – Name (Code)"
-const DASH_CARD_TITLE = /^[\p{L}\p{M}\p{N} .'/-]{3,60}\s[–—-]\s[\p{L}\p{M}\p{N} .'/-]{2,40}\s\([A-Za-z0-9 ./-]{2,24}\)$/u;
-// ── Table row: serial number, then content
-const ROW_START = /^\s*(\d{1,4})[.)]?\s+\S/;
+// ── Card titles. An identifier code is a short letter group joined to digits.
+//    Either a serial precedes the code ("8 AB 12345"), or a parenthesised name
+//    follows it ("AB 12345 (Sample Name)"). A bare "Word 12" is neither.
+const CODE = '[A-Z][A-Za-z]{0,7}[-\\s]?\\d{2,6}[A-Za-z0-9-]*';
+const CARD_TITLE = new RegExp(`^(?:\\d{1,4}[.)]?\\s+${CODE}(?:\\s*\\([^()]{2,60}\\))?|${CODE}\\s*\\([^()]{2,60}\\))$`);
+// ── "Title – Name (Code)": the bracket must hold a code, so "Label – 50 kg (basal)" is a fact line.
+const DASH_CARD_TITLE = new RegExp(`^[\\p{L}\\p{M}\\p{N} .'/-]{3,60}\\s[–—-]\\s[\\p{L}\\p{M}\\p{N} .'/-]{2,40}\\s\\(\\s*${CODE}\\s*\\)$`, 'u');
+// ── Table row: serial number, then content that itself carries a number
+//    (a year, a duration, a yield). A numbered heading or list item does not.
+const ROW_START = /^\s*(\d{1,4})[.)]?\s+(?=\S.*\d)/;
 const ROW_RUN_MIN = 3;
 const ROW_RUN_MAX_GAP = 3;            // lines between consecutive members
 const ROW_RUN_MAX_BETWEEN_CHARS = 300; // text between them: a row's continuation is short, a section's body is not
@@ -171,7 +178,15 @@ export function stripRunningShingles(pages: PageText[]): PageText[] {
     for (let i = 0; i + SHINGLE_N <= n; i++) {
       const atEdge = i < PAGE_EDGE_TOKENS || i + SHINGLE_N > n - PAGE_EDGE_TOKENS;
       if (!atEdge) continue;
-      const key = toks.slice(i, i + SHINGLE_N).map((t) => t.norm).join(' ');
+      const gram = toks.slice(i, i + SHINGLE_N);
+      // A header key never contains a number. Digits are normalised to '#', so any gram that
+      // contains a number (a page number, but equally a serial, a year or the
+      // first yield figure of a table that starts right under a repeated column
+      // header) would match across pages by accident and take data with it.
+      // The cost is that a bare page number can survive next to a stripped
+      // header; a stray small integer is far less harmful than a deleted row.
+      if (gram.some((t) => t.norm.includes('#'))) continue;
+      const key = gram.map((t) => t.norm).join(' ');
       const starts = grams.get(key) ?? [];
       starts.push(i);
       grams.set(key, starts);
@@ -278,6 +293,11 @@ function chunkPages(pages: PageText[]): RawChunk[] {
         buf = line; bufPage = page; bufIsRow = true;
         continue;
       }
+      // A row takes only the lines that plainly continue it (an open bracket or a
+      // trailing comma on what is buffered, or a lower-case / closing start here).
+      // Anything else ends the row, and the ceiling applies to rows too.
+      if (bufIsRow && !(unbalancedOpen(buf) || /[,;]$/.test(buf) || continuesPrevious(line)) ) flush();
+      if (bufIsRow && buf.length >= CHUNK_MAX_CHARS) flush();
 
       const numbered = line.match(NUMBERED_HEADING);
       const titlePart = numbered ? numbered[2] : line;
@@ -302,7 +322,7 @@ function chunkPages(pages: PageText[]): RawChunk[] {
       }
       if (buf.length === 0) bufPage = page;
       buf += (buf ? ' ' : '') + line;
-      if (!bufIsRow && buf.length >= CHUNK_MAX_CHARS) flush();
+      if (buf.length >= CHUNK_MAX_CHARS) flush();
     }
     if (bufIsRow) flush(); // a row never spans a page
   }

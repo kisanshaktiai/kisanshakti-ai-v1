@@ -213,6 +213,7 @@ interface Candidate {
   rrf: number;
   lexRank: number | null;
   lex: number | null;
+  idRank: number | null;
   identifierHits: number;
   semRank: number | null;
   sem: number | null;
@@ -225,13 +226,21 @@ function authorityRank(tier: string): number {
   return AUTHORITY_RANK[tier] ?? 0;
 }
 
-/** Score first; when two scores are within RELATIVE_TIE, the higher authority tier first. */
-function compareCandidates(a: Candidate, b: Candidate): number {
-  const gap = Math.abs(a.final - b.final);
-  const tie = gap <= RELATIVE_TIE * Math.max(Math.abs(a.final), Math.abs(b.final));
-  if (tie) {
-    const auth = authorityRank(b.row.authority_tier) - authorityRank(a.row.authority_tier);
-    if (auth !== 0) return auth;
+/**
+ * Score first; when two RERANK scores are within RELATIVE_TIE, the higher
+ * authority tier first. The tie rule applies only to rerank scores, which are
+ * relevance in [0, 1]: RRF scores are rank-derived and adjacent ranks always
+ * differ by under 2 % (1/61 vs 1/62), so on a fused order the same rule would
+ * let authority swap every neighbouring pair.
+ */
+function compareCandidates(a: Candidate, b: Candidate, tieBreak: boolean): number {
+  if (tieBreak) {
+    const gap = Math.abs(a.final - b.final);
+    const tie = gap <= RELATIVE_TIE * Math.max(Math.abs(a.final), Math.abs(b.final));
+    if (tie) {
+      const auth = authorityRank(b.row.authority_tier) - authorityRank(a.row.authority_tier);
+      if (auth !== 0) return auth;
+    }
   }
   return b.final - a.final;
 }
@@ -357,7 +366,7 @@ export async function ragRetrieve(
     const get = (row: RpcRow): Candidate => {
       let c = fused.get(row.chunk_id);
       if (!c) {
-        c = { row, rrf: 0, lexRank: null, lex: null, identifierHits: 0, semRank: null, sem: null, rerank: null, final: 0, gate: 'below_gate' };
+        c = { row, rrf: 0, lexRank: null, lex: null, idRank: null, identifierHits: 0, semRank: null, sem: null, rerank: null, final: 0, gate: 'below_gate' };
         fused.set(row.chunk_id, c);
       }
       return c;
@@ -370,6 +379,7 @@ export async function ragRetrieve(
     identifierLeg.forEach((row, i) => {
       const c = get(row);
       c.rrf += 1 / (RRF_K + i + 1);
+      c.idRank = i + 1;
       if (c.lex === null) c.lex = Number(row.score);
       c.identifierHits = Math.max(c.identifierHits, Number(row.identifier_hits ?? 0));
     });
@@ -425,7 +435,7 @@ export async function ragRetrieve(
       if (!passesGate(c)) { c.gate = 'below_gate'; continue; }
       passing.push(c);
     }
-    passing.sort(compareCandidates);
+    passing.sort((a, b) => compareCandidates(a, b, reranked));
     const cut = applyDiversity(passing, maxEvidence);
 
     // A candidate that passes the explicit gates is evidence. Do not apply a second
@@ -465,7 +475,7 @@ export async function ragRetrieve(
     const latencyMs = Date.now() - startedAt;
     const loggedCandidates = candidates.slice(0, MAX_LOGGED_CANDIDATES).map((c) => ({
       chunk_id: c.row.chunk_id, document_id: c.row.document_id, page: c.row.page_number,
-      lex_rank: c.lexRank, lex: c.lex, id_hits: c.identifierHits, sem_rank: c.semRank, sem: c.sem,
+      lex_rank: c.lexRank, lex: c.lex, id_rank: c.idRank, id_hits: c.identifierHits, sem_rank: c.semRank, sem: c.sem,
       rrf: Number(c.rrf.toFixed(6)), rerank: c.rerank, final: Number(c.final.toFixed(6)), gate: c.gate,
     }));
     try {
