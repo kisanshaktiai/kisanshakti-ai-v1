@@ -62,7 +62,6 @@ export default function Home() {
     locationSource,
     weatherDistanceKm,
     weatherStationName,
-    currentAlert,
     refetch: refetchWeather,
   } = useWeather(undefined, weatherLand?.id);
   const reduceMotion = useReducedMotion();
