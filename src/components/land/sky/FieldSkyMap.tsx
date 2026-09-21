@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Leaf, Droplets, Waves } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FieldGoogleMap } from '@/components/land/sky/FieldGoogleMap';
+import { GoogleMapsScriptProvider } from '@/components/maps/GoogleMapsScriptProvider';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { FieldSky, LayerFrame, Quarter } from '@/hooks/useFieldSky';
 
@@ -73,10 +75,15 @@ export function FieldSkyMap(props: {
         </div>
       )}
 
-      <FieldGoogleMap landId={props.landId} farmerId={props.farmerId} tenantId={props.tenantId} boundary={props.boundary} centerLat={props.centerLat} centerLng={props.centerLng}
-        imagePath={frame?.path ?? null} imageBounds={frame?.bounds ?? null} highlightQuarter={active.quarter}
-        legend={legend} legendTitle={t('sky.map.legend_title', 'What the colours mean')}
-        fullscreen={fullscreen} onToggleFullscreen={() => setFullscreen((f) => !f)} />
+      {/* The Google Maps script is loaded by the SAME provider the Add-Land / Edit-Land map uses:
+          same script id, same key, same libraries. If the farmer opened a land map earlier in this
+          session the script is already there and this is instant; the script itself is never billed. */}
+      <GoogleMapsScriptProvider loadingComponent={<Skeleton className={cn('w-full', fullscreen ? 'h-screen' : 'h-[calc(100vh-180px)] min-h-[460px] rounded-2xl mx-2')} />}>
+        <FieldGoogleMap landId={props.landId} farmerId={props.farmerId} tenantId={props.tenantId} boundary={props.boundary} centerLat={props.centerLat} centerLng={props.centerLng}
+          imagePath={frame?.path ?? null} imageBounds={frame?.bounds ?? null} highlightQuarter={active.quarter}
+          legend={legend} legendTitle={t('sky.map.legend_title', 'What the colours mean')}
+          fullscreen={fullscreen} onToggleFullscreen={() => setFullscreen((f) => !f)} />
+      </GoogleMapsScriptProvider>
 
       <div className={cn('px-3 pt-2', fullscreen && 'absolute left-2 right-2 z-[70] px-0 bottom-[92px]')}>
         {active.frames.length ? (

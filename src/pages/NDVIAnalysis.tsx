@@ -41,6 +41,10 @@ export default function NDVIAnalysis() {
   const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [tab, setTab] = useState<'today' | 'map' | 'season'>('today');
+  // Cost: a Google map is billed when it is CREATED. Create it only when the farmer first opens
+  // the Map tab; after that keep it mounted (forceMount + hidden) so switching tabs never re-bills.
+  const [mapOpened, setMapOpened] = useState(false);
+  useEffect(() => { if (tab === 'map') setMapOpened(true); }, [tab]);
   type SkyTab = 'today' | 'map' | 'season';
 
   const tenantId = session?.tenantId ?? tenant?.id;
@@ -101,7 +105,7 @@ export default function NDVIAnalysis() {
 
       {/* forceMount: Radix unmounts inactive tabs, and every remount of the Google map is a billable load. Keep it alive, hide it. */}
       <TabsContent value="map" forceMount className={cn('flex-1 px-0 pt-1 pb-16 mt-0', tab !== 'map' && 'hidden')}>
-        {selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} />}
+        {mapOpened && selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} />}
       </TabsContent>
 
       <TabsContent value="season" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">

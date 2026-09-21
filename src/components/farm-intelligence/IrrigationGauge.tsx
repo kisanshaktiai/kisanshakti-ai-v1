@@ -20,7 +20,7 @@ interface IrrigationGaugeProps {
  * Soil-water bucket gauge. Shows how full the root zone is and how close the
  * crop is to the FAO-56 readily-available-water trigger.
  */
-export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm }: IrrigationGaugeProps) {
+export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm, irrigationNeeded, irrigationUrgency }: IrrigationGaugeProps) {
   const { t } = useTranslation();
 
   const taw = Number(tawMm ?? 0);

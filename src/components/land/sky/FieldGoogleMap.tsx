@@ -136,7 +136,21 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
     mapRef.current = map;
     google.maps.event.trigger(map, 'resize');
     fitToField();
+    // A map attached while its host is hidden is 0x0 and fits the field wrongly. Re-fit
+    // whenever the host gets a real size (first reveal, rotation, full screen).
+    let lastW = 0, lastH = 0;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect; if (!r) return;
+      const w = Math.round(r.width), h = Math.round(r.height);
+      if (w > 0 && h > 0 && (w !== lastW || h !== lastH)) {
+        lastW = w; lastH = h;
+        google.maps.event.trigger(map, 'resize');
+        fitToField();
+      }
+    }) : null;
+    ro?.observe(host);
     return () => {
+      ro?.disconnect();
       overlayRef.current?.setMap(null); overlayRef.current = null;
       fieldPolyRef.current?.setMap(null); fieldPolyRef.current = null;
       quarterPolyRef.current?.setMap(null); quarterPolyRef.current = null;
