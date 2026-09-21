@@ -413,7 +413,7 @@ serve(async (req) => {
       projected_date: preparedTasks[idx]?.projectedDate ?? new Date(sow.getTime() + t.days_from_sowing * 86400000).toISOString().split("T")[0],
       days_from_sowing: t.days_from_sowing, anchor_type: t.anchor_type, anchor_stage: t.anchor_stage, gdd_target: t.gdd_target,
       stage_key: t.stage_key, stage_uuid: t.stage_uuid ?? null, stage_name: t.stage_name, stage_order: t.stage_order, priority: t.priority,
-      weather_dependent: t.weather_dependent, status: preparedTasks[idx]?.status ?? "pending", sequence_order: idx + 1,
+      weather_dependent: t.weather_dependent, status: preparedTasks[idx]?.status ?? "pending", original_date: preparedTasks[idx]?.originalDate ?? null, reschedule_reason: preparedTasks[idx]?.adjustmentReason ?? null, auto_rescheduled: preparedTasks[idx]?.autoRescheduled ?? false, sequence_order: idx + 1,
       instructions: narrated[idx]?.instructions || t.instructions, precautions: t.precautions ?? [],
       // The UI shows a farmer-usable "how much water" only from water_required_liters; the depth
       // stays on the card as the agronomic figure. Both are persisted.
