@@ -35,6 +35,14 @@ interface ScheduleRow { sowing_date: string | null; transplant_date: string | nu
 interface LandCtxRow { id: string; current_crop: string | null; current_crop_id: string | null; last_sowing_date: string | null; planting_date: string | null; transplant_date: string | null; das: number | null; crop_cycle: string | null; }
 interface WaterRowLite { image_path?: string | null; image_metadata?: Record<string, unknown> }
 
+export interface LayerFrame { date: string; path: string; bounds: { west: number; south: number; east: number; north: number } | null; kind: 'zones' | 'gradient'; shares: { lower: number; normal: number; higher: number } | null }
+export type Quarter = 'NE' | 'NW' | 'SE' | 'SW';
+const toBounds = (m: unknown): LayerFrame['bounds'] => {
+  const b = (m as { bounds_wgs84?: Record<string, unknown> } | null)?.bounds_wgs84;
+  return b && [b.west, b.south, b.east, b.north].every((x) => Number.isFinite(Number(x))) ? { west: Number(b.west), south: Number(b.south), east: Number(b.east), north: Number(b.north) } : null;
+};
+const asQuarter = (q: unknown): Quarter | null => (q === 'NE' || q === 'NW' || q === 'SE' || q === 'SW' ? q : null);
+
 export interface FieldSky {
   landId: string | null;
   loading: boolean;
@@ -46,6 +54,11 @@ export interface FieldSky {
   /** newest radar pass, for cloudy days */
   radar: { date: string; rvi: number | null; cross_ratio_db: number | null } | null;
   sky: { state: SkyState; ageDays: number | null; cloudPct: number | null; fieldSeenPct: number | null; evidence: string | null; epc: number | null; purity: number | null };
+  /** "where to check" quarters from the pipeline (ndvi_data.metadata.zones): growth and, independently, moisture */
+  zone: { level: 'none' | 'watch' | 'check'; quarter: Quarter | null; pattern: string | null; reason: string | null;
+          water: { level: 'none' | 'watch' | 'check'; quarter: Quarter | null } };
+  /** every dated image per layer (newest first) with the bounds the pipeline wrote — drives the map */
+  layerFrames: { vigour: LayerFrame[]; moisture: LayerFrame[]; standing: LayerFrame[] };
   stage: { state: StageState; das: number | null; stageCode: string | null; stageName: string | null; expectedMin: number | null; expectedMax: number | null; sowingDate: string | null; cropCode: string | null;
            /** ordered ladder of this crop's stages (crop_stage_master) and where the field sits on it — drives the crop figure */
            ladder: Array<{ code: string; name: string | null; dasMin: number | null; dasMax: number | null; heightCm: number | null; leaves: number | null }>; index: number | null; heightCm: number | null; leaves: number | null; sowingSource: 'schedule' | 'land' | null };
@@ -140,7 +153,7 @@ export function useFieldSky(landId: string | null): FieldSky {
     queryFn: async () => {
       const { data, error } = await supabase.from('crop_stage_master')
         .select('stage_code, growth_stage, das_min, das_max, expected_ndvi_min, expected_ndvi_max, cultivation_method, phenology_index, expected_height_cm_min, expected_height_cm_max, expected_leaf_count_min, expected_leaf_count_max, stage_node_type')
-        .eq('crop_code', cropCode!).eq('is_active', true)
+        .ilike('crop_code', cropCode!).eq('is_active', true)
         .not('das_min', 'is', null)
         .order('phenology_index', { ascending: true, nullsFirst: false })
         .order('das_min', { ascending: true });
@@ -227,6 +240,30 @@ export function useFieldSky(landId: string | null): FieldSky {
       latest, previous: prevRow,
       history: (history || []).filter((h) => h.ndvi_value != null).map((h) => ({ date: h.date, ndvi: Number(h.ndvi_value), quality: h.quality_score ?? null })),
       radar,
+      zone: (() => {
+        const z = ((latest as { metadata?: { zones?: Record<string, unknown> } } | null)?.metadata?.zones ?? null) as Record<string, unknown> | null;
+        const lv = z?.level === 'watch' || z?.level === 'check' ? (z.level as 'watch' | 'check') : 'none';
+        const w = (z?.water ?? null) as Record<string, unknown> | null;
+        const wl = w?.level === 'watch' || w?.level === 'check' ? (w.level as 'watch' | 'check') : 'none';
+        return { level: lv, quarter: lv === 'none' ? null : asQuarter(z?.weakest), pattern: typeof z?.pattern === 'string' ? z.pattern : null, reason: typeof z?.reason === 'string' ? z.reason : null,
+                 water: { level: wl, quarter: wl === 'none' ? null : asQuarter(w?.weakest) } };
+      })(),
+      layerFrames: {
+        vigour: (history || []).flatMap((h): LayerFrame[] => {
+          const img = ((h as { metadata?: { image?: Record<string, unknown> } }).metadata?.image ?? null) as Record<string, unknown> | null;
+          const zones = (img?.zones ?? null) as Record<string, unknown> | null;
+          if (zones?.storage_path) {
+            const sh = (zones.shares ?? null) as Record<string, number> | null;
+            return [{ date: h.date, path: String(zones.storage_path), bounds: toBounds(zones), kind: 'zones' as const, shares: sh ? { lower: Number(sh.lower) || 0, normal: Number(sh.normal) || 0, higher: Number(sh.higher) || 0 } : null }];
+          }
+          if (h.image_url && !/^https?:/i.test(String(h.image_url))) return [{ date: h.date, path: String(h.image_url), bounds: toBounds(img), kind: 'gradient' as const, shares: null }];
+          return [];
+        }),
+        moisture: ((canopy.layers ?? []) as Array<{ acquisition_date?: string; image_path?: string | null; image_metadata?: unknown }>).filter((r) => r.image_path)
+          .map((r) => ({ date: String(r.acquisition_date ?? ''), path: String(r.image_path), bounds: toBounds(r.image_metadata), kind: 'gradient' as const, shares: null })),
+        standing: ((surface.layers ?? []) as Array<{ acquisition_date?: string; image_path?: string | null; image_metadata?: Record<string, unknown> }>).filter((r) => r.image_path && Number(r.image_metadata?.drawn_pixels) > 0)
+          .map((r) => ({ date: String(r.acquisition_date ?? ''), path: String(r.image_path), bounds: toBounds(r.image_metadata), kind: 'gradient' as const, shares: null })),
+      },
       sky: { state: skyState, ageDays, cloudPct, fieldSeenPct: fieldSeen ?? null, evidence: latest?.evidence_confidence ?? null, epc: n(latest?.effective_pixel_count), purity: n(latest?.coverage_weighted_purity) },
       stage: { state: stageState, das, stageCode: band?.stage_code ?? null, stageName: band?.growth_stage ?? null, expectedMin: n(band?.expected_ndvi_min), expectedMax: n(band?.expected_ndvi_max), sowingDate, cropCode,
                ladder, index: stageIndex, heightCm: band ? mid(band.expected_height_cm_min, band.expected_height_cm_max) : null, leaves: band ? mid(band.expected_leaf_count_min, band.expected_leaf_count_max) : null, sowingSource },

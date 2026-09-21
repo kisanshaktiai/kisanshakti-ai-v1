@@ -101,7 +101,10 @@
       "moist": "moist",
       "none": "none",
       "some": "some",
-      "water": "water"
+      "water": "water",
+      "lower": "weaker than the rest",
+      "normal": "like the rest",
+      "higher": "better than the rest"
     },
     "map": {
       "blocks": "10 m blocks · nothing smoothed",
@@ -115,7 +118,13 @@
       "south": "south",
       "west": "west",
       "which_side": "Which side of my field?",
-      "fill_screen": "Fill screen"
+      "fill_screen": "Fill screen",
+      "legend_title": "What the colours mean",
+      "dates": "Days the satellite saw the field",
+      "no_image": "No picture for this layer yet.",
+      "exit_fullscreen": "Exit full screen",
+      "recenter": "My field",
+      "google_error": "The map could not load. Check your connection and try again."
     },
     "stage": {
       "germination": "Germination",
@@ -144,6 +153,27 @@
       "fruit_set": "Fruit set",
       "fruit_development": "Fruit development",
       "pod_filling": "Pod filling"
+    },
+    "attention": {
+      "title": "Needs your attention",
+      "severe": "The satellite view of this field has changed and more than one sign agrees. Please walk the field today.",
+      "watch": "One sign says this field is slipping behind. Please have a look when you can.",
+      "photo": "Send a photo",
+      "map": "Map"
+    },
+    "details": {
+      "title": "The numbers behind this",
+      "na": "Not available",
+      "ndvi": "Crop greenness (NDVI)",
+      "ndvi_prev": "Previous reading",
+      "date": "Reading date",
+      "cloud": "Cloud cover (%)",
+      "seen": "Field seen (%)",
+      "stage": "Crop stage",
+      "das": "Days after sowing",
+      "ndmi": "Moisture signal (NDMI)",
+      "ndre": "Leaf nitrogen signal (NDRE)",
+      "rain": "Recent rain (mm)"
     }
   }
 }
