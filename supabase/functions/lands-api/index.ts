@@ -365,9 +365,10 @@ serve(async (req) => {
           
           if (error || !land) {
             console.error('❌ [LandsAPI] Land fetch error:', error);
+            if (error) return dbErrorResponse(error);
             return new Response(
-              JSON.stringify({ error: error?.message || 'Land not found' }),
-              { status: error ? 400 : 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              JSON.stringify({ error: 'Land not found' }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
           
