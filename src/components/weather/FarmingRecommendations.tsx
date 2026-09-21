@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Droplets, Bug, Sprout, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Droplets, Bug, Sprout, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -9,12 +9,7 @@ import { useTranslation } from 'react-i18next';
 interface FarmingRecommendationsProps {
   currentWeather: any;
   forecast: any[];
-  /**
-   * MODEL B — soil/crop-aware daily state for the selected land.
-   * When present it OVERRIDES the client-side heuristics below: the database
-   * value accounts for soil water holding capacity, effective rainfall and
-   * crop stage, none of which the browser can know.
-   */
+  /** Decision-Brain / land-weather state. The browser does not derive agronomic recommendations. */
   landState?: {
     irrigation_needed: boolean | null;
     irrigation_urgency: string | null;
