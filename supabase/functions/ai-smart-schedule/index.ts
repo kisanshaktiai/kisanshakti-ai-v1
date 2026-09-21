@@ -127,6 +127,37 @@ serve(async (req) => {
     if (landContext.gaps.length) inputs.gaps.push(...landContext.gaps);
     resolvedCropCode = inputs.cropCode || null;
 
+    // 2026-09-21 — VARIETY × METHOD SUITABILITY GATE. A child cultivation method may
+    // inherit a phenology clock from its parent, but that does NOT make the variety suitable
+    // for the child method. If the variety has an authoritative VCA row marking the selected
+    // method (or its declared stage-clock parent) unsuitable, fail closed before any schedule
+    // task is generated. This prevents a variety-specific production plan from silently using
+    // a method the variety record explicitly rejects.
+    if (inputs.varietyId && inputs.cultivationMethod) {
+      const methodCandidates = [...new Set([inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean))] as string[];
+      const { data: suitabilityRows } = await supabase
+        .from("variety_cultivation_agronomy")
+        .select("id, cultivation_method, is_suitable, suitability_note, source, evidence_tier, suitability_grade, limiting_factor")
+        .eq("variety_id", inputs.varietyId)
+        .eq("is_active", true)
+        .in("cultivation_method", methodCandidates);
+      const unsuitable = (suitabilityRows || []).find((r: Record<string, unknown>) => r.is_suitable === false);
+      if (unsuitable) {
+        return json({
+          success: false,
+          error: "The selected variety is not marked suitable for the selected cultivation method in the agronomy SSOT.",
+          code: "VARIETY_METHOD_NOT_SUITABLE",
+          varietyId: inputs.varietyId,
+          varietyName: inputs.varietyName,
+          cultivationMethod: inputs.cultivationMethod,
+          stageClockMethod: inputs.stageClockMethod,
+          evidence: unsuitable,
+          gaps: [...inputs.gaps, "variety_method_not_suitable"],
+        }, 422);
+      }
+      if (!(suitabilityRows || []).length) inputs.gaps.push("variety_method_suitability_unverified");
+    }
+
     const { data: otherActive } = await supabase.from("crop_schedules").select("id, crop_name, status").eq("land_id", landId).or("status.eq.active,is_active.eq.true");
     const normName = (s: unknown) => String(s ?? "").trim().toLowerCase();
     const requestedNames = new Set([inputs.cropLabel, cropName, inputs.cropCode].filter(Boolean).map(normName));
