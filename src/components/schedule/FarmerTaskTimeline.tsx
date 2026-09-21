@@ -133,15 +133,16 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const Icon = config.icon;
                   const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
                   const completed = task.status === 'completed';
+                  const expired = task.status === 'expired';
                   const overdue = past && task.status === 'pending';
                   const expanded = expandedTaskId === task.id;
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
                   return (
                     <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
-                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
+                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
                         <CollapsibleTrigger asChild>
                           <Button variant="ghost" className="h-auto min-h-20 w-full justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
-                            <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
+                            <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : expired ? 'bg-muted' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
                             <span className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3">
                               <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
                               <span className="min-w-0 flex-1 whitespace-normal">
@@ -152,7 +153,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                                 {!expanded && p.how[0] && <span className="line-clamp-2 block text-sm font-medium leading-relaxed text-card-foreground">{p.how[0]}</span>}
                                 <span className="mt-2 flex flex-wrap gap-1.5">
                                   <Badge variant={overdue ? 'destructive' : completed ? 'default' : task.priority === 'high' ? 'destructive' : 'secondary'} className="font-bold">
-                                    {completed ? t('schedule.timeline.done') : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
+                                    {completed ? t('schedule.timeline.done') : expired ? t('schedule.completion.status', { status: task.status }) : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
                                   </Badge>
                                   {task.weather_dependent && <Badge variant="outline" className="border-2 font-bold"><Droplets className="mr-1 size-3" />{t('schedule.badges.weather')}</Badge>}
                                   {task.climate_adjusted && <Badge variant="outline" className="border-2 font-bold"><Zap className="mr-1 size-3" />{t('schedule.badges.ai_adjusted')}</Badge>}
