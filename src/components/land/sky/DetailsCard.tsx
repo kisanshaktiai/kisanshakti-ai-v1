@@ -17,7 +17,7 @@ export function DetailsCard({ sky }: { sky: FieldSky }) {
   const rows: Array<{ label: string; value: string }> = [
     { label: t('sky.details.ndvi', 'Crop greenness (NDVI)'), value: fmt(sky.latest?.ndvi_value ?? null) },
     { label: t('sky.details.ndvi_prev', 'Previous reading'), value: fmt(sky.previous?.ndvi_value ?? null) },
-    { label: t('sky.details.date', 'Reading date'), value: sky.latest?.acquisition_date ? String(sky.latest.acquisition_date).slice(0, 10) : na },
+    { label: t('sky.details.date', 'Reading date'), value: sky.latest?.acquisition_time ? String(sky.latest.acquisition_time).slice(0, 10) : na },
     { label: t('sky.details.cloud', 'Cloud cover (%)'), value: fmt(sky.sky.cloudPct, 0) },
     { label: t('sky.details.seen', 'Field seen (%)'), value: fmt(sky.sky.fieldSeenPct, 0) },
     { label: t('sky.details.stage', 'Crop stage'), value: sky.stage.stageName ?? sky.stage.stageCode ?? na },

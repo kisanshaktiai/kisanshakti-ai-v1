@@ -91,17 +91,17 @@ export default function NDVIAnalysis() {
         : <>
           <FieldStateCard sky={sky} landName={landName} onSpeak={onSpeak} isSpeaking={isSpeaking} />
           <SkyCard sky={sky} />
-          {selectedLandId && session?.farmerId && tenantId && <AttentionCard sky={sky} landId={selectedLandId} cropName={sky.cropLabel ?? selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} onShowOnMap={() => setTab('map')} />}
+          {selectedLandId && session?.farmerId && tenantId && <AttentionCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} onShowOnMap={() => setTab('map')} />}
           <NeighbourCard sky={sky} />
           <WaterCard sky={sky} />
-          {selectedLandId && session?.farmerId && tenantId && sky.zone.level === 'none' && <AskCard sky={sky} landId={selectedLandId} cropName={sky.cropLabel ?? selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} />}
+          {selectedLandId && session?.farmerId && tenantId && <AskCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} />}
           <DetailsCard sky={sky} />
         </>}
       </TabsContent>
 
       {/* forceMount: Radix unmounts inactive tabs, and every remount of the Google map is a billable load. Keep it alive, hide it. */}
       <TabsContent value="map" forceMount className={cn('flex-1 px-0 pt-1 pb-16 mt-0', tab !== 'map' && 'hidden')}>
-        {selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} />}
+        {selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} />}
       </TabsContent>
 
       <TabsContent value="season" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">
