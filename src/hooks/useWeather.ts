@@ -116,6 +116,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     error,
     lastUpdated,
     dataSource,
+    currentAlert,
     setWeatherData,
     setLoading,
     setError,
@@ -321,7 +322,8 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
           forecast: dailyData,
           hourly: hourlyData,
           provider: data.provider,
-          source: data.cached ? 'database' : 'api'
+          source: data.cached ? 'database' : 'api',
+          currentAlert: data.current_alert ?? null,
         });
         
         console.log(`💾 [useWeather] Updated weather store from ${data.provider || 'API'} (source: ${data.cached ? 'database' : 'api'})`);
@@ -408,6 +410,7 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
     error,
     lastUpdated,
     dataSource, // NEW: Return data source
+    currentAlert,
     refetch: () => fetchWeatherData(true), // Force refresh on manual refetch
     location: roundedLocation, // Return rounded location for consistency
     locationSource: actualLocation.source, // 'explicit' | 'gps' | 'farm' | 'regional'

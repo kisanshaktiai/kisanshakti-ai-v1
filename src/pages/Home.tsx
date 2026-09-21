@@ -47,6 +47,8 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const { lands, isLoading: loading } = useLands();
+  const weatherLand = lands.find((land: any) => land.is_active !== false) ?? lands[0];
   const {
     currentWeather,
     forecast,
@@ -57,8 +59,9 @@ export default function Home() {
     locationSource,
     weatherDistanceKm,
     weatherStationName,
+    currentAlert,
     refetch: refetchWeather,
-  } = useWeather();
+  } = useWeather(undefined, weatherLand?.id);
   const reduceMotion = useReducedMotion();
 
   // ---------------------------------------------------------------------
@@ -86,11 +89,21 @@ export default function Home() {
   })();
 
   // Rain in the next 6 hours is what actually changes the morning plan.
-  const rainNext6h = (() => {
+  const rainForecast = (() => {
     const next6 = (hourlyForecast ?? []).slice(0, 6);
-    if (next6.length) return Math.round(Math.max(...next6.map((h: any) => Number(h?.pop ?? 0))) * 100);
+    if (next6.length) return { value: Math.round(Math.max(...next6.map((h: any) => Number(h?.pop ?? 0))) * 100), hours: 6 };
     const pop = forecast?.[0]?.pop;
-    return pop != null ? Math.round(Number(pop) * 100) : 0;
+    return pop != null ? { value: Math.round(Number(pop) * 100), hours: 24 } : null;
+  })();
+  const rainAlertTone = (() => {
+    if (currentAlert?.provider !== 'IMD') return 'text-info bg-info/15 border-info/25';
+    switch (currentAlert.color_code) {
+      case 1: return 'text-chat-section-red-icon bg-chat-section-red-bg border-chat-section-red-border';
+      case 2: return 'text-destructive bg-destructive-soft border-destructive/30';
+      case 3: return 'text-chat-section-yellow-icon bg-chat-section-yellow-bg border-chat-section-yellow-border';
+      case 4: return 'text-chat-section-green-icon bg-chat-section-green-bg border-chat-section-green-border';
+      default: return 'text-info bg-info/15 border-info/25';
+    }
   })();
 
 
@@ -126,9 +139,6 @@ export default function Home() {
       return () => clearInterval(rotateInterval);
     }
   }, [isWeatherExpanded]);
-
-  // Use consistent data fetching hook (handles online/offline automatically)
-  const { lands, isLoading: loading } = useLands();
 
   // Calculate total area from farmer's lands (memoized)
   const totalArea = useMemo(
@@ -510,10 +520,10 @@ export default function Home() {
                       {t('weather.provenance.stale')}
                     </span>
                   )}
-                  {rainNext6h > 0 && (
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-info bg-info/15 rounded-full px-2 py-0.5">
-                      <CloudRain className="w-2.5 h-2.5" />
-                      {t('weather.widget.rain_6h', { value: rainNext6h })}
+                  {rainForecast && (
+                    <span className={`flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border ${rainAlertTone}`}>
+                      <CloudRain className="w-3 h-3" />
+                      {t('weather.widget.rain_6h', { value: rainForecast.value })}
                     </span>
                   )}
                   <button
@@ -528,6 +538,13 @@ export default function Home() {
                     <RefreshCw className={`w-3 h-3 ${weatherLoading ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
+
+                {rainForecast && (
+                  <div className={`mb-2 flex items-start gap-2 rounded-md border px-3 py-2 text-sm font-bold leading-5 ${rainAlertTone}`}>
+                    <CloudRain className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{t('weather.widget.rain_probability_line', { value: rainForecast.value, hours: rainForecast.hours })}</span>
+                  </div>
+                )}
 
                 {/* Header - Compact */}
                 <div className="flex items-center justify-between mb-2">
@@ -546,7 +563,7 @@ export default function Home() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.2 }}
-                        className="text-[10px] text-muted-foreground flex items-center gap-1"
+                        className="text-xs font-semibold text-muted-foreground flex items-center gap-1"
                       >
                         <Thermometer className="w-2.5 h-2.5" />
                         {currentWeather?.feels_like != null ? Math.round(currentWeather.feels_like) : '--'}°
@@ -573,7 +590,7 @@ export default function Home() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.25 }}
-                      className="text-[10px] font-medium text-foreground/80 capitalize relative z-10"
+                      className="text-xs font-semibold text-foreground/80 capitalize relative z-10"
                     >
                       {currentWeather?.description || t('home.loading')}
                     </motion.p>
@@ -594,8 +611,8 @@ export default function Home() {
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Wind className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.wind')}</span>
-                    <span className="text-sm font-bold text-foreground">
+                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.wind')}</span>
+                    <span className="text-base font-bold text-foreground">
                       {currentWeather?.wind_speed != null ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
                       <span className="text-[10px] font-normal"> {t('weather.units.kmh')}</span>
                     </span>
@@ -608,8 +625,8 @@ export default function Home() {
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Droplets className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.humidity')}</span>
-                    <span className="text-sm font-bold text-foreground">
+                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.humidity')}</span>
+                    <span className="text-base font-bold text-foreground">
                       {currentWeather?.humidity != null ? currentWeather.humidity : '--'}
                       <span className="text-[10px] font-normal">%</span>
                     </span>
@@ -622,8 +639,8 @@ export default function Home() {
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Activity className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.pressure')}</span>
-                    <span className="text-sm font-bold text-foreground">
+                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.pressure')}</span>
+                    <span className="text-base font-bold text-foreground">
                       {currentWeather?.pressure != null ? currentWeather.pressure : '--'} <span className="text-[10px] font-normal">hPa</span>
                     </span>
                   </motion.div>
