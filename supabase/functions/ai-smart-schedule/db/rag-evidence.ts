@@ -2,6 +2,10 @@
 // PATH: supabase/functions/ai-smart-schedule/db/rag-evidence.ts
 //
 // CHANGE LOG
+// 2026-09-21 — RAG Phase 0: ragRetrieve now returns mode 'error' instead of
+//   throwing. An error is NOT a corpus gap: it is routed to the existing
+//   group_err handling (NOT_EVALUATED) so a retrieval outage never inflates
+//   tasks_no_evidence or groups_below_threshold.
 // 2026-08-28 — P1 (audit Phase 2): schedule evidence adapter. Attaches verified RAG
 //   corpus evidence (rag_chunks, via the shared hybrid retriever) to baseline tasks
 //   AFTER deterministic generation. It never generates, alters, or reinterprets
@@ -190,6 +194,7 @@ export async function attachRagEvidence(
             maxEvidence: EVIDENCE_PER_GROUP,
           },
         );
+        if (result.mode === "error") throw new Error(result.error ?? "retrieval_error");
         summary.groups_queried += 1;
         summary.retrieval_mode = result.mode;
         if (result.embeddingModel) summary.embedding_model = result.embeddingModel;

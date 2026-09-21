@@ -10,6 +10,22 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-09-21 — RAG PHASE 0 (design v2 S1, S4):
+ *   S1  A retrieval failure is a NO_EVIDENCE outcome, never an ungated answer.
+ *       The catch around the retrieval block used to set ragResult = null, which
+ *       selected the legacy prompt (with its "name dosages per acre" rule) and
+ *       orchestrator_type GENERAL_LLM_DIRECT — a database or embedding outage
+ *       silently turned the grounded path into free-recall agronomy. It now
+ *       yields { evidence: [], belowThreshold: true, mode: 'error' }, so the
+ *       insufficient-evidence rules, the number-free fidelity path and the
+ *       no-citations path all apply; orchestrator_type is
+ *       GENERAL_RAG_RETRIEVAL_ERROR and the error is recorded in metadata.rag.
+ *       ragRetrieve itself now returns mode 'error' (and logs it) instead of
+ *       throwing; the catch here covers the normaliser and filter steps around it.
+ *   S4  The normaliser's topic codes (from rag_topics) reach retrieval as
+ *       RagFilters.topicCodes → p_topics, and its identifiers reach the lexical
+ *       identifier pass; General chat asks for the cross-encoder rerank.
+ *       metadata.rag.normalization.topic → topic_codes, + identifiers.
  * 2026-08-27 — CROP-SCOPED GATES: Fallback A relaxes STATE only (keeps cropCodes — a
  *   crop-scoped gap is a real gap, not a filter artefact); Fallback B carries cropCodes
  *   too. New crop-consistency gate drops evidence from documents whose crop_codes do not
@@ -94,7 +110,7 @@ import {
   type CitationRefs,
 } from '../_shared/ragRetrieval.ts';
 import { isFlagEnabled } from '../_shared/featureFlags.ts';
-import { normalizeQueryForRetrieval, resolveCropCode, resolveStateCode, type NormalizedQuery } from '../_shared/queryNormalizer.ts';
+import { normalizeQueryForRetrieval, loadTopicTaxonomy, resolveCropCode, resolveStateCode, type NormalizedQuery } from '../_shared/queryNormalizer.ts';
 
 const RAG_FLAG = 'rag_general_chat';
 
@@ -593,20 +609,22 @@ serve(async (req: Request) => {
     const ragOn = flag.enabled;
     console.log(`🚩 [${traceId}] ${RAG_FLAG}=${ragOn} (${flag.reason}, rollout=${flag.rolloutPercentage}%)`);
     let normalized: NormalizedQuery | null = null;
-    let retrievalFilters: { stateCodes: string[] | null; cropCodes: string[] | null } = { stateCodes: null, cropCodes: null };
+    let retrievalFilters: { stateCodes: string[] | null; cropCodes: string[] | null; topicCodes: string[] | null } = { stateCodes: null, cropCodes: null, topicCodes: null };
+    let retrievalError: string | null = null;
     if (ragOn) {
       highRisk = HIGH_RISK_QUERY.test(userText);
       try {
         // (5) Understand the question first: farmer language → English retrieval query.
         // F5: give the interpreter the crops the corpus actually holds so a
         // local-language crop word maps to a real corpus crop (not a guess).
-        const corpusCrops = await loadCorpusCrops(supabase);
+        // S4: and the subject taxonomy the search RPCs filter on (rag_topics).
+        const [corpusCrops, topics] = await Promise.all([loadCorpusCrops(supabase), loadTopicTaxonomy(supabase)]);
         // Thread context: the farmer's previous messages, so a short reply
         // ("my district is X") keeps the topic and crop of the question it answers.
         const priorFarmerTurns = (messages as Array<{ role?: string; content?: string }>)
           .slice(0, -1).filter((m) => m && m.role === 'user' && typeof m.content === 'string')
           .map((m) => m.content as string).slice(-2);
-        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops, priorFarmerTurns);
+        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops, priorFarmerTurns, topics);
         highRisk = highRisk || HIGH_RISK_QUERY.test(normalized.query);
         // (6) Filters from SSOT tables: state (body → profile → land region) and crop.
         // FIX F4 (audit 2026-09-04): p_states was NULL on 100 % of logged retrievals —
@@ -619,21 +637,29 @@ serve(async (req: Request) => {
         let resolvedState = await resolveStateCode(supabase, stateCode || profileState);
         if (!resolvedState) resolvedState = await resolveStateFromLand(supabase, farmerId);
         const resolvedCrop = await resolveCropCode(supabase, normalized.cropHint);
-        retrievalFilters = { stateCodes: resolvedState ? [resolvedState] : null, cropCodes: resolvedCrop ? [resolvedCrop] : null };
-        console.log(`🔤 [${traceId}] normalized=${normalized.normalized} lang=${normalized.detectedLanguage} crop=${normalized.cropHint}→${resolvedCrop} state=${resolvedState} topic=${normalized.topic} q="${normalized.query.slice(0, 80)}"`);
+        retrievalFilters = { stateCodes: resolvedState ? [resolvedState] : null, cropCodes: resolvedCrop ? [resolvedCrop] : null, topicCodes: normalized.topicCodes.length ? normalized.topicCodes : null };
+        console.log(`🔤 [${traceId}] normalized=${normalized.normalized} lang=${normalized.detectedLanguage} crop=${normalized.cropHint}→${resolvedCrop} state=${resolvedState} topics=${normalized.topicCodes.join(',') || '-'} ids=${normalized.identifiers.join('|') || '-'} q="${normalized.query.slice(0, 80)}"`);
 
-        const audit = { sessionId, traceId, farmerId, tenantIdText: tenantId, purpose: 'GENERAL_CHAT' as const, queryOriginal: userText };
+        const audit = { sessionId, traceId, farmerId, tenantIdText: tenantId, purpose: 'GENERAL_CHAT' as const, queryOriginal: userText, identifiers: normalized.identifiers, rerank: true };
         const filters = { ...retrievalFilters, tenantId: null /* general corpus is global; tenant docs opt-in later */ };
         ragResult = await ragRetrieve(supabase, normalized.query, language, filters, audit);
         // Fallback A: STATE filter too narrow ⇒ retry without the state filter, keeping crop scope
-        // (a crop-scoped gap is a real gap — do not widen it away).
-        if (ragResult.belowThreshold && filters.stateCodes) {
+        // (a crop-scoped gap is a real gap — do not widen it away). Never on an error:
+        // a failed retrieval is not a narrow filter.
+        if (ragResult.belowThreshold && ragResult.mode !== 'error' && filters.stateCodes) {
+          ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null, cropCodes: filters.cropCodes, topicCodes: filters.topicCodes }, audit);
+        }
+        // Fallback A2: TOPIC filter too narrow ⇒ retry without topics, keeping crop scope.
+        // Every live document carries topic_codes (verified 2026-09-21), so one wrong
+        // code from the interpreter would exclude the answering document outright.
+        if (ragResult.belowThreshold && ragResult.mode !== 'error' && filters.topicCodes) {
           ragResult = await ragRetrieve(supabase, normalized.query, language, { tenantId: null, cropCodes: filters.cropCodes }, audit);
         }
         // Fallback B: the farmer's own words (covers native-language documents in the corpus).
-        if (ragResult.belowThreshold && normalized.query !== userText) {
+        if (ragResult.belowThreshold && ragResult.mode !== 'error' && normalized.query !== userText) {
           ragResult = await ragRetrieve(supabase, userText, language, { tenantId: null, cropCodes: filters.cropCodes }, { ...audit, queryOriginal: null });
         }
+        if (ragResult.mode === 'error') retrievalError = ragResult.error;
         // Trust gate: unverified sources are retrieved (and logged) but never served/cited.
         const unservable = ragResult.evidence.filter((e) => !e.servable).length;
         ragEvidence = ragResult.evidence.filter((e) => e.servable);
@@ -673,8 +699,24 @@ serve(async (req: Request) => {
         }
         console.log(`📚 [${traceId}] rag mode=${ragResult.mode} evidence=${ragResult.evidence.length} servable=${ragEvidence.length} unservable=${unservable} belowThreshold=${ragResult.belowThreshold} ${ragResult.traceNote}`);
       } catch (e) {
-        console.warn(`[${traceId}] rag retrieval failed — continuing ungated:`, (e as Error).message);
-        ragResult = null; // total failure ⇒ behave exactly like pre-RAG version
+        // S1: retrieval failed ⇒ NO_EVIDENCE outcome. The evidence gate stays in
+        // force: insufficient-evidence prompt, number-free path, no citations.
+        retrievalError = (e as Error).message || String(e);
+        console.error(`[${traceId}] rag retrieval failed — answering as NO_EVIDENCE:`, retrievalError);
+        ragResult = { evidence: [], mode: 'error', belowThreshold: true, bestSemanticScore: null, embeddingModel: null, latencyMs: 0, traceNote: `error:${retrievalError};`, error: retrievalError };
+        ragEvidence = [];
+        // ragRetrieve logs its own errors; this one happened before it ran (normaliser /
+        // filter resolution), so record it here under the same purpose (§30).
+        try {
+          await supabase.from('rag_retrieval_logs').insert({
+            session_id: sessionId, trace_id: traceId, tenant_id: tenantId, farmer_id: farmerId,
+            query_text: userText, query_language: language, retrieval_purpose: 'GENERAL_CHAT',
+            retrieval_mode: 'error', filters_applied: { stage: 'pre_retrieval', error: retrievalError },
+            chunks_returned: [], candidates: [], below_threshold: true, latency_ms: 0, document_ids: [], chunk_ids: [],
+          });
+        } catch (logErr) {
+          console.warn(`[${traceId}] retrieval error log failed`, (logErr as Error).message);
+        }
       }
     }
 
@@ -798,6 +840,8 @@ serve(async (req: Request) => {
 
     const orchestratorType = !ragResult
       ? 'GENERAL_LLM_DIRECT'
+      : ragResult.mode === 'error'
+      ? 'GENERAL_RAG_RETRIEVAL_ERROR'
       : noEvidenceMode
       ? 'GENERAL_RAG_NO_EVIDENCE'
       : 'GENERAL_RAG_GROUNDED';
@@ -815,9 +859,11 @@ serve(async (req: Request) => {
           document_ids: [...new Set(ragEvidence.map((e) => e.documentId))],
           embedding_model: ragResult.embeddingModel,
           retrieval_latency_ms: ragResult.latencyMs,
+          retrieval_error: retrievalError,
           normalization: normalized
             ? { applied: normalized.normalized, query_en: normalized.query, detected_language: normalized.detectedLanguage,
-                crop_hint: normalized.cropHint, topic: normalized.topic, latency_ms: normalized.latencyMs, filters: retrievalFilters }
+                crop_hint: normalized.cropHint, topic_codes: normalized.topicCodes, identifiers: normalized.identifiers,
+                latency_ms: normalized.latencyMs, filters: retrievalFilters }
             : null,
           fidelity,
         }

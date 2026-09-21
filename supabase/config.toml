@@ -51,6 +51,9 @@ verify_jwt = false
 [functions.ai-general-chat]
 verify_jwt = false
 
+[functions.rag-eval]
+verify_jwt = false
+
 [functions.translate-text]
 verify_jwt = false
 
