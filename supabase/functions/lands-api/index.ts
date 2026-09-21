@@ -476,10 +476,7 @@ serve(async (req) => {
 
           if (error) {
             console.error('Error fetching lands:', error);
-            return new Response(
-              JSON.stringify({ error: error.message }),
-              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
+            return dbErrorResponse(error);
           }
           
           if (!lands || lands.length === 0) {
