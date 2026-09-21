@@ -14,13 +14,15 @@ export interface CurrentWeatherAlert {
 const normalizeDistrict = (value: string) =>
   value.trim().toLocaleLowerCase("en-IN").replace(/\s+district$/u, "").replace(/\s+/gu, " ");
 
+export const districtNamesMatch = (left: string, right: string) =>
+  normalizeDistrict(left) === normalizeDistrict(right);
+
 export function selectCurrentDistrictWarning(
   warnings: ImdWarning[], districtName: string | null | undefined, now = new Date(),
 ): ImdWarning | null {
   if (!districtName) return null;
-  const wanted = normalizeDistrict(districtName);
   const current = warnings.filter((warning) =>
-    normalizeDistrict(warning.district) === wanted &&
+    districtNamesMatch(warning.district, districtName) &&
     new Date(warning.valid_from).getTime() <= now.getTime() &&
     new Date(warning.valid_to).getTime() > now.getTime()
   );

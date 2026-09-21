@@ -523,7 +523,7 @@ export default function Home() {
                   {rainForecast && (
                     <span className={`flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border ${rainAlertTone}`}>
                       <CloudRain className="w-3 h-3" />
-                      {t('weather.widget.rain_6h', { value: rainForecast.value })}
+                      {t('weather.widget.rain_period', { value: rainForecast.value, hours: rainForecast.hours })}
                     </span>
                   )}
                   <button

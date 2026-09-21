@@ -45,6 +45,7 @@ import {
 } from "./imd-provider.ts";
 import {
   persistImdWarnings,
+  districtNamesMatch,
   selectCurrentDistrictWarning,
   toCurrentWeatherAlert,
   type CurrentWeatherAlert,
@@ -1646,11 +1647,12 @@ serve(async (req: Request): Promise<Response> => {
       let currentAlert: CurrentWeatherAlert | null = null;
       if (landData?.district) {
         const nowIso = new Date().toISOString();
-        const { data: alertRow } = await supabase.from("weather_alerts")
+        const { data: alertRows } = await supabase.from("weather_alerts")
           .select("area_name, severity, imd_color_code, imd_warning_codes, start_time, end_time")
           .eq("tenant_id", tenant.id).eq("data_source", "IMD").eq("is_active", true)
-          .ilike("area_name", landData.district).lte("start_time", nowIso).gt("end_time", nowIso)
-          .order("imd_color_code", { ascending: true }).limit(1).maybeSingle();
+          .lte("start_time", nowIso).gt("end_time", nowIso)
+          .order("imd_color_code", { ascending: true }).limit(100);
+        const alertRow = alertRows?.find((row) => districtNamesMatch(row.area_name, landData.district ?? ""));
         if (alertRow) currentAlert = {
           provider: "IMD", district: alertRow.area_name,
           alert_types: alertRow.imd_warning_codes ?? [], severity: alertRow.severity,
@@ -1724,8 +1726,8 @@ serve(async (req: Request): Promise<Response> => {
         const t0 = Date.now();
         try {
           const warnings = await fetchImdDistrictWarnings(imdCreds, supabase, imdLog);
-          await persistImdWarnings(supabase, warnings, tenant.id);
           const selected = selectCurrentDistrictWarning(warnings, landData.district);
+          if (selected) await persistImdWarnings(supabase, [selected], tenant.id);
           currentAlert = selected ? toCurrentWeatherAlert(selected) : null;
           attempts.push({ provider: "IMD", capability: "district_warning", ok: true, ms: Date.now() - t0 });
           await logCall(supabase, runId, "IMD", "district_warning", true, Date.now() - t0);

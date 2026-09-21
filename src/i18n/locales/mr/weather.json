@@ -118,6 +118,7 @@
       "title": "आजचं हवामान",
       "loading": "लोड होतंय...",
       "rain_6h": "{{value}}% / 6 तास",
+      "rain_period": "{{value}}% / {{hours}} तास",
       "rain_probability_line": "आज पुढील {{hours}} तासांत पावसाची शक्यता {{value}}% आहे.",
       "irrigate_today": "आज पाणी द्या",
       "irrigation_soon": "लवकरच पाणी द्यावं लागेल",
