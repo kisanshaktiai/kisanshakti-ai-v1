@@ -29,6 +29,7 @@ export function TaskCompletionSection({
   const [optimisticStatus, setOptimisticStatus] = React.useState(status);
   const isCompleted = optimisticStatus === 'completed';
   const isPending = optimisticStatus === 'pending';
+  const isExpired = optimisticStatus === 'expired';
 
   // Sync optimistic state with prop changes
   React.useEffect(() => {
@@ -152,7 +153,7 @@ export function TaskCompletionSection({
               )}
             </Button>
           </div>
-        ) : (
+        ) : isExpired ? null : (
           /* Mark Done Button */
           <motion.div
             whileTap={{ scale: 0.95 }}
