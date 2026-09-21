@@ -40,8 +40,16 @@ import { corsHeaders } from "../_shared/cors.ts";
 import {
   fetchImdCurrent,
   fetchImdForecast,
+  fetchImdDistrictWarnings,
   imdCacheStatus,
 } from "./imd-provider.ts";
+import {
+  persistImdWarnings,
+  districtNamesMatch,
+  selectCurrentDistrictWarning,
+  toCurrentWeatherAlert,
+  type CurrentWeatherAlert,
+} from "./weather-alerts.ts";
 import { getImdCredentials } from "./imd-token.ts";
 // FIX: this module existed but was never imported. Its calculations are
 // crop-aware (per-crop GDD base/cap, VPD, irrigation need) and strictly
@@ -1457,7 +1465,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const body = await req.json() as WeatherRequest;
     let { action, lat, lon, landId } = body;
-    let landData: { id: string; name: string; farmer_id: string } | null = null;
+    let landData: { id: string; name: string; farmer_id: string; district: string | null } | null = null;
 
     // ---- MODEL B: refresh every cell containing an active land ----------------
     if (action === "refresh_land_cells") {
@@ -1603,7 +1611,7 @@ serve(async (req: Request): Promise<Response> => {
       if (!landId) throw new Error("landId is required for land-based weather request");
 
       const { data: land, error } = await supabase.from("lands")
-        .select("id, name, center_lat, center_lon, farmer_id, boundary_polygon_old")
+        .select("id, name, center_lat, center_lon, farmer_id, district, boundary_polygon_old")
         .eq("id", landId).maybeSingle();
       if (error || !land) throw new Error(`Land not found: ${landId}`);
 
@@ -1620,7 +1628,7 @@ serve(async (req: Request): Promise<Response> => {
         lat = parseFloat(land.center_lat as unknown as string);
         lon = parseFloat(land.center_lon as unknown as string);
       }
-      landData = { id: land.id, name: land.name, farmer_id: land.farmer_id };
+      landData = { id: land.id, name: land.name, farmer_id: land.farmer_id, district: land.district ?? null };
       if (action === "land") action = "all";
     }
 
@@ -1636,6 +1644,22 @@ serve(async (req: Request): Promise<Response> => {
     // ---- STEP 1: cache -----------------------------------------------------
     const cached = await checkCache(supabase, rounded.key, action, runId);
     if (cached) {
+      let currentAlert: CurrentWeatherAlert | null = null;
+      if (landData?.district) {
+        const nowIso = new Date().toISOString();
+        const { data: alertRows } = await supabase.from("weather_alerts")
+          .select("area_name, severity, imd_color_code, imd_warning_codes, start_time, end_time")
+          .eq("tenant_id", tenant.id).eq("data_source", "IMD").eq("is_active", true)
+          .lte("start_time", nowIso).gt("end_time", nowIso)
+          .order("imd_color_code", { ascending: true }).limit(100);
+        const alertRow = alertRows?.find((row) => districtNamesMatch(row.area_name, landData.district ?? ""));
+        if (alertRow) currentAlert = {
+          provider: "IMD", district: alertRow.area_name,
+          alert_types: alertRow.imd_warning_codes ?? [], severity: alertRow.severity,
+          color_code: alertRow.imd_color_code, valid_from: alertRow.start_time,
+          valid_to: alertRow.end_time,
+        };
+      }
       // MODEL B: derivation must not depend on a cache miss.
       if (landData?.id && cached.current) {
         await computeLandWeatherMetrics(
@@ -1652,6 +1676,7 @@ serve(async (req: Request): Promise<Response> => {
         stale: cached.stale ?? false,
         cell: rounded.key,
         land: landData ? { id: landData.id, name: landData.name } : undefined,
+        current_alert: currentAlert,
         timestamp: new Date().toISOString(),
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -1683,6 +1708,7 @@ serve(async (req: Request): Promise<Response> => {
     let forecast: DailyForecast[] | undefined;
     let hourly: ForecastItem[] | undefined;
     let dataProvider = "unknown";
+    let currentAlert: CurrentWeatherAlert | null = null;
     const attempts: ProviderAttempt[] = [];
 
     const needCurrent = action === "current" || action === "all" || action === "agricultural";
@@ -1696,6 +1722,21 @@ serve(async (req: Request): Promise<Response> => {
 
     // -- TIER 1: IMD (authoritative for India, effectively unmetered) --------
     if (imdCreds && budgets.IMD < CONFIG.DAILY_BUDGET.IMD) {
+      if (action === "all" && landData?.district) {
+        const t0 = Date.now();
+        try {
+          const warnings = await fetchImdDistrictWarnings(imdCreds, supabase, imdLog);
+          const selected = selectCurrentDistrictWarning(warnings, landData.district);
+          if (selected) await persistImdWarnings(supabase, [selected], tenant.id);
+          currentAlert = selected ? toCurrentWeatherAlert(selected) : null;
+          attempts.push({ provider: "IMD", capability: "district_warning", ok: true, ms: Date.now() - t0 });
+          await logCall(supabase, runId, "IMD", "district_warning", true, Date.now() - t0);
+        } catch (e) {
+          attempts.push({ provider: "IMD", capability: "district_warning", ok: false, ms: Date.now() - t0, error: String(e) });
+          await logCall(supabase, runId, "IMD", "district_warning", false, Date.now() - t0, String(e));
+          log(runId, "warn", "imd_warning_failed", { error: String(e), district: landData.district });
+        }
+      }
       if (needCurrent) {
         const t0 = Date.now();
         try {
@@ -1904,6 +1945,7 @@ serve(async (req: Request): Promise<Response> => {
     if (landData) response.land = { id: landData.id, name: landData.name };
     if (needCurrent) response.current = current;
     if (needForecast) { response.forecast = forecast; response.hourly = hourly; }
+    response.current_alert = currentAlert;
 
     log(runId, "info", "request_complete", {
       provider: dataProvider, duration_ms: Date.now() - startedAt, cell: rounded.key,
