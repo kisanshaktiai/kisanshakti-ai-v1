@@ -285,10 +285,7 @@ serve(async (req) => {
         : new Date().toISOString().split("T")[0];
       return { task, taskDate, projectedDate: taskDate, status: "pending" as const, originalDate: null, autoRescheduled: false, adjustmentReason: null, resources: task.resources ?? {} };
     });
-    const currentPlanSummary = currentFieldPlan ? {
-      ...currentFieldPlan.summary,
-      stage_uuid: currentFieldPlan.summary.currentStage ? null : null,
-    } : null;
+    const currentPlanSummary = currentFieldPlan ? { ...currentFieldPlan.summary } : null;
     baseline.tasks.forEach((task, i) => {
       const prepared = preparedTasks[i];
       if (!prepared) return;
