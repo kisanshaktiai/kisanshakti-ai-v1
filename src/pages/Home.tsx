@@ -563,7 +563,7 @@ export default function Home() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.2 }}
-                        className="text-xs font-semibold text-muted-foreground flex items-center gap-1"
+                        className="text-[10px] text-muted-foreground flex items-center gap-1"
                       >
                         <Thermometer className="w-2.5 h-2.5" />
                         {currentWeather?.feels_like != null ? Math.round(currentWeather.feels_like) : '--'}°
@@ -590,7 +590,7 @@ export default function Home() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.25 }}
-                      className="text-xs font-semibold text-foreground/80 capitalize relative z-10"
+                      className="text-[10px] font-medium text-foreground/80 capitalize relative z-10"
                     >
                       {currentWeather?.description || t('home.loading')}
                     </motion.p>
@@ -611,8 +611,8 @@ export default function Home() {
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Wind className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.wind')}</span>
-                    <span className="text-base font-bold text-foreground">
+                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.wind')}</span>
+                    <span className="text-sm font-bold text-foreground">
                       {currentWeather?.wind_speed != null ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
                       <span className="text-[10px] font-normal"> {t('weather.units.kmh')}</span>
                     </span>
@@ -625,8 +625,8 @@ export default function Home() {
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Droplets className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.humidity')}</span>
-                    <span className="text-base font-bold text-foreground">
+                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.humidity')}</span>
+                    <span className="text-sm font-bold text-foreground">
                       {currentWeather?.humidity != null ? currentWeather.humidity : '--'}
                       <span className="text-[10px] font-normal">%</span>
                     </span>
@@ -639,8 +639,8 @@ export default function Home() {
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Activity className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.pressure')}</span>
-                    <span className="text-base font-bold text-foreground">
+                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.pressure')}</span>
+                    <span className="text-sm font-bold text-foreground">
                       {currentWeather?.pressure != null ? currentWeather.pressure : '--'} <span className="text-[10px] font-normal">hPa</span>
                     </span>
                   </motion.div>

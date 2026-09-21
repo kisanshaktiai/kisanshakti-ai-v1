@@ -83,7 +83,7 @@ interface HourlyData {
 }
 
 export interface CurrentWeatherAlert {
-  provider: string;
+  provider: 'IMD';
   district: string;
   alert_types: string[];
   severity: string;
@@ -109,8 +109,8 @@ interface WeatherState {
     forecast: ForecastData[];
     hourly: HourlyData[];
     provider?: string;
-    currentAlert?: CurrentWeatherAlert | null;
     source: 'database' | 'api' | 'cache';
+    currentAlert?: CurrentWeatherAlert | null;
   }) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -162,8 +162,8 @@ export const useWeatherStore = create<WeatherState>()(
           hourlyForecast: [],
           lastUpdated: null,
           error: null,
-          currentAlert: null,
           dataSource: null,
+          currentAlert: null,
         }),
 
       getDataAge: () => {
@@ -188,6 +188,7 @@ export const useWeatherStore = create<WeatherState>()(
         lastUpdated: state.lastUpdated,
         dataSource: state.dataSource,
         location: state.location,
+        currentAlert: state.currentAlert,
       }),
     }
   )
