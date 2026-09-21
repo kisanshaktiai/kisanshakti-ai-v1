@@ -82,6 +82,16 @@ interface HourlyData {
   };
 }
 
+export interface CurrentWeatherAlert {
+  provider: 'IMD';
+  district: string;
+  alert_types: string[];
+  severity: string;
+  color_code: number | null;
+  valid_from: string;
+  valid_to: string;
+}
+
 interface WeatherState {
   currentWeather: WeatherData | null;
   forecast: ForecastData[];
@@ -91,6 +101,7 @@ interface WeatherState {
   error: string | null;
   dataSource: 'database' | 'api' | 'cache' | null;
   location: { lat: number; lon: number } | null;
+  currentAlert: CurrentWeatherAlert | null;
   
   // Actions
   setWeatherData: (data: {
@@ -99,6 +110,7 @@ interface WeatherState {
     hourly: HourlyData[];
     provider?: string;
     source: 'database' | 'api' | 'cache';
+    currentAlert?: CurrentWeatherAlert | null;
   }) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -119,6 +131,7 @@ export const useWeatherStore = create<WeatherState>()(
       error: null,
       dataSource: null,
       location: null,
+      currentAlert: null,
 
       setWeatherData: (data) => {
         const now = Date.now();
@@ -132,6 +145,7 @@ export const useWeatherStore = create<WeatherState>()(
           lastUpdated: now,
           error: null,
           dataSource: data.source,
+          currentAlert: data.currentAlert ?? null,
         });
       },
 
@@ -149,6 +163,7 @@ export const useWeatherStore = create<WeatherState>()(
           lastUpdated: null,
           error: null,
           dataSource: null,
+          currentAlert: null,
         }),
 
       getDataAge: () => {
@@ -173,6 +188,7 @@ export const useWeatherStore = create<WeatherState>()(
         lastUpdated: state.lastUpdated,
         dataSource: state.dataSource,
         location: state.location,
+        currentAlert: state.currentAlert,
       }),
     }
   )

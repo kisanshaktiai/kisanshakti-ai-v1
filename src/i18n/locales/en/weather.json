@@ -118,6 +118,8 @@
       "title": "Today's Weather",
       "loading": "Loading...",
       "rain_6h": "{{value}}% / 6h",
+      "rain_period": "{{value}}% / {{hours}}h",
+      "rain_probability_line": "Today rain probability is {{value}}% in the next {{hours}} hours.",
       "irrigate_today": "Water the field today",
       "irrigation_soon": "Watering due soon",
       "high_disease_risk": "High disease risk",
