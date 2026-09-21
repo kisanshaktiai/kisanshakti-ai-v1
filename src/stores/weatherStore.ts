@@ -83,7 +83,7 @@ interface HourlyData {
 }
 
 export interface CurrentWeatherAlert {
-  provider: 'IMD';
+  provider: string;
   district: string;
   alert_types: string[];
   severity: string;
