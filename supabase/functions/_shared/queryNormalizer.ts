@@ -12,6 +12,23 @@
  *  - Output is validated: query non-empty, ≤ 200 chars; hints are short tokens.
  *  - Numbers in the original question are preserved in the normalised query so
  *    the numeric fidelity gate still treats them as farmer-supplied.
+ *
+ * CHANGE LOG
+ * 2026-09-21 — RAG PHASE 0 (design v2 S4 + identifier pass):
+ *   (1) Topic taxonomy comes from the rag_topics table, not from a list in this
+ *       file. The old `topic` field used its own 14 labels (nutrition, pest, …)
+ *       which matched none of the 20 rag_topics.code values the search RPCs
+ *       filter on, so the topic hint could never reach p_topics. The interpreter
+ *       now sees the live codes with their labels and returns `topic_codes`
+ *       (validated against the table). loadTopicTaxonomy() is the loader; the
+ *       caller passes the list in, the same way it passes corpusCrops.
+ *   (2) Identifiers are first-class: `identifiers` carries variety codes,
+ *       product, scheme and chemical names. A deterministic extractor finds
+ *       code-shaped tokens (letters+digits) in any script's text; the
+ *       interpreter adds named identifiers it recognises in the farmer's
+ *       language. The union feeds the lexical identifier pass in ragRetrieval.
+ *   (3) Crop-specific example phrases removed from the interpreter prompt: the
+ *       prompt now states the rule only, in keeping with the rest of this file.
  */
 
 import { getBestAvailableProvider, buildAIRequest, getAPIEndpoint } from './aiConfig.ts';
@@ -25,19 +42,22 @@ export interface NormalizedQuery {
   detectedLanguage: string | null;
   /** crop mentioned, English common name lowercase, or null */
   cropHint: string | null;
-  /** short topic label: nutrition|pest|disease|weed|irrigation|seed|variety|scheme|market|weather|soil|harvest|livestock|other */
-  topic: string | null;
+  /** rag_topics.code values the question is about (validated; may be empty) */
+  topicCodes: string[];
+  /** identifiers named in the question: variety codes, product / scheme / chemical names */
+  identifiers: string[];
   /** true when the LLM step ran and returned a valid rewrite */
   normalized: boolean;
   latencyMs: number;
 }
 
+export interface TopicTaxonomyEntry { code: string; label: string }
+
 const MAX_QUERY_CHARS = 200;
 const TIMEOUT_MS = 8000;
-const TOPICS = new Set([
-  'nutrition', 'pest', 'disease', 'weed', 'irrigation', 'seed', 'variety', 'scheme',
-  'market', 'weather', 'soil', 'harvest', 'livestock', 'other',
-]);
+const MAX_TOPICS = 3;
+const MAX_IDENTIFIERS = 8;
+const MAX_IDENTIFIER_CHARS = 40;
 
 const SYSTEM = `You are a translation and search-intent interpreter for an Indian farming
 help-desk. The farmer's message may be in any Indian language or script, with
@@ -46,16 +66,20 @@ dialect words, mixed English, or spelling mistakes.
 Return ONLY a JSON object with these keys and nothing else:
 {
   "query_en": string,        // the farmer's question rewritten as a concise ENGLISH
-                             // search query (5-20 words) using standard agronomy terms
-                             // (e.g. "soybean seed rate spacing sowing", "rice urea top
-                             // dressing tillering dose"). Keep any numbers the farmer wrote.
-  "language": string,        // ISO-639-1 code of the message language, e.g. "mr","hi","en"
+                             // search query (5-20 words) using standard agronomy terms.
+                             // Keep any numbers the farmer wrote.
+  "language": string,        // ISO-639-1 code of the message language
   "crop": string|null,       // crop common name in English lowercase, or null
-  "topic": string            // one of: nutrition, pest, disease, weed, irrigation, seed,
-                             // variety, scheme, market, weather, soil, harvest, livestock, other
+  "topic_codes": string[],   // 0-3 codes chosen ONLY from the topic list in the
+                             // message, best match first; [] if none fits
+  "identifiers": string[]    // names or codes the farmer used for a specific thing:
+                             // a crop variety, a product or brand, a chemical, a
+                             // scheme, a machine model. Copy each EXACTLY as the
+                             // farmer wrote it (same script, same spelling). [] if none.
 }
-Rules: do not answer the question; do not add facts; do not invent a crop that was
-not mentioned; keep numbers exactly as written.`;
+Rules: do not answer the question; do not add facts; do not invent a crop, an
+identifier or a topic that the message does not support; keep numbers exactly as
+written.`;
 
 function latinDigits(s: string): string {
   return s.replace(/[०-९]/g, (d) => String('०१२३४५६७८९'.indexOf(d)));
@@ -69,18 +93,70 @@ function extractJson(text: string): Record<string, unknown> | null {
   try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { return null; }
 }
 
+/**
+ * Deterministic identifier extractor. Finds code-shaped tokens: a short letter
+ * group joined to a digit group ("AB 1234", "AB-1234", "AB1234", "Abcd-12").
+ * Such codes are written in Latin letters and digits inside text of any script,
+ * so this is script-agnostic by construction. Bare numbers are not identifiers
+ * (they are farmer-supplied quantities and are preserved separately).
+ */
+const CODE_TOKEN_RE = /(?<![\p{L}\p{M}\p{N}])(?:[A-Z]{2,6}[-\s]?\d{2,6}[A-Z0-9-]*|[A-Za-z]{2,8}-\d{2,6}[A-Za-z0-9-]*|[A-Za-z]{1,6}\d{2,6}[A-Za-z0-9]*)(?![\p{L}\p{M}\p{N}])/gu;
+
+export function extractIdentifiers(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of latinDigits(text).matchAll(CODE_TOKEN_RE)) {
+    const tok = m[0].replace(/\s+/g, ' ').trim();
+    if (tok.length >= 3 && tok.length <= MAX_IDENTIFIER_CHARS) out.add(tok);
+  }
+  return [...out].slice(0, MAX_IDENTIFIERS);
+}
+
+function mergeIdentifiers(...lists: Array<string[] | null | undefined>): string[] {
+  const seen = new Map<string, string>();
+  for (const list of lists) {
+    for (const raw of list || []) {
+      const v = String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_IDENTIFIER_CHARS);
+      if (v.length < 2) continue;
+      const key = v.toLowerCase();
+      if (!seen.has(key)) seen.set(key, v);
+    }
+  }
+  return [...seen.values()].slice(0, MAX_IDENTIFIERS);
+}
+
+/**
+ * The subject taxonomy the search RPCs filter on (rag_topics.code). Loaded from
+ * the SSOT table and cached briefly; best-effort — an empty list simply means
+ * the interpreter is not asked for topics and retrieval runs unfiltered.
+ */
+let topicCache: { at: number; v: TopicTaxonomyEntry[] } | null = null;
+export async function loadTopicTaxonomy(supabase: any): Promise<TopicTaxonomyEntry[]> {
+  if (topicCache && Date.now() - topicCache.at < 300_000) return topicCache.v;
+  try {
+    const { data } = await supabase.from('rag_topics').select('code, label').eq('is_active', true).order('sort_order');
+    const v = ((data || []) as Array<{ code?: string; label?: string }>)
+      .filter((t) => t.code && t.label)
+      .map((t) => ({ code: String(t.code), label: String(t.label) }));
+    topicCache = { at: Date.now(), v };
+    return v;
+  } catch {
+    return topicCache?.v ?? [];
+  }
+}
+
 export async function normalizeQueryForRetrieval(
   userText: string,
   uiLanguage: string,
   traceId: string,
   corpusCrops?: string[] | null,
   priorFarmerTurns?: string[] | null,
+  topics?: TopicTaxonomyEntry[] | null,
 ): Promise<NormalizedQuery> {
   const t0 = Date.now();
   const original = userText.trim();
   const fallback: NormalizedQuery = {
     query: original.slice(0, MAX_QUERY_CHARS), original, detectedLanguage: null,
-    cropHint: null, topic: null, normalized: false, latencyMs: 0,
+    cropHint: null, topicCodes: [], identifiers: extractIdentifiers(original), normalized: false, latencyMs: 0,
   };
   if (!original) return fallback;
 
@@ -95,6 +171,14 @@ export async function normalizeQueryForRetrieval(
     ? `\nKnown crops in the knowledge base: ${corpusCrops.join(', ')}. If the farmer clearly refers to one of these crops — in any language, script, dialect, spelling, or Latin-script transliteration of a local crop word — set "crop" to the matching English name from this list. Do NOT force an unrelated crop onto the list.`
     : '';
 
+  // Topic taxonomy from rag_topics (S4). Codes with their labels, so the
+  // interpreter chooses by meaning; only listed codes are accepted back.
+  const topicList = (topics || []).filter((t) => t.code && t.label);
+  const topicLine = topicList.length
+    ? `\nTopic list (code: label): ${topicList.map((t) => `${t.code}: ${t.label}`).join('; ')}.\nChoose "topic_codes" only from these codes, by the meaning of the farmer's question; leave it empty when none clearly applies.`
+    : '';
+  const allowedTopics = new Set(topicList.map((t) => t.code));
+
   // Thread context (added 2026-09-04): a farmer's short reply — a place name, a
   // number, "yes", a detail the assistant just asked for — carries no topic on
   // its own. Without the thread, "my district is X" became "X district farming
@@ -104,7 +188,7 @@ export async function normalizeQueryForRetrieval(
   // forward when the current message is a reply to it).
   const priorTurns = (priorFarmerTurns || []).map((s) => (s || '').trim()).filter(Boolean).slice(-2);
   const contextLine = priorTurns.length
-    ? `\nPrevious farmer messages in this conversation, oldest first (context only): ${priorTurns.map((s, i) => `(${i + 1}) ${s.slice(0, 300)}`).join(' ')}\nIf the current message is a short reply, a place name, a number, or a detail that answers a follow-up question, interpret it as continuing the previous topic: keep that topic and its crop in "query_en" and "crop".`
+    ? `\nPrevious farmer messages in this conversation, oldest first (context only): ${priorTurns.map((s, i) => `(${i + 1}) ${s.slice(0, 300)}`).join(' ')}\nIf the current message is a short reply, a place name, a number, or a detail that answers a follow-up question, interpret it as continuing the previous topic: keep that topic and its crop in "query_en", "crop" and "topic_codes".`
     : '';
 
   try {
@@ -113,9 +197,9 @@ export async function normalizeQueryForRetrieval(
       provider, model,
       [
         { role: 'system', content: SYSTEM },
-        { role: 'user', content: `UI language: ${uiLanguage}${cropHintLine}${contextLine}\nFarmer message: ${original}` },
+        { role: 'user', content: `UI language: ${uiLanguage}${cropHintLine}${topicLine}${contextLine}\nFarmer message: ${original}` },
       ],
-      { maxTokens: 200, temperature: 0, useJsonMode: true },
+      { maxTokens: 300, temperature: 0, useJsonMode: true },
     );
     if (provider === 'openai') payload.response_format = { type: 'json_object' };
 
@@ -151,10 +235,17 @@ export async function normalizeQueryForRetrieval(
 
     const lang = typeof obj.language === 'string' && /^[a-z]{2}$/.test(obj.language) ? obj.language : null;
     const crop = typeof obj.crop === 'string' && obj.crop.trim() ? obj.crop.trim().toLowerCase().slice(0, 40) : null;
-    const topicRaw = typeof obj.topic === 'string' ? obj.topic.trim().toLowerCase() : '';
-    const topic = TOPICS.has(topicRaw) ? topicRaw : null;
+    const topicCodes = (Array.isArray(obj.topic_codes) ? obj.topic_codes : [])
+      .map((c) => String(c ?? '').trim().toLowerCase())
+      .filter((c, i, arr) => allowedTopics.has(c) && arr.indexOf(c) === i)
+      .slice(0, MAX_TOPICS);
+    const identifiers = mergeIdentifiers(
+      extractIdentifiers(original),
+      extractIdentifiers(query),
+      Array.isArray(obj.identifiers) ? obj.identifiers.map((v) => String(v ?? '')) : [],
+    );
 
-    return { query, original, detectedLanguage: lang, cropHint: crop, topic, normalized: true, latencyMs: Date.now() - t0 };
+    return { query, original, detectedLanguage: lang, cropHint: crop, topicCodes, identifiers, normalized: true, latencyMs: Date.now() - t0 };
   } catch (e) {
     console.warn(`[${traceId}] query normalizer degraded to original text: ${(e as Error).message}`);
     return { ...fallback, latencyMs: Date.now() - t0 };
@@ -164,9 +255,9 @@ export async function normalizeQueryForRetrieval(
 /**
  * Map a crop hint to crops.value using the SSOT table. Best-effort.
  * FIX F5 (RAG audit 2026-09-04): also match crops.local_name, so a
- * local-language crop word the normaliser passes through (e.g. Marathi "ऊस" /
- * "us" for sugarcane) resolves instead of falling through to an unfiltered
- * retrieval. value/label/local_name are all compared case-insensitively.
+ * local-language crop word the normaliser passes through resolves instead of
+ * falling through to an unfiltered retrieval. value/label/local_name are all
+ * compared case-insensitively.
  * (local_name is populated per crop in the DB; NULL rows simply don't match.)
  */
 export async function resolveCropCode(supabase: any, cropHint: string | null): Promise<string | null> {

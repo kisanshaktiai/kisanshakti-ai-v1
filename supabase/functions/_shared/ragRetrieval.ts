@@ -1,19 +1,46 @@
 /**
  * ragRetrieval.ts — the ONLY retrieval path for the RAG subsystem.
  *
- * Hybrid retrieval (master prompt §17):
- *   pgroonga fulltext (RPC rag_search_fulltext)
- * + pgvector semantic (RPC rag_search_vector, only when provider available)
- * → Reciprocal Rank Fusion merge → authority-aware rerank → threshold.
+ * Hybrid retrieval (master prompt §17, design v2 §4.3):
+ *   BM25 with IDF on the query terms      (RPC rag_search_bm25)
+ * + BM25 with IDF on identifiers only     (RPC rag_search_bm25, when the query names any)
+ * + pgvector semantic                     (RPC rag_search_vector, only when provider available)
+ * → Reciprocal Rank Fusion merge → cross-encoder rerank (when the caller asks for it)
+ * → gates → per-document diversity → authority as tie-break → trust gate → evidence.
  *
- * FAILURE BEHAVIOR (§31): embedding failure degrades silently to
- * fulltext-only. Below-threshold results return evidence: [] with
- * belowThreshold=true — the caller MUST take the insufficient-evidence
- * path in code, never let the LLM improvise.
+ * FAILURE BEHAVIOR (§31, design v2 principle 7): a leg that fails degrades to
+ * the legs that ran. If NO leg ran, or anything else throws, the result is
+ * mode 'error' with evidence: [] and belowThreshold: true — the caller MUST
+ * take the insufficient-evidence path in code, never let the LLM improvise.
+ * ragRetrieve itself never throws.
  *
- * Every call is audit-logged to rag_retrieval_logs (§30).
+ * Every call is audit-logged to rag_retrieval_logs (§30), now including every
+ * candidate considered (`candidates`), not only the survivors.
  *
  * CHANGE LOG
+ * 2026-09-21 — RAG PHASE 0 (design v2 §5, defects R1–R5, S1, S4):
+ *   R1  Lexical leg is BM25 with inverse document frequency (rag_search_bm25)
+ *       instead of pgroonga's raw occurrence count; the in-process
+ *       rerankLexical() heuristic and its stop-word list are gone with it.
+ *   —   Identifiers are first-class: the caller's identifiers go to the RPC
+ *       (phrase match earns their own IDF mass) and also run as a separate
+ *       identifier-only leg so the identifier chunk always enters the pool.
+ *   R2  No authority multiplier on the fused score. Authority is a tie-break:
+ *       among candidates whose scores are within RELATIVE_TIE of each other,
+ *       the higher tier wins; it never lifts a weaker match over a stronger.
+ *   —   Per-document diversity: at most MAX_PER_DOCUMENT evidence per document
+ *       in the cut, so one long document cannot crowd out the specific one.
+ *   —   Cross-encoder reranker (rerankProvider.ts) over the top RERANK_POOL
+ *       fused candidates when audit.rerank is true. The schedule path does not
+ *       ask for it and keeps its latency budget. Rerank failure degrades to
+ *       the fused order and is recorded in traceNote.
+ *   R5  `candidates` logged: per-leg rank and score, rerank score, final score
+ *       and the gate that admitted or dropped each one.
+ *   S4  RagFilters.topicCodes → p_topics on every leg.
+ *   S1  Errors surface as mode 'error' and are logged as such, so a database
+ *       outage is never recorded as a corpus gap and the caller can tell the
+ *       two apart. Candidate width is CANDIDATES_PER_LEG = 60 per leg and the
+ *       evidence cut MAX_EVIDENCE = 8 (design §4: 8–10).
  * 2026-09-04 — RAG GAP GATE SURGICAL FIX: a valid candidate that passes the
  *   per-candidate semantic/lexical gates must not be discarded because the
  *   global best cosine is below a separate gap floor. The previous compound
@@ -29,18 +56,22 @@
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { getEmbeddingProvider } from './embeddingProvider.ts';
+import { getRerankProvider } from './rerankProvider.ts';
 
 export type RetrievalPurpose =
   | 'GENERAL_CHAT'
   | 'SCHEDULE_DOCUMENT_SELECTION'
   | 'SCHEDULE_EXTRACTION'
-  | 'SCHEDULE_VALIDATION';
+  | 'SCHEDULE_VALIDATION'
+  | 'GOLDEN_EVAL';
 
 export interface RagFilters {
   stateCodes?: string[] | null;
   cropCodes?: string[] | null;
   docTypes?: string[] | null;
   tenantId?: string | null;
+  /** rag_topics.code values → p_topics on every leg (S4) */
+  topicCodes?: string[] | null;
 }
 
 export interface Evidence {
@@ -58,18 +89,23 @@ export interface Evidence {
   rankScore: number;
   lexicalScore: number | null;
   semanticScore: number | null;
+  rerankScore: number | null;
   trustPrior: number | null;
   servable: boolean;
 }
 
+export type RetrievalMode = 'fulltext' | 'hybrid' | 'error';
+
 export interface RagResult {
   evidence: Evidence[];
-  mode: 'fulltext' | 'hybrid';
+  mode: RetrievalMode;
   belowThreshold: boolean;
   bestSemanticScore: number | null;
   embeddingModel: string | null;
   latencyMs: number;
   traceNote: string;
+  /** set only when mode === 'error' */
+  error: string | null;
 }
 
 export interface RagAudit {
@@ -81,28 +117,40 @@ export interface RagAudit {
   purpose?: RetrievalPurpose;
   maxEvidence?: number;
   queryOriginal?: string | null;
+  /** identifiers named in the question (variety codes, product / scheme / chemical names) */
+  identifiers?: string[] | null;
+  /** run the cross-encoder reranker over the fused candidates (General chat opts in) */
+  rerank?: boolean;
 }
 
 const RRF_K = 60;
-const CANDIDATES_PER_LEG = 30;
-const MAX_EVIDENCE = 6;
+const CANDIDATES_PER_LEG = 60;
+const RERANK_POOL = 40;
+const MAX_EVIDENCE = 8;
+const MAX_PER_DOCUMENT = 3;
+const MAX_QUERY_TERMS = 12;
+const MAX_LOGGED_CANDIDATES = 200;
 const MIN_TRUST_FOR_OTHER_TIER = 0.6;
 const LEXICAL_RELATIVE_CUTOFF = 0.4;
+/** two scores this close (relative) are a tie, and authority decides */
+const RELATIVE_TIE = 0.02;
 
-const AUTHORITY_BOOST: Record<string, number> = {
-  central_govt: 1.15,
-  icar: 1.15,
-  state_agri_university: 1.10,
-  state_govt: 1.10,
-  kvk: 1.05,
-  other: 1.0,
+/** Higher rank = more authoritative. Tie-break only — never a multiplier. */
+const AUTHORITY_RANK: Record<string, number> = {
+  central_govt: 3,
+  icar: 3,
+  state_agri_university: 2,
+  state_govt: 2,
+  kvk: 1,
+  other: 0,
 };
 
 interface RetrievalTunables {
   min_semantic_score: number;
   gap_semantic_score: number;
+  min_rerank_score: number;
 }
-const DEFAULT_TUNABLES: RetrievalTunables = { min_semantic_score: 0.45, gap_semantic_score: 0.55 };
+const DEFAULT_TUNABLES: RetrievalTunables = { min_semantic_score: 0.45, gap_semantic_score: 0.55, min_rerank_score: 0.25 };
 let tunablesCache: { at: number; v: RetrievalTunables } | null = null;
 
 async function loadTunables(supabase: SupabaseClient): Promise<RetrievalTunables> {
@@ -114,6 +162,7 @@ async function loadTunables(supabase: SupabaseClient): Promise<RetrievalTunables
     v = {
       min_semantic_score: Number(cfg.min_semantic_score ?? DEFAULT_TUNABLES.min_semantic_score),
       gap_semantic_score: Number(cfg.gap_semantic_score ?? DEFAULT_TUNABLES.gap_semantic_score),
+      min_rerank_score: Number(cfg.min_rerank_score ?? DEFAULT_TUNABLES.min_rerank_score),
     };
   } catch { /* keep defaults */ }
   tunablesCache = { at: Date.now(), v };
@@ -133,54 +182,84 @@ interface RpcRow {
   authority_tier: string;
   doc_type: string;
   doc_version: string;
+  topic_codes?: string[] | null;
+  /** rag_search_bm25 only */
+  matched_lexemes?: string[] | null;
+  identifier_hits?: number | null;
 }
 
-const STOPWORDS = new Set([
-  'and','or','the','for','of','in','on','to','is','are','a','an','what','how','much','many','per',
-  'with','at','by','from','my','me','i','you','your','do','does','it','this','that','be','can','should',
-  'about','when','which','will','need','needs','want','please','tell','kya','hai','ka','ki','ke','mein',
-]);
-
-export function cleanQueryForFulltext(q: string): string {
-  const terms = q.toLowerCase().split(/[^\p{L}\p{N}.%/-]+/u).filter((t) => t.length >= 3 && !STOPWORDS.has(t));
-  return (terms.length ? terms : [q.trim()]).slice(0, 12).join(' ');
+/**
+ * Query terms for the BM25 leg. The RPC tokenises with the language-neutral
+ * 'simple' configuration and weights every term by its inverse document
+ * frequency, so no stop-word list is needed here: a word that appears in
+ * most chunks earns almost nothing. Only the count is bounded.
+ * \p{M} is part of a word: in Indic scripts the vowel signs are combining
+ * marks, and splitting on them cuts every word into fragments.
+ */
+export function queryTerms(q: string): string[] {
+  const seen = new Set<string>();
+  for (const t of q.toLowerCase().split(/[^\p{L}\p{M}\p{N}.%/-]+/u)) {
+    const w = t.replace(/^[.%/-]+|[.%/-]+$/g, '');
+    if (w.length >= 2 && !seen.has(w)) seen.add(w);
+    if (seen.size >= MAX_QUERY_TERMS) break;
+  }
+  return [...seen];
 }
 
-function skeleton(w: string): string {
-  return w.length < 4 ? w : w[0] + w.slice(1).replace(/[aeiouy]/g, '');
-}
-function termMatches(qt: string, word: string): boolean {
-  if (qt === word) return true;
-  if (qt.length >= 5 && word.length >= 5 && (word.startsWith(qt) || qt.startsWith(word))) return true;
-  return qt.length >= 5 && skeleton(qt) === skeleton(word);
-}
-function tokenize(text: string): string[] {
-  return text.toLowerCase().replace(/\S*www\.\S*/g, ' ').split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 2);
+type GateOutcome = 'kept' | 'front_matter' | 'below_gate' | 'diversity' | 'over_cut';
+
+interface Candidate {
+  row: RpcRow;
+  rrf: number;
+  lexRank: number | null;
+  lex: number | null;
+  identifierHits: number;
+  semRank: number | null;
+  sem: number | null;
+  rerank: number | null;
+  final: number;
+  gate: GateOutcome;
 }
 
-export interface LexicalRank { row: RpcRow; lexRank: number; coverage: number; }
+function authorityRank(tier: string): number {
+  return AUTHORITY_RANK[tier] ?? 0;
+}
 
-export function rerankLexical(query: string, rows: RpcRow[]): LexicalRank[] {
-  const qTerms = [...new Set(query.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 3 && !STOPWORDS.has(t)))];
-  if (!qTerms.length) return rows.map((row) => ({ row, lexRank: Number(row.score), coverage: 0 }));
-  return rows.map((row) => {
-    const words = tokenize(row.chunk_text);
-    const secWords = tokenize(row.section_path || '');
-    let matched = 0, tf = 0, secHits = 0;
-    for (const qt of qTerms) {
-      const c = words.filter((w) => termMatches(qt, w)).length;
-      if (c > 0) { matched++; tf += Math.min(c, 3); }
-      if (secWords.some((w) => termMatches(qt, w))) secHits++;
-    }
-    const coverage = matched / qTerms.length;
-    const lengthNorm = 1 + words.length / 300;
-    let score = coverage * 3 + (tf / lengthNorm) * 0.5 + secHits;
-    const sec = row.section_path || '';
-    if (!sec) score *= 0.4;
-    else if ((sec.replace(/[^0-9.]/g, '').length / sec.length) > 0.5) score *= 0.5;
-    if ((row.page_number ?? 99) <= 1) score *= 0.5;
-    return { row, lexRank: score, coverage };
-  }).sort((a, b) => b.lexRank - a.lexRank);
+/** Score first; when two scores are within RELATIVE_TIE, the higher authority tier first. */
+function compareCandidates(a: Candidate, b: Candidate): number {
+  const gap = Math.abs(a.final - b.final);
+  const tie = gap <= RELATIVE_TIE * Math.max(Math.abs(a.final), Math.abs(b.final));
+  if (tie) {
+    const auth = authorityRank(b.row.authority_tier) - authorityRank(a.row.authority_tier);
+    if (auth !== 0) return auth;
+  }
+  return b.final - a.final;
+}
+
+/**
+ * Per-document diversity: at most MAX_PER_DOCUMENT from any one document in
+ * the cut. When that leaves the cut short, the skipped candidates fill it in
+ * score order — diversity never makes the answer thinner than the corpus can
+ * support.
+ */
+function applyDiversity(sorted: Candidate[], maxEvidence: number): Candidate[] {
+  const perDoc = new Map<string, number>();
+  const picked: Candidate[] = [];
+  const skipped: Candidate[] = [];
+  for (const c of sorted) {
+    if (picked.length >= maxEvidence) { c.gate = 'over_cut'; continue; }
+    const n = perDoc.get(c.row.document_id) ?? 0;
+    if (n >= MAX_PER_DOCUMENT) { c.gate = 'diversity'; skipped.push(c); continue; }
+    perDoc.set(c.row.document_id, n + 1);
+    c.gate = 'kept';
+    picked.push(c);
+  }
+  for (const c of skipped) {
+    if (picked.length >= maxEvidence) break;
+    c.gate = 'kept';
+    picked.push(c);
+  }
+  return picked;
 }
 
 export async function ragRetrieve(
@@ -191,13 +270,9 @@ export async function ragRetrieve(
   audit: RagAudit,
 ): Promise<RagResult> {
   const startedAt = Date.now();
-  const provider = getEmbeddingProvider();
-  const tun = await loadTunables(supabase);
-  let mode: 'fulltext' | 'hybrid' = 'fulltext';
-  let embeddingModel: string | null = null;
-  let traceNote = '';
   const purpose: RetrievalPurpose = audit.purpose ?? 'GENERAL_CHAT';
   const maxEvidence = Math.max(1, Math.min(audit.maxEvidence ?? MAX_EVIDENCE, CANDIDATES_PER_LEG));
+  const identifiers = (audit.identifiers || []).map((s) => String(s || '').trim()).filter((s) => s.length >= 2);
 
   const rpcArgs = {
     p_limit: CANDIDATES_PER_LEG,
@@ -205,117 +280,229 @@ export async function ragRetrieve(
     p_crops: filters.cropCodes?.length ? filters.cropCodes : null,
     p_doc_types: filters.docTypes?.length ? filters.docTypes : null,
     p_tenant: filters.tenantId || null,
+    p_topics: filters.topicCodes?.length ? filters.topicCodes : null,
   };
 
-  let lexical: RpcRow[] = [];
-  try {
-    const { data, error } = await supabase.rpc('rag_search_fulltext', {
-      p_query: cleanQueryForFulltext(query),
-      ...rpcArgs,
-    });
-    if (error) throw error;
-    lexical = rerankLexical(query, (data || []) as RpcRow[])
-      .filter((r) => r.coverage > 0)
-      .map((r) => ({ ...r.row, score: Number(r.lexRank.toFixed(4)) }));
-  } catch (e) {
-    traceNote += `fulltext_err:${(e as Error).message};`;
-  }
+  const logRow = (fields: Record<string, unknown>) => supabase.from('rag_retrieval_logs').insert({
+    session_id: audit.sessionId || null, turn_id: audit.turnId || null, trace_id: audit.traceId || null,
+    tenant_id: audit.tenantIdText || null, farmer_id: audit.farmerId || null,
+    query_text: query, query_language: language, retrieval_purpose: purpose,
+    ...fields,
+  });
 
-  let semantic: RpcRow[] = [];
-  if (provider.available()) {
+  try {
+    const provider = getEmbeddingProvider();
+    const tun = await loadTunables(supabase);
+    let mode: RetrievalMode = 'fulltext';
+    let embeddingModel: string | null = null;
+    let traceNote = '';
+    let legsRun = 0;
+
+    // ── Leg 1: BM25 on the query terms (identifiers included, phrase-boosted)
+    let lexical: RpcRow[] = [];
+    const terms = queryTerms(query);
     try {
-      const qVec = await provider.embedQuery(query);
-      const { data, error } = await supabase.rpc('rag_search_vector', {
-        p_embedding: JSON.stringify(qVec),
-        ...rpcArgs,
+      const { data, error } = await supabase.rpc('rag_search_bm25', {
+        p_terms: terms, p_identifiers: identifiers.length ? identifiers : null, ...rpcArgs,
       });
       if (error) throw error;
-      semantic = (data || []) as RpcRow[];
-      mode = 'hybrid';
-      embeddingModel = provider.version();
+      lexical = (data || []) as RpcRow[];
+      legsRun++;
     } catch (e) {
-      traceNote += `vector_degraded:${(e as Error).message};`;
-      mode = 'fulltext';
+      traceNote += `bm25_err:${(e as Error).message};`;
     }
-  }
 
-  const fused = new Map<string, { row: RpcRow; rrf: number; lex: number | null; sem: number | null }>();
-  lexical.forEach((row, i) => {
-    const e = fused.get(row.chunk_id) || { row, rrf: 0, lex: null, sem: null };
-    e.rrf += 1 / (RRF_K + i + 1); e.lex = row.score; fused.set(row.chunk_id, e);
-  });
-  semantic.forEach((row, i) => {
-    const e = fused.get(row.chunk_id) || { row, rrf: 0, lex: null, sem: null };
-    e.rrf += 1 / (RRF_K + i + 1); e.sem = Number(row.score); fused.set(row.chunk_id, e);
-  });
-
-  const ranked = [...fused.values()]
-    .map((e) => ({ ...e, final: e.rrf * (AUTHORITY_BOOST[e.row.authority_tier] ?? 1.0) }))
-    .sort((a, b) => b.final - a.final);
-
-  const topLex = Math.max(0, ...ranked.map((e) => e.lex ?? 0));
-  const bestSem = semantic.length ? Math.max(...semantic.map((r) => Number(r.score))) : null;
-  const semOk = (e: { sem: number | null }) => e.sem !== null && e.sem >= tun.min_semantic_score;
-  const isFrontMatter = (row: RpcRow) => (row.page_number ?? 99) <= 1 && !row.section_path;
-
-  const passing = ranked
-    .filter((e) => !isFrontMatter(e.row))
-    .filter((e) => semOk(e) || (e.lex !== null && e.lex >= 1.0))
-    .filter((e) => semOk(e) || (e.lex !== null && e.lex >= topLex * LEXICAL_RELATIVE_CUTOFF))
-    .slice(0, maxEvidence);
-
-  // A candidate that passes the explicit gates is evidence. Do not apply a second
-  // global cosine floor after this point: that previously turned valid evidence
-  // into NO_EVIDENCE whenever bestSem was just below gap_semantic_score.
-  const belowThreshold = passing.length === 0;
-  if (mode === 'hybrid' && bestSem !== null && bestSem < tun.gap_semantic_score && passing.length) {
-    traceNote += `semantic_gap_floor_not_applied:passing_candidate=${passing.length};`;
-  }
-
-  const trustByDoc = new Map<string, number | null>();
-  if (passing.length) {
-    try {
-      const { data: docs } = await supabase
-        .from('rag_documents')
-        .select('id, rag_source_registry!inner(trust_prior)')
-        .in('id', [...new Set(passing.map((e) => e.row.document_id))]);
-      for (const d of (docs || []) as Array<{ id: string; rag_source_registry: { trust_prior: number | null } | { trust_prior: number | null }[] }>) {
-        const reg = Array.isArray(d.rag_source_registry) ? d.rag_source_registry[0] : d.rag_source_registry;
-        trustByDoc.set(d.id, reg?.trust_prior == null ? null : Number(reg.trust_prior));
+    // ── Leg 2: BM25 on the identifiers alone, so the identifier chunk is in the
+    //    pool even when the query-term leg's cut did not reach it.
+    let identifierLeg: RpcRow[] = [];
+    if (identifiers.length) {
+      try {
+        const { data, error } = await supabase.rpc('rag_search_bm25', {
+          p_terms: [], p_identifiers: identifiers, ...rpcArgs,
+        });
+        if (error) throw error;
+        identifierLeg = (data || []) as RpcRow[];
+        legsRun++;
+      } catch (e) {
+        traceNote += `identifier_err:${(e as Error).message};`;
       }
-    } catch (e) {
-      traceNote += `trust_lookup_err:${(e as Error).message};`;
     }
-  }
 
-  const evidence: Evidence[] = passing.map((e) => ({
-    chunkId: e.row.chunk_id, documentId: e.row.document_id, text: e.row.chunk_text,
-    sectionPath: e.row.section_path, pageNumber: e.row.page_number, language: e.row.language,
-    title: e.row.title, publisher: e.row.publisher, authorityTier: e.row.authority_tier,
-    docType: e.row.doc_type, docVersion: e.row.doc_version, rankScore: e.final,
-    lexicalScore: e.lex, semanticScore: e.sem, trustPrior: trustByDoc.get(e.row.document_id) ?? null,
-    servable: e.row.authority_tier !== 'other' || (trustByDoc.get(e.row.document_id) ?? 0) >= MIN_TRUST_FOR_OTHER_TIER,
-  }));
+    // ── Leg 3: dense
+    let semantic: RpcRow[] = [];
+    if (provider.available()) {
+      try {
+        const qVec = await provider.embedQuery(query);
+        const { data, error } = await supabase.rpc('rag_search_vector', {
+          p_embedding: JSON.stringify(qVec),
+          ...rpcArgs,
+        });
+        if (error) throw error;
+        semantic = (data || []) as RpcRow[];
+        mode = 'hybrid';
+        embeddingModel = provider.version();
+        legsRun++;
+      } catch (e) {
+        traceNote += `vector_degraded:${(e as Error).message};`;
+        mode = 'fulltext';
+      }
+    }
 
-  const latencyMs = Date.now() - startedAt;
-  try {
-    await supabase.from('rag_retrieval_logs').insert({
-      session_id: audit.sessionId || null, turn_id: audit.turnId || null, trace_id: audit.traceId || null,
-      tenant_id: audit.tenantIdText || null, farmer_id: audit.farmerId || null,
-      query_text: query, query_language: language,
-      filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null,
-        gates: { min_semantic_score: tun.min_semantic_score, gap_semantic_score: tun.gap_semantic_score } },
-      retrieval_mode: mode,
-      chunks_returned: evidence.map((ev) => ({ chunk_id: ev.chunkId, document_id: ev.documentId, rank: ev.rankScore, lex: ev.lexicalScore, sem: ev.semanticScore })),
-      top_score: bestSem, below_threshold: belowThreshold, embedding_model: embeddingModel,
-      latency_ms: latencyMs, retrieval_purpose: purpose,
-      document_ids: [...new Set(evidence.map((ev) => ev.documentId))], chunk_ids: evidence.map((ev) => ev.chunkId),
+    if (legsRun === 0) {
+      throw new Error(`NO_RETRIEVAL_LEG_RAN:${traceNote}`);
+    }
+
+    // ── Reciprocal Rank Fusion across the legs that ran
+    const fused = new Map<string, Candidate>();
+    const get = (row: RpcRow): Candidate => {
+      let c = fused.get(row.chunk_id);
+      if (!c) {
+        c = { row, rrf: 0, lexRank: null, lex: null, identifierHits: 0, semRank: null, sem: null, rerank: null, final: 0, gate: 'below_gate' };
+        fused.set(row.chunk_id, c);
+      }
+      return c;
+    };
+    lexical.forEach((row, i) => {
+      const c = get(row);
+      c.rrf += 1 / (RRF_K + i + 1);
+      c.lexRank = i + 1; c.lex = Number(row.score); c.identifierHits = Math.max(c.identifierHits, Number(row.identifier_hits ?? 0));
     });
-  } catch (e) {
-    console.warn('[ragRetrieval] audit log failed:', (e as Error).message);
-  }
+    identifierLeg.forEach((row, i) => {
+      const c = get(row);
+      c.rrf += 1 / (RRF_K + i + 1);
+      if (c.lex === null) c.lex = Number(row.score);
+      c.identifierHits = Math.max(c.identifierHits, Number(row.identifier_hits ?? 0));
+    });
+    semantic.forEach((row, i) => {
+      const c = get(row);
+      c.rrf += 1 / (RRF_K + i + 1);
+      c.semRank = i + 1; c.sem = Number(row.score);
+    });
 
-  return { evidence: belowThreshold ? [] : evidence, mode, belowThreshold, bestSemanticScore: bestSem, embeddingModel, latencyMs, traceNote };
+    const candidates = [...fused.values()];
+    for (const c of candidates) c.final = c.rrf;
+    candidates.sort((a, b) => b.final - a.final);
+
+    // ── Cross-encoder rerank over the top of the fused list (caller opt-in)
+    let rerankModel: string | null = null;
+    let reranked = false;
+    if (audit.rerank && candidates.length) {
+      const reranker = getRerankProvider();
+      if (reranker.available()) {
+        const pool = candidates.slice(0, RERANK_POOL);
+        try {
+          const docs = pool.map((c) => [c.row.title, c.row.section_path].filter(Boolean).join(' — ') + '\n' + c.row.chunk_text);
+          const hits = await reranker.rerank(query, docs, pool.length);
+          for (const h of hits) pool[h.index].rerank = h.score;
+          for (const c of pool) if (c.rerank === null) c.rerank = 0;
+          rerankModel = reranker.version();
+          reranked = true;
+          for (const c of candidates) c.final = c.rerank ?? 0;
+        } catch (e) {
+          traceNote += `rerank_degraded:${(e as Error).message};`;
+        }
+      } else {
+        traceNote += 'rerank_unconfigured;';
+      }
+    }
+
+    // ── Gates. Front matter never serves. With a rerank score, that score is
+    //    the gate; otherwise the semantic floor or the relative lexical floor,
+    //    and an identifier phrase hit always clears the lexical floor.
+    const topLex = Math.max(0, ...candidates.map((c) => c.lex ?? 0));
+    const bestSem = semantic.length ? Math.max(...semantic.map((r) => Number(r.score))) : null;
+    const isFrontMatter = (row: RpcRow) => (row.page_number ?? 99) <= 1 && !row.section_path;
+    const passesGate = (c: Candidate): boolean => {
+      if (reranked) return (c.rerank ?? 0) >= tun.min_rerank_score;
+      const semOk = c.sem !== null && c.sem >= tun.min_semantic_score;
+      const lexOk = c.lex !== null && (c.identifierHits > 0 || c.lex >= topLex * LEXICAL_RELATIVE_CUTOFF);
+      return semOk || lexOk;
+    };
+
+    const passing: Candidate[] = [];
+    for (const c of candidates) {
+      if (isFrontMatter(c.row)) { c.gate = 'front_matter'; continue; }
+      if (!passesGate(c)) { c.gate = 'below_gate'; continue; }
+      passing.push(c);
+    }
+    passing.sort(compareCandidates);
+    const cut = applyDiversity(passing, maxEvidence);
+
+    // A candidate that passes the explicit gates is evidence. Do not apply a second
+    // global cosine floor after this point: that previously turned valid evidence
+    // into NO_EVIDENCE whenever bestSem was just below gap_semantic_score.
+    const belowThreshold = cut.length === 0;
+    if (mode === 'hybrid' && bestSem !== null && bestSem < tun.gap_semantic_score && cut.length) {
+      traceNote += `semantic_gap_floor_not_applied:passing_candidate=${cut.length};`;
+    }
+
+    const trustByDoc = new Map<string, number | null>();
+    if (cut.length) {
+      try {
+        const { data: docs } = await supabase
+          .from('rag_documents')
+          .select('id, rag_source_registry!inner(trust_prior)')
+          .in('id', [...new Set(cut.map((c) => c.row.document_id))]);
+        for (const d of (docs || []) as Array<{ id: string; rag_source_registry: { trust_prior: number | null } | { trust_prior: number | null }[] }>) {
+          const reg = Array.isArray(d.rag_source_registry) ? d.rag_source_registry[0] : d.rag_source_registry;
+          trustByDoc.set(d.id, reg?.trust_prior == null ? null : Number(reg.trust_prior));
+        }
+      } catch (e) {
+        traceNote += `trust_lookup_err:${(e as Error).message};`;
+      }
+    }
+
+    const evidence: Evidence[] = cut.map((c) => ({
+      chunkId: c.row.chunk_id, documentId: c.row.document_id, text: c.row.chunk_text,
+      sectionPath: c.row.section_path, pageNumber: c.row.page_number, language: c.row.language,
+      title: c.row.title, publisher: c.row.publisher, authorityTier: c.row.authority_tier,
+      docType: c.row.doc_type, docVersion: c.row.doc_version, rankScore: c.final,
+      lexicalScore: c.lex, semanticScore: c.sem, rerankScore: c.rerank,
+      trustPrior: trustByDoc.get(c.row.document_id) ?? null,
+      servable: c.row.authority_tier !== 'other' || (trustByDoc.get(c.row.document_id) ?? 0) >= MIN_TRUST_FOR_OTHER_TIER,
+    }));
+
+    const latencyMs = Date.now() - startedAt;
+    const loggedCandidates = candidates.slice(0, MAX_LOGGED_CANDIDATES).map((c) => ({
+      chunk_id: c.row.chunk_id, document_id: c.row.document_id, page: c.row.page_number,
+      lex_rank: c.lexRank, lex: c.lex, id_hits: c.identifierHits, sem_rank: c.semRank, sem: c.sem,
+      rrf: Number(c.rrf.toFixed(6)), rerank: c.rerank, final: Number(c.final.toFixed(6)), gate: c.gate,
+    }));
+    try {
+      await logRow({
+        filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null,
+          terms, identifiers, rerank: { requested: !!audit.rerank, applied: reranked, model: rerankModel },
+          gates: { min_semantic_score: tun.min_semantic_score, gap_semantic_score: tun.gap_semantic_score, min_rerank_score: tun.min_rerank_score },
+          legs: { lexical: lexical.length, identifier: identifierLeg.length, semantic: semantic.length } },
+        retrieval_mode: mode,
+        chunks_returned: evidence.map((ev) => ({ chunk_id: ev.chunkId, document_id: ev.documentId, rank: ev.rankScore, lex: ev.lexicalScore, sem: ev.semanticScore, rerank: ev.rerankScore })),
+        candidates: loggedCandidates,
+        top_score: bestSem, below_threshold: belowThreshold, embedding_model: embeddingModel,
+        latency_ms: latencyMs,
+        document_ids: [...new Set(evidence.map((ev) => ev.documentId))], chunk_ids: evidence.map((ev) => ev.chunkId),
+      });
+    } catch (e) {
+      console.warn('[ragRetrieval] audit log failed:', (e as Error).message);
+    }
+
+    return { evidence: belowThreshold ? [] : evidence, mode, belowThreshold, bestSemanticScore: bestSem, embeddingModel, latencyMs, traceNote, error: null };
+  } catch (e) {
+    // S1: a retrieval failure is an outcome of its own, never a corpus gap and
+    // never a reason for the caller to answer ungated.
+    const message = (e as Error).message || String(e);
+    const latencyMs = Date.now() - startedAt;
+    console.error(`[ragRetrieval] retrieval error (${purpose}):`, message);
+    try {
+      await logRow({
+        filters_applied: { ...rpcArgs, purpose, query_original: audit.queryOriginal ?? null, error: message },
+        retrieval_mode: 'error', chunks_returned: [], candidates: [], top_score: null, below_threshold: true,
+        embedding_model: null, latency_ms: latencyMs, document_ids: [], chunk_ids: [],
+      });
+    } catch (logErr) {
+      console.warn('[ragRetrieval] audit log failed:', (logErr as Error).message);
+    }
+    return { evidence: [], mode: 'error', belowThreshold: true, bestSemanticScore: null, embeddingModel: null, latencyMs, traceNote: `error:${message};`, error: message };
+  }
 }
 
 export function buildEvidenceBlock(evidence: Evidence[]): string {
