@@ -20,7 +20,7 @@ export interface PreparedTask {
   task: BaselineTask;
   taskDate: string;
   projectedDate: string;
-  status: "pending" | "expired";
+  status: "pending";
   originalDate: string | null;
   autoRescheduled: boolean;
   adjustmentReason: string | null;
@@ -116,7 +116,7 @@ export function prepareCurrentFieldTasks(
         task,
         taskDate: baseDate,
         projectedDate: baseDate,
-        status: "expired",
+        status: "pending",
         originalDate: null,
         autoRescheduled: false,
         adjustmentReason: "biological_stage_window_passed_before_schedule_generation",
