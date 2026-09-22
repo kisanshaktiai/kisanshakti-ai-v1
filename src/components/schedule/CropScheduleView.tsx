@@ -485,7 +485,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const isHistoricalUnconfirmed = (task: ScheduleTask) => task.resources?.timeline?.state === 'HISTORICAL_UNCONFIRMED';
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending' && !isHistoricalUnconfirmed(t));
   const completedTasks = filteredTasks.filter(t => t.status === 'completed');
-  const historicalTasks = filteredTasks.filter(isHistoricalUnconfirmed);
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
 
   // Find real harvest date from tasks (harvest/harvesting task)
