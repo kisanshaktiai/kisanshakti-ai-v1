@@ -133,7 +133,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const Icon = config.icon;
                   const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
                   const completed = task.status === 'completed';
-                  const expired = task.status === 'expired';
+                  const expired = task.resources?.timeline?.state === 'HISTORICAL_UNCONFIRMED';
                   const overdue = past && task.status === 'pending';
                   const expanded = expandedTaskId === task.id;
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
@@ -187,7 +187,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                               </Button>
                             </div>
                             {((task.product_recommendations?.length ?? 0) > 0 || Number(task.resources?.labor_cost) > 0) && <ProductRecommendationCard products={task.product_recommendations || []} landAreaAcres={1} laborCost={task.resources?.labor_cost || 0} laborDays={task.resources?.labor_days || 0} laborWorkers={task.resources?.labor_workers || 0} laborDaysPerAcre={task.resources?.labor_days_per_acre || 0} laborDailyWage={task.resources?.labor_daily_wage || 350} laborDescription={task.resources?.labor_description || ''} />}
-                            <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />
+                            {!expired && <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />}
                           </div>
                         </CollapsibleContent>
                       </article>
