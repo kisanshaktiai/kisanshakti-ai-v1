@@ -173,7 +173,7 @@ export async function buildOptions(
     // observation_master gate (defence-in-depth — navigator already filtered)
     const { data: masterRows, error: masterErr } = await supabase
       .from('observation_master')
-      .select('observation_code, is_active, is_farmer_observable')
+      .select('observation_code, is_active, is_farmer_observable, can_generate_question')
       .in('observation_code', keys);
     if (masterErr) {
       console.error(`[CLARIFICATION_CONTRACT.buildOptions] master error: ${masterErr.message}`);
@@ -182,7 +182,10 @@ export async function buildOptions(
     const valid = new Set<string>();
     for (const m of masterRows || []) {
       const k = canonicalizeObservationKey(m.observation_code);
-      if (k && m.is_active !== false && m.is_farmer_observable !== false) valid.add(k);
+      // A card is shown only for rows authored as askable (can_generate_question) — same rule as
+      // observation-selector-contract.ts and hypothesis-clarification-builder.ts. Rows that are
+      // farmer-reportable but not askable stay accepted as evidence when the farmer states them.
+      if (k && m.is_active !== false && m.is_farmer_observable !== false && m.can_generate_question !== false) valid.add(k);
     }
     const gated = keys.filter(k => valid.has(k));
     if (gated.length === 0) {
