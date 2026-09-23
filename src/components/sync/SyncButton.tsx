@@ -1,6 +1,7 @@
-import { RefreshCw, WifiOff, CheckCircle2, AlertCircle, Database } from 'lucide-react';
+import { RefreshCw, WifiOff, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { syncService } from '@/services/syncService';
+import { localDB } from '@/services/localDB';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -8,7 +9,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { localDB } from '@/services/localDB';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,75 +39,35 @@ export function SyncButton() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSync = async (forceFull: boolean = false) => {
+  const handleSync = async () => {
     setSyncing(true);
     setSyncSuccess(false);
     setSyncError(false);
     
     try {
-      // Show appropriate toast based on sync type
       toast({
-        title: forceFull ? t('sync.full_sync_starting') : t('sync.syncing'),
-        description: forceFull 
-          ? t('sync.clearing_and_reloading')
-          : t('sync.please_wait'),
+        title: t('sync.syncing'),
+        description: t('sync.please_wait'),
         duration: 2000,
       });
 
-      // If force full sync, clear local DB first
-      if (forceFull) {
-        console.log('🗑️ [SyncButton] Force full sync - clearing local DB');
-        await localDB.forceClearAndReload();
-        
-        // Also reset headers state to force re-authentication check
-        const { resetHeadersState } = await import('@/integrations/supabase/client');
-        resetHeadersState();
-        console.log('🔄 [SyncButton] Reset headers state for clean reload');
-      }
+      const result = await syncService.performSync(true);
 
-      const result = await syncService.performSync(!forceFull); // Pass forceRefresh flag
-      
       if (result.success) {
-        // Invalidate all cached queries to force UI refresh
         console.log('🔄 [SyncButton] Invalidating all React Query caches');
         await queryClient.invalidateQueries();
-        
-        // Refetch all active queries
         await queryClient.refetchQueries();
-        
-        // Show success animation
+
         setSyncSuccess(true);
-        
+
         toast({
           title: t('sync.sync_complete'),
-          description: forceFull 
-            ? t('sync.data_reloaded')
-            : (result.message || t('sync.all_up_to_date')),
+          description: result.message || t('sync.all_up_to_date'),
           duration: 3000,
         });
 
-        // For full sync, suggest page reload after a delay
-        if (forceFull) {
-          setTimeout(() => {
-            toast({
-              title: t('sync.tip'),
-              description: t('sync.refresh_suggestion'),
-              action: (
-                <Button
-                  size="sm"
-                  onClick={() => window.location.reload()}
-                >
-                  {t('sync.refresh_now')}
-                </Button>
-              ),
-            });
-          }, 2000);
-        }
-
-        // Reset success state after animation
         setTimeout(() => setSyncSuccess(false), 2000);
         
-        // Update pending changes count
         const metadata = await localDB.getSyncMetadata();
         setPendingChanges(metadata?.pendingChanges || 0);
       } else {
@@ -194,14 +154,9 @@ export function SyncButton() {
         </DropdownMenuTrigger>
         
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuItem onClick={() => handleSync(false)}>
+          <DropdownMenuItem onClick={() => handleSync()}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            <span>{t('sync.quick_sync')}</span>
-          </DropdownMenuItem>
-          
-          <DropdownMenuItem onClick={() => handleSync(true)}>
-            <Database className="mr-2 h-4 w-4" />
-            <span>{t('sync.full_reload')}</span>
+            <span>{t('sync.sync_data')}</span>
           </DropdownMenuItem>
           
           <DropdownMenuSeparator />
