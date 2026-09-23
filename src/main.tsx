@@ -25,9 +25,6 @@ import "./index.css";
         const names = await caches.keys();
         await Promise.all(names.map((n) => caches.delete(n)));
       }
-      if (navigator.serviceWorker?.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
-      }
     } catch {/* ignore */}
     const url = new URL(window.location.href);
     url.searchParams.set('_v', Date.now().toString(36));
