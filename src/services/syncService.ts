@@ -322,6 +322,23 @@ class SyncService {
       // PHASE 1C: Stamp last sync time so visibility-change throttle can skip recent syncs.
       this.lastSyncAt = Date.now();
       await localDB.updateSyncMetadata({ syncInProgress: false });
+
+      // 2026-09-23: crop photos captured offline (cropPhotoService photoCaptureQueue).
+      // Runs after the entity sync and never fails it; loaded lazily so the camera
+      // plugin is not pulled into the sync path.
+      const photoAuth = useAuthStore.getState().user;
+      if (networkStatusService.getStatus() && photoAuth?.id && photoAuth?.tenantId) {
+        import('./cropPhotoService')
+          .then(async ({ syncPendingPhotoCaptures }) => {
+            const { default: i18n } = await import('@/i18n/config');
+            const sent = await syncPendingPhotoCaptures(
+              { farmerId: photoAuth.id, tenantId: photoAuth.tenantId as string },
+              i18n.language || 'en',
+            );
+            if (sent > 0) console.log(`📷 [Sync] ${sent} offline crop photo(s) uploaded`);
+          })
+          .catch((e) => console.warn('⚠️ [Sync] offline photo sync failed', e));
+      }
     }
   }
 

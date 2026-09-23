@@ -88,6 +88,11 @@ export interface FarmerData {
   // Timestamps
   created_at: string | null;
   updated_at: string | null;
+  timezone?: string | null;
+  farming_preference?: string | null;
+  default_nutrient_policy?: string | null;
+  default_protection_policy?: string | null;
+  organic_standard?: string | null;
   
   // Sync metadata (local only)
   lastModified: number;
@@ -567,6 +572,7 @@ export interface AIChatMessageData {
   decision_brain_source: boolean | null;
   actions_returned: any;
   actions_filtered_out: any;
+  response_source?: string | null;
   
   // Metadata
   metadata: any;
@@ -593,6 +599,17 @@ export interface CropData {
   label_local: string | null;
   label_hi: string | null;
   label_mr: string | null;
+  label_pa?: string | null;
+  label_ta?: string | null;
+  label_te?: string | null;
+  label_bn?: string | null;
+  label_gu?: string | null;
+  label_kn?: string | null;
+  label_ml?: string | null;
+  label_or?: string | null;
+  label_as?: string | null;
+  label_ur?: string | null;
+  label_sa?: string | null;
   local_name: string | null;
   
   // Visual
@@ -800,6 +817,7 @@ export interface SyncMetadata {
   pendingChanges: number;
   syncInProgress: boolean;
   schemaVersion: number;
+  cacheBuildHash?: string | null;
   // PHASE 3C: Per-entity incremental sync timestamps (ISO8601). Optional/additive.
   // When present, the next sync sends `?since=<value>` and only downloads delta rows.
   entityLastSync?: {
@@ -1064,8 +1082,8 @@ export interface ProactiveAlertData {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 13; // Bumped for photoCaptureQueue offline photo queue (2026-09-23)
-const SCHEMA_VERSION = 10; // Bumped for proactive alerts parity
+const DB_VERSION = 14; // 2026-09-23: photoCaptureQueue store (v13 = offline cache contract parity)
+const SCHEMA_VERSION = 11; // 2026-09-23: offline cache contract parity
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -1354,29 +1372,17 @@ class LocalDatabase {
         pendingChanges: 0,
         syncInProgress: false,
         schemaVersion: SCHEMA_VERSION,
+        cacheBuildHash: null,
       });
       console.log('✅ [LocalDB] Schema metadata initialized');
     } else if (existing.schemaVersion !== SCHEMA_VERSION) {
-      // Schema version mismatch - clear all data
-      console.warn(`⚠️ [LocalDB] Schema version mismatch: ${existing.schemaVersion} vs ${SCHEMA_VERSION}`);
-      console.log('🗑️ [LocalDB] Clearing all data due to schema mismatch...');
-      
-      await tx.done;
-      await this.clearAll();
-      
-      // Reinitialize metadata with new schema version
-      const newTx = this.db.transaction('syncMetadata', 'readwrite');
-      await newTx.objectStore('syncMetadata').put({
-        key: 'main',
-        lastSyncTime: null,
-        lastSchemaCheck: Date.now(),
-        pendingChanges: 0,
-        syncInProgress: false,
-        schemaVersion: SCHEMA_VERSION,
-      });
-      await newTx.done;
-      
-      console.log('✅ [LocalDB] Data cleared and schema updated to v', SCHEMA_VERSION);
+      // IndexedDB structural changes are handled by DB_VERSION migrations.
+      // Never clear here: pending offline writes must survive an app upgrade.
+      console.warn(`⚠️ [LocalDB] Cache schema contract changed: ${existing.schemaVersion} -> ${SCHEMA_VERSION}`);
+      existing.schemaVersion = SCHEMA_VERSION;
+      existing.lastSchemaCheck = Date.now();
+      await store.put(existing);
+      console.log('✅ [LocalDB] Schema metadata advanced without deleting offline data');
     } else {
       // Update last schema check time
       existing.lastSchemaCheck = Date.now();
@@ -1986,6 +1992,35 @@ class LocalDatabase {
     }
   }
   
+  /**
+   * Clear server-derived offline mirrors before a safe full rehydration.
+   * Pending writes must already have been uploaded/marked synced.
+   * Chat history is retained because the normal sync path does not rebuild
+   * the complete chat history.
+   */
+  async prepareForFullServerRefresh(): Promise<void> {
+    if (!this.db) await this.initialize();
+    const stores: Array<keyof KisanDB> = [
+      'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 'crops',
+      'weather', 'farmerAlerts', 'farmerSubscriptions', 'subscriptionPlans',
+      'subscriptionUsageLogs', 'paymentRecords', 'proactiveAlerts'
+    ];
+    const existing = Array.from(this.db!.objectStoreNames);
+    const toClear = stores.filter(name => existing.includes(name as string));
+    if (toClear.length) {
+      const tx = this.db!.transaction(toClear as any, 'readwrite');
+      for (const storeName of toClear) await tx.objectStore(storeName as any).clear();
+      await tx.done;
+    }
+    await this.updateSyncMetadata({
+      lastSyncTime: null,
+      pendingChanges: 0,
+      syncInProgress: false,
+      entityLastSync: {},
+    });
+    console.log('🔄 [LocalDB] Server-derived offline mirrors cleared for full rehydration');
+  }
+
   /**
    * Force clear and reload all data from server
    * Used for full sync/refresh operations

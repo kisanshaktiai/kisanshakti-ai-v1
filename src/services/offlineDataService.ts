@@ -40,7 +40,7 @@ class OfflineDataService {
               farmer_id: farmerId,
               lastModified: new Date(l.updated_at || l.created_at || Date.now()).getTime(),
               syncStatus: 'synced' as const,
-            })),),
+            })),
           });
         }
         
@@ -89,7 +89,7 @@ class OfflineDataService {
               farmer_id: s.farmer_id || '',
               lastModified: new Date(s.updated_at || s.created_at || Date.now()).getTime(),
               syncStatus: 'synced' as const,
-            })),),
+            })),
           });
         }
 
