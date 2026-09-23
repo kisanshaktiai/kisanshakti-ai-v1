@@ -221,11 +221,6 @@ class SyncService {
         }
 
         await localDB.prepareForFullServerRefresh();
-        await localDB.updateSyncMetadata({
-          cacheBuildHash: currentBuildHash,
-          entityLastSync: {},
-        });
-
         await this.downloadServerData(tenantId);
 
         await localDB.updateSyncMetadata({
