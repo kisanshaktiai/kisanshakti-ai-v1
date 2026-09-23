@@ -1,318 +1,299 @@
 /**
- * PWA Update Prompt Component
- * Mobile-first update notification following best practices
- * - Only shows when update is downloaded and ready
- * - Respects user dismissals with smart re-prompting
- * - Handles platform-specific behaviors (Android/iOS PWA)
- * - Graceful offline handling
+ * KisanShakti AI PWA Update Coordinator
+ *
+ * Automatic application-code updates for non-technical farmers:
+ * - one Service Worker registration (owned by main.tsx)
+ * - background update checks
+ * - newly installed workers wait for explicit activation
+ * - first installation activates without a page reload
+ * - subsequent updates activate automatically only at a safe/idle point
+ * - controllerchange reloads only when this coordinator explicitly approved the update
+ *
+ * IMPORTANT:
+ * controllerchange by itself NEVER means "reload".
  */
 
-import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { X, Download, RefreshCw } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { updateStateManager } from '@/services/updateStateManager';
-import { versionService } from '@/services/versionService';
+import { useCallback, useEffect, useRef } from 'react';
+import { useIsFetching, useIsMutating } from '@tanstack/react-query';
+
+const UPDATE_APPROVED_KEY = '__ksai_sw_update_approved__';
+const RELOAD_SCHEDULED_KEY = '__ksai_sw_reload_scheduled__';
+
+const INITIAL_UPDATE_CHECK_MS = 30_000;
+const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+const SAFE_IDLE_MS = 20_000;
+const ACTIVATION_RETRY_MS = 5_000;
+const ACTIVATION_REQUEST_TIMEOUT_MS = 15_000;
+
+function isEditableElement(element: Element | null): boolean {
+  if (!(element instanceof HTMLElement)) return false;
+  return element.matches('input, textarea, select, [contenteditable="true"]');
+}
 
 export function PWAUpdatePrompt() {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
-  const [newVersion, setNewVersion] = useState<string>('');
-  const [isStandalone, setIsStandalone] = useState(false);
+  const activeFetches = useIsFetching();
+  const activeMutations = useIsMutating();
 
-  const currentVersion = versionService.getCurrentVersion();
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
+  const lastActivityRef = useRef(Date.now());
+  const pendingUpdateRef = useRef(false);
+  const activationRequestedRef = useRef(false);
+  const reloadScheduledRef = useRef(false);
 
-  useEffect(() => {
-    // Detect if running as installed PWA (standalone mode)
-    const standalone = window.matchMedia('(display-mode: standalone)').matches 
-      || (window.navigator as any).standalone 
-      || document.referrer.includes('android-app://');
-    
-    setIsStandalone(standalone);
-    console.log('[PWAUpdatePrompt] Running mode:', standalone ? 'Installed PWA' : 'Browser');
+  const isSafeToActivate = useCallback(() => {
+    if (document.visibilityState !== 'visible') return false;
+    if (activeFetches > 0 || activeMutations > 0) return false;
 
-    // Register service worker and set up update detection
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready
-        .then(reg => {
-          console.log('[PWAUpdatePrompt] Service worker ready');
-          setRegistration(reg);
+    // Never interrupt a farmer who is actively editing a form/composer.
+    if (isEditableElement(document.activeElement)) return false;
 
-          // Check if update is already waiting
-          if (reg.waiting) {
-            handleUpdateDetected(reg);
-          }
+    // Respect existing busy indicators exposed by the UI without inventing
+    // feature-specific application state.
+    if (document.querySelector('[aria-busy="true"]')) return false;
 
-          // Listen for new service worker waiting
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            console.log('[PWAUpdatePrompt] Update found, downloading...');
+    return Date.now() - lastActivityRef.current >= SAFE_IDLE_MS;
+  }, [activeFetches, activeMutations]);
 
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  console.log('[PWAUpdatePrompt] Update downloaded and ready');
-                  handleUpdateDetected(reg);
-                }
-              });
-            }
-          });
+  const activateWaitingWorker = useCallback((registration: ServiceWorkerRegistration) => {
+    const waiting = registration.waiting;
 
-          // Check for updates periodically (15 minutes - not aggressive)
-          const checkInterval = setInterval(() => {
-            console.log('[PWAUpdatePrompt] Checking for updates...');
-            reg.update().catch(err => {
-              console.warn('[PWAUpdatePrompt] Update check failed:', err);
-            });
-          }, 15 * 60 * 1000); // 15 minutes
+    if (!waiting || activationRequestedRef.current) return;
 
-          // Initial check after 30 seconds
-          setTimeout(() => reg.update(), 30000);
+    activationRequestedRef.current = true;
 
-          return () => clearInterval(checkInterval);
-        })
-        .catch(err => {
-          console.error('[PWAUpdatePrompt] Service worker registration failed:', err);
-        });
+    const isFirstInstall = !navigator.serviceWorker.controller;
 
-      // Listen for service worker activation (after update)
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        console.log('[PWAUpdatePrompt] Service worker activated - reloading');
-        // Wait a bit to ensure everything is ready
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      });
-
-      // Listen for messages from service worker
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data?.type === 'SW_ACTIVATED') {
-          console.log('[PWAUpdatePrompt] Received activation confirmation');
-        }
-      });
+    if (isFirstInstall) {
+      // First installation must activate the worker, but must never cause a
+      // surprise reload of the initial page.
+      sessionStorage.removeItem(UPDATE_APPROVED_KEY);
+      console.log('[PWA] First service worker install: activating without reload');
+    } else {
+      // Existing controlled application: explicitly authorize the activation.
+      sessionStorage.setItem(UPDATE_APPROVED_KEY, String(Date.now()));
+      sessionStorage.removeItem(RELOAD_SCHEDULED_KEY);
+      console.log('[PWA] Update activation approved automatically');
     }
+
+    waiting.postMessage({ type: 'SKIP_WAITING' });
+
+    window.setTimeout(() => {
+      activationRequestedRef.current = false;
+    }, ACTIVATION_REQUEST_TIMEOUT_MS);
   }, []);
 
-  /**
-   * Handle when an update is detected and ready
-   */
-  const handleUpdateDetected = (reg: ServiceWorkerRegistration) => {
-    // Skip update prompts in development mode
-    if (versionService.isDevelopmentMode()) {
-      console.log('[PWAUpdatePrompt] Skipping update prompt in development mode');
-      return;
-    }
-
-    // Check if this is a theme-only update (no code changes)
-    const currentBuildHash = versionService.getBuildHash();
-    const storedBuildHash = localStorage.getItem('build_hash');
-    
-    // If build hash hasn't changed, this might be just a service worker update (not a deploy)
-    if (storedBuildHash === currentBuildHash) {
-      console.log('[PWAUpdatePrompt] Service worker updated but build hash unchanged - likely theme update');
-      // Apply silently for theme updates
-      handleSilentThemeUpdate();
-      return;
-    }
-
-    // Get version info
-    const buildTime = versionService.getBuildTime();
-    const versionDisplay = buildTime 
-      ? `${currentVersion} (${new Date(buildTime).toLocaleDateString()})`
-      : currentVersion;
-    
-    setNewVersion(versionDisplay);
-
-    // Get last known version to check if version actually changed
-    const lastKnownVersion = localStorage.getItem('last-known-version') || '0.0.0';
-    
-    // Check if we should show the prompt based on dismissal state
-    const shouldShow = updateStateManager.shouldShowUpdatePrompt(currentVersion);
-    
-    // For major updates, override dismissal
-    const isMajor = updateStateManager.isMajorUpdate(lastKnownVersion, currentVersion);
-
-    if (shouldShow || isMajor) {
-      console.log('[PWAUpdatePrompt] Showing update prompt', isMajor ? '(major update)' : '', `(${lastKnownVersion} → ${currentVersion})`);
-      setShowPrompt(true);
-      setRegistration(reg);
-    } else {
-      const timeUntil = updateStateManager.getTimeUntilNextPrompt(currentVersion);
-      const hoursUntil = Math.round(timeUntil / 1000 / 60 / 60);
-      console.log(`[PWAUpdatePrompt] Update available but dismissed. Next prompt in ${hoursUntil}h`);
-    }
-
-    // Store last known version for comparison
-    localStorage.setItem('last-known-version', currentVersion);
-  };
-
-  /**
-   * Handle silent theme updates (no code changes, just config)
-   */
-  const handleSilentThemeUpdate = () => {
-    console.log('[PWAUpdatePrompt] Applying silent theme update...');
-    
-    // Clear theme-related caches
-    localStorage.removeItem('tenant_config_cache');
-    localStorage.removeItem('white_label_config');
-    localStorage.removeItem('tenant_primary_color');
-    
-    // Signal service worker to clear caches
-    if (navigator.serviceWorker?.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
-    }
-    
-    // Dispatch event to trigger theme refresh in TenantProvider
-    window.dispatchEvent(new CustomEvent('tenant-theme-update'));
-    
-    console.log('[PWAUpdatePrompt] Theme update applied silently');
-  };
-
-  /**
-   * Handle user clicking "Update Now"
-   */
-  const handleUpdate = async () => {
+  const tryActivatePendingUpdate = useCallback(() => {
+    const registration = registrationRef.current;
     if (!registration?.waiting) {
-      console.warn('[PWAUpdatePrompt] No waiting service worker found');
+      pendingUpdateRef.current = false;
       return;
     }
 
-    // Check if online
-    if (!navigator.onLine) {
-      console.warn('[PWAUpdatePrompt] Cannot update while offline');
-      alert('You are currently offline. Please connect to update the app.');
+    // First install: the worker must be activated so it can become the
+    // controller. It is explicitly prevented from triggering a reload.
+    if (!navigator.serviceWorker.controller) {
+      pendingUpdateRef.current = false;
+      activateWaitingWorker(registration);
       return;
     }
 
-    setIsUpdating(true);
-    console.log('[PWAUpdatePrompt] User initiated update');
+    if (!pendingUpdateRef.current) return;
 
-    try {
-      // Record that user accepted the update
-      updateStateManager.recordUpdateAccepted(currentVersion);
-      
-      // Acknowledge the current version
-      versionService.acknowledgeCurrentVersion();
-
-      // Tell service worker to skip waiting and activate
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-
-      // The page will reload automatically when controllerchange fires
-      // Show loading state until then
-      console.log('[PWAUpdatePrompt] Update initiated, waiting for activation...');
-    } catch (error) {
-      console.error('[PWAUpdatePrompt] Error during update:', error);
-      setIsUpdating(false);
-      alert('Update failed. Please try again.');
+    if (isSafeToActivate()) {
+      pendingUpdateRef.current = false;
+      activateWaitingWorker(registration);
+      return;
     }
-  };
 
-  /**
-   * Handle user clicking "Later" (dismissing the update)
-   */
-  const handleDismiss = () => {
-    console.log('[PWAUpdatePrompt] User dismissed update');
-    
-    // Record dismissal
-    updateStateManager.recordDismissal(currentVersion);
-    
-    // Acknowledge current ETag so we don't keep detecting same version
-    versionService.acknowledgeCurrentVersion();
-    
-    // Hide prompt
-    setShowPrompt(false);
+    console.log('[PWA] Update ready but deferred until the app is safe/idle');
+  }, [activateWaitingWorker, isSafeToActivate]);
 
-    // Show info about when they'll be prompted again
-    const state = updateStateManager.getDebugInfo();
-    if (state) {
-      const nextPromptHours = state.dismissalCount >= 3 ? 168 : 24;
-      console.log(`[PWAUpdatePrompt] Will prompt again in ${nextPromptHours} hours`);
+  const processWaitingWorker = useCallback((registration: ServiceWorkerRegistration) => {
+    if (!registration.waiting) return;
+
+    registrationRef.current = registration;
+
+    if (!navigator.serviceWorker.controller) {
+      tryActivatePendingUpdate();
+      return;
     }
-  };
 
-  if (!showPrompt) return null;
+    pendingUpdateRef.current = true;
+    tryActivatePendingUpdate();
+  }, [tryActivatePendingUpdate]);
 
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: 50 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 50 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="fixed bottom-20 left-4 right-4 z-50 md:left-auto md:right-8 md:bottom-8 md:w-96"
-      >
-        <Card className="p-4 shadow-xl border-primary/20 bg-background/95 backdrop-blur">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-1">
-              {isStandalone ? (
-                <Download className="h-5 w-5 text-primary" />
-              ) : (
-                <RefreshCw className="h-5 w-5 text-primary" />
-              )}
-            </div>
-            
-            <div className="flex-1 space-y-2">
-              <div>
-                <h3 className="font-semibold text-foreground">
-                  Update Available
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Version {newVersion} is ready to install.
-                  {isStandalone && ' Update now to get the latest features.'}
-                </p>
-              </div>
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
 
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleUpdate}
-                  disabled={isUpdating}
-                  className="flex-1"
-                  size="sm"
-                >
-                  {isUpdating ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" />
-                      Update Now
-                    </>
-                  )}
-                </Button>
-                
-                <Button
-                  onClick={handleDismiss}
-                  variant="outline"
-                  disabled={isUpdating}
-                  size="sm"
-                  className="flex-1"
-                >
-                  Later
-                </Button>
-              </div>
+    let disposed = false;
+    let initialCheckTimer: number | undefined;
+    let updateInterval: number | undefined;
+    let pendingRetryInterval: number | undefined;
 
-              <p className="text-xs text-muted-foreground">
-                {isStandalone 
-                  ? "Installed app • Update takes a few seconds"
-                  : "App will reload after update"}
-              </p>
-            </div>
+    // Fail-safe reset: a previous crashed page must not inherit a reload command.
+    sessionStorage.removeItem(UPDATE_APPROVED_KEY);
+    sessionStorage.removeItem(RELOAD_SCHEDULED_KEY);
+    reloadScheduledRef.current = false;
 
-            <button
-              onClick={handleDismiss}
-              disabled={isUpdating}
-              className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-              aria-label="Dismiss"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </Card>
-      </motion.div>
-    </AnimatePresence>
-  );
+    const markActivity = () => {
+      lastActivityRef.current = Date.now();
+      if (pendingUpdateRef.current) {
+        window.setTimeout(() => {
+          if (!disposed) tryActivatePendingUpdate();
+        }, SAFE_IDLE_MS);
+      }
+    };
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      'pointerdown',
+      'touchstart',
+      'keydown',
+      'input',
+    ];
+
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, markActivity, { passive: true });
+    });
+
+    const handleControllerChange = () => {
+      console.log('[PWA] Service worker controller changed');
+
+      const approved = sessionStorage.getItem(UPDATE_APPROVED_KEY);
+      const alreadyScheduled = reloadScheduledRef.current
+        || sessionStorage.getItem(RELOAD_SCHEDULED_KEY) === '1';
+
+      if (approved && !alreadyScheduled) {
+        reloadScheduledRef.current = true;
+        sessionStorage.setItem(RELOAD_SCHEDULED_KEY, '1');
+        sessionStorage.removeItem(UPDATE_APPROVED_KEY);
+
+        console.log('[PWA] Reload authorized for completed update transaction');
+
+        // Give the newly-activated worker one event-loop turn to settle before
+        // reloading the current route.
+        window.setTimeout(() => {
+          if (!disposed) {
+            window.location.reload();
+          }
+        }, 100);
+      } else {
+        console.log('[PWA] Controller change detected without approved update; no reload');
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+    const setup = async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+
+        if (disposed) return;
+
+        registrationRef.current = registration;
+
+        console.log('[PWA] Service worker ready; automatic application updates enabled');
+
+        const watchInstallingWorker = (worker: ServiceWorker) => {
+          worker.addEventListener('statechange', () => {
+            console.log('[PWA] Service worker state:', worker.state);
+
+            if (worker.state === 'installed') {
+              processWaitingWorker(registration);
+            }
+          });
+        };
+
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          console.log('[PWA] New service worker installing in background');
+
+          if (worker) {
+            watchInstallingWorker(worker);
+          }
+        });
+
+        if (registration.installing) {
+          watchInstallingWorker(registration.installing);
+        }
+
+        // A waiting worker can already exist when this component mounts.
+        processWaitingWorker(registration);
+
+        const checkForUpdate = async () => {
+          try {
+            await registration.update();
+          } catch (error) {
+            console.warn('[PWA] Background update check failed:', error);
+          }
+
+          if (!disposed) {
+            processWaitingWorker(registration);
+          }
+        };
+
+        // Keep the existing non-aggressive background update cadence.
+        initialCheckTimer = window.setTimeout(checkForUpdate, INITIAL_UPDATE_CHECK_MS);
+        updateInterval = window.setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
+
+        pendingRetryInterval = window.setInterval(() => {
+          if (!disposed && pendingUpdateRef.current) {
+            tryActivatePendingUpdate();
+          }
+        }, ACTIVATION_RETRY_MS);
+
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') {
+            if (pendingUpdateRef.current) {
+              lastActivityRef.current = Date.now();
+              window.setTimeout(() => {
+                if (!disposed) tryActivatePendingUpdate();
+              }, SAFE_IDLE_MS);
+            } else {
+              void checkForUpdate();
+            }
+          }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        if (registration.waiting) {
+          processWaitingWorker(registration);
+        }
+
+        return () => {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+      } catch (error) {
+        console.error('[PWA] Failed to initialize automatic update coordinator:', error);
+      }
+    };
+
+    let innerCleanup: (() => void) | undefined;
+
+    void setup().then((cleanup) => {
+      innerCleanup = cleanup;
+    });
+
+    return () => {
+      disposed = true;
+
+      if (initialCheckTimer !== undefined) window.clearTimeout(initialCheckTimer);
+      if (updateInterval !== undefined) window.clearInterval(updateInterval);
+      if (pendingRetryInterval !== undefined) window.clearInterval(pendingRetryInterval);
+
+      innerCleanup?.();
+
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, markActivity);
+      });
+    };
+  }, [processWaitingWorker, tryActivatePendingUpdate]);
+
+  // This component intentionally renders no update prompt.
+  // Software updates are automatic for the farmer.
+  return null;
 }
