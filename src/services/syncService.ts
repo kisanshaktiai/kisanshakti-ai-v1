@@ -182,6 +182,62 @@ class SyncService {
         errors: [],
       };
 
+      // BUILD-AWARE OFFLINE REHYDRATION:
+      // VITE_APP_VERSION is the deployment SHA in production. A new build
+      // triggers one safe full rehydration so changed DB fields reach IndexedDB.
+      const syncMeta = await localDB.getSyncMetadata();
+      const currentBuildHash = import.meta.env.VITE_APP_VERSION || 'development';
+      const buildChanged = syncMeta?.cacheBuildHash !== currentBuildHash;
+
+      if (buildChanged) {
+        const pendingBeforeRefresh = await localDB.getPendingChanges();
+        console.log('🔄 [Sync] New offline cache contract detected', {
+          previousBuild: syncMeta?.cacheBuildHash || 'none',
+          currentBuild: currentBuildHash,
+          pendingCount:
+            pendingBeforeRefresh.farmers.length +
+            pendingBeforeRefresh.lands.length +
+            pendingBeforeRefresh.schedules.length +
+            pendingBeforeRefresh.messages.length,
+        });
+
+        // Never clear local data until pending writes are accepted.
+        await this.uploadPendingChanges(pendingBeforeRefresh, result, tenantId);
+        const pendingAfterUpload = await localDB.getPendingChanges();
+        const remainingPending =
+          pendingAfterUpload.farmers.length +
+          pendingAfterUpload.lands.length +
+          pendingAfterUpload.schedules.length +
+          pendingAfterUpload.messages.length;
+
+        if (remainingPending > 0 || (result.errors && result.errors.length > 0)) {
+          result.success = false;
+          result.message = 'Offline data could not be fully uploaded; refresh deferred';
+          result.errors = [
+            ...(result.errors || []),
+            'Offline refresh deferred because local changes remain pending.',
+          ];
+          return result;
+        }
+
+        await localDB.prepareForFullServerRefresh();
+        await localDB.updateSyncMetadata({
+          cacheBuildHash: currentBuildHash,
+          entityLastSync: {},
+        });
+
+        await this.downloadServerData(tenantId);
+
+        await localDB.updateSyncMetadata({
+          lastSyncTime: Date.now(),
+          cacheBuildHash: currentBuildHash,
+          syncInProgress: false,
+        });
+
+        result.message = 'Offline data refreshed for the latest app build';
+        return result;
+      }
+
       // 1. ALWAYS download latest data from server FIRST
       // This ensures localDB has data even on first app load
       console.log('📥 [Sync] Downloading server data...');
@@ -221,6 +277,7 @@ class SyncService {
       // Update sync metadata
       await localDB.updateSyncMetadata({
         lastSyncTime: Date.now(),
+        cacheBuildHash: currentBuildHash,
         syncInProgress: false,
       });
 
@@ -271,6 +328,17 @@ class SyncService {
       this.lastSyncAt = Date.now();
       await localDB.updateSyncMetadata({ syncInProgress: false });
     }
+  }
+
+  private async uploadPendingChanges(
+    pendingChanges: Awaited<ReturnType<typeof localDB.getPendingChanges>>,
+    result: SyncResult,
+    tenantId: string
+  ): Promise<void> {
+    if (pendingChanges.farmers.length > 0) await this.syncFarmers(pendingChanges.farmers, result, tenantId);
+    if (pendingChanges.lands.length > 0) await this.syncLands(pendingChanges.lands, result, tenantId);
+    if (pendingChanges.schedules.length > 0) await this.syncSchedules(pendingChanges.schedules, result);
+    if (pendingChanges.messages.length > 0) await this.syncChatMessages(pendingChanges.messages, result);
   }
 
   private async syncFarmers(farmers: any[], result: SyncResult, tenantId: string): Promise<void> {
