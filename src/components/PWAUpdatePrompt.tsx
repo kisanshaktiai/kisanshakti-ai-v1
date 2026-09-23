@@ -34,6 +34,14 @@ export function PWAUpdatePrompt() {
   const activeFetches = useIsFetching();
   const activeMutations = useIsMutating();
 
+  const activeFetchesRef = useRef(activeFetches);
+  const activeMutationsRef = useRef(activeMutations);
+
+  useEffect(() => {
+    activeFetchesRef.current = activeFetches;
+    activeMutationsRef.current = activeMutations;
+  }, []);
+
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const lastActivityRef = useRef(Date.now());
   const pendingUpdateRef = useRef(false);
@@ -42,7 +50,7 @@ export function PWAUpdatePrompt() {
 
   const isSafeToActivate = useCallback(() => {
     if (document.visibilityState !== 'visible') return false;
-    if (activeFetches > 0 || activeMutations > 0) return false;
+    if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0) return false;
 
     // Never interrupt a farmer who is actively editing a form/composer.
     if (isEditableElement(document.activeElement)) return false;
