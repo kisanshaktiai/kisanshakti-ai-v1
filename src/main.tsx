@@ -157,21 +157,6 @@ const registerServiceWorker = async () => {
       active: !!registration.active
     });
     
-    // Listen for updates
-    registration.addEventListener('updatefound', () => {
-      const newWorker = registration.installing;
-      console.log('🔄 [PWA] New Service Worker installing...');
-      
-      if (newWorker) {
-        newWorker.addEventListener('statechange', () => {
-          console.log('📊 [PWA] SW state changed:', newWorker.state);
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('✨ [PWA] New version available!');
-            window.dispatchEvent(new CustomEvent('pwa-update-available'));
-          }
-        });
-      }
-    });
   } catch (error) {
     console.error('❌ [PWA] Service Worker registration failed:', error);
   }
