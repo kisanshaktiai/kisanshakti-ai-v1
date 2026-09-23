@@ -649,7 +649,7 @@ class SyncService {
               tenant_id: tenantId,
               lastModified: new Date(f.updated_at || f.created_at || Date.now()).getTime(),
               syncStatus: 'synced' as const,
-            })),),
+            })),
           });
         }
       };
@@ -696,7 +696,7 @@ class SyncService {
               farmer_id: l.farmer_id || userId,
               lastModified: new Date(l.updated_at || l.created_at || Date.now()).getTime(),
               syncStatus: 'synced' as const,
-            })),),
+            })),
           });
           console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
 
@@ -751,7 +751,7 @@ class SyncService {
               tenant_id: tenantId,
               lastModified: new Date(s.updated_at || s.created_at || Date.now()).getTime(),
               syncStatus: 'synced' as const,
-            })),),
+            })),
           });
           console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
 
@@ -794,7 +794,7 @@ class SyncService {
               farmer_id: t.farmer_id || userId,
               lastModified: new Date(t.updated_at || t.created_at || Date.now()).getTime(),
               syncStatus: 'synced' as const,
-            })),),
+            })),
           });
           console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
 
