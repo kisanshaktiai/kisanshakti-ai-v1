@@ -215,6 +215,7 @@ export interface LandData {
   syncStatus: 'synced' | 'pending' | 'conflict';
 }
 
+/**
  * Crop Schedules table - matches Supabase crop_schedules table exactly
  * UPDATED: Full schema parity with Supabase (2025-12-09)
  */
