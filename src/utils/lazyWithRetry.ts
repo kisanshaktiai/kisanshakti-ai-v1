@@ -65,9 +65,6 @@ export function lazyWithRetry<T extends ComponentType<any>>(
               const names = await caches.keys();
               await Promise.all(names.map((n) => caches.delete(n)));
             }
-            if (navigator.serviceWorker?.controller) {
-              navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
-            }
           } catch {
             /* ignore */
           }
