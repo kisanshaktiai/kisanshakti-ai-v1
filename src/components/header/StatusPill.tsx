@@ -9,7 +9,6 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
-  Database,
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
@@ -30,7 +29,7 @@ import { cn } from '@/lib/utils';
  * StatusPill — single header surface that consolidates:
  *  - Subscription chip (plan + days remaining + warning)
  *  - Online/offline status dot
- *  - Sync action (quick sync / full reload) + last-sync + pending count
+ *  - Sync action + last-sync + pending count
  *
  * Replaces SubscriptionHeaderChip + HeaderStatusDot + UnifiedSyncButton.
  * Static label (no rotation). Tap → popover with full details and actions.
@@ -228,23 +227,13 @@ export function StatusPill() {
             variant="ghost"
             size="sm"
             className="w-full justify-start h-9"
-            onClick={() => handleSync(false)}
+            onClick={() => handleSync()}
             disabled={syncing || !isOnline}
           >
             <RefreshCw
               className={cn('mr-2 h-4 w-4', syncing && 'animate-spin text-primary')}
             />
-            <span>{t('sync.quick_sync', 'Quick sync')}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start h-9"
-            onClick={() => handleSync(true)}
-            disabled={syncing || !isOnline}
-          >
-            <Database className="mr-2 h-4 w-4" />
-            <span>{t('sync.full_reload', 'Full reload')}</span>
+            <span>{t('sync.sync_data', 'Sync data')}</span>
           </Button>
         </div>
       </PopoverContent>
