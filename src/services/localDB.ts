@@ -88,11 +88,11 @@ export interface FarmerData {
   // Timestamps
   created_at: string | null;
   updated_at: string | null;
-  timezone: string | null;
-  farming_preference: string | null;
-  default_nutrient_policy: string | null;
-  default_protection_policy: string | null;
-  organic_standard: string | null;
+  timezone?: string | null;
+  farming_preference?: string | null;
+  default_nutrient_policy?: string | null;
+  default_protection_policy?: string | null;
+  organic_standard?: string | null;
   
   // Sync metadata (local only)
   lastModified: number;
@@ -217,27 +217,27 @@ export interface LandData {
 
 /**
  * Crop Schedules
-  country: string | null;
-  country_code: string | null;
-  current_crop_variety_id: string | null;
-  lifecycle_status: string | null;
-  active_schedule_id: string | null;
-  lifecycle_changed_at: string | null;
-  transplant_date: string | null;
-  stage_uuid: string | null;
-  das: number | null;
-  phenology_index: number | null;
-  stage_resolved_at: string | null;
-  stage_source: string | null;
-  crop_cycle: string | null;
-  current_gdd: number | null;
-  gdd_anchor_type: string | null;
-  gdd_anchor_date: string | null;
-  gdd_last_computed_at: string | null;
-  last_ndvi_quality: number | null;
-  last_ndvi_source: string | null;
-  ndvi_status_note: string | null;
-  cell_key: string | null; table - matches Supabase crop_schedules table exactly
+  country?: string | null;
+  country_code?: string | null;
+  current_crop_variety_id?: string | null;
+  lifecycle_status?: string | null;
+  active_schedule_id?: string | null;
+  lifecycle_changed_at?: string | null;
+  transplant_date?: string | null;
+  stage_uuid?: string | null;
+  das?: number | null;
+  phenology_index?: number | null;
+  stage_resolved_at?: string | null;
+  stage_source?: string | null;
+  crop_cycle?: string | null;
+  current_gdd?: number | null;
+  gdd_anchor_type?: string | null;
+  gdd_anchor_date?: string | null;
+  gdd_last_computed_at?: string | null;
+  last_ndvi_quality?: number | null;
+  last_ndvi_source?: string | null;
+  ndvi_status_note?: string | null;
+  cell_key?: string | null; table - matches Supabase crop_schedules table exactly
  * UPDATED: Full schema parity with Supabase (2025-12-09)
  */
 export interface CropScheduleData {
@@ -403,17 +403,17 @@ export interface CropScheduleData {
 
 /**
  * Schedule Tasks  variety_id: string | null;
-  harvest_status: string | null;
-  harvest_confirmed_at: string | null;
-  harvest_confirmed_by: string | null;
-  harvest_response: any;
+  harvest_status?: string | null;
+  harvest_confirmed_at?: string | null;
+  harvest_confirmed_by?: string | null;
+  harvest_response?: any;
   lifecycle_status: string | null;
   transplant_date: string | null;
-  cultivation_method: string | null;
+  cultivation_method?: string | null;
   crop_cycle: string | null;
-  nutrient_policy: string | null;
-  protection_policy: string | null;
-  policy_needs_confirmation: boolean | null;
+  nutrient_policy?: string | null;
+  protection_policy?: string | null;
+  policy_needs_confirmation?: boolean | null;
   
   // Sync metadata (local only)
   lastModified: number;
@@ -508,21 +508,21 @@ export interface ScheduleTaskData {
 
 /**
  * AI Chat Sessions  variety_id: string | null;
-  anchor_type: string | null;
-  anchor_stage: string | null;
-  gdd_target: number | null;
-  is_pinned: boolean | null;
-  trigger_rule_id: string | null;
-  projected_date: string | null;
-  adjustment_reason: string | null;
-  rule_ids: string[] | null;
-  confidence: number | null;
-  source_refs: any;
+  anchor_type?: string | null;
+  anchor_stage?: string | null;
+  gdd_target?: number | null;
+  is_pinned?: boolean | null;
+  trigger_rule_id?: string | null;
+  projected_date?: string | null;
+  adjustment_reason?: string | null;
+  rule_ids?: string[] | null;
+  confidence?: number | null;
+  source_refs?: any;
   stage_uuid: string | null;
-  land_crop_id: string | null;
-  decision_state: string | null;
-  decision_id: string | null;
-  decision_evaluated_at: string | null;
+  land_crop_id?: string | null;
+  decision_state?: string | null;
+  decision_id?: string | null;
+  decision_evaluated_at?: string | null;
   
   // Sync metadata (local only)
   lastModified?: number;
@@ -635,7 +635,7 @@ export interface AIChatMessageData {
   decision_brain_source: boolean | null;
   actions_returned: any;
   actions_filtered_out: any;
-  response_source: string | null;
+  response_source?: string | null;
   
   // Metadata
   metadata: any;
@@ -662,17 +662,17 @@ export interface CropData {
   label_local: string | null;
   label_hi: string | null;
   label_mr: string | null;
-  label_pa: string | null;
-  label_ta: string | null;
-  label_te: string | null;
-  label_bn: string | null;
-  label_gu: string | null;
-  label_kn: string | null;
-  label_ml: string | null;
-  label_or: string | null;
-  label_as: string | null;
-  label_ur: string | null;
-  label_sa: string | null;
+  label_pa?: string | null;
+  label_ta?: string | null;
+  label_te?: string | null;
+  label_bn?: string | null;
+  label_gu?: string | null;
+  label_kn?: string | null;
+  label_ml?: string | null;
+  label_or?: string | null;
+  label_as?: string | null;
+  label_ur?: string | null;
+  label_sa?: string | null;
   local_name: string | null;
   
   // Visual
