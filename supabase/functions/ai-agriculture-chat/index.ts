@@ -90,6 +90,9 @@ import { initializeTranslationCache } from './i18n/translation-loader.ts';
 import { AIAgentOrchestrator, requiresAgronomicReasoningIntent } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 import { blockStageWriteIfLocked, isBiologicalStateLocked } from './agents/biological-state.ts';
+// PHOTO EVIDENCE (2026-09-23): central capture tool routes + decision link-back.
+import { handlePhotoAction } from './photo/photo-routes.ts';
+import { recordDecisionForDiagnosis } from './photo/perception-engine.ts';
 import { getRuntimeTraceCollector, resetRuntimeTraceCollector } from './runtime/runtime-trace-collector.ts';
 import { ensureObservationSelectorContract, attemptDbClarificationRescue } from './runtime/observation-selector-contract.ts';
 import { getSessionSSOT } from './runtime/session-ssot.ts';
@@ -489,7 +492,9 @@ serve(async (req) => {
       messages = [],
       landId,
       sessionId,
-      imageUrl,
+      // 2026-09-23: photos arrive only as a completed diagnosis from the
+      // diagnose_photo route; raw image URLs are no longer analysed here.
+      photoDiagnosisId = null,
       language = 'en',
       metadata = {},
       action
@@ -540,10 +545,21 @@ serve(async (req) => {
       );
     }
 
+    // PHOTO EVIDENCE ROUTES (2026-09-23): register a photo / run perception.
+    // Identity comes from the guard above; the service-role client does the writes.
+    if (action === 'photo_capture_policy' || action === 'photo_begin_upload' || action === 'diagnose_photo') {
+      return await handlePhotoAction(
+        action,
+        requestBody,
+        { supabase, farmerId: finalFarmerId, isServiceRole: !!guard.isServiceRole },
+        corsHeaders,
+      );
+    }
+
     // REQUEST DEDUPLICATION: Prevent double-tap duplicate processing
     cleanExpiredInflight();
     const lastMessage = messages.length > 0 ? (messages[messages.length - 1]?.content || '') : '';
-    dedupeKey = getDedupeKey(finalFarmerId, lastMessage);
+    dedupeKey = getDedupeKey(finalFarmerId, photoDiagnosisId ? `${lastMessage}::photo:${photoDiagnosisId}` : lastMessage);
     
     if (inFlightRequests.has(dedupeKey)) {
       console.log(`🔁 [${traceId}] DEDUP: Duplicate request blocked for farmer=${finalFarmerId}`);
@@ -806,8 +822,8 @@ serve(async (req) => {
     // SAFETY: Normalize to empty string, not undefined
     const userMessageContent = typeof rawMessageContent === 'string' ? rawMessageContent : '';
 
-    // Only reject if truly empty AND no image provided
-    if (!userMessageContent.trim() && !imageUrl) {
+    // Only reject if truly empty AND no photo diagnosis provided
+    if (!userMessageContent.trim() && !photoDiagnosisId) {
       return new Response(
         JSON.stringify({ error: 'Empty message provided or no image' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -926,7 +942,7 @@ serve(async (req) => {
     try {
       const earlyRuntimeTrace = resetRuntimeTraceCollector({
         trace_id: traceId,
-        execution_mode: imageUrl ? 'live-vision' : 'live',
+        execution_mode: photoDiagnosisId ? 'live-vision' : 'live',
         started_at_ms: startTime,
       });
       earlyRuntimeTrace.setContext({
@@ -973,7 +989,7 @@ serve(async (req) => {
       sessionId: currentSessionId,
       farmerId: finalFarmerId,
       language: detectedLanguage,
-      hasImage: !!imageUrl,
+      hasImage: !!photoDiagnosisId,
       hasText: userMessageContent.trim().length > 0,
       messagePreview: safePreview(userMessageContent)
     });
@@ -1205,7 +1221,7 @@ serve(async (req) => {
       finalFarmerId,
       finalTenantId,
       {
-        photoUrl: imageUrl,
+        photoDiagnosisId: photoDiagnosisId || undefined,
         language: detectedLanguage,
         landId: landId,
         traceId: traceId,
@@ -1241,6 +1257,22 @@ serve(async (req) => {
     );
 
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
+
+    // PHOTO EVIDENCE (2026-09-23): link the brain's answer to its diagnosis (non-blocking).
+    if (photoDiagnosisId) {
+      recordDecisionForDiagnosis(supabase, {
+        diagnosisId: photoDiagnosisId,
+        farmerId: finalFarmerId,
+        traceId,
+        summary: {
+          response_type: orchestratorResponse.type,
+          intent: (orchestratorResponse as any)?.metadata?.intent_code ?? (orchestratorResponse as any)?.intent ?? null,
+          confidence: (orchestratorResponse as any)?.metadata?.confidence ?? null,
+          rules_applied: (orchestratorResponse as any)?.metadata?.rules_applied ?? null,
+          session_id: currentSessionId,
+        },
+      }).catch((e) => console.error('[PHOTO_EVIDENCE] decision link failed', e));
+    }
 
     // OBSERVATION_REQUIRED CONTRACT ENFORCER
     let _observationContract: { promoted: boolean; hydrated: boolean; option_count: number; observation_required: boolean; reason: string | null } =
@@ -2730,14 +2762,15 @@ serve(async (req) => {
         content: userMessageContent, // Original in user's language
         preprocessed_content: preprocessedContent, // Normalized to English for NLU
         language: detectedLanguage,
-        message_type: imageUrl ? 'image_analysis' : 'text',
-        image_urls: imageUrl ? [imageUrl] : null,
+        message_type: photoDiagnosisId ? 'image_analysis' : 'text',
+        image_urls: null,
         is_training_candidate: true,
         inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
         conversation_turn_number: messages.length,
         metadata: {
           source: 'orchestrator_v1',
-          has_image: !!imageUrl,
+          has_image: !!photoDiagnosisId,
+          photo_diagnosis_id: photoDiagnosisId,
           land_id: landId,
           language_detected: detectedLanguage,
           preprocessed: true
@@ -3269,7 +3302,7 @@ serve(async (req) => {
             // Persist conversation state for continuity
             conversation_state: {
               turn_count: decisionTracking.turn_count,
-              has_photo: !!imageUrl,
+              has_photo: !!photoDiagnosisId,
               last_intent: orchestratorResponse.type,
               safety_status: orchestratorResponse.metadata?.safety_status,
               has_recommendations: recommendationsProvided

@@ -1,441 +1,324 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CROP PHOTO CAPTURE — the single photo tool for AI chat and crop schedule
+ * CROP PHOTO CAPTURE — the one diagnostic photo tool for every screen
  *
  * REPO: kisanshaktiai/kisanshakti-ai-v1  (farmer app)
- * PATH: src/components/photo/CropPhotoCapture.tsx
+ * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
- * 2026-08-30 — NEW. One capture dialog for every surface. Replaces the
- *   divergent handlers in EnhancedAIChatInterface.tsx (processAttachedImages
- *   + handleWorldClassCapture) and TaskPhotoUploadDialog.tsx.
- *   Uploads and analysis both go through src/services/cropPhotoService.ts.
+ * 2026-09-23 — v2 REWRITE. Opens with a purpose (chat_question, instascan,
+ *   schedule_task, growth_tracking, land_card) and a land (or asks which land).
+ *   Guides up to three shots (close-up of the problem, whole plant, field
+ *   view), takes a real still photo on the phone, checks light on the device,
+ *   queues offline, uploads through cropPhotoService (one encode, private
+ *   storage), runs perception, and hands the diagnosis to the Decision Brain.
+ *   Retake / crop-mismatch messages are i18n codes — no strings in code.
+ * 2026-08-30 — v1 (single dialog for chat and schedule).
  *
- * Styling follows the existing TaskPhotoUploadDialog.tsx conventions:
- * shadcn Dialog, semantic colour tokens (primary/success/warning/destructive),
- * lucide-react icons, sonner toast, `cn` from '@/lib/utils'.
- *
- * i18n: every key used here already exists in
- * src/i18n/locales/{en,hi,mr}/cropGrowth.json — verified 2026-08-30.
- * No new translation keys are introduced.
+ * Styling: shadcn Dialog/Button/Textarea, semantic theme tokens only
+ * (primary / muted / destructive / warning / success), lucide icons, sonner.
+ * i18n: cropGrowth:cropGrowth.capture.* (en/hi/mr added 2026-09-23).
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Camera,
-  Upload,
-  X,
-  Loader2,
-  MapPin,
-  CheckCircle2,
-  AlertTriangle,
-  Navigation,
-  Sparkles,
-  RefreshCw,
-} from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import {
-  uploadCropPhoto,
-  analyzeCropPhoto,
-  classifyLocation,
-  fetchLandCenter,
-  type PhotoSurface,
+  askDecisionBrain,
+  capturedFromFile,
+  diagnosePhotos,
+  getCurrentLocation,
+  isNativeCamera,
+  queueCapture,
+  quickQualityCheck,
+  takeStillPhoto,
+  uploadQueued,
+  type BrainAnswer,
+  type CapturePurpose,
+  type CapturedPhoto,
   type CropPhotoUploadType,
-  type CropPhotoGeo,
-  type CropPhotoLocationValidation,
-  type AnalyzeCropPhotoResult,
+  type DiagnoseResult,
+  type RetakeReason,
+  type ShotRole,
 } from '@/services/cropPhotoService';
 
 export interface CropPhotoCaptureProps {
   isOpen: boolean;
   onClose: () => void;
-  surface: PhotoSurface;
+  purpose: CapturePurpose;
   farmerId: string;
   tenantId: string;
+  /** Bound land. When absent the tool first asks which land (from `lands`). */
   landId?: string;
-  cropName?: string;
-  /** Chat surface. */
+  lands?: Array<{ id: string; name: string }>;
   sessionId?: string;
-  /** Schedule surface. */
   scheduleId?: string;
   taskId?: string;
-  taskName?: string;
   uploadType?: CropPhotoUploadType;
-  /** Require GPS before allowing analysis. Schedule task proof needs it;
-   *  a chat question about a leaf does not. */
+  /** Schedule proof needs GPS; a question about a leaf does not. */
   requireLocation?: boolean;
-  onAnalysisComplete?: (result: AnalyzeCropPhotoResult, fileUrl: string) => void;
+  /** Photos/text already picked by the caller (e.g. chat attachments). */
+  initialFiles?: File[];
+  initialText?: string;
+  /**
+   * Chat screens send the brain turn through their own pipeline: the tool
+   * stops after perception and hands over the diagnosis id.
+   */
+  onDiagnosed?: (r: { diagnosisId: string; landId: string; farmerText: string }) => void;
+  /** Other screens: the tool asks the Decision Brain and returns its answer. */
+  onAnswer?: (r: { diagnosisId: string; landId: string; answer: BrainAnswer }) => void;
 }
 
-type Phase = 'select' | 'review' | 'uploading' | 'analyzing';
+const ROLES: ShotRole[] = ['symptom_closeup', 'whole_plant', 'field_view'];
+const NS = 'cropGrowth';
+const K = 'cropGrowth.capture';
 
-export function CropPhotoCapture({
-  isOpen,
-  onClose,
-  surface,
-  farmerId,
-  tenantId,
-  landId,
-  cropName,
-  sessionId,
-  scheduleId,
-  taskId,
-  taskName,
-  uploadType = 'crop',
-  requireLocation = surface === 'schedule',
-  onAnalysisComplete,
-}: CropPhotoCaptureProps) {
-  const { t, i18n } = useTranslation();
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
+interface Shot {
+  role: ShotRole;
+  photo: CapturedPhoto;
+  retake: RetakeReason | 'generic' | null;
+}
 
-  const [phase, setPhase] = useState<Phase>('select');
-  const [preview, setPreview] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const [location, setLocation] = useState<CropPhotoGeo | null>(null);
-  const [gettingLocation, setGettingLocation] = useState(false);
-  const [landCenter, setLandCenter] = useState<CropPhotoGeo | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [retakeTips, setRetakeTips] = useState<string[]>([]);
+type Phase = 'land' | 'capture' | 'working' | 'result';
 
-  const locationValidation: CropPhotoLocationValidation = useMemo(
-    () => classifyLocation(location, landCenter),
-    [location, landCenter]
-  );
+export function CropPhotoCapture(props: CropPhotoCaptureProps) {
+  const {
+    isOpen, onClose, purpose, farmerId, tenantId, lands, sessionId, scheduleId, taskId,
+    uploadType, requireLocation, initialFiles, initialText, onDiagnosed, onAnswer,
+  } = props;
+  const { t, i18n } = useTranslation(NS);
+  const [landId, setLandId] = useState<string | undefined>(props.landId);
+  const [phase, setPhase] = useState<Phase>(props.landId ? 'capture' : 'land');
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [text, setText] = useState(initialText ?? '');
+  const [workLabel, setWorkLabel] = useState<string>('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const [answerText, setAnswerText] = useState<string>('');
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const galleryInput = useRef<HTMLInputElement>(null);
+  const identity = { farmerId, tenantId };
 
+  // Reset on open; release preview URLs on close.
   useEffect(() => {
-    if (!isOpen || !landId) return;
-    let cancelled = false;
-    fetchLandCenter(landId).then((center) => {
-      if (!cancelled) setLandCenter(center);
+    if (!isOpen) return;
+    setLandId(props.landId);
+    setPhase(props.landId ? 'capture' : 'land');
+    setShots([]);
+    setText(initialText ?? '');
+    setProblem(null);
+    setAnswerText('');
+  }, [isOpen, props.landId, initialText]);
+  useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.photo.previewUrl)), [shots]);
+
+  const addPhoto = useCallback(async (photo: CapturedPhoto, replaceIndex?: number) => {
+    const reason = await quickQualityCheck(photo.blob).catch(() => null);
+    setShots((prev) => {
+      const next = [...prev];
+      const role = replaceIndex !== undefined ? prev[replaceIndex].role : ROLES[prev.length];
+      if (!role) return prev;
+      const shot: Shot = { role, photo, retake: reason };
+      if (replaceIndex !== undefined) next[replaceIndex] = shot; else next.push(shot);
+      return next;
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, landId]);
-
-  const requestLocation = useCallback(() => {
-    if (!navigator.geolocation) return;
-    setGettingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-        setGettingLocation(false);
-      },
-      (error) => {
-        console.warn('[CropPhoto] location unavailable:', error.message);
-        setGettingLocation(false);
-        if (requireLocation) toast.error(t('cropGrowth.pleaseAddLocation'));
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
-  }, [requireLocation, t]);
-
-  const handleFileSelected = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = '';
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-        setPhase('review');
-        setRetakeTips([]);
-      };
-      reader.onerror = () => toast.error(t('cropGrowth.uploadFailed'));
-      reader.readAsDataURL(file);
-      requestLocation();
-    },
-    [requestLocation, t]
-  );
-
-  const reset = useCallback(() => {
-    setPhase('select');
-    setPreview(null);
-    setNotes('');
-    setLocation(null);
-    setWarnings([]);
-    setRetakeTips([]);
   }, []);
 
-  const handleClose = useCallback(() => {
-    reset();
-    onClose();
-  }, [reset, onClose]);
+  // Pre-picked files (chat attachments) enter the same path.
+  useEffect(() => {
+    if (!isOpen || !initialFiles?.length) return;
+    initialFiles.slice(0, ROLES.length).forEach((f) => { void addPhoto(capturedFromFile(f, false)); });
+  }, [isOpen, initialFiles, addPhoto]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!preview) return;
-
-    if (requireLocation && !location) {
-      toast.error(t('cropGrowth.pleaseAddLocation'));
-      requestLocation();
+  const replaceRef = useRef<number | undefined>(undefined);
+  const openCamera = async (replaceIndex?: number) => {
+    replaceRef.current = replaceIndex;
+    if (isNativeCamera()) {
+      const photo = await takeStillPhoto();
+      if (photo) await addPhoto(photo, replaceIndex);
       return;
     }
-    if (locationValidation.level === 'far' && !window.confirm(t('cropGrowth.photoTakenAway'))) {
-      return;
+    cameraInput.current?.click();
+  };
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>, fromCamera: boolean) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) await addPhoto(capturedFromFile(file, fromCamera), replaceRef.current);
+    replaceRef.current = undefined;
+  };
+
+  const removeShot = (i: number) => setShots((prev) => prev.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, role: ROLES[idx] })));
+
+  const canSend = shots.length > 0 && shots.every((s) => !s.retake) && !!landId;
+
+  const send = async () => {
+    if (!landId || !canSend) return;
+    setProblem(null);
+    setPhase('working');
+    try {
+      const location = await getCurrentLocation();
+      if (requireLocation && !location) {
+        toast.error(t('cropGrowth.pleaseAddLocation'));
+        setPhase('capture');
+        return;
+      }
+      // 1. Queue first — nothing is lost if the network drops.
+      const queued = [];
+      for (const s of shots) {
+        queued.push(await queueCapture(s.photo, {
+          id: identity, landId, purpose, shotRole: s.role,
+          scheduleId: scheduleId ?? null, taskId: taskId ?? null, subjectType: uploadType ?? null, location,
+        }));
+      }
+      if (!navigator.onLine) {
+        toast.success(t(`${K}.savedOffline`));
+        onClose();
+        return;
+      }
+      // 2. Upload (one encode each, private storage).
+      setWorkLabel(t(`${K}.uploading`));
+      const uploads = [];
+      for (let i = 0; i < queued.length; i++) {
+        uploads.push({ upload_id: await uploadQueued(queued[i]), shot_role: shots[i].role });
+      }
+      // 3. Perception.
+      setWorkLabel(t(`${K}.diagnosing`));
+      const language = i18n.language || 'en';
+      const d: DiagnoseResult = await diagnosePhotos({
+        id: identity, landId, purpose, photos: uploads, taskId: taskId ?? null,
+        sessionId: sessionId ?? null, language, farmerText: text,
+      });
+      if (d.status === 'retake_requested') {
+        const idx = d.retake?.photo_index ?? 0;
+        setShots((prev) => prev.map((s, i) => (i === idx ? { ...s, retake: d.retake?.reason_code ?? 'generic' } : s)));
+        setPhase('capture');
+        return;
+      }
+      if (d.status === 'crop_mismatch') { setProblem(t(`${K}.cropMismatch`)); setPhase('capture'); return; }
+      if (d.status === 'crop_unresolved') { setProblem(t(`${K}.cropUnresolved`)); setPhase('capture'); return; }
+      if (d.status !== 'completed' || !d.diagnosis_id) { setProblem(t(`${K}.failed`)); setPhase('capture'); return; }
+
+      // 4. The Decision Brain decides the answer.
+      if (onDiagnosed) {
+        onDiagnosed({ diagnosisId: d.diagnosis_id, landId, farmerText: text });
+        onClose();
+        return;
+      }
+      setWorkLabel(t(`${K}.thinking`));
+      const answer = await askDecisionBrain({
+        id: identity, landId, sessionId: sessionId ?? null, language, diagnosisId: d.diagnosis_id, farmerText: text,
+      });
+      setAnswerText(typeof answer?.response === 'string' ? answer.response : '');
+      setPhase('result');
+      onAnswer?.({ diagnosisId: d.diagnosis_id, landId, answer });
+    } catch (e) {
+      console.error('[CropPhotoCapture] send failed', e);
+      setProblem(t(`${K}.failed`));
+      setPhase('capture');
     }
+  };
 
-    setPhase('uploading');
-    setRetakeTips([]);
-
-    const uploaded = await uploadCropPhoto({
-      imageDataUrl: preview,
-      surface,
-      farmerId,
-      tenantId,
-      landId,
-      sessionId,
-      scheduleId,
-      taskId,
-      uploadType,
-      notes: notes.trim() || undefined,
-      location,
-      locationValidation,
-    });
-
-    setWarnings(uploaded.warnings);
-
-    if (!uploaded.success || !uploaded.fileUrl) {
-      console.error('[CropPhoto] upload failed:', uploaded.error);
-      toast.error(t('cropGrowth.uploadFailed'));
-      setPhase('review');
-      return;
-    }
-
-    setPhase('analyzing');
-
-    const analysis = await analyzeCropPhoto({
-      fileUrl: uploaded.fileUrl,
-      farmerId,
-      tenantId,
-      language: i18n.language,
-      landId,
-      sessionId,
-      farmerMessage: notes.trim() || undefined,
-      qualityMetrics: uploaded.qualityMetrics,
-      uploadId: uploaded.uploadId,
-      surface,
-    });
-
-    if (!analysis.success) {
-      toast.error(t('cropGrowth.uploadFailed'));
-      setPhase('review');
-      return;
-    }
-
-    // The brain judged the image unusable and asked for a retake. Keep the
-    // dialog open and show its reasons rather than pretending it diagnosed.
-    if (analysis.retakeRequested) {
-      setRetakeTips(analysis.retakeTips);
-      setPhase('review');
-      return;
-    }
-
-    toast.success(t('cropGrowth.uploadSuccess'));
-    onAnalysisComplete?.(analysis, uploaded.fileUrl);
-    handleClose();
-  }, [
-    preview,
-    requireLocation,
-    location,
-    locationValidation,
-    surface,
-    farmerId,
-    tenantId,
-    landId,
-    sessionId,
-    scheduleId,
-    taskId,
-    uploadType,
-    notes,
-    i18n.language,
-    onAnalysisComplete,
-    handleClose,
-    requestLocation,
-    t,
-  ]);
-
-  const busy = phase === 'uploading' || phase === 'analyzing';
+  const nextRole = ROLES[shots.length];
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && !busy && handleClose()}>
-      <DialogContent className="max-w-[95vw] sm:max-w-md p-0 gap-0 rounded-3xl border-0 shadow-2xl overflow-hidden bg-background">
-        {/* Header */}
-        <div className="relative px-5 pt-6 pb-4">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="relative flex items-start gap-4">
-            <div className="flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg bg-success/10">
-              <Camera className="h-7 w-7 text-success" />
-            </div>
-            <div className="flex-1 min-w-0 pt-1">
-              <h2 className="text-xl font-bold text-foreground truncate">
-                {taskName || t('cropGrowth.uploadPhoto')}
-              </h2>
-              {cropName && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-medium text-primary">
-                    {t('cropGrowth.aiAnalysisEnabled')}
-                  </span>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleClose}
-              disabled={busy}
-              className="flex-shrink-0 w-8 h-8 rounded-full bg-muted/80 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
-            >
-              <X className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
+    <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md w-[95vw] p-0 overflow-hidden rounded-2xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">{t(`${K}.title`)}</h2>
+          <button type="button" onClick={onClose} className="p-1 rounded-full hover:bg-muted" aria-label={t(`${K}.done`)}>
+            <X className="h-5 w-5 text-muted-foreground" />
+          </button>
         </div>
 
-        <div className="px-5 pb-6 space-y-4">
-          {phase === 'select' && (
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => cameraInputRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors"
-              >
-                <Camera className="h-7 w-7 text-primary" />
-                <span className="text-sm font-semibold text-foreground">
-                  {t('cropGrowth.takePhoto')}
-                </span>
-              </button>
-              <button
-                onClick={() => galleryInputRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border-2 border-dashed border-muted-foreground/30 bg-muted/40 hover:bg-muted/60 transition-colors"
-              >
-                <Upload className="h-7 w-7 text-muted-foreground" />
-                <span className="text-sm font-semibold text-foreground">
-                  {t('cropGrowth.uploadFile')}
-                </span>
-              </button>
+        <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onFile(e, true)} />
+        <input ref={galleryInput} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e, false)} />
+
+        <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+          {phase === 'land' && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">{t(`${K}.chooseLand`)}</p>
+              {(lands ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t('cropGrowth.addLandFirst')}</p>}
+              {(lands ?? []).map((l) => (
+                <Button key={l.id} variant="outline" className="w-full justify-start h-12"
+                  onClick={() => { setLandId(l.id); setPhase('capture'); }}>
+                  <MapPin className="h-4 w-4 mr-2 text-primary" />{l.name}
+                </Button>
+              ))}
             </div>
           )}
 
-          {preview && phase !== 'select' && (
-            <div className="relative rounded-2xl overflow-hidden bg-muted">
-              <img src={preview} alt="" className="w-full max-h-64 object-cover" />
-              {!busy && (
-                <button
-                  onClick={reset}
-                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-background/90 flex items-center justify-center shadow"
-                >
-                  <RefreshCw className="h-4 w-4 text-foreground" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Retake request from the Decision Brain */}
-          {retakeTips.length > 0 && (
-            <div className="rounded-2xl bg-warning/10 border border-warning/30 p-3 space-y-1">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                <span className="text-sm font-semibold text-foreground">
-                  {t('cropGrowth.takePhoto')}
-                </span>
-              </div>
-              <ul className="text-xs text-muted-foreground list-disc pl-5">
-                {retakeTips.map((tip) => (
-                  <li key={tip}>{tip}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Client-measured quality warnings */}
-          {warnings.length > 0 && retakeTips.length === 0 && (
-            <div className="rounded-2xl bg-muted/60 p-3">
-              <ul className="text-xs text-muted-foreground list-disc pl-5">
-                {warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {phase === 'review' && (
+          {phase === 'capture' && (
             <>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('cropGrowth.addNotes')}
-                rows={3}
-                className="rounded-2xl resize-none"
-              />
-
-              {landId && (
-                <button
-                  onClick={requestLocation}
-                  disabled={gettingLocation}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-4 py-3 rounded-2xl border transition-colors',
-                    locationValidation.level === 'at_land' && 'border-success/40 bg-success/10',
-                    locationValidation.level === 'nearby' && 'border-warning/40 bg-warning/10',
-                    locationValidation.level === 'far' && 'border-destructive/40 bg-destructive/10',
-                    locationValidation.level === 'unknown' && 'border-muted-foreground/30 bg-muted/40'
-                  )}
-                >
-                  {gettingLocation ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  ) : locationValidation.isValid ? (
-                    <CheckCircle2 className="h-4 w-4 text-success" />
-                  ) : locationValidation.level === 'far' ? (
-                    <AlertTriangle className="h-4 w-4 text-destructive" />
-                  ) : (
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="text-sm font-medium text-foreground flex-1 text-left">
-                    {locationValidation.distanceMeters !== null
-                      ? `${Math.round(locationValidation.distanceMeters)} m`
-                      : t('cropGrowth.addLocation')}
-                  </span>
-                  <Navigation className="h-4 w-4 text-muted-foreground" />
-                </button>
+              {problem && (
+                <div className="flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /><span>{problem}</span>
+                </div>
               )}
 
-              <button
-                onClick={handleSubmit}
-                className="w-full py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold shadow-lg hover:opacity-90 transition-opacity"
-              >
-                {t('cropGrowth.uploadAndAnalyze')}
-              </button>
+              {shots.map((s, i) => (
+                <div key={s.photo.captureId} className="rounded-xl border border-border overflow-hidden">
+                  <img src={s.photo.previewUrl} alt={t(`${K}.shot.${s.role}.title`)} className="w-full max-h-56 object-cover" />
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-sm font-medium text-foreground">{t(`${K}.shot.${s.role}.title`)}</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => openCamera(i)}><RotateCcw className="h-4 w-4 mr-1" />{t(`${K}.retakeThis`)}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => removeShot(i)}>{t(`${K}.remove`)}</Button>
+                    </div>
+                  </div>
+                  {s.retake && (
+                    <p className="px-3 pb-3 text-sm text-warning">{t(`${K}.retake.${s.retake}`)}</p>
+                  )}
+                </div>
+              ))}
+
+              {nextRole && (
+                <div className={cn('rounded-xl border-2 border-dashed p-4 space-y-3',
+                  shots.length === 0 ? 'border-primary bg-primary/5' : 'border-border')}>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{t(`${K}.shot.${nextRole}.title`)}</p>
+                    <p className="text-sm text-muted-foreground">{t(`${K}.shot.${nextRole}.hint`)}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button className="h-12" onClick={() => openCamera()}>
+                      <Camera className="h-5 w-5 mr-2" />{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}
+                    </Button>
+                    <Button className="h-12" variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
+                      <Images className="h-5 w-5 mr-2" />{t(`${K}.addFromGallery`)}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {shots.length > 0 && (
+                <>
+                  <Textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={t(`${K}.yourWords`)} rows={3} />
+                  <Button className="w-full h-12 text-base" disabled={!canSend} onClick={send}>{t(`${K}.send`)}</Button>
+                </>
+              )}
             </>
           )}
 
-          {busy && (
-            <div className="flex items-center justify-center gap-2 py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm font-medium text-muted-foreground">
-                {phase === 'uploading' ? t('cropGrowth.uploading') : t('cropGrowth.analyzing')}
-              </span>
+          {phase === 'working' && (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">{workLabel}</p>
+            </div>
+          )}
+
+          {phase === 'result' && (
+            <div className="space-y-4">
+              <div className="flex gap-2 rounded-xl bg-success/10 p-3">
+                <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+                <p className="text-sm text-foreground whitespace-pre-line">{answerText}</p>
+              </div>
+              <Button className="w-full h-12" onClick={onClose}>{t(`${K}.done`)}</Button>
             </div>
           )}
         </div>
-
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileSelected}
-          className="hidden"
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileSelected}
-          className="hidden"
-        />
       </DialogContent>
     </Dialog>
   );

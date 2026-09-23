@@ -628,12 +628,11 @@ import {
   validateUnderstandingOutput
 } from '../llm-understanding-layer.ts';
 
-// PHASE-19: Photo Analyzer - Vision API Integration for crop photo analysis
-import {
-  analyzePhoto,
-  enhanceUnderstandingWithPhoto,
-  type PhotoAnalysisOutput
-} from '../photo/photo-analyzer.ts';
+// PHOTO EVIDENCE (2026-09-23): the perception engine runs in the diagnose_photo
+// route (photo/photo-routes.ts); a chat turn only loads its validated,
+// DB-vocabulary evidence. The vision model perceives; this brain decides.
+import { loadPhotoEvidenceForTurn } from '../photo/perception-engine.ts';
+import type { BrainPhotoEvidence } from '../photo/diagnosis-contract.ts';
 
 // PHASE-20: CLARIFICATION-FIRST CONFIDENCE STRATEGY
 import {
@@ -1664,7 +1663,7 @@ export class AIAgentOrchestrator {
     farmerId: string,
     tenantId: string,
     options: {
-      photoUrl?: string;
+      photoDiagnosisId?: string;   // crop_photo_diagnosis.id from the diagnose_photo route
       language?: string;
       landId?: string;
       traceId?: string;  // PHASE A: Accept trace_id for observability
@@ -1741,7 +1740,7 @@ export class AIAgentOrchestrator {
     // PHASE Y — RuntimeTraceCollector (single per request).
     const runtimeTrace = resetRuntimeTraceCollector({
       trace_id: traceId,
-      execution_mode: options.photoUrl ? 'live-vision' : 'live',
+      execution_mode: options.photoDiagnosisId ? 'live-vision' : 'live',
       started_at_ms: startTime,
     });
     // P0-A.2 — ALL request-boot knowledge caches run CONCURRENTLY. Verified:
@@ -1855,7 +1854,7 @@ export class AIAgentOrchestrator {
     console.log(`\n🚀 [${traceId}] Orchestrator v${ORCHESTRATOR_VERSION}: Starting full diagnostic flow...`);
     console.log(`   [${traceId}] Session: ${sessionId}`);
     console.log(`   [${traceId}] Message: ${safePreviewText(safeFarmerMessage)}`);
-    console.log(`   [${traceId}] HasText: ${hasTextInput}, HasPhoto: ${!!options.photoUrl}`);
+    console.log(`   [${traceId}] HasText: ${hasTextInput}, HasPhoto: ${!!options.photoDiagnosisId}`);
     console.log(`   [${traceId}] ContextTracer: v${CONTEXT_TRACER_VERSION}`);
     
     // PHASE-25: Initialize context trace for this turn
@@ -2022,64 +2021,30 @@ export class AIAgentOrchestrator {
       }
 
       
-      // PHASE-19: PHOTO ANALYSIS EARLY PATH
-      let photoAnalysisResult: PhotoAnalysisOutput | null = null;
-      // 2026-08-30: never let a previous turn's photo leak into this one.
-      (this as any)._photoAnalysisResult = null;
-      if (options.photoUrl) {
-        console.log('\n📸 [PHASE-19] Photo Analysis Path...');
-        const photoAnalysisStart = Date.now();
-        
+      // PHOTO EVIDENCE (2026-09-23): load the completed diagnosis for this land.
+      // Retakes, crop mismatches and model failures were already handled by
+      // the diagnose_photo route, so nothing here can ask for a retake.
+      let photoEvidence: BrainPhotoEvidence | null = null;
+      // never let a previous turn's photo leak into this one (warm singleton).
+      (this as any)._photoEvidence = null;
+      if (options.photoDiagnosisId) {
         try {
-          photoAnalysisResult = await analyzePhoto({
-            image_url: options.photoUrl,
-            farmer_message: farmerMessage,
-            crop_context: landContext ? {
-              crop_code: landContext.current_crop,
-              growth_stage: landContext.growth_stage,
-              days_since_sowing: landContext.days_since_sowing
-            } : undefined,
-            language: options.language || 'mr'
+          photoEvidence = await loadPhotoEvidenceForTurn(this.supabase, {
+            diagnosisId: options.photoDiagnosisId,
+            farmerId,
+            landId: options.landId ?? null,
           });
-          
-          agentsUsed.push('PHOTO_ANALYZER');
-          // 2026-08-30: the entity builders run in separate methods, so expose
-          // the analysed photo the same way this file already exposes
-          // cross-crop symptoms via `(this as any)._crossCropSymptoms`.
-          (this as any)._photoAnalysisResult = photoAnalysisResult;
-          const photoTime = Date.now() - photoAnalysisStart;
-          
-          console.log(`   ✅ Photo analyzed (${photoTime}ms)`);
-          console.log(`   Quality: ${photoAnalysisResult.image_quality.is_usable ? 'USABLE' : 'UNUSABLE'} (${(photoAnalysisResult.image_quality.quality_score * 100).toFixed(0)}%)`);
-          console.log(`   Observations: ${photoAnalysisResult?.observations?.length ?? 0}`);
-          console.log(`   Detected Issues: ${photoAnalysisResult?.detected_issues?.length ?? 0}`);
-          console.log(`   Severity: ${photoAnalysisResult.severity_assessment.overall_severity}`);
-          console.log(`   Urgency: ${photoAnalysisResult.severity_assessment.urgency}`);
-          
-          // If photo is unusable, request a better one
-          if (!photoAnalysisResult.image_quality.is_usable) {
-            console.log(`   ⚠️ Photo unusable - requesting retake`);
-            return {
-              type: 'PHOTO_REQUEST',
-              session_id: sessionId,
-              photo_instructions: {
-                text_en: `📷 Photo is not clear. Please send again.\n\n💡 Tips:\n• In good lighting\n• Close-up of affected area\n• Include healthy part for comparison`,
-                tips: photoAnalysisResult.image_quality.issues
-              },
-              metadata: {
-                confidence: 0,
-                safety_status: 'PHOTO_RETAKE_NEEDED',
-                rules_applied: 0,
-                processing_time_ms: Date.now() - startTime,
-                agents_used: agentsUsed,
-                trace_id: traceId,
-                photo_quality_issues: photoAnalysisResult.image_quality.issues
-              }
-            };
+          (this as any)._photoEvidence = photoEvidence;
+          if (photoEvidence) {
+            agentsUsed.push('PHOTO_EVIDENCE');
+            console.log(`\n📸 [PHOTO_EVIDENCE] diagnosis=${photoEvidence.diagnosis_id} confirmed=${photoEvidence.confirmed_observations.length} tentative=${photoEvidence.tentative_observations.length} priors=${photoEvidence.hypothesis_priors.length} crop_check=${photoEvidence.crop_check_status}`);
+          } else {
+            console.warn(`   ⚠️ [PHOTO_EVIDENCE] diagnosis ${options.photoDiagnosisId} not usable for this farmer/land — continuing without photo`);
+            agentsUsed.push('PHOTO_EVIDENCE_UNAVAILABLE');
           }
         } catch (photoError) {
-          console.error(`   ❌ Photo analysis failed (non-blocking):`, photoError);
-          agentsUsed.push('PHOTO_ANALYZER_FALLBACK');
+          console.error(`   ❌ [PHOTO_EVIDENCE] load failed (non-blocking):`, photoError);
+          agentsUsed.push('PHOTO_EVIDENCE_UNAVAILABLE');
         }
       }
       
@@ -5071,85 +5036,30 @@ export class AIAgentOrchestrator {
       console.log(`      Contradictions: ${understandingResult.contradiction_detected.length}`);
       console.log(`      Clarification required: ${understandingResult.clarification_required}`);
       
-      // PHASE-19: ENHANCED PHOTO OBSERVATION NORMALIZATION
-      
-      // Import photo observation mapper for canonical code normalization
-      let photoMappedCodes: any = null;
-      
-      if (photoAnalysisResult && photoAnalysisResult.success) {
-        console.log(`\n📸 [PHASE-19 v2.0] Normalizing photo observations to ObservationKeys...`);
-        
-        // STEP 1: Import and use the photo-to-ObservationKey mapper
-        const { mapPhotoToObservationKeys, photoProvidesSufficientData } = await import('../photo/photo-observation-mapper.ts');
-        photoMappedCodes = mapPhotoToObservationKeys(photoAnalysisResult);
-        
-        console.log(`   ✅ Mapped ${photoMappedCodes.observation_codes.length} ObservationKeys from photo`);
-        console.log(`   Keys: ${photoMappedCodes.observation_codes.slice(0, 5).join(', ')}${photoMappedCodes.observation_codes.length > 5 ? '...' : ''}`);
-        console.log(`   Severity: ${photoMappedCodes.severity_code}`);
-        console.log(`   Affected part: ${photoMappedCodes.affected_part_code}`);
-        
-        // STEP 2: Add photo observations to observation extraction (for NLU compatibility)
-        photoAnalysisResult.observations.forEach(obs => {
-          if (!observationExtraction.extracted_symptoms?.some(s => s.text?.includes(obs.key))) {
-            observationExtraction.extracted_symptoms = observationExtraction.extracted_symptoms || [];
-            observationExtraction.extracted_symptoms.push({
-              text: obs.description,
-              symptom_code: obs.key,
-              confidence: obs.confidence
-            } as any);
-          }
-        });
-        
-        // STEP 3: Inject photo observation codes into observationKeys array
-        // This ensures photo data flows through rule engine exactly like text selections
-        if (photoMappedCodes.observation_codes.length > 0) {
-          console.log(`   📥 Injecting ${photoMappedCodes.observation_codes.length} photo codes into observationKeys...`);
-          
-          photoMappedCodes.observation_codes.forEach((code: any) => {
-            if (!observationKeys.includes(code)) {
-              observationKeys.push(code);
-            }
-          });
-          
-          // Also inject into inductionResult.symptoms for canonical state
-          photoMappedCodes.observation_codes.forEach((code: any) => {
-            if (!inductionResult.symptoms.find((s: any) => s.symbol === code)) {
-              inductionResult.symptoms.push({
-                symbol: code,
-                confidence: photoMappedCodes.confidence,
-                source: 'PHOTO_VISION_AI'
-              });
-            }
-          });
-          
-          // Also inject into mappedCodes.observation_codes if exists
-          if (mappedCodes?.observation_codes) {
-            photoMappedCodes.observation_codes.forEach((code: any) => {
-              if (!mappedCodes.observation_codes.includes(code)) {
-                mappedCodes.observation_codes.push(code);
-              }
+      // PHOTO EVIDENCE → OBSERVATIONS (2026-09-23)
+      // Only codes validated against observation_master reach this point, and
+      // only those at/above photo_diagnosis_policy.observation_min_confidence
+      // are treated as observed (like a farmer's card selection). Tentative
+      // codes are NOT injected: the brain's normal clarification path asks the
+      // farmer. No literal thresholds and no clarification skipping here — the
+      // brain's own completeness logic decides what to ask next.
+      if (photoEvidence && photoEvidence.confirmed_observations.length > 0) {
+        for (const o of photoEvidence.confirmed_observations) {
+          const photoKey = o.observation_code as ObservationKey;
+          if (!observationKeys.includes(photoKey)) observationKeys.push(photoKey);
+          if (!inductionResult.symptoms.find((s: any) => s.symbol === o.observation_code)) {
+            inductionResult.symptoms.push({
+              symbol: o.observation_code,
+              confidence: o.confidence,
+              source: 'VISION',
             });
           }
+          if (mappedCodes?.observation_codes && !mappedCodes.observation_codes.includes(photoKey)) {
+            mappedCodes.observation_codes.push(photoKey);
+          }
         }
-        
-        // STEP 4: Check if photo provides sufficient data to skip clarification
-        const photoIsSufficient = photoProvidesSufficientData(photoMappedCodes);
-        
-        if (photoIsSufficient) {
-          console.log(`   📈 Photo provides SUFFICIENT data (${photoMappedCodes.observation_codes.length} codes, ${(photoMappedCodes.confidence * 100).toFixed(0)}% confidence)`);
-          console.log(`   ⏭️ SKIPPING clarification - proceeding directly to rule evaluation`);
-          understandingResult.clarification_required = false;
-          understandingResult.completeness_score = Math.min(100, understandingResult.completeness_score + 30);
-          understandingResult.understanding_confidence = UnderstandingConfidence.HIGH;
-        } else if (photoAnalysisResult.observations.length >= 2 && photoAnalysisResult.confidence > 0.6) {
-          console.log(`   📈 Photo provides ${photoAnalysisResult.observations.length} observations - reducing clarification need`);
-          understandingResult.clarification_required = false;
-          understandingResult.completeness_score = Math.min(100, understandingResult.completeness_score + 20);
-          understandingResult.understanding_confidence = UnderstandingConfidence.SUFFICIENT;
-        }
-        
-        agentsUsed.push('PHOTO_OBSERVATION_NORMALIZER');
-        agentsUsed.push('PHOTO_UNDERSTANDING_ENHANCED');
+        console.log(`   📥 [PHOTO_EVIDENCE] injected ${photoEvidence.confirmed_observations.length} confirmed codes; ${photoEvidence.tentative_observations.length} left for farmer confirmation`);
+        agentsUsed.push('PHOTO_OBSERVATIONS');
       }
       
       // PHASE-22 v4.0: CROP DAMAGE DETECTION GATE (OBSERVATION-DERIVED AUTHORITY)
@@ -5258,10 +5168,11 @@ export class AIAgentOrchestrator {
         console.log(`   📊 [SYMBOL_CONTRACT] Total rejected (empty/blank only, casing NOT a rejection reason): ${filteredOutCount}`);
       }
       
-      // PHASE-19 v2.0: Add photo-mapped codes - tagged as CONFIRMED (photo-verified)
-      if (photoMappedCodes?.observation_codes) {
-        console.log(`   📸 Adding ${photoMappedCodes.observation_codes.length} photo codes as CONFIRMED`);
-        photoMappedCodes.observation_codes.forEach((code: any) => {
+      // 2026-09-23: photo codes that passed the confidence gate carry CONFIRMED
+      // authority (validated against observation_master by the perception engine).
+      if (photoEvidence && photoEvidence.confirmed_observations.length > 0) {
+        console.log(`   📸 Adding ${photoEvidence.confirmed_observations.length} photo codes as CONFIRMED`);
+        photoEvidence.confirmed_observations.forEach(({ observation_code: code }) => {
           const norm = acceptSymbol(code);
           if (norm) {
             allObservationsForPreAuth.add(norm);
@@ -5980,18 +5891,13 @@ export class AIAgentOrchestrator {
       
       // v4.0: Enhanced activation check - crop damage OR terminal damage OR photo-detected issues
       // PHASE-19 v2.0: If photo detected high-confidence issues, force diagnosis mode
+      // 2026-09-23: a photo whose validated evidence contains at least one
+      // confirmed observation is a diagnostic request; the model's own issue
+      // confidence no longer decides the mode.
       let photoForcedDiagnosis = false;
-      if (photoAnalysisResult?.success && photoAnalysisResult.detected_issues.length > 0) {
-        const photoHasHighConfidenceIssue = photoAnalysisResult.detected_issues.some(
-          (issue: any) => issue.confidence > 0.7
-        );
-        
-        if (photoHasHighConfidenceIssue) {
-          console.log(`   📸 [PHOTO DIAGNOSIS TRIGGER] Photo detected ${photoAnalysisResult.detected_issues.length} issues - forcing DIAGNOSIS mode`);
-          console.log(`   Photo severity: ${photoAnalysisResult.severity_assessment.overall_severity}`);
-          console.log(`   Photo confidence: ${(photoAnalysisResult.confidence * 100).toFixed(0)}%`);
-          photoForcedDiagnosis = true;
-        }
+      if (photoEvidence && photoEvidence.confirmed_observations.length > 0) {
+        console.log(`   📸 [PHOTO DIAGNOSIS TRIGGER] ${photoEvidence.confirmed_observations.length} confirmed photo observations - DIAGNOSIS mode`);
+        photoForcedDiagnosis = true;
       }
       
       // v5.1: `preAuthorityResult.nlu_bypassed` removed — authority-aware crop damage detector is the SSOT.
@@ -7962,7 +7868,7 @@ export class AIAgentOrchestrator {
       }
       
       // CRITICAL: Only allow LLM-first for NON-agricultural queries (use deterministic flag)
-      if (effectiveCanDirectAnswer && !options.photoUrl) {
+      if (effectiveCanDirectAnswer && !options.photoDiagnosisId) {
         console.log('   ⚡ Using LLM-FIRST path (skipping rule engine)');
         agentsUsed.push('LLM_Direct');
         
@@ -8054,8 +7960,9 @@ export class AIAgentOrchestrator {
       // VisualAgentInput requires image_data / text_context / crop_context /
       // diagnostic_goals, so it threw on every invocation and its only
       // observable output was a misleading 'Visual_FALLBACK' trace entry.
-      // Photo evidence reaches the Decision Brain through the PHASE-19 path
-      // above (analyzePhoto -> mapPhotoToObservationKeys -> observationKeys).
+      // Photo evidence reaches the Decision Brain through the PHOTO EVIDENCE
+      // path above (diagnose_photo route -> loadPhotoEvidenceForTurn ->
+      // observationKeys).
       console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       
       // PHASE 1B: CONTEXT LOADING (with NLU output) - with error boundary
@@ -10676,7 +10583,7 @@ export class AIAgentOrchestrator {
       if (_primaryIsSentinel) console.log(`   🛑 [SENTINEL_NOT_ADVICE] primary is the NEEDS_MORE_EVIDENCE sentinel (rules_applied=${rulesAppliedCount}) → treated as no recommendation`);
       const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision || _primaryIsSentinel;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
-      const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
+      const hasNoPhoto = !photoEvidence;
       const observationAuthorityStillRequiresClarification =
         !!(this as any).__conversationState?.clarification_required &&
         (
@@ -10881,28 +10788,23 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // PHASE-19: Enhance decision with photo analysis results if available
-      if (photoAnalysisResult && photoAnalysisResult.success) {
-        console.log(`\n📸 [PHASE-19] Enhancing decision with photo analysis...`);
-        
-        // Add photo observations to decision output
+      // 2026-09-23: photo evidence is attached for traceability only. The old
+      // unconditional +0.15 confidence boost is removed — the photo already
+      // counts through the observations it contributed.
+      if (photoEvidence) {
         decisionOutput = {
           ...decisionOutput,
-          photo_analysis: {
-            observations: photoAnalysisResult.observations,
-            detected_issues: photoAnalysisResult.detected_issues,
-            severity: photoAnalysisResult.severity_assessment,
-            confidence_boost: photoAnalysisResult.confidence > 0.7 ? 0.15 : 0.05
-          }
-        };
-        
-        // Boost confidence if photo confirms diagnosis
-        if (photoAnalysisResult.confidence > 0.7) {
-          decisionOutput.confidence_score = Math.min(1, (decisionOutput.confidence_score || 0.5) + 0.15);
-          console.log(`   Confidence boosted to ${(decisionOutput.confidence_score * 100).toFixed(0)}% (photo confirmation)`);
-        }
-        
-        agentsUsed.push('PHOTO_ENHANCED');
+          photo_evidence: {
+            diagnosis_id: photoEvidence.diagnosis_id,
+            upload_ids: photoEvidence.upload_ids,
+            crop_check_status: photoEvidence.crop_check_status,
+            plant_part_code: photoEvidence.plant_part_code,
+            observed_stage_code: photoEvidence.observed_stage_code,
+            confirmed_observations: photoEvidence.confirmed_observations,
+            tentative_observations: photoEvidence.tentative_observations,
+            hypothesis_priors: photoEvidence.hypothesis_priors,
+          },
+        } as any;
       }
       
       // P0-E: INTENT LOCK ENFORCEMENT - Filter actions by locked intent
@@ -12821,10 +12723,9 @@ export class AIAgentOrchestrator {
       // 2026-08-30: was `|| 20`. A fabricated severity suppressed
       // Q_AFFECTED_AREA / Q_PEST_DENSITY (rule-module-resolver.ts:293,335),
       // earned an unearned +0.1 confidence (:428), and reached the farmer as a
-      // stated measurement. Authority order: measured photo severity → fused
-      // visual → genuinely absent.
+      // stated measurement. 2026-09-23: the vision model's area guess is no
+      // longer used — severity is never taken from the photo model.
       affected_area_percent:
-        (this as any)._photoAnalysisResult?.severity_assessment?.affected_area_percent ??
         fused.visual_analysis?.severity_quantification?.affected_area_percent ??
         undefined,
       product_mentioned: nluOutput.entities_extracted?.product_mentioned?.raw_text,

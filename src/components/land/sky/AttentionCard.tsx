@@ -46,7 +46,7 @@ export function AttentionCard({ sky, landId, cropName, farmerId, tenantId, onSho
           )}
         </div>
       </CardContent>
-      <CropPhotoCapture isOpen={open} onClose={() => setOpen(false)} surface="chat" farmerId={farmerId} tenantId={tenantId} landId={landId} cropName={cropName ?? undefined} />
+      <CropPhotoCapture isOpen={open} onClose={() => setOpen(false)} purpose="land_card" farmerId={farmerId} tenantId={tenantId} landId={landId} />
     </Card>
   );
 }

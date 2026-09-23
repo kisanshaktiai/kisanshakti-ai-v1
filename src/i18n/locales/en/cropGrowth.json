@@ -76,6 +76,51 @@
     "assumptions": "Assumptions",
     "basedOn": "Based on",
     "confident": "confident",
-    "yieldEstimate": "Expected Yield"
+    "yieldEstimate": "Expected Yield",
+    "capture": {
+      "translation_status": "SOURCE",
+      "title": "Show your crop",
+      "chooseLand": "Which land is this photo from?",
+      "shot": {
+        "symptom_closeup": {
+          "title": "Close photo of the problem",
+          "hint": "Bring the phone close. Fill the screen with the spot, insect or damaged part."
+        },
+        "whole_plant": {
+          "title": "Whole plant",
+          "hint": "Step back and show the full plant."
+        },
+        "field_view": {
+          "title": "Field view",
+          "hint": "Show a wider part of the field."
+        }
+      },
+      "takeNext": "Take next photo",
+      "addFromGallery": "Choose from gallery",
+      "retakeThis": "Take again",
+      "remove": "Remove",
+      "yourWords": "Tell in your words what you see (optional)",
+      "send": "Send",
+      "savedOffline": "Saved. It will be sent when internet is back.",
+      "uploading": "Sending photo...",
+      "diagnosing": "Looking at the photo...",
+      "thinking": "Preparing your answer...",
+      "openInChat": "Open in chat",
+      "done": "Done",
+      "failed": "Could not check the photo. Please try again.",
+      "cropUnresolved": "The crop on this land is not set clearly. Please update the land's crop and try again.",
+      "cropMismatch": "This photo does not look like the crop registered on this land. Please check the land or take a photo of the right crop.",
+      "retake": {
+        "blurred": "Photo is blurred. Hold the phone steady and take again.",
+        "too_dark": "Photo is too dark. Take it in daylight.",
+        "overexposed": "Photo is too bright. Avoid direct sun on the lens.",
+        "not_a_plant": "No plant is seen in the photo. Please photograph the crop.",
+        "wrong_plant_part": "This part does not show the problem. Photograph the affected part.",
+        "too_far": "Photo is taken from too far. Go closer.",
+        "obstructed": "Something is blocking the view. Take the photo again.",
+        "generic": "Photo is not clear. Please take again."
+      },
+      "maxPhotos": "You can send up to {{count}} photos together."
+    }
   }
 }

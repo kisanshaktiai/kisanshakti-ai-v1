@@ -88,11 +88,6 @@ export interface FarmerData {
   // Timestamps
   created_at: string | null;
   updated_at: string | null;
-  timezone?: string | null;
-  farming_preference?: string | null;
-  default_nutrient_policy?: string | null;
-  default_protection_policy?: string | null;
-  organic_standard?: string | null;
   
   // Sync metadata (local only)
   lastModified: number;
@@ -572,7 +567,6 @@ export interface AIChatMessageData {
   decision_brain_source: boolean | null;
   actions_returned: any;
   actions_filtered_out: any;
-  response_source?: string | null;
   
   // Metadata
   metadata: any;
@@ -599,17 +593,6 @@ export interface CropData {
   label_local: string | null;
   label_hi: string | null;
   label_mr: string | null;
-  label_pa?: string | null;
-  label_ta?: string | null;
-  label_te?: string | null;
-  label_bn?: string | null;
-  label_gu?: string | null;
-  label_kn?: string | null;
-  label_ml?: string | null;
-  label_or?: string | null;
-  label_as?: string | null;
-  label_ur?: string | null;
-  label_sa?: string | null;
   local_name: string | null;
   
   // Visual
@@ -817,7 +800,6 @@ export interface SyncMetadata {
   pendingChanges: number;
   syncInProgress: boolean;
   schemaVersion: number;
-  cacheBuildHash?: string | null;
   // PHASE 3C: Per-entity incremental sync timestamps (ISO8601). Optional/additive.
   // When present, the next sync sends `?since=<value>` and only downloads delta rows.
   entityLastSync?: {
@@ -1002,11 +984,51 @@ interface KisanDB extends DBSchema {
     };
   };
 
+  // photoCaptureQueue table (local only) — crop photos waiting to upload.
+  // Holds the camera's own image; the one resize + encode happens at sync time
+  // with the server's current image policy (2026-09-23).
+  photoCaptureQueue: {
+    key: string;
+    value: PhotoCaptureQueueItem;
+    indexes: {
+      'by-farmer': string;
+      'by-status': string;
+    };
+  };
+
   // syncMetadata table (local only)
   syncMetadata: {
     key: string;
     value: SyncMetadata;
   };
+}
+
+/**
+ * A captured crop photo waiting for upload (offline-first). `id` is the
+ * client_capture_id — the server's idempotency key, so a retry never creates
+ * a second evidence row.
+ */
+export interface PhotoCaptureQueueItem {
+  id: string;
+  farmer_id: string;
+  tenant_id: string;
+  land_id: string;
+  purpose: 'chat_question' | 'instascan' | 'schedule_task' | 'growth_tracking' | 'land_card';
+  shot_role: 'symptom_closeup' | 'whole_plant' | 'field_view' | 'other';
+  schedule_id: string | null;
+  task_id: string | null;
+  subject_type: string | null;
+  source: 'still_camera' | 'in_app_camera' | 'gallery';
+  original: Blob;
+  captured_at: string;
+  location: { lat: number; lon: number; accuracy_m: number | null } | null;
+  created_offline: boolean;
+  status: 'pending' | 'uploaded' | 'failed';
+  upload_id: string | null;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+  lastModified: number;
 }
 
 /**
@@ -1042,8 +1064,8 @@ export interface ProactiveAlertData {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 13; // 2026-09-23: offline cache contract parity
-const SCHEMA_VERSION = 11; // 2026-09-23: offline cache contract parity
+const DB_VERSION = 13; // Bumped for photoCaptureQueue offline photo queue (2026-09-23)
+const SCHEMA_VERSION = 10; // Bumped for proactive alerts parity
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -1254,6 +1276,14 @@ class LocalDatabase {
           console.log('✅ [LocalDB] Created proactiveAlerts store');
         }
 
+        // Create photoCaptureQueue store (offline crop photos, 2026-09-23)
+        if (!db.objectStoreNames.contains('photoCaptureQueue')) {
+          const pqStore = db.createObjectStore('photoCaptureQueue', { keyPath: 'id' });
+          pqStore.createIndex('by-farmer', 'farmer_id');
+          pqStore.createIndex('by-status', 'status');
+          console.log('✅ [LocalDB] Created photoCaptureQueue store');
+        }
+
         // Create syncMetadata store
         if (!db.objectStoreNames.contains('syncMetadata')) {
           db.createObjectStore('syncMetadata', { keyPath: 'key' });
@@ -1324,17 +1354,29 @@ class LocalDatabase {
         pendingChanges: 0,
         syncInProgress: false,
         schemaVersion: SCHEMA_VERSION,
-        cacheBuildHash: null,
       });
       console.log('✅ [LocalDB] Schema metadata initialized');
     } else if (existing.schemaVersion !== SCHEMA_VERSION) {
-      // IndexedDB structural changes are handled by DB_VERSION migrations.
-      // Never clear here: pending offline writes must survive an app upgrade.
-      console.warn(`⚠️ [LocalDB] Cache schema contract changed: ${existing.schemaVersion} -> ${SCHEMA_VERSION}`);
-      existing.schemaVersion = SCHEMA_VERSION;
-      existing.lastSchemaCheck = Date.now();
-      await store.put(existing);
-      console.log('✅ [LocalDB] Schema metadata advanced without deleting offline data');
+      // Schema version mismatch - clear all data
+      console.warn(`⚠️ [LocalDB] Schema version mismatch: ${existing.schemaVersion} vs ${SCHEMA_VERSION}`);
+      console.log('🗑️ [LocalDB] Clearing all data due to schema mismatch...');
+      
+      await tx.done;
+      await this.clearAll();
+      
+      // Reinitialize metadata with new schema version
+      const newTx = this.db.transaction('syncMetadata', 'readwrite');
+      await newTx.objectStore('syncMetadata').put({
+        key: 'main',
+        lastSyncTime: null,
+        lastSchemaCheck: Date.now(),
+        pendingChanges: 0,
+        syncInProgress: false,
+        schemaVersion: SCHEMA_VERSION,
+      });
+      await newTx.done;
+      
+      console.log('✅ [LocalDB] Data cleared and schema updated to v', SCHEMA_VERSION);
     } else {
       // Update last schema check time
       existing.lastSchemaCheck = Date.now();
@@ -1945,35 +1987,6 @@ class LocalDatabase {
   }
   
   /**
-   * Clear server-derived offline mirrors before a safe full rehydration.
-   * Pending writes must already have been uploaded/marked synced.
-   * Chat history is retained because the normal sync path does not rebuild
-   * the complete chat history.
-   */
-  async prepareForFullServerRefresh(): Promise<void> {
-    if (!this.db) await this.initialize();
-    const stores: Array<keyof KisanDB> = [
-      'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 'crops',
-      'weather', 'farmerAlerts', 'farmerSubscriptions', 'subscriptionPlans',
-      'subscriptionUsageLogs', 'paymentRecords', 'proactiveAlerts'
-    ];
-    const existing = Array.from(this.db!.objectStoreNames);
-    const toClear = stores.filter(name => existing.includes(name as string));
-    if (toClear.length) {
-      const tx = this.db!.transaction(toClear as any, 'readwrite');
-      for (const storeName of toClear) await tx.objectStore(storeName as any).clear();
-      await tx.done;
-    }
-    await this.updateSyncMetadata({
-      lastSyncTime: null,
-      pendingChanges: 0,
-      syncInProgress: false,
-      entityLastSync: {},
-    });
-    console.log('🔄 [LocalDB] Server-derived offline mirrors cleared for full rehydration');
-  }
-
-  /**
    * Force clear and reload all data from server
    * Used for full sync/refresh operations
    */
@@ -2150,6 +2163,33 @@ class LocalDatabase {
     return filtered.sort((a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+  }
+
+  // ========== PHOTO CAPTURE QUEUE OPERATIONS ==========
+
+  async queuePhotoCapture(item: Omit<PhotoCaptureQueueItem, 'lastModified'>): Promise<void> {
+    if (!this.db) await this.initialize();
+    await this.db!.put('photoCaptureQueue', { ...item, lastModified: Date.now() });
+  }
+
+  async getPhotoCapture(id: string): Promise<PhotoCaptureQueueItem | undefined> {
+    if (!this.db) await this.initialize();
+    return await this.db!.get('photoCaptureQueue', id);
+  }
+
+  async updatePhotoCapture(id: string, patch: Partial<Omit<PhotoCaptureQueueItem, 'id'>>): Promise<void> {
+    if (!this.db) await this.initialize();
+    const current = await this.db!.get('photoCaptureQueue', id);
+    if (!current) return;
+    await this.db!.put('photoCaptureQueue', { ...current, ...patch, id, lastModified: Date.now() });
+  }
+
+  async getPendingPhotoCaptures(farmerId: string): Promise<PhotoCaptureQueueItem[]> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('photoCaptureQueue', 'by-farmer', farmerId);
+    return all
+      .filter((p) => p.status !== 'uploaded')
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }
 }
 

@@ -32,7 +32,7 @@ export function AskCard({ sky, landId, cropName, farmerId, tenantId }: { sky: Fi
           <Camera className="h-5 w-5 mr-2" />{t('sky.ask.cta', 'Take a photo of the field')}
         </Button>
       </CardContent>
-      <CropPhotoCapture isOpen={open} onClose={() => setOpen(false)} surface="chat" farmerId={farmerId} tenantId={tenantId} landId={landId} cropName={cropName} />
+      <CropPhotoCapture isOpen={open} onClose={() => setOpen(false)} purpose="land_card" farmerId={farmerId} tenantId={tenantId} landId={landId} />
     </Card>
   );
 }
