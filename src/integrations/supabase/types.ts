@@ -3752,6 +3752,24 @@ export type Database = {
         }
         Relationships: []
       }
+      brain_typec_2026_09_22_backup: {
+        Row: {
+          backed_up_at: string | null
+          observation_code: string
+          old_category: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          observation_code: string
+          old_category?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          observation_code?: string
+          old_category?: string | null
+        }
+        Relationships: []
+      }
       brain_valuefix_2026_09_18_rules_backup: {
         Row: {
           action_text: string | null
@@ -4301,6 +4319,27 @@ export type Database = {
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
           wind_speed_max_kmph?: number | null
+        }
+        Relationships: []
+      }
+      brain_visibility_2026_09_22_backup: {
+        Row: {
+          backed_up_at: string | null
+          can_generate_question: boolean | null
+          is_farmer_observable: boolean | null
+          observation_code: string
+        }
+        Insert: {
+          backed_up_at?: string | null
+          can_generate_question?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_code: string
+        }
+        Update: {
+          backed_up_at?: string | null
+          can_generate_question?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_code?: string
         }
         Relationships: []
       }
