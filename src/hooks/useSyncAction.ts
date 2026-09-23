@@ -29,7 +29,7 @@ export function useSyncAction() {
           duration: 2000,
         });
 
-        const result = await syncService.performSync(true);        const result = await syncService.performSync(!forceFull);
+        const result = await syncService.performSync(true);
 
         if (result.success) {
           await queryClient.invalidateQueries();
@@ -42,7 +42,7 @@ export function useSyncAction() {
             duration: 3000,
           });
 
-          setTimeout(() => setSyncSuccess(false), 2000);          setTimeout(() => setSyncSuccess(false), 2000);
+          setTimeout(() => setSyncSuccess(false), 2000);
         } else {
           setSyncError(true);
           toast({
