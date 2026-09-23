@@ -1,4 +1,4 @@
-import { RefreshCw, Database, CheckCircle2, AlertCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,13 +64,9 @@ export function UnifiedSyncButton() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" sideOffset={8} className="w-60">
-        <DropdownMenuItem onClick={() => handleSync(false)} disabled={syncing || !isOnline}>
+        <DropdownMenuItem onClick={() => handleSync()} disabled={syncing || !isOnline}>
           <RefreshCw className="mr-2 h-4 w-4" />
-          <span>{t('sync.quick_sync', 'Quick sync')}</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleSync(true)} disabled={syncing || !isOnline}>
-          <Database className="mr-2 h-4 w-4" />
-          <span>{t('sync.full_reload', 'Full reload')}</span>
+          <span>{t('sync.sync_data', 'Sync data')}</span>
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
