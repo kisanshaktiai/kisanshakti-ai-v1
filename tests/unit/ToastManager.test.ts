@@ -3,7 +3,8 @@
  * Verifies toast deduplication logic
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { toast } from 'sonner';
 import { toastManager } from '@/utils/ToastManager';
 
 // Mock sonner
@@ -16,15 +17,20 @@ vi.mock('sonner', () => ({
 
 describe('ToastManager', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     toastManager.reset();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('should show toast on first call', () => {
     toastManager.success('Test message', 'test-id');
     
     // Toast should be shown
-    expect(vi.mocked(require('sonner').toast.success)).toHaveBeenCalledWith(
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
       'Test message',
       expect.objectContaining({ id: 'test-id' })
     );
@@ -37,27 +43,27 @@ describe('ToastManager', () => {
     toastManager.success('Message 2', id); // Should be suppressed
     
     // Only first toast should be shown
-    expect(vi.mocked(require('sonner').toast.success)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(1);
   });
 
-  it('should allow same toast after dedup window expires', async () => {
+  it('should allow same toast after dedup window expires', () => {
     const id = 'time-test';
     
     toastManager.success('Message 1', id);
     
     // Fast-forward time past dedup window
-    await new Promise(resolve => setTimeout(resolve, 3100));
+    vi.advanceTimersByTime(3001);
     
     toastManager.success('Message 2', id);
     
     // Both toasts should be shown
-    expect(vi.mocked(require('sonner').toast.success)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(2);
   });
 
   it('should handle error toasts correctly', () => {
     toastManager.error('Error message', 'error-id');
     
-    expect(vi.mocked(require('sonner').toast.error)).toHaveBeenCalledWith(
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
       'Error message',
       expect.objectContaining({ id: 'error-id' })
     );
@@ -68,7 +74,7 @@ describe('ToastManager', () => {
     toastManager.success('Message 2', 'id-2');
     
     // Both should be shown since they have different IDs
-    expect(vi.mocked(require('sonner').toast.success)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(2);
   });
 
   it('should clear specific toast from cache', () => {
@@ -79,6 +85,6 @@ describe('ToastManager', () => {
     toastManager.success('Message 2', id);
     
     // After clear, second toast should be shown
-    expect(vi.mocked(require('sonner').toast.success)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(toast.success)).toHaveBeenCalledTimes(2);
   });
 });
