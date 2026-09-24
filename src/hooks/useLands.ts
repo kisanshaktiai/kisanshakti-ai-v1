@@ -71,7 +71,7 @@ export function useLands() {
                 farmer_id: farmerId,
                 lastModified: new Date(l.updated_at || l.created_at || Date.now()).getTime(),
                 syncStatus: 'synced' as const,
-              })),
+              })) as unknown as Parameters<typeof localDB.bulkSave>[0]['lands'],
             });
             console.log('💾 [useLands] Saved to local DB for offline use');
           }

@@ -7209,75 +7209,186 @@ export type Database = {
       }
       crop_growth_uploads: {
         Row: {
+          bytes: number | null
           capture_location: Json | null
+          capture_purpose: string | null
+          captured_at: string | null
+          client_capture_id: string | null
+          client_quality: Json | null
+          consent_log_id: string | null
+          content_sha256: string | null
+          context_snapshot: Json | null
+          contract_version: string
           created_at: string
+          created_offline: boolean
+          crop_id: string | null
+          crop_value: string | null
+          cultivation_method: string | null
+          das: number | null
+          dat: number | null
+          device: Json | null
           distance_from_land_meters: number | null
           farmer_id: string
           file_type: string
-          file_url: string
+          file_url: string | null
+          gdd: number | null
+          height_px: number | null
           id: string
           is_processed: boolean | null
           land_id: string
+          location_level: string
           location_validated: boolean | null
+          mime_type: string
           ndvi_at_capture: number | null
           notes: string | null
+          object_confirmed: boolean
+          original_height_px: number | null
+          original_width_px: number | null
+          processing: Json | null
           processing_error: string | null
           schedule_id: string | null
+          stage_code: string | null
+          stage_uuid: string | null
+          storage_bucket: string
+          storage_path: string | null
           task_id: string | null
           tenant_id: string
           thumbnail_url: string | null
+          training_consent: boolean
           updated_at: string
           upload_timestamp: string
           upload_type: string | null
           weather_at_capture: Json | null
+          width_px: number | null
         }
         Insert: {
+          bytes?: number | null
           capture_location?: Json | null
+          capture_purpose?: string | null
+          captured_at?: string | null
+          client_capture_id?: string | null
+          client_quality?: Json | null
+          consent_log_id?: string | null
+          content_sha256?: string | null
+          context_snapshot?: Json | null
+          contract_version?: string
           created_at?: string
+          created_offline?: boolean
+          crop_id?: string | null
+          crop_value?: string | null
+          cultivation_method?: string | null
+          das?: number | null
+          dat?: number | null
+          device?: Json | null
           distance_from_land_meters?: number | null
           farmer_id: string
-          file_type: string
-          file_url: string
+          file_type?: string
+          file_url?: string | null
+          gdd?: number | null
+          height_px?: number | null
           id?: string
           is_processed?: boolean | null
           land_id: string
+          location_level?: string
           location_validated?: boolean | null
+          mime_type?: string
           ndvi_at_capture?: number | null
           notes?: string | null
+          object_confirmed?: boolean
+          original_height_px?: number | null
+          original_width_px?: number | null
+          processing?: Json | null
           processing_error?: string | null
           schedule_id?: string | null
+          stage_code?: string | null
+          stage_uuid?: string | null
+          storage_bucket?: string
+          storage_path?: string | null
           task_id?: string | null
           tenant_id: string
           thumbnail_url?: string | null
+          training_consent?: boolean
           updated_at?: string
           upload_timestamp?: string
           upload_type?: string | null
           weather_at_capture?: Json | null
+          width_px?: number | null
         }
         Update: {
+          bytes?: number | null
           capture_location?: Json | null
+          capture_purpose?: string | null
+          captured_at?: string | null
+          client_capture_id?: string | null
+          client_quality?: Json | null
+          consent_log_id?: string | null
+          content_sha256?: string | null
+          context_snapshot?: Json | null
+          contract_version?: string
           created_at?: string
+          created_offline?: boolean
+          crop_id?: string | null
+          crop_value?: string | null
+          cultivation_method?: string | null
+          das?: number | null
+          dat?: number | null
+          device?: Json | null
           distance_from_land_meters?: number | null
           farmer_id?: string
           file_type?: string
-          file_url?: string
+          file_url?: string | null
+          gdd?: number | null
+          height_px?: number | null
           id?: string
           is_processed?: boolean | null
           land_id?: string
+          location_level?: string
           location_validated?: boolean | null
+          mime_type?: string
           ndvi_at_capture?: number | null
           notes?: string | null
+          object_confirmed?: boolean
+          original_height_px?: number | null
+          original_width_px?: number | null
+          processing?: Json | null
           processing_error?: string | null
           schedule_id?: string | null
+          stage_code?: string | null
+          stage_uuid?: string | null
+          storage_bucket?: string
+          storage_path?: string | null
           task_id?: string | null
           tenant_id?: string
           thumbnail_url?: string | null
+          training_consent?: boolean
           updated_at?: string
           upload_timestamp?: string
           upload_type?: string | null
           weather_at_capture?: Json | null
+          width_px?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "crop_growth_uploads_consent_log_id_fkey"
+            columns: ["consent_log_id"]
+            isOneToOne: false
+            referencedRelation: "farmer_consent_log"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
           {
             foreignKeyName: "crop_growth_uploads_land_id_fkey"
             columns: ["land_id"]
@@ -7781,6 +7892,407 @@ export type Database = {
             columns: ["schedule_id"]
             isOneToOne: false
             referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_photo_annotation: {
+        Row: {
+          annotation_type: string
+          assertion: string
+          confidence: number | null
+          created_at: string
+          diagnosis_id: string | null
+          farmer_id: string
+          id: string
+          labeller_ref: string
+          labeller_type: string
+          land_id: string
+          model_name: string | null
+          model_version: string | null
+          prompt_version: string | null
+          region: Json | null
+          source_tier: string
+          supersedes_id: string | null
+          tenant_id: string
+          upload_id: string
+          value_code: string | null
+          value_numeric: number | null
+          value_text: string | null
+        }
+        Insert: {
+          annotation_type: string
+          assertion?: string
+          confidence?: number | null
+          created_at?: string
+          diagnosis_id?: string | null
+          farmer_id: string
+          id?: string
+          labeller_ref: string
+          labeller_type: string
+          land_id: string
+          model_name?: string | null
+          model_version?: string | null
+          prompt_version?: string | null
+          region?: Json | null
+          source_tier: string
+          supersedes_id?: string | null
+          tenant_id: string
+          upload_id: string
+          value_code?: string | null
+          value_numeric?: number | null
+          value_text?: string | null
+        }
+        Update: {
+          annotation_type?: string
+          assertion?: string
+          confidence?: number | null
+          created_at?: string
+          diagnosis_id?: string | null
+          farmer_id?: string
+          id?: string
+          labeller_ref?: string
+          labeller_type?: string
+          land_id?: string
+          model_name?: string | null
+          model_version?: string | null
+          prompt_version?: string | null
+          region?: Json | null
+          source_tier?: string
+          supersedes_id?: string | null
+          tenant_id?: string
+          upload_id?: string
+          value_code?: string | null
+          value_numeric?: number | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_photo_annotation_diagnosis_id_fkey"
+            columns: ["diagnosis_id"]
+            isOneToOne: false
+            referencedRelation: "crop_photo_diagnosis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_annotation_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "crop_photo_annotation"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_annotation_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_photo_diagnosis: {
+        Row: {
+          cached_input_tokens: number | null
+          chat_session_id: string | null
+          completed_at: string | null
+          cost_usd: number | null
+          created_at: string
+          decision_log_id: string | null
+          decision_summary: Json | null
+          decision_trace_id: string | null
+          engine_version: string
+          error_code: string | null
+          error_detail: string | null
+          fallback_used: boolean
+          farmer_id: string
+          farmer_text: string | null
+          follow_up: Json | null
+          id: string
+          input_tokens: number | null
+          land_id: string
+          language: string
+          latency_ms: number | null
+          model_requested: string | null
+          model_used: string | null
+          output_tokens: number | null
+          perception: Json | null
+          price_snapshot: Json | null
+          prompt_version: string | null
+          purpose: string
+          schedule_id: string | null
+          status: string
+          task_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cached_input_tokens?: number | null
+          chat_session_id?: string | null
+          completed_at?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          decision_log_id?: string | null
+          decision_summary?: Json | null
+          decision_trace_id?: string | null
+          engine_version: string
+          error_code?: string | null
+          error_detail?: string | null
+          fallback_used?: boolean
+          farmer_id: string
+          farmer_text?: string | null
+          follow_up?: Json | null
+          id?: string
+          input_tokens?: number | null
+          land_id: string
+          language?: string
+          latency_ms?: number | null
+          model_requested?: string | null
+          model_used?: string | null
+          output_tokens?: number | null
+          perception?: Json | null
+          price_snapshot?: Json | null
+          prompt_version?: string | null
+          purpose: string
+          schedule_id?: string | null
+          status?: string
+          task_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          cached_input_tokens?: number | null
+          chat_session_id?: string | null
+          completed_at?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          decision_log_id?: string | null
+          decision_summary?: Json | null
+          decision_trace_id?: string | null
+          engine_version?: string
+          error_code?: string | null
+          error_detail?: string | null
+          fallback_used?: boolean
+          farmer_id?: string
+          farmer_text?: string | null
+          follow_up?: Json | null
+          id?: string
+          input_tokens?: number | null
+          land_id?: string
+          language?: string
+          latency_ms?: number | null
+          model_requested?: string | null
+          model_used?: string | null
+          output_tokens?: number | null
+          perception?: Json | null
+          price_snapshot?: Json | null
+          prompt_version?: string | null
+          purpose?: string
+          schedule_id?: string | null
+          status?: string
+          task_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_photo_diagnosis_decision_log_id_fkey"
+            columns: ["decision_log_id"]
+            isOneToOne: false
+            referencedRelation: "ai_decision_log"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "farmer_upcoming_needs"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_photo_diagnosis_photo: {
+        Row: {
+          created_at: string
+          diagnosis_id: string
+          photo_index: number
+          shot_role: string
+          upload_id: string
+        }
+        Insert: {
+          created_at?: string
+          diagnosis_id: string
+          photo_index: number
+          shot_role?: string
+          upload_id: string
+        }
+        Update: {
+          created_at?: string
+          diagnosis_id?: string
+          photo_index?: number
+          shot_role?: string
+          upload_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_photo_diagnosis_photo_diagnosis_id_fkey"
+            columns: ["diagnosis_id"]
+            isOneToOne: false
+            referencedRelation: "crop_photo_diagnosis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_diagnosis_photo_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_photo_link: {
+        Row: {
+          created_at: string
+          decision_trace_id: string | null
+          farmer_id: string
+          from_upload_id: string
+          id: string
+          labeller_ref: string
+          land_id: string
+          relation: string
+          source_tier: string
+          tenant_id: string
+          to_upload_id: string | null
+          treatment_task_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          decision_trace_id?: string | null
+          farmer_id: string
+          from_upload_id: string
+          id?: string
+          labeller_ref: string
+          land_id: string
+          relation: string
+          source_tier: string
+          tenant_id: string
+          to_upload_id?: string | null
+          treatment_task_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          decision_trace_id?: string | null
+          farmer_id?: string
+          from_upload_id?: string
+          id?: string
+          labeller_ref?: string
+          land_id?: string
+          relation?: string
+          source_tier?: string
+          tenant_id?: string
+          to_upload_id?: string | null
+          treatment_task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_photo_link_from_upload_id_fkey"
+            columns: ["from_upload_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_link_to_upload_id_fkey"
+            columns: ["to_upload_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_photo_link_treatment_task_id_fkey"
+            columns: ["treatment_task_id"]
+            isOneToOne: false
+            referencedRelation: "farmer_upcoming_needs"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "crop_photo_link_treatment_task_id_fkey"
+            columns: ["treatment_task_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -18676,6 +19188,8 @@ export type Database = {
           observation_category: string | null
           observation_code: string | null
           observed_at: string
+          photo_diagnosis_id: string | null
+          photo_upload_id: string | null
           source: string
           stage_uuid: string | null
           tenant_id: string | null
@@ -18695,6 +19209,8 @@ export type Database = {
           observation_category?: string | null
           observation_code?: string | null
           observed_at?: string
+          photo_diagnosis_id?: string | null
+          photo_upload_id?: string | null
           source?: string
           stage_uuid?: string | null
           tenant_id?: string | null
@@ -18714,6 +19230,8 @@ export type Database = {
           observation_category?: string | null
           observation_code?: string | null
           observed_at?: string
+          photo_diagnosis_id?: string | null
+          photo_upload_id?: string | null
           source?: string
           stage_uuid?: string | null
           tenant_id?: string | null
@@ -18784,6 +19302,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_observation_photo_diagnosis_id_fkey"
+            columns: ["photo_diagnosis_id"]
+            isOneToOne: false
+            referencedRelation: "crop_photo_diagnosis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_observation_photo_upload_id_fkey"
+            columns: ["photo_upload_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_uploads"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -44870,6 +45402,11 @@ export type Database = {
           schedule_id: string
           task_count: number
         }[]
+      }
+      photo_evidence_record: { Args: { p_upload_id: string }; Returns: Json }
+      photo_training_consent: {
+        Args: { p_farmer_id: string }
+        Returns: boolean
       }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }

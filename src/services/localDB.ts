@@ -2005,7 +2005,7 @@ class LocalDatabase {
       'weather', 'farmerAlerts', 'farmerSubscriptions', 'subscriptionPlans',
       'subscriptionUsageLogs', 'paymentRecords', 'proactiveAlerts'
     ];
-    const existing = Array.from(this.db!.objectStoreNames);
+    const existing: string[] = Array.from(this.db!.objectStoreNames as unknown as ArrayLike<string>);
     const toClear = stores.filter(name => existing.includes(name as string));
     if (toClear.length) {
       const tx = this.db!.transaction(toClear as any, 'readwrite');
