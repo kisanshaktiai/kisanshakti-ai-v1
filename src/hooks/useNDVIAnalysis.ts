@@ -11,9 +11,9 @@ export interface NDVIProcessingThumbnail { url:string; date:string; geotiffUrl?:
 export interface NDVIPrediction { days7:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; days14:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; risk_level:'low'|'medium'|'high'|'critical'; recommended_action_keys:string[]; is_indicative:true; }
 export interface NDVIAnalysisResult { current:NDVIDataComplete|null; history:NDVIDataComplete[]; latestRaw:NDVIDataComplete|null; latestProcessingLog:NDVIProcessingLog|null; processingThumbnail:NDVIProcessingThumbnail|null; prediction:NDVIPrediction|null; isLoading:boolean; error:Error|null; refetch:()=>void; }
 const FIFTEEN_MINUTES=15*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
-export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
+export function useNDVIAnalysis(landId:string|null, refreshKey = 0):NDVIAnalysisResult {
   const {tenant}=useTenant(); const {session}=useAuthStore(); const tenantId=session?.tenantId??tenant?.id; const farmerId=session?.farmerId; const sessionToken=session?.token;
-  const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v2',landId,tenantId,sessionToken],queryFn:async()=>{
+  const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v3',landId,tenantId,sessionToken,refreshKey],queryFn:async()=>{
     if(!landId||!tenantId)return{current:null,history:[],latestRaw:null,latestProcessingLog:null,processingThumbnail:null};
     // 90-day window: Sentinel-2 revisit plus cloud loss often leaves fewer than two
     // usable observations inside 45 days, which made the trend permanently unavailable.
