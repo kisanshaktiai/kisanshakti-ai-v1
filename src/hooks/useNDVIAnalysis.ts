@@ -10,7 +10,7 @@ export interface NDVIProcessingThumbnail { url:string; date:string; geotiffUrl?:
 /** Compatibility only. Client-side predictions are deliberately disabled. */
 export interface NDVIPrediction { days7:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; days14:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; risk_level:'low'|'medium'|'high'|'critical'; recommended_action_keys:string[]; is_indicative:true; }
 export interface NDVIAnalysisResult { current:NDVIDataComplete|null; history:NDVIDataComplete[]; latestRaw:NDVIDataComplete|null; latestProcessingLog:NDVIProcessingLog|null; processingThumbnail:NDVIProcessingThumbnail|null; prediction:NDVIPrediction|null; isLoading:boolean; error:Error|null; refetch:()=>void; }
-const FIFTEEN_MINUTES=15*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
+const SIX_HOURS=6*60*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
 export function useNDVIAnalysis(landId:string|null, refreshKey = 0):NDVIAnalysisResult {
   const {tenant}=useTenant(); const {session}=useAuthStore(); const tenantId=session?.tenantId??tenant?.id; const farmerId=session?.farmerId; const sessionToken=session?.token;
   const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v3',landId,tenantId,sessionToken,refreshKey],queryFn:async()=>{
@@ -37,7 +37,7 @@ export function useNDVIAnalysis(landId:string|null, refreshKey = 0):NDVIAnalysis
     const logs=((logResult.data||[])as any[]).map(item=>({...item,metadata:item.metadata?(typeof item.metadata==='string'?JSON.parse(item.metadata):item.metadata):null}))as NDVIProcessingLog[];
     const latestProcessingLog=logs[0]||null; const successfulThumb=logs.find(log=>log.processing_step==='PROCESS_END'&&log.step_status==='completed'&&!!log.metadata?.thumbnail_url); const processingThumbnail=successfulThumb?.metadata?.thumbnail_url?{url:successfulThumb.metadata.thumbnail_url,date:successfulThumb.completed_at||successfulThumb.created_at||cutoffDay,geotiffUrl:successfulThumb.metadata.geotiff_url}:null;
     return{current,history,latestRaw,latestProcessingLog,processingThumbnail};
-  },enabled:!!landId&&!!farmerId&&!!tenantId,staleTime:FIFTEEN_MINUTES,refetchOnMount:'always',refetchOnWindowFocus:true,refetchInterval:false,retry:2});
+  },enabled:!!landId&&!!farmerId&&!!tenantId,staleTime:SIX_HOURS,refetchOnMount:false,refetchOnWindowFocus:false,refetchInterval:false,retry:2});
   return{current:data?.current??null,history:data?.history??[],latestRaw:data?.latestRaw??null,latestProcessingLog:data?.latestProcessingLog??null,processingThumbnail:data?.processingThumbnail??null,prediction:null,isLoading,error:error as Error|null,refetch};
 }
 export interface NDVIMicroTile{id:string;land_id:string;acquisition_date:string;bbox:any;cloud_cover:number|null;ndvi_mean:number|null;ndvi_min:number|null;ndvi_max:number|null;ndvi_std_dev:number|null;ndvi_thumbnail_url:string|null;resolution_meters:number|null;is_reliable:boolean;}
