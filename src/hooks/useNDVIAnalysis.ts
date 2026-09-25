@@ -10,7 +10,7 @@ export interface NDVIProcessingThumbnail { url:string; date:string; geotiffUrl?:
 /** Compatibility only. Client-side predictions are deliberately disabled. */
 export interface NDVIPrediction { days7:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; days14:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; risk_level:'low'|'medium'|'high'|'critical'; recommended_action_keys:string[]; is_indicative:true; }
 export interface NDVIAnalysisResult { current:NDVIDataComplete|null; history:NDVIDataComplete[]; latestRaw:NDVIDataComplete|null; latestProcessingLog:NDVIProcessingLog|null; processingThumbnail:NDVIProcessingThumbnail|null; prediction:NDVIPrediction|null; isLoading:boolean; error:Error|null; refetch:()=>void; }
-const SIX_HOURS=6*60*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
+const FIFTEEN_MINUTES=15*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
 export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
   const {tenant}=useTenant(); const {session}=useAuthStore(); const tenantId=session?.tenantId??tenant?.id; const farmerId=session?.farmerId; const sessionToken=session?.token;
   const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v2',landId,tenantId,sessionToken],queryFn:async()=>{
@@ -27,6 +27,9 @@ export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
     const assetsByScene=new Map<string,any>(); for(const row of assetRows){if(row.scene_id&&!assetsByScene.has(row.scene_id))assetsByScene.set(row.scene_id,row);}
     const parsed=decisionRows.map((d:any,index:number)=>{const a=assetsByScene.get(d.scene_id)||{};const metadata=a.metadata?(typeof a.metadata==='string'?JSON.parse(a.metadata):a.metadata):null;return{...a,...d,id:`${d.land_id}:${d.scene_id||d.acquisition_date}:${index}`,date:d.acquisition_date,cloud_coverage:d.cloud_cover??null,coverage_percentage:null,metadata} as NDVIDataComplete;});
     const latestRaw=parsed[0]||null;
+    // The decision-grade view is already filtered to observed optical measurements.
+    // Never replace it with the land snapshot or a raw `ndvi_data` date sort: radar and
+    // legacy rows can otherwise make the farmer screen appear older than the governed source.
     // `current` is the newest decision-grade measurement even when stale. Freshness is a separate evidence dimension and is surfaced to the farmer; it must not turn a valid historical measurement into "no data".
     // Every row here already passed the decision-grade view. `is_fresh` is an age flag only:
     // filtering the trend by it discarded valid older measurements and left a single point.
@@ -34,7 +37,7 @@ export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
     const logs=((logResult.data||[])as any[]).map(item=>({...item,metadata:item.metadata?(typeof item.metadata==='string'?JSON.parse(item.metadata):item.metadata):null}))as NDVIProcessingLog[];
     const latestProcessingLog=logs[0]||null; const successfulThumb=logs.find(log=>log.processing_step==='PROCESS_END'&&log.step_status==='completed'&&!!log.metadata?.thumbnail_url); const processingThumbnail=successfulThumb?.metadata?.thumbnail_url?{url:successfulThumb.metadata.thumbnail_url,date:successfulThumb.completed_at||successfulThumb.created_at||cutoffDay,geotiffUrl:successfulThumb.metadata.geotiff_url}:null;
     return{current,history,latestRaw,latestProcessingLog,processingThumbnail};
-  },enabled:!!landId&&!!farmerId&&!!tenantId,staleTime:SIX_HOURS,refetchOnWindowFocus:false,refetchInterval:false});
+  },enabled:!!landId&&!!farmerId&&!!tenantId,staleTime:FIFTEEN_MINUTES,refetchOnMount:'always',refetchOnWindowFocus:true,refetchInterval:false,retry:2});
   return{current:data?.current??null,history:data?.history??[],latestRaw:data?.latestRaw??null,latestProcessingLog:data?.latestProcessingLog??null,processingThumbnail:data?.processingThumbnail??null,prediction:null,isLoading,error:error as Error|null,refetch};
 }
 export interface NDVIMicroTile{id:string;land_id:string;acquisition_date:string;bbox:any;cloud_cover:number|null;ndvi_mean:number|null;ndvi_min:number|null;ndvi_max:number|null;ndvi_std_dev:number|null;ndvi_thumbnail_url:string|null;resolution_meters:number|null;is_reliable:boolean;}
