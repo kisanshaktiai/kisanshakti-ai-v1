@@ -11404,7 +11404,7 @@ export class AIAgentOrchestrator {
           .maybeSingle()
       ]);
       
-      const { data: land, error: landError } = landResult;
+      const { data: land, error: landError } = landResult as any; // TYPE-FIX: Supabase inferred 'never' generic on Promise.all tuple destructure
       const landRegionCode: string | null = (() => {
         const rc = (landRegionResult as any)?.data?.region_code;
         if ((landRegionResult as any)?.error) {
@@ -11417,10 +11417,10 @@ export class AIAgentOrchestrator {
         }
         return String(rc).trim().toUpperCase();
       })();
-      const { data: soilHealth } = soilResult;
-      const { data: ndviData } = ndviLatestResult;
-      const { data: ndviHistory } = ndviHistoryResult;
-      const { data: cropSchedule } = cropScheduleResult;
+      const { data: soilHealth } = soilResult as any;
+      const { data: ndviData } = ndviLatestResult as any;
+      const { data: ndviHistory } = ndviHistoryResult as any;
+      const { data: cropSchedule } = cropScheduleResult as any; // TYPE-FIX: widen Supabase Promise.all destructures to any</br>
       
       if (landError || !land) {
         // SECURITY: If land not found OR farmer doesn't own this land, return null

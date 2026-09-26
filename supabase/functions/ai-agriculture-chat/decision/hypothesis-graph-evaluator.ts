@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 00:00 UTC — Type fix: cropHypIds narrowing via resolvedCropHypIds local (fixes possibly-null TS18047); Set unpack typed as string[] (no runtime change)
  * 2026-09-03 — S1 biological stage gate now eliminates ONLY when the failing
  *   STAGE condition has is_required=true (stagePassRaw.required_fail); a
  *   non-required STAGE mismatch is logged [HYP_STAGE_SOFT] and flows to the
