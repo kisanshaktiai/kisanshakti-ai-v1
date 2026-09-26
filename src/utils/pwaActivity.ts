@@ -19,6 +19,39 @@ export function getActivePwaWork(): number {
   return activePwaWork;
 }
 
+function isEditableElement(element: Element | null): boolean {
+  if (typeof HTMLElement === 'undefined' || !(element instanceof HTMLElement)) return false;
+  return element.matches('input, textarea, select, [contenteditable="true"]');
+}
+
+export function isPwaReloadSafe(): boolean {
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
+  if (activeNetworkRequests > 0 || activePwaWork > 0) return false;
+  if (typeof document !== 'undefined') {
+    if (isEditableElement(document.activeElement)) return false;
+    if (document.querySelector('[aria-busy="true"]')) return false;
+    if (document.querySelector('[data-ksai-work-in-progress="true"]')) return false;
+  }
+  return true;
+}
+
+export function waitForPwaReloadSafe(retryMs = 1000): Promise<void> {
+  if (isPwaReloadSafe()) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!isPwaReloadSafe()) return;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', check);
+      resolve();
+    };
+
+    const intervalId = window.setInterval(check, retryMs);
+    document.addEventListener('visibilitychange', check);
+    check();
+  });
+}
+
 export function beginPwaWork(): () => void {
   activePwaWork += 1;
   let released = false;
