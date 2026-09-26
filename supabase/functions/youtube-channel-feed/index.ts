@@ -37,15 +37,16 @@ function parseFeed(xml: string): YTVideo[] {
     const published = pick(/<published>([^<]+)<\/published>/, block);
     const thumbnail = pick(/<media:thumbnail url="([^"]+)"/, block) ||
       `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    const views = Number(pick(/<media:statistics\s+views="(\d+)"/, block) || "0");
     return {
       id: videoId,
       video_id: videoId,
       title,
       description,
-      video_url: `https://www.youtube.com/watch?v=${videoId}`,
+      video_url: `https://www.youtube.com/shorts/${videoId}`,
       thumbnail_url: thumbnail,
       published_at: published,
-      total_views: 0,
+      total_views: views,
       is_featured: false,
     } as YTVideo;
   }).filter((v) => v.video_id);
