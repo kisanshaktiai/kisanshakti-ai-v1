@@ -62,4 +62,5 @@ export function installPwaFetchTracking(): void {
 export function resetPwaActivityForTests(): void {
   activeNetworkRequests = 0;
   activePwaWork = 0;
+  fetchTrackingInstalled = false;
 }
