@@ -9,6 +9,7 @@ import { getConfigJson, getConfigNumber } from '../utils/db-ssot/system-config-c
 export const AUTHORITATIVE_STATE_LOADER_VERSION = '2.1.0';
 
 // CHANGE LOG (newest first)
+// 2026-09-26 00:00 UTC — Type fix: added optional evidence/decision_grade/trend_method_mixed fields to ndvi interface (no runtime change)
 // 2026-08-07 12:30 UTC — D7: additive weather.derived namespace (ET0/VPD/GDD cum/
 //   LWD/spray/frost/stress/soil-water/harvest + active risk episodes) from
 //   land_weather_state, land_gdd_daily and risk_episodes. Raw weather untouched.
