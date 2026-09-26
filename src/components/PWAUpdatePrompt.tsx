@@ -15,8 +15,6 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import {
-  getActiveNetworkRequests,
-  getActivePwaWork,
   installPwaFetchTracking,
   isPwaReloadSafe,
 } from '@/utils/pwaActivity';
@@ -30,11 +28,6 @@ const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const SAFE_IDLE_MS = 20_000;
 const ACTIVATION_RETRY_MS = 5_000;
 const ACTIVATION_REQUEST_TIMEOUT_MS = 15_000;
-
-function isEditableElement(element: Element | null): boolean {
-  if (!(element instanceof HTMLElement)) return false;
-  return element.matches('input, textarea, select, [contenteditable="true"]');
-}
 
 export function PWAUpdatePrompt() {
   const activeFetches = useIsFetching();
