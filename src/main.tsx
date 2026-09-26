@@ -1,7 +1,9 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
-import { waitForPwaReloadSafe } from "./utils/pwaActivity";
+import { installPwaFetchTracking, waitForPwaReloadSafe } from "./utils/pwaActivity";
+
+installPwaFetchTracking();
 
 // =============================================================================
 // Global chunk-load error recovery — fixes "Importing a module script failed"
