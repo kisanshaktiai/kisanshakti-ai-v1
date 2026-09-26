@@ -1,6 +1,7 @@
 // AGENT 1: NATURAL LANGUAGE UNDERSTANDING - TYPE DEFINITIONS v3.0
 
 // CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Widened LandContext.crop_code to optional to accept callers that build it before crop resolution (type-only).
 //   2026-09-26 15:45 UTC — Added optional raw_observations to SymptomExtraction, is_safe_to_respond to SafetyFlags, recommended_agent to NextAgentRecommendation; widened NLUAgentInput.land_context to accept undefined crop_code; relaxed PhotoRecommendation.reason/specific_instructions to allow undefined when no text generated.
 
 // INPUT SCHEMA
@@ -41,7 +42,8 @@ export interface ConversationTurn {
 
 export interface LandContext {
   land_id: string;
-  crop_code: string;
+  /** Optional — some callers construct LandContext before crop_code resolution completes */
+  crop_code?: string;
   crop_variety?: string;
   sowing_date?: string;
   days_after_sowing?: number;
