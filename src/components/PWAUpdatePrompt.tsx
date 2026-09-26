@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { getActiveNetworkRequests } from '@/utils/pwaActivity';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 
 const UPDATE_APPROVED_KEY = '__ksai_sw_update_approved__';
@@ -37,10 +38,11 @@ export function PWAUpdatePrompt() {
   const activeFetchesRef = useRef(activeFetches);
   const activeMutationsRef = useRef(activeMutations);
 
-  useEffect(() => {
-    activeFetchesRef.current = activeFetches;
-    activeMutationsRef.current = activeMutations;
-  }, []);
+  // Keep these refs synchronized during render, not in a mount-only effect.
+  // This makes the safety gate observe the current React Query activity
+  // immediately on every render.
+  activeFetchesRef.current = activeFetches;
+  activeMutationsRef.current = activeMutations;
 
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const lastActivityRef = useRef(Date.now());
@@ -51,6 +53,10 @@ export function PWAUpdatePrompt() {
   const isSafeToActivate = useCallback(() => {
     if (document.visibilityState !== 'visible') return false;
     if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0) return false;
+    if (getActiveNetworkRequests() > 0) return false;
+
+    // Application-level long-running work can opt into this explicit marker.
+    if (document.querySelector('[data-ksai-work-in-progress="true"]')) return false;
 
     // Never interrupt a farmer who is actively editing a form/composer.
     if (isEditableElement(document.activeElement)) return false;
@@ -60,7 +66,7 @@ export function PWAUpdatePrompt() {
     if (document.querySelector('[aria-busy="true"]')) return false;
 
     return Date.now() - lastActivityRef.current >= SAFE_IDLE_MS;
-  }, [activeFetches, activeMutations]);
+  }, []);
 
   const activateWaitingWorker = useCallback((registration: ServiceWorkerRegistration) => {
     const waiting = registration.waiting;
