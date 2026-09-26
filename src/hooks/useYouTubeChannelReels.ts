@@ -167,11 +167,14 @@ export function useYouTubeChannelReels(limit = 8) {
     queryKey: ['youtube-channel-shorts', SHORTS_URL, limit, 'official-v2'],
     queryFn: async (): Promise<YouTubeChannelVideo[]> => {
       const videos = await fetchOfficialShorts();
+      // Throw on empty so react-query retries instead of caching "no videos".
+      if (videos.length === 0) throw new Error('official shorts feed empty');
       return videos.slice(0, limit);
     },
     staleTime: 10 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
     retry: 1,
+    retryDelay: 3000,
     refetchOnWindowFocus: false,
   });
 }
