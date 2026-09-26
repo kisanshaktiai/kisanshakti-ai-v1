@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Type-only fixes: getConfigNumber call signature, any-casts for PrimaryDecision/warnings/metadata/rulesAppliedArray/communication/dataAudit to satisfy deno check.
 //   2026-09-26 15:35 UTC — Type-only fixes: narrow casts for loosely-typed
 //     runtime objects (orchestratorResponse.metadata/decision_output/
 //     communication, sessionState, layeredPrimaryDecision, decisionOutput,
