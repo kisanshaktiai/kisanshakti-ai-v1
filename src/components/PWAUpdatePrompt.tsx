@@ -33,11 +33,13 @@ export function PWAUpdatePrompt() {
   const activeFetchesRef = useRef(activeFetches);
   const activeMutationsRef = useRef(activeMutations);
 
-  // Keep these refs synchronized during render, not in a mount-only effect.
-  // This makes the safety gate observe the current React Query activity
-  // immediately on every render.
-  activeFetchesRef.current = activeFetches;
-  activeMutationsRef.current = activeMutations;
+  // Keep these refs synchronized whenever React Query activity changes.
+  // The explicit dependencies are critical: an empty dependency array would
+  // freeze both refs at their mount-time values.
+  useEffect(() => {
+    activeFetchesRef.current = activeFetches;
+    activeMutationsRef.current = activeMutations;
+  }, [activeFetches, activeMutations]);
 
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const lastActivityRef = useRef(Date.now());
@@ -158,7 +160,7 @@ export function PWAUpdatePrompt() {
       window.addEventListener(eventName, markActivity, { passive: true });
     });
 
-      const tryReloadWhenSafe = () => {
+    const tryReloadWhenSafe = () => {
       const approved = sessionStorage.getItem(UPDATE_APPROVED_KEY);
       const alreadyScheduled = reloadScheduledRef.current
         || sessionStorage.getItem(RELOAD_SCHEDULED_KEY) === '1';
