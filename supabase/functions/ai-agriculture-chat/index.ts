@@ -3639,7 +3639,10 @@ ${content}`;
         {},
         {
           contents: [{ parts: [{ text: translationPrompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+          generationConfig: {
+            ...(rejectsCustomTemperature('gemini', AI_MODELS.gemini.default) ? {} : { temperature: 0.3 }),
+            maxOutputTokens: 2000,
+          },
         },
       );
       return data.candidates?.[0]?.content?.parts?.[0]?.text || '';

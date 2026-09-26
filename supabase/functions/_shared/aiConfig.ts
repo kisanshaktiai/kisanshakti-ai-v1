@@ -15,21 +15,27 @@ export const AI_MODELS = {
     premium: "gpt-5.6-terra",
     vision: "gpt-5.6-luna",
   },
+  // 2026-09-26 — Gemini 2.5 family replaced: Google limits 2.5 to prior users and its
+  // retirement date is unsettled (Gemini API: none announced; Google Cloud lifecycle page:
+  // 2026-10-20); Lovable marks 2.5 deprecated. Successors are the models Google
+  // recommends for new work: 3.5 Flash-Lite (direct, same price as 2.5 Flash) and
+  // 3.8 Flash (Lovable's default chat model). Gemini 3 models get no custom
+  // temperature — see rejectsCustomTemperature().
   google: {
-    default: "google/gemini-2.5-flash",
-    fallback: "google/gemini-2.5-flash-lite", 
-    premium: "google/gemini-2.5-pro",
+    default: "google/gemini-3.8-flash",
+    fallback: "google/gemini-3.8-flash",
+    premium: "google/gemini-3.1-pro-preview",
   },
   gemini: {
-    // PRODUCTION: Gemini 2.5 Flash - best balance of speed, quality, and rural language support
-    default: "gemini-2.5-flash",
+    // PRODUCTION: Gemini 3.5 Flash-Lite — direct Gemini API fallback provider
+    default: "gemini-3.5-flash-lite",
     fallback: "gemini-2.0-flash",
-    premium: "gemini-2.5-pro",
+    premium: "gemini-3.1-pro-preview",
   },
   lovable: {
-    default: "google/gemini-2.5-flash",
-    fallback: "google/gemini-2.5-flash-lite",
-    premium: "google/gemini-2.5-pro",
+    default: "google/gemini-3.8-flash",
+    fallback: "google/gemini-3.8-flash",
+    premium: "google/gemini-3.1-pro-preview",
   },
 } as const;
 
@@ -48,8 +54,8 @@ export const AI_CONFIG = {
   // Primary schedule model. Gemini is used only after OpenAI provider failure.
   MODEL: "gpt-5.6-luna",
   OPENAI_MODEL: "gpt-5.6-luna",
-  GOOGLE_MODEL: "google/gemini-2.5-flash",
-  GEMINI_MODEL: "gemini-2.5-flash",
+  GOOGLE_MODEL: "google/gemini-3.8-flash",
+  GEMINI_MODEL: "gemini-3.5-flash-lite",
   
   // Vision model for image/crop analysis
   VISION_MODEL: "gpt-4o",
@@ -58,7 +64,7 @@ export const AI_CONFIG = {
   FALLBACK_MODEL: "gemini-2.0-flash",
   // Schedule fallback is provider-level Gemini, not an older OpenAI model.
   OPENAI_FALLBACK: "gpt-5.6-luna",
-  GOOGLE_FALLBACK: "google/gemini-2.5-flash-lite",
+  GOOGLE_FALLBACK: "google/gemini-3.8-flash",
   GEMINI_FALLBACK: "gemini-2.0-flash",
 
   // Token limits - optimized for detailed schedules without timeouts
@@ -216,8 +222,18 @@ export function requiresMaxCompletionTokens(model: string): boolean {
   return isNextGenOpenAIModel(model);
 }
 /** true when the provider+model pair rejects a caller-supplied temperature. */
+// 2026-09-26 — Gemini 3 and later (direct Gemini API or via the Lovable gateway):
+// Google "strongly recommend[s] keeping the temperature parameter at its default
+// value of 1.0"; a lower value "may lead to unexpected behavior, such as looping or
+// degraded performance" (ai.google.dev/gemini-api/docs/gemini-3). Same effect as the
+// OpenAI rule: the key is not sent and the API uses its default. Gemini 2.x and
+// earlier keep caller temperatures exactly as before.
 export function rejectsCustomTemperature(provider: AIProvider, model: string): boolean {
-  return provider === "openai" && isNextGenOpenAIModel(model);
+  if (provider === "openai") return isNextGenOpenAIModel(model);
+  if (provider === "gemini" || provider === "google" || provider === "lovable") {
+    return /(^|\/)gemini-([3-9]|[1-9][0-9])([.-]|$)/.test((model || "").toLowerCase());
+  }
+  return false;
 }
 
 // Get the best available provider for schedule generation

@@ -14,12 +14,16 @@
 //   Phase 2 removes entries one function at a time. _shared/aiConfig.ts keeps
 //   its AI_MODELS defaults (the emergency path) and stays listed.
 //   Run with: deno test --allow-read tests/edge/ai-registry/
+// 2026-09-26 — Gemini 2.5 family replaced in _shared/aiConfig.ts; the
+//   formatter's last literal became a label built from AI_MODELS (allowance
+//   removed). New lock: no live file may name a Gemini 2.5 model again, and
+//   the three native Gemini/Lovable calls that hardcoded a temperature must
+//   pass it through rejectsCustomTemperature() like their OpenAI neighbours.
 
 import { assert } from "../../decision-brain/assert.ts";
 
 const ALLOWED: Record<string, number> = {
   "_shared/aiConfig.ts": 24,
-  "ai-agriculture-chat/agents/llm-response-formatter.ts": 1,
   "ai-agriculture-chat/agents/nlu-agent.ts": 1,
   "ai-agriculture-chat/index.ts": 1,
   "ai-agriculture-chat/photo/photo-analyzer.ts": 2,
@@ -70,4 +74,41 @@ Deno.test("no new hardcoded AI model names outside the registry (ratchet)", asyn
     if (!found[file]) problems.push(`${file}: now 0, allowance ${allowed} — remove its ALLOWED entry`);
   }
   assert(problems.length === 0, "\n" + problems.join("\n"));
+});
+
+// Models the registry has retired and live code must never call again.
+const RETIRED = /(google\/)?gemini-2\.5[0-9a-z.\-]*/g;
+
+Deno.test("no live code names a retired Gemini 2.5 model", async () => {
+  const hits: string[] = [];
+  async function walk(dir: string) {
+    for await (const e of Deno.readDir(dir)) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory) await walk(p);
+      else if (p.endsWith(".ts")) {
+        const m = stripComments(await Deno.readTextFile(p)).match(RETIRED);
+        if (m) hits.push(`${p.slice(ROOT.length + 1)}: ${[...new Set(m)].join(", ")}`);
+      }
+    }
+  }
+  await walk(ROOT);
+  assert(hits.length === 0, "\n" + hits.join("\n"));
+});
+
+Deno.test("native Gemini and Lovable calls pass temperature through rejectsCustomTemperature()", async () => {
+  const idx = await Deno.readTextFile(`${ROOT}/ai-agriculture-chat/index.ts`);
+  const tier2 = idx.slice(idx.indexOf("// TIER 2 — Gemini direct"), idx.indexOf("// TIER 3 — OpenAI direct"));
+  assert(tier2.length > 0, "forceTranslate TIER 2 block not found");
+  assert(tier2.includes("rejectsCustomTemperature('gemini', AI_MODELS.gemini.default)"), "translation Gemini tier must gate temperature");
+  assert(!/^\s*generationConfig:\s*\{\s*temperature:/m.test(tier2), "translation Gemini tier hardcodes temperature");
+
+  const fmt = await Deno.readTextFile(`${ROOT}/ai-agriculture-chat/agents/llm-response-formatter.ts`);
+  for (const [fn, provider] of [["callGeminiWithTimeout", "gemini"], ["callLovableAIWithTimeout", "lovable"]] as const) {
+    const start = fmt.indexOf(`async function ${fn}(`);
+    assert(start >= 0, `${fn} not found`);
+    const next = fmt.indexOf("\nasync function ", start + 10);
+    const body = fmt.slice(start, next === -1 ? undefined : next);
+    assert(body.includes(`rejectsCustomTemperature('${provider}'`), `${fn} must gate temperature`);
+    assert(!/^\s*temperature:\s*[0-9.]+,/m.test(body), `${fn} hardcodes temperature`);
+  }
 });

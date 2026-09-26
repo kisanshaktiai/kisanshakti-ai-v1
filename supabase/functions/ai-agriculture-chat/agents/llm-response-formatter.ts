@@ -601,7 +601,7 @@ export async function formatRecommendationsWithLLM(
       const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, Math.min(5000, remaining()));
       if (result.success) {
         formattedResponse = result.text;
-        aiModelUsed = 'lovable-gemini-2.5-flash';
+        aiModelUsed = `lovable/${AI_MODELS.lovable.default}`;
         console.log(`   ✅ Lovable AI formatting successful in ${Date.now() - narrationStart}ms`);
       }
     }
@@ -1845,7 +1845,7 @@ async function callGeminiWithTimeout(
             parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
           }],
           generationConfig: {
-            temperature: 0.5,    // LOWER: More consistent for safety
+            ...(rejectsCustomTemperature('gemini', AI_MODELS.gemini.default) ? {} : { temperature: 0.5 }),    // LOWER: More consistent for safety (Gemini 3+: API default, see aiConfig)
             maxOutputTokens: 4000  // CRITICAL FIX: Increased from 3000 to 4000 for complete Devanagari responses (Marathi/Hindi use ~2.5x more tokens)
           }
         })
@@ -1987,7 +1987,7 @@ async function callLovableAIWithTimeout(
           { role: 'user', content: userPrompt },
         ],
         max_tokens: 800,
-        temperature: 0.7,
+        ...(rejectsCustomTemperature('lovable', AI_MODELS.lovable.default) ? {} : { temperature: 0.7 }),
       }),
     });
 
