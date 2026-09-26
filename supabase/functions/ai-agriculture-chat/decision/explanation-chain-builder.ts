@@ -418,7 +418,6 @@ export function formatExplanationForFarmer(
   if (chain.data_sources_used.length > 0) {
     output += '\n';
     output += '📊 Data used:\n';
-    output += dataLabel + '\n';
     
     for (const source of chain.data_sources_used.slice(0, 4)) {
       output += `• ${source.source}: ${source.value}${source.age ? ` (${source.age})` : ''}\n`;
