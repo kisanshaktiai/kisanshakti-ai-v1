@@ -12,6 +12,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { toLocale } from '@/services/tts/ttsLanguages';
+import { dataIsolation } from '@/services/dataIsolationService';
 
 export type CloudVendor = 'bhashini' | 'google' | 'none';
 
@@ -35,6 +36,30 @@ const AUDIO_CACHE_MAX = 120;
  * this map that second ask was a second identical vendor call.
  */
 const inFlight = new Map<string, Promise<string | null>>();
+
+/**
+ * Farmer/tenant identity for the backend's metering and per-farmer rate limit.
+ * Same headers every other function call in the app sends.
+ */
+function identityHeaders(): Record<string, string> {
+  const { tenantId, farmerId } = dataIsolation.getIsolationContext();
+  const headers: Record<string, string> = {};
+  if (tenantId) headers['x-tenant-id'] = tenantId;
+  if (farmerId) headers['x-farmer-id'] = farmerId;
+  return headers;
+}
+
+/** Container from the first bytes of the audio: MP3 (ID3 tag or frame sync), WAV, OGG. */
+async function sniffAudioMime(blob: Blob): Promise<string | null> {
+  const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  if (head.length < 4) return null;
+  const ascii = String.fromCharCode(head[0], head[1], head[2], head[3]);
+  if (ascii.startsWith('ID3')) return 'audio/mpeg';
+  if (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) return 'audio/mpeg';
+  if (ascii === 'RIFF') return 'audio/wav';
+  if (ascii === 'OggS') return 'audio/ogg';
+  return null;
+}
 
 function evictOldest() {
   const oldest = audioCache.keys().next().value;
@@ -64,6 +89,7 @@ export const cloudProvider = {
       try {
         const { data, error } = await supabase.functions.invoke('text-to-speech', {
           body: { action: 'status' },
+          headers: identityHeaders(),
         });
         if (error || !data) throw error || new Error('no status');
         cachedStatus = {
@@ -109,18 +135,22 @@ export const cloudProvider = {
 
     const request = (async (): Promise<string | null> => {
       try {
-        // format: 'binary' asks the function for the audio bytes themselves.
-        // supabase-js hands a non-JSON body back as a Blob, which plays from an
+        // format: 'binary' asks the function for the audio bytes themselves as
+        // application/octet-stream, which supabase-js hands back as a Blob (any
+        // other content type comes back as text and cannot be played). The
+        // audio's real type is read from its first bytes, then it plays from an
         // object URL without the base64 decode and the 33% larger transfer.
         const { data, error } = await supabase.functions.invoke('text-to-speech', {
           body: { action: 'synthesize', text: chunk, language: locale, format: 'binary' },
+          headers: identityHeaders(),
         });
         if (error || !data) return null;
 
         let url: string;
         if (typeof Blob !== 'undefined' && data instanceof Blob) {
           if (data.size === 0) return null;
-          url = URL.createObjectURL(data);
+          const mime = (await sniffAudioMime(data)) ?? 'audio/mpeg';
+          url = URL.createObjectURL(mime === data.type ? data : new Blob([data], { type: mime }));
         } else if (data.audioContent) {
           // Older function build: base64 JSON.
           const mime = data.mimeType || 'audio/mpeg';

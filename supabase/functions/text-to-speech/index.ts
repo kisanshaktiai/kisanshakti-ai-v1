@@ -30,6 +30,10 @@ const BHASHINI_API_KEY = Deno.env.get('BHASHINI_API_KEY');
 const BHASHINI_PIPELINE_ID = Deno.env.get('BHASHINI_PIPELINE_ID');
 const BHASHINI_INFERENCE_KEY = Deno.env.get('BHASHINI_INFERENCE_KEY');
 const BHASHINI_CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
+// A compute call that has not answered in this time is abandoned so the next
+// vendor can speak; the gateway itself only gives up after 60 s, which is far
+// longer than a farmer will wait for the first word.
+const BHASHINI_COMPUTE_TIMEOUT_MS = 12_000;
 const GOOGLE_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
@@ -102,6 +106,21 @@ interface BhashiniConfig {
 }
 let bhashiniConfig: BhashiniConfig | null = null;
 const BHASHINI_CONFIG_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Container from the first bytes of base64 audio: MP3 (ID3 tag or frame sync), WAV, OGG. */
+function sniffAudioMime(base64: string): string | null {
+  let head = '';
+  try {
+    head = atob(base64.slice(0, 16));
+  } catch {
+    return null;
+  }
+  if (head.startsWith('ID3')) return 'audio/mpeg';
+  if (head.charCodeAt(0) === 0xff && (head.charCodeAt(1) & 0xe0) === 0xe0) return 'audio/mpeg';
+  if (head.startsWith('RIFF')) return 'audio/wav';
+  if (head.startsWith('OggS')) return 'audio/ogg';
+  return null;
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -239,11 +258,14 @@ async function synthesiseBhashini(text: string, locale: string) {
         pipelineTasks: [{ taskType: 'tts', config }],
         inputData: { input: [{ source: text }], audio: [{ audioContent: null }] },
       }),
+      signal: AbortSignal.timeout(BHASHINI_COMPUTE_TIMEOUT_MS),
     });
   };
 
   let response = await compute(true);
-  if (!response.ok) {
+  // Only a rejection of the optional processors (4xx) is worth a plain retry.
+  // A gateway timeout or 5xx would just repeat the same wait.
+  if (!response.ok && response.status >= 400 && response.status < 500) {
     const firstError = (await response.text()).slice(0, 200);
     console.warn('[text-to-speech] Bhashini with processors failed, retrying plain:', firstError);
     response = await compute(false);
@@ -257,8 +279,9 @@ async function synthesiseBhashini(text: string, locale: string) {
   const audio = tts?.audio?.[0]?.audioContent;
   if (!audio) throw new Error('Bhashini returned no audio');
 
-  const format = String(tts?.config?.audioFormat || 'wav').toLowerCase();
-  const mimeType = format === 'mp3' ? 'audio/mpeg' : format === 'ogg' ? 'audio/ogg' : 'audio/wav';
+  // Bhashini does not report audioFormat; with high-compression the bytes are
+  // MP3 even though the docs default to WAV. Read the real container.
+  const mimeType = sniffAudioMime(audio) ?? 'audio/wav';
 
   return { audioContent: audio, mimeType, vendor: 'bhashini', tier: service.serviceId };
 }
@@ -401,13 +424,17 @@ Deno.serve(async (req) => {
           `[text-to-speech] ok vendor=${result.vendor} tier=${result.tier} locale=${locale} chars=${trimmed.length} ms=${Date.now() - startedAt} tenant=${req.headers.get('x-tenant-id') ?? '-'} farmer=${req.headers.get('x-farmer-id') ?? '-'}`,
         );
         if (wantsBinary) {
+          // supabase-js hands the body back as a Blob only for
+          // application/octet-stream; an audio/* content type is returned as
+          // text and cannot be played. The real type travels in X-TTS-Mime.
           const bytes = Uint8Array.from(atob(result.audioContent), (c) => c.charCodeAt(0));
           return new Response(bytes, {
             status: 200,
             headers: {
               ...corsHeaders,
-              'Content-Type': result.mimeType,
+              'Content-Type': 'application/octet-stream',
               'Content-Length': String(bytes.byteLength),
+              'X-TTS-Mime': result.mimeType,
               'X-TTS-Vendor': result.vendor,
               'X-TTS-Tier': result.tier,
             },
