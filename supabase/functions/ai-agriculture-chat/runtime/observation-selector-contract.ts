@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 18:20 UTC — Empty CLARIFICATION options with zero confirmed observations no longer throw (HTTP 500); logs the violation, tries DB rescue, then true escalation.
  * 2026-09-26 21:40 UTC — Type-only fix: literal 'hypothesis_graph' in graphOptions map now uses `as const` so it matches ObservationOption.source's string-literal type instead of widening to `string`.
  * 2026-07-27 — Track A: retired clarification_fallback_questions; rescue path
  *   now reads observation_intent_master.allowed_observation_groups →
@@ -548,10 +549,24 @@ export async function ensureObservationSelectorContract(
         return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'true_escalation_no_db_clarification' };
       }
 
-      // No confirmed observations AND no options loadable — fatal contract leak.
-      throw new Error(
-        `OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'}`,
+      // No confirmed observations AND no options loadable — contract leak.
+      // Log loudly (greppable), then try the DB rescue and fall back to a true
+      // escalation instead of failing the whole farmer request with HTTP 500.
+      console.error(
+        `[OBSERVATION_CONTRACT] OBSERVATION_CONTRACT_VIOLATION: empty_options type=CLARIFICATION_QUESTION crop=${effectiveCtx.cropCode ?? '?'} trace_id=${effectiveCtx.traceId ?? 'n/a'} action=rescue_then_escalate`,
       );
+      const rescueNoObs = await attemptDbClarificationRescue(response, effectiveCtx);
+      if (rescueNoObs.rescued) {
+        return {
+          promoted: true,
+          hydrated: true,
+          option_count: rescueNoObs.option_count,
+          observation_required: true,
+          reason: `rescued_${rescueNoObs.site}`,
+        };
+      }
+      applyTrueEscalation(response, effectiveCtx, 'EMPTY_CLARIFICATION_NO_DB_OPTIONS');
+      return { promoted: false, hydrated: false, option_count: 0, observation_required: false, reason: 'true_escalation_empty_options' };
     }
     injectOptions(response, options);
     stampMetadata(response, options.length);
