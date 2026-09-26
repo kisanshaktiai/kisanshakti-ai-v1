@@ -456,6 +456,8 @@ export interface AITaskCall {
   jsonMode?: boolean;
   /** Whole-call budget across all steps; default AI_CONFIG.REQUEST_TIMEOUT. */
   timeoutMs?: number;
+  /** Optional cap for a single step, so one slow model cannot use the whole budget and starve the fallbacks. */
+  attemptTimeoutMs?: number;
   metadata?: Record<string, unknown>;
 }
 export interface AICallUsage { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number }
@@ -629,7 +631,7 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
 
     const t0 = Date.now();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), remaining);
+    const timer = setTimeout(() => controller.abort(), call.attemptTimeoutMs ? Math.min(remaining, call.attemptTimeoutMs) : remaining);
     try {
       const res = await fetch(getAPIEndpoint(model.provider), {
         method: "POST",

@@ -2790,10 +2790,13 @@ serve(async (req) => {
           const { lookupMarketProductDetails } = await import('./agents/market-product-lookup.ts');
           const _ai = _d.primary_decision?.application_details?.active_ingredient || null;
           const _prods = _ai ? await lookupMarketProductDetails(supabase, _ai, detectedLanguage) : [];
-          // the explainer runs on the same model the formatter uses; it may only reword the facts
+          // the explainer's model chain comes from the AI model registry (task brain.explain); the
+          // service-role client reads the route and writes the usage ledger for this farmer.
           const { explainerLLM: _explainerLLM } = await import('./agents/llm-response-formatter.ts');
+          const _explainTrace = orchestratorResponse.metadata?.trace_id ?? null;
           advisorCard = await buildAdvisorCard({
-            decision: _d, lang: detectedLanguage, supabase, llm: _explainerLLM,
+            decision: _d, lang: detectedLanguage, supabase,
+            llm: (system: string, user: string) => _explainerLLM(system, user, { db: supabase, farmerId: finalFarmerId, traceId: _explainTrace }),
             landContext: (orchestratorResponse as any)?.land_context
               ?? (orchestratorResponse as any)?.decision_output?.land_context
               ?? (orchestratorResponse as any)?.metadata?.land_context ?? null,

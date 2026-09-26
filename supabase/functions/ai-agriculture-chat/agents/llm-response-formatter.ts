@@ -47,7 +47,7 @@ import { getUiString } from '../i18n/ui-strings.ts';
 // 2026-09-11 — MODEL SSOT. The formatter had `model: 'gpt-4o-mini'` + legacy `max_tokens`/`temperature` while the
 // project standard (_shared/aiConfig.ts) is gpt-5.6-luna with `max_completion_tokens` and no custom temperature.
 // The 5.x API rejects the legacy body, so every OpenAI call here failed and the chain fell to Gemini.
-import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
+import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature, callAITask, type AITaskCall } from '../../_shared/aiConfig.ts';
 import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
@@ -1881,27 +1881,42 @@ async function callGeminiWithTimeout(
 }
 
 /**
- * 2026-09-09 — LLM callback for the EXPLAINER (agents/explainer.ts). Same provider chain as the formatter;
- * returns raw text so the explainer can parse and verify it. No agronomy passes through here.
+ * 2026-09-09 — LLM callback for the EXPLAINER (agents/explainer.ts). Returns raw text so the explainer
+ * can parse and verify it. No agronomy passes through here.
+ *
+ * 2026-09-26 — AI model SSOT: the model chain comes from the registry task `brain.explain`
+ * (ai_task_route / ai_task_route_step: gpt-5.6-luna → gemini-3.5-flash-lite → Lovable gemini-3.8-flash),
+ * the request from each model's catalog contract, and the reasoning effort from the route's params.
+ * Live 2026-09-26 (trace_muib5ioe_2jc6ov): the hardcoded chain sent gpt-5.6-luna no reasoning_effort, so
+ * it ran at its documented default `medium`; both explanation passes hit the 8 s cap and the farmer got a
+ * facts-only card. Each step keeps its 8 s cap (attemptTimeoutMs) so the fallbacks still get their turn,
+ * and every attempt is recorded in ai_model_metrics (tokens, cost, latency, fallback).
  */
-export async function explainerLLM(systemPrompt: string, userPrompt: string): Promise<string> {
-  // provider order = _shared/aiConfig.getBestAvailableProvider(): OpenAI (gpt-5.6-luna) first, then Gemini, then Lovable
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  const tryOne = async (name: string, fn: () => Promise<any>): Promise<string | null> => {
-    try {
-      const r = await fn();
-      if (typeof r === 'string' && r.trim()) return r;
-      if (r && typeof r.content === 'string' && r.content.trim()) return r.content;
-      if (r && typeof r.text === 'string' && r.text.trim()) return r.text;
-      console.warn(`[EXPLAINER_LLM] ${name} returned no text`);
-    } catch (e) { console.warn(`[EXPLAINER_LLM] ${name} failed: ${(e as Error)?.message ?? e}`); }
-    return null;
-  };
-  if (OPENAI_API_KEY) { const r = await tryOne(`openai/${AI_MODELS.openai.default}`, () => callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 8000)); if (r) return r; }
-  if (GEMINI_API_KEY) { const r = await tryOne(`gemini/${AI_MODELS.gemini.default}`, () => callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, 8000)); if (r) return r; }
-  if (LOVABLE_API_KEY) { const r = await tryOne(`lovable/${AI_MODELS.lovable.default}`, () => callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 8000)); if (r) return r; }
+export async function explainerLLM(
+  systemPrompt: string,
+  userPrompt: string,
+  ctx: { db: AITaskCall['db']; farmerId?: string | null; traceId?: string | null },
+): Promise<string> {
+  const r = await callAITask({
+    db: ctx.db,
+    task: 'brain.explain',
+    functionName: 'ai-agriculture-chat',
+    farmerId: ctx.farmerId ?? null,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    // 2800 tokens: Devanagari uses ~2.5× the tokens of English (unchanged from the previous OpenAI call).
+    maxOutputTokens: 2800,
+    attemptTimeoutMs: 8000,
+    timeoutMs: 24000,
+    metadata: { caller: 'explainerLLM', trace_id: ctx.traceId ?? null },
+  });
+  if (r.ok) {
+    if (r.fallbackUsed) console.warn(`[EXPLAINER_LLM] brain.explain answered by fallback ${r.modelKey}`);
+    return r.content;
+  }
+  console.warn(`[EXPLAINER_LLM] brain.explain ${r.errorClass}: ${r.detail} attempts=${JSON.stringify(r.attempts)}`);
   throw new Error('no LLM provider produced text for the explainer');
 }
 
