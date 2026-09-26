@@ -1021,7 +1021,7 @@ export interface OrchestratorResponse {
   
   // For DECISION_PROVIDED
   communication?: FarmerCommunication;
-  decision_output?: DecisionOutput;  // CRITICAL FIX: Include decision output for response assembly
+  decision_output?: DecisionOutput & Record<string, any>;  // CRITICAL FIX: Include decision output for response assembly
   question_classification?: QuestionClassification;  // NEW: Include classification in response
   
   // NEW: Data audit for debugging what data was found/missing
@@ -4221,7 +4221,7 @@ export class AIAgentOrchestrator {
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
       // T4 — pass land-context authority so DB crop wins over hardcoded CROP_MAP
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(
+      const inductionResult: LanguageInductionResult & Record<string, any> = induceCanonicalSymbols(
         processedFarmerMessage,
         { current_crop: (landContext as any)?.current_crop ?? null },
       );
@@ -7993,7 +7993,7 @@ export class AIAgentOrchestrator {
       // PHASE 2: MULTI-MODAL FUSION - with error boundary
       console.log('\n🔗 PHASE 2: Fusing Multi-Modal Data with FULL Land Context...');
       
-      let fusedIntelligence: FusedIntelligence;
+      let fusedIntelligence: FusedIntelligence & Record<string, any>;
       try {
         // CONTEXT CONTRACT: Build comprehensive input for fusion engine
         // Every modality MUST carry: crop, area, soil, NDVI data from landContext
@@ -8099,7 +8099,7 @@ export class AIAgentOrchestrator {
       // PHASE 2.5: BUILD CANONICAL STATE (Single Source of Truth for Decision Brain)
       console.log('\n🧠 PHASE 2.5: Building Canonical State for Symbolic Decision Brain...');
       
-      let canonicalState: CanonicalState | null = null;
+      let canonicalState: (CanonicalState & Record<string, any>) | null = null;
       let layeredRuleResult: RuleEvaluationResult | null = null;
       
       try {
@@ -8386,7 +8386,7 @@ export class AIAgentOrchestrator {
         console.log(`   📊 G4 Calibrated Confidence Threshold: ${(calibratedThreshold * 100).toFixed(0)}% for ${canonicalState.crop_type}/${canonicalState.crop_stage}`);
         
         // G5: WEATHER_SAFETY - Check if weather allows spray
-        let weatherSafetyResult: WeatherSafetyResult | null = null;
+        let weatherSafetyResult: (WeatherSafetyResult & Record<string, any>) | null = null;
         if (fusedIntelligence.weather_data) {
           weatherSafetyResult = checkWeatherSafety(
             fusedIntelligence.weather_data,
@@ -12572,9 +12572,9 @@ export class AIAgentOrchestrator {
     land_id?: string;
     trace_id?: string;
     nlu_output: NLUOutput;
-    fused_intelligence: FusedIntelligence;
+    fused_intelligence: FusedIntelligence & Record<string, any>;
     diagnostic_state: DiagnosticState;
-    decision_output: DecisionOutput;
+    decision_output: DecisionOutput & Record<string, any>;
     safety_verification: SafetyVerificationResult;
     farmer_communication: FarmerCommunication;
   }): void {
@@ -12705,7 +12705,7 @@ export class AIAgentOrchestrator {
   }
   
   // Build NLU output with rule mapping for diagnostic controller
-  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence, frozenIntent?: string | null): any {
+  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence & Record<string, any>, frozenIntent?: string | null): any {
     // Extract intent for rule resolution
     const nluIntent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
     const intent = (frozenIntent && frozenIntent !== 'UNKNOWN' ? frozenIntent : nluIntent) as NLUIntent;
@@ -13267,7 +13267,7 @@ export class AIAgentOrchestrator {
   }
   
   // Extract chemical recommendations from decision output
-  private extractChemicalRecommendations(decisionOutput: DecisionOutput): string[] {
+  private extractChemicalRecommendations(decisionOutput: DecisionOutput & Record<string, any>): string[] {
     const chemicals: string[] = [];
     
     // Extract from primary decision
