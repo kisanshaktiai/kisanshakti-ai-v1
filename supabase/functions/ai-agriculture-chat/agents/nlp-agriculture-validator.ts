@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Typed seasonInfo as any to avoid 'never' narrowing from vocabulary.seasons index lookup — type-only.
+
 // AGRICULTURAL NLP VALIDATOR - MARATHI/HINDI LANGUAGE PROCESSING
 
 // TYPES
@@ -639,7 +642,7 @@ export function validateAgricultureNLP(
   // 5. Season validation if month provided
   if (currentMonth && result.entities.seasons.length > 0) {
     for (const season of result.entities.seasons) {
-      const seasonInfo = vocabulary.seasons[season as keyof typeof vocabulary.seasons];
+      const seasonInfo: any = vocabulary.seasons[season as keyof typeof vocabulary.seasons];
       if (seasonInfo && !seasonInfo.months?.includes(currentMonth)) {
         result.warnings.push(
           `${season} season mention may not match current month (${currentMonth})`

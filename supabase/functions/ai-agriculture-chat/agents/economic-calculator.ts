@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Non-null assertion on affected_area_percent (upstream RuleExecutionInput marks it optional but callers always populate it) — type-only, no runtime change.
+
 // ECONOMIC CALCULATOR - Treatment Viability Assessment
 
 import type {
@@ -25,7 +28,7 @@ export function calculateEconomicViability(
   const expectedYieldValue = calculateExpectedYieldValue(cropData, input.farmer_context.land_size_acres);
   
   // Calculate yield at risk based on affected area
-  const yieldAtRiskPercent = input.pest_disease_state.affected_area_percent / 100;
+  const yieldAtRiskPercent = input.pest_disease_state.affected_area_percent! / 100;
   const valueAtRisk = expectedYieldValue * yieldAtRiskPercent;
   
   // Calculate expected loss without treatment (based on severity)

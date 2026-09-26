@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Cast language index lookups (GIBBERISH_PATTERNS/CONTRADICTORY_PATTERNS) to keyof typeof — type-only.
+
 // LANGUAGE QUALITY VALIDATOR - Post-LLM Response Validation
 
 // TECHNICAL TERM TRANSLATIONS - REMOVED (Dead code: zero callers)
@@ -100,7 +103,7 @@ export function validateLanguageQuality(
   
   // CHECK 1: Gibberish Detection
   
-  const gibberishPatterns = GIBBERISH_PATTERNS[language] || [];
+  const gibberishPatterns = GIBBERISH_PATTERNS[language as keyof typeof GIBBERISH_PATTERNS] || [];
   for (const pattern of gibberishPatterns) {
     if (pattern.test(text)) {
       issues.push({
@@ -116,7 +119,7 @@ export function validateLanguageQuality(
   
   // CHECK 2: Contradictory Actions
   
-  const contradictions = CONTRADICTORY_PATTERNS[language] || [];
+  const contradictions = CONTRADICTORY_PATTERNS[language as keyof typeof CONTRADICTORY_PATTERNS] || [];
   for (const { pattern, reason } of contradictions) {
     if (pattern.test(text)) {
       issues.push({

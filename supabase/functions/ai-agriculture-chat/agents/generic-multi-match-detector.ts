@@ -1,4 +1,5 @@
 // CHANGE LOG
+// 2026-09-26 20:00 UTC — Fixed undefined-name call: getDefaultClarificationOptions -> getDefaultClarificationOptionsFallback (matching sibling call sites' sync string[] fallback used elsewhere in this function family).
 // 2026-08-15 08:15 UTC — MultiMatch differential options now render the rule's
 // condition_code observation label from observation_translations in the farmer's
 // language (English `cause` only as last resort); obsKeys carries condition_code.
@@ -469,7 +470,7 @@ export async function generateFallbackClarificationOptions(
     
     if (error || !rules || rules.length === 0) {
       console.warn(`   ⚠️ [FallbackClarification] No rules found, using default options`);
-      return getDefaultClarificationOptions(language);
+      return getDefaultClarificationOptionsFallback(language);
     }
     
     // Build options from observable characteristics
