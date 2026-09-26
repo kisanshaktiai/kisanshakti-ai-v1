@@ -28,6 +28,7 @@ import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
+import { beginPwaWork } from '@/utils/pwaActivity';
 import { CropSelectionCard } from '@/components/land/CropSelectionCard';
 
 interface LandFormData {
@@ -264,6 +265,8 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
       return;
     }
 
+    const releasePwaWork = beginPwaWork();
+
     setIsSaving(true);
     
     try {
@@ -352,6 +355,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         variant: "destructive",
       });
     } finally {
+      releasePwaWork();
       setIsSaving(false);
     }
   };
