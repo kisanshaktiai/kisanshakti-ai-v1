@@ -4,7 +4,9 @@ import {
   getActiveNetworkRequests,
   getActivePwaWork,
   installPwaFetchTracking,
+  isPwaReloadSafe,
   resetPwaActivityForTests,
+  waitForPwaReloadSafe,
 } from '@/utils/pwaActivity';
 
 describe('PWA activity tracking', () => {
@@ -50,6 +52,33 @@ describe('PWA activity tracking', () => {
     release();
 
     expect(getActivePwaWork()).toBe(0);
+  });
+
+  it('blocks reload safety while application work is active', () => {
+    const release = beginPwaWork();
+
+    expect(isPwaReloadSafe()).toBe(false);
+
+    release();
+
+    expect(isPwaReloadSafe()).toBe(true);
+  });
+
+  it('waits for active application work before resolving safe reload', async () => {
+    const release = beginPwaWork();
+    let resolved = false;
+
+    const waitPromise = waitForPwaReloadSafe(5).then(() => {
+      resolved = true;
+    });
+
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    release();
+    await waitPromise;
+
+    expect(resolved).toBe(true);
   });
 
   it('does not go negative when a tracked operation finishes', async () => {
