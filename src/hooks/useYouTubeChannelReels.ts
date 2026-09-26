@@ -131,7 +131,9 @@ async function fetchViaProxies(): Promise<string> {
 }
 
 async function fetchViaEdgeFunction(): Promise<YouTubeChannelVideo[]> {
-  const { data, error } = await supabase.functions.invoke('youtube-channel-feed');
+  const { data, error } = await supabase.functions.invoke('weather', {
+    body: { action: 'youtube_feed' },
+  });
   if (error) throw error;
   const videos = (data as { videos?: YouTubeChannelVideo[] } | null)?.videos ?? [];
   return videos;

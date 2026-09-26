@@ -31,6 +31,7 @@
 // src/hooks/useWeather.ts needs no modification.
 // ============================================================================
 
+import { getYouTubeChannelFeed } from "./youtube-feed.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from "../_shared/rateLimiter.ts";
@@ -1465,6 +1466,16 @@ serve(async (req: Request): Promise<Response> => {
 
     const body = await req.json() as WeatherRequest;
     let { action, lat, lon, landId } = body;
+
+    // Home "Farming Reels" feed (official channel RSS, no API key).
+    if ((action as string) === "youtube_feed") {
+      try {
+        const payload = await getYouTubeChannelFeed();
+        return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ videos: [], error: e instanceof Error ? e.message : String(e) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
     let landData: { id: string; name: string; farmer_id: string; district: string | null } | null = null;
 
     // ---- MODEL B: refresh every cell containing an active land ----------------
