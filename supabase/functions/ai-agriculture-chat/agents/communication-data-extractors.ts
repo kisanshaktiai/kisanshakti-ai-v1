@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 15:45 UTC — Type-only fix: coerce active_ingredient null to undefined.
 // COMMUNICATION DATA EXTRACTORS v1.0
 
 import type { 
@@ -53,7 +55,7 @@ export function extractProductDetails(decision: DecisionOutput): ExtractedProduc
     waterVolume: appDetails.water_requirement || '200 liters/acre',
     safetyClass: getPPELevel(appDetails.ppe_required || []),
     concentration: appDetails.concentration,
-    activeIngredient: appDetails.active_ingredient,
+    activeIngredient: appDetails.active_ingredient ?? undefined,
     productType: appDetails.product_type || 'CHEMICAL'
   };
 }

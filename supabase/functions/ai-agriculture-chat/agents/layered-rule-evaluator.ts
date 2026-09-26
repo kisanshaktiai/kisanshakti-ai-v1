@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 16:10 UTC — Type-only fix: added local BundledRuleExtended interface (extends loader.ts's ExecutableRule with the response-/agronomic/ROI/weather-gate optional fields actually populated on bundled rule JSONB) and typed convertBundledToRule's `bundled` param with it, instead of casting field-by-field (no logic change)
  * 2026-09-26 15:37 UTC — Type-only fixes: Rule.condition_code, ETL lookup args from state, visual_symptom array coercion, weather/_sourceRule narrow casts (no logic change)
  * 2026-09-05 — BRAIN-ONLY EXCLUSION: candidates that farmer-text-filter would
  *   blank (isDiagnosisRule / isDifferentialText) are not eligible for primary.
@@ -1417,7 +1418,54 @@ export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]>
 }
 
 
-function convertBundledToRule(bundled: ExecutableRule): Rule {
+/**
+ * Local type-only extension of loader.ts's ExecutableRule.
+ * bundled-rules/loader.ts is owned by another module; this file only reads
+ * these DB/JSONB-populated optional fields from the bundled rule object at
+ * runtime (already present on the underlying data), so we widen the type
+ * here rather than editing loader.ts or scattering `as any` casts below.
+ */
+interface BundledRuleExtended extends ExecutableRule {
+  response_mr?: string;
+  response_hi?: string;
+  response_en?: string;
+  dosage_per_acre?: string;
+  water_volume_per_acre?: string;
+  application_method?: string;
+  target_pest_stage?: string;
+  chemical_class?: string;
+  treatment_type?: string;
+  biological_group?: string;
+  reentry_interval_hours?: number;
+  aquatic_toxicity?: string;
+  regulatory_status?: string;
+  material_cost_per_acre_min?: number;
+  material_cost_per_acre_max?: number;
+  labor_cost_per_acre_min?: number;
+  labor_cost_per_acre_max?: number;
+  labor_hours_per_acre?: number;
+  equipment_required?: string;
+  equipment_cost_per_acre?: number;
+  total_cost_estimated?: number;
+  roi_yield_gain_pct?: number;
+  roi_cost_saved_min?: number;
+  roi_cost_saved_max?: number;
+  roi_net_score?: number;
+  roi_confidence?: number;
+  success_indicators?: string[];
+  failure_indicators?: string[];
+  min_temperature?: number;
+  max_temperature?: number;
+  max_wind_speed?: number;
+  rain_delay_hours?: number;
+  weather_dependency?: boolean;
+  university_source?: string;
+  risk_level?: string;
+  response_severity?: string;
+  data_authority_rank?: number;
+}
+
+function convertBundledToRule(bundled: BundledRuleExtended): Rule {
   // FIX 2 (2026-08-17): preserve the DB condition_code on the converted rule.
   // loader.ts maps decision_rules.condition_code → conditionCode (default
   // '() => true' when the column is null — that placeholder is not a code).

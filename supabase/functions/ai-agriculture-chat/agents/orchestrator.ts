@@ -4011,7 +4011,7 @@ export class AIAgentOrchestrator {
             decision_id: `zero_code_${Date.now()}`,
             session_id: sessionId,
             farmer_id: farmerId,
-            language: userLang,
+            language: (typeof userLang !== 'undefined' ? userLang : (options.language || 'mr')),
             format: 'RICH_TEXT',
             tone: 'FRIENDLY',
             created_at: new Date().toISOString(),
@@ -4047,7 +4047,7 @@ export class AIAgentOrchestrator {
       }
       
       // CRASH-PROOF LOGGING: Use safe accessors for all fields (v5.1.0 SemanticExtraction)
-      let intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
+      var intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
       // Expose for [ORCHESTRATOR_EXIT] boundary audit in index.ts
       (this as any)._lastIntentCode = intentCode;
       const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
@@ -9333,6 +9333,9 @@ export class AIAgentOrchestrator {
             // F4 — HARD ROUTER: force observation-card response, refuse rule fallback.
             try {
               const { getObservationsForIntent } = await import('../utils/observation-mapping-cache.ts');
+              const cropCode = (canonicalState as any)?.crop_type ?? (landContext as any)?.current_crop ?? undefined;
+              const growthStage = (canonicalState as any)?.crop_stage ?? (landContext as any)?.growth_stage ?? undefined;
+              const resolvedDAS = (canonicalState as any)?.days_after_sowing_exact ?? (landContext as any)?.days_since_sowing ?? undefined;
               const _routerCrop = (typeof cropCode === 'string' && cropCode)
                 ? cropCode
                 : (landContext?.current_crop ?? null);
@@ -10410,6 +10413,7 @@ export class AIAgentOrchestrator {
           });
           // Hypothesis (may be undefined if no arbitration ran)
           try {
+            const hypothesisResult: any = (this as any)._lastHypothesisResult ?? undefined;
             const hyp = (typeof hypothesisResult !== 'undefined') ? hypothesisResult : null;
             if (hyp) {
               rt.setHypotheses({

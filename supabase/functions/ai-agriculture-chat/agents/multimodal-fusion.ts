@@ -1,4 +1,6 @@
 // MULTI-MODAL FUSION ENGINE - KisanShakti AI
+// CHANGE LOG (newest first)
+//   2026-09-26 16:20 UTC — Type-only fixes: annotated modality-name accumulator arrays as string[] (MODALITY_NAMES values are a const union narrower than the general modality strings pushed into these arrays); no behavior change.
 
 import type {
   MultiModalInput,
@@ -257,7 +259,7 @@ export class MultiModalFusionEngine {
     // Validate Pest Identification
     if (input.text_understanding.entities.pest_code) {
       const pestCode = input.text_understanding.entities.pest_code;
-      const supportingSources = [MODALITY_NAMES.text];
+      const supportingSources: string[] = [MODALITY_NAMES.text];
       let confidence = input.text_understanding.confidence;
       const originalConfidence = confidence;
       
@@ -314,7 +316,7 @@ export class MultiModalFusionEngine {
     // Validate Disease Identification
     if (input.text_understanding.entities.disease_code) {
       const diseaseCode = input.text_understanding.entities.disease_code;
-      const supportingSources = [MODALITY_NAMES.text];
+      const supportingSources: string[] = [MODALITY_NAMES.text];
       let confidence = input.text_understanding.confidence;
       const originalConfidence = confidence;
       
@@ -784,7 +786,7 @@ export class MultiModalFusionEngine {
   }
   
   private getModalitiesPresent(input: MultiModalInput): string[] {
-    const modalities = [MODALITY_NAMES.text, MODALITY_NAMES.weather];
+    const modalities: string[] = [MODALITY_NAMES.text, MODALITY_NAMES.weather];
     if (input.visual_analysis) modalities.push(MODALITY_NAMES.visual);
     if (input.sensor_data) modalities.push(MODALITY_NAMES.sensor);
     if (input.satellite_data) modalities.push(MODALITY_NAMES.satellite);

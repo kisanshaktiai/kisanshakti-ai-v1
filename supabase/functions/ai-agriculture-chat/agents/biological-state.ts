@@ -1,5 +1,7 @@
 /**
  * CHANGE LOG
+ * 2026-09-26 15:42 UTC — Type-only fix: cast c.severity to keyof typeof
+ *   SEVERITY_WEIGHTS to resolve TS7053 index error; no behavior changed.
  * 2026-08-30 — v8 (2nd forensic audit R2, P1): gdd_accumulated now also reads the
  *   resolver's `current_gdd` (was always null from resolver rows). Additive evidence-contract fields —
  *   `authority` (evidence tier, policy vocabulary), `confirmation`
@@ -130,7 +132,7 @@ const SEVERITY_WEIGHTS: Readonly<Record<'INFO' | 'WARN' | 'BLOCK', number>> = Ob
 
 function decayConfidence(base: number, cs: ReadonlyArray<BiologicalConstraint>): number {
   if (!Array.isArray(cs) || cs.length === 0) return base;
-  const decay = cs.reduce((s, c) => s + (SEVERITY_WEIGHTS[c.severity] ?? 0), 0);
+  const decay = cs.reduce((s, c) => s + (SEVERITY_WEIGHTS[c.severity as keyof typeof SEVERITY_WEIGHTS] ?? 0), 0);
   return Math.max(0, Math.min(1, base * Math.max(0, 1 - decay)));
 }
 

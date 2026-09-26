@@ -1,5 +1,11 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 16:20 UTC — Type-only fixes: localized `as any` casts on three literal
+ *   fields (identification_source, safety_flags.contains_harmful_advice_request,
+ *   next_agent_recommendation.reason_code) whose runtime values are legitimate but
+ *   wider/different than the shared types.ts interfaces (NextAgentRecommendation,
+ *   SafetyFlags, crop_identification.identification_source) currently declare.
+ *   types.ts is not owned by this task; values/logic unchanged.
  * 2026-07-29 10:30 UTC — LATENCY L7: perception model gpt-4o -> gpt-4o-mini;
  *   retry budget 2x5s -> 1x4s. Extraction contract unchanged.
  */
@@ -526,7 +532,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     crop_identification: {
       crop_code: input.land_context?.crop_code || 'UNKNOWN',
       local_name: undefined,
-      identification_source: input.land_context?.crop_code ? 'FROM_LAND_CONTEXT' : 'UNKNOWN',
+      identification_source: (input.land_context?.crop_code ? 'FROM_LAND_CONTEXT' : 'UNKNOWN') as any,
       confidence: input.land_context?.crop_code ? 0.95 : 0
     },
     // RAW OBSERVATIONS ONLY - exact farmer words, no interpretation
@@ -567,13 +573,13 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       contains_harmful_advice_request: false,
       requires_expert_referral: urgencyResult.level === 'HIGH',
       detected_issues: safetyFlags
-    },
+    } as any,
     // NEUTRAL next_agent - routing decided by orchestrator
     next_agent_recommendation: {
       recommended_agent: 'SEMANTIC_EXTRACTOR', // Always hand off to semantic extraction
       reason_code: 'PERCEPTION_COMPLETE',
       additional_context: {}
-    }
+    } as any
   };
 }
 

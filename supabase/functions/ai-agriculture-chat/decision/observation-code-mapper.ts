@@ -1,5 +1,11 @@
 // OBSERVATION CODE MAPPER v2.0.0 (100% Deterministic, Crash-Proof)
 
+// CHANGE LOG (newest first)
+//   2026-09-26 21:00 UTC — Type-only fix: no code changes needed here; the
+//     TS2339 errors on ObservationKey.BOLL_DAMAGE / WEBBING_PRESENT /
+//     HONEYDEW_STICKY / INSECT_PRESENCE_CONFIRMED were resolved by adding the
+//     missing (but clearly intended) members to decision/observation-ontology.ts.
+
 import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
