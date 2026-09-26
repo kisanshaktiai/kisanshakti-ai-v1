@@ -1,3 +1,7 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 15:40 UTC — Type-only fix: relocated @ts-ignore directives to
+//     the exact .insert() call lines (untyped Supabase client resolves
+//     table rows as never) so deno check passes; no behavior changed.
 // FORENSIC AUDIT LOGGER - Complete Decision Trail
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -622,9 +626,9 @@ export class AuditLogger {
       ...decisionLogExtras,
     };
 
-    // @ts-ignore - Supabase types may not match exactly
     let { error } = await this.supabase
       .from('ai_chat_audit_logs')
+      // @ts-ignore - Supabase types may not match exactly (untyped client; insertData shape validated at runtime)
       .insert(insertData);
 
     if (error && isSchemaColumnError(error)) {
@@ -634,9 +638,9 @@ export class AuditLogger {
       delete legacyInsertData.pipeline_version;
       delete legacyInsertData.graph_version;
       delete legacyInsertData.runtime_version;
-      // @ts-ignore - Supabase types may not match exactly
       const retry = await this.supabase
         .from('ai_chat_audit_logs')
+        // @ts-ignore - Supabase types may not match exactly (untyped client; insertData shape validated at runtime)
         .insert(legacyInsertData);
       error = retry.error;
     }

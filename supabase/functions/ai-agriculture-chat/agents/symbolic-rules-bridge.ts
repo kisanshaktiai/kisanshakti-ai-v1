@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 16:15 UTC — No code change; relies on scientific_source now being declared optional on RuleResult (rule-engine-types.ts) so convertToRuleResult's existing scientific_source assignment type-checks.
 //   2026-09-26 15:35 UTC — Narrow casts on normalizePriority()/action_type to satisfy RuleResult's RulePriority/action union without altering runtime values
 // SYMBOLIC RULES BRIDGE - Lightweight Stub (v1.0.0-stub)
 

@@ -1,9 +1,14 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Added optional sku field to ProductRecommendation for DB-populated SKU codes (type-only).
+
 // ============= PRODUCT REPOSITORY (SSOT) =============
 
 import { SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export interface ProductRecommendation {
   id: string;
+  /** Optional — SKU code, populated for some DB-sourced product rows */
+  sku?: string;
   name: string;
   product_type: string;
   brand: string;

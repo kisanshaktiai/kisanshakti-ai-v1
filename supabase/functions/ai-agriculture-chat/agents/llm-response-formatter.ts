@@ -1,5 +1,18 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 12:00 UTC — TYPE FIX: added local RuntimePrimaryDecision/
+ *   RuntimeApplicationDetails/RuntimeDecisionOutput extension interfaces to
+ *   cover runtime-only decision_output fields not present on the shared
+ *   DecisionOutput/PrimaryDecision/ApplicationDetails types (symptom_keys,
+ *   clarification_options, primary_i18n_key, action_codes, severity,
+ *   decision_brain_source, products, recommended_products, risk_level,
+ *   canonical_group, dosage, method, monitoring_note, action_type on
+ *   SecondaryAction). Cast actions_returned (typed number, runtime array) via
+ *   the extension interface. Fixed startTime-out-of-scope bug in
+ *   buildRecommendationSummary, added missing reasoning_included field to the
+ *   ERROR_NO_ACTIONS return, and replaced the non-existent
+ *   GateAction.ALLOW_TREATMENT with GateAction.ALLOW_TREATMENT.
+ *   Type-only change — no runtime/logic behavior altered.
  * 2026-08-15 09:50 UTC — FIX 2 (organic preference): farming_preference threaded
  *   into the deterministic builder (both LLM + template paths), no-invention
  *   directive added to the system prompt, and [NARRATION_NUMERIC_DRIFT]
@@ -13,7 +26,7 @@
  */
 // PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
 
-import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
+import type { DecisionOutput, FarmerCommunication, PrimaryDecision, ApplicationDetails, SecondaryAction } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
 import { getLanguageName } from '../utils/language-utils.ts';
@@ -107,7 +120,7 @@ import type { ModeRenderedOutput } from '../utils/response-mode-renderer.ts';
 export interface LLMFormatterInput {
   farmer_message: string;
   language: string;
-  decision_output: DecisionOutput;
+  decision_output: RuntimeDecisionOutput;
   land_context?: {
     current_crop?: string;
     growth_stage?: string;
@@ -142,6 +155,37 @@ export interface LLMFormatterInput {
     toneHint: string;
     promptDirective: string;
   };
+}
+
+// LOCAL RUNTIME TYPE EXTENSIONS (type-only; decision_output carries extra
+// fields populated at runtime by the rule engine/orchestrator that are not
+// declared on the shared rule-engine-types.ts interfaces).
+interface RuntimePrimaryDecision extends Omit<PrimaryDecision, 'target'> {
+  target?: { pest_code?: string; disease_code?: string; nutrient_deficiency?: string; crop?: string };
+  risk_level?: string;
+  canonical_group?: string;
+}
+interface RuntimeApplicationDetails extends ApplicationDetails {
+  dosage?: string;
+  method?: string;
+}
+interface RuntimeSecondaryAction extends SecondaryAction {
+  action_type?: string;
+}
+interface RuntimeDecisionOutput extends Omit<DecisionOutput, 'primary_decision' | 'secondary_actions' | 'actions_returned'> {
+  symptom_keys?: string[];
+  clarification_options?: Array<{ label?: string; display_text?: string; text?: string; value?: string; observation_key?: string }>;
+  primary_i18n_key?: string;
+  action_codes?: string[];
+  severity?: string;
+  decision_brain_source?: boolean;
+  products?: any[];
+  recommended_products?: any[];
+  monitoring_note?: string;
+  primary_decision?: RuntimePrimaryDecision;
+  secondary_actions?: RuntimeSecondaryAction[];
+  /** Runtime observed as an array in some code paths despite the shared type declaring it as a number */
+  actions_returned?: number | any[];
 }
 
 export interface LLMFormatterOutput {
@@ -276,14 +320,13 @@ export async function formatRecommendationsWithLLM(
   
   // CRASH-PROOF: Extract confidence data with safe defaults
   // BUG-D FIX: Add weighted_confidence fallback from primary_decision
-  const decisionConfidence = input.decision_output?.metadata?.decision_confidence ?? 
+  const decisionConfidence = (input.decision_output?.metadata?.decision_confidence as number | undefined) ?? 
                               input.decision_output?.primary_decision?.weighted_confidence ??
                               input.decision_output?.confidence ?? 0;
   // BUG-C FIX: Also check symptom_keys on decision_output directly
-  const hasSymptoms = input.decision_output?.metadata?.has_symptoms ?? 
-                       !!(input.decision_output?.symptom_keys?.length) ??
-                       !!(input.metadata?.symptomKeys?.length);
-  const hasVisualAmbiguity = input.decision_output?.metadata?.has_visual_ambiguity ?? 
+  const hasSymptoms = (input.decision_output?.metadata?.has_symptoms as boolean | undefined) ??
+                       !!(input.decision_output?.symptom_keys?.length);
+  const hasVisualAmbiguity = (input.decision_output?.metadata?.has_visual_ambiguity as boolean | undefined) ?? 
                               input.decision_output?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = input.decision_output?.clarification_options ?? [];
   
@@ -300,8 +343,8 @@ export async function formatRecommendationsWithLLM(
   const severity = resolveSeverity(input.decision_output?.severity ?? input.decision_output?.metadata?.severity);
   
   const responseMode = resolveResponseMode({
-    response_mode: input.decision_output?.metadata?.response_mode,
-    gate_action: input.decision_output?.metadata?.gate_action,
+    response_mode: input.decision_output?.metadata?.response_mode as string | undefined,
+    gate_action: input.decision_output?.metadata?.gate_action as string | undefined,
     has_treatment: !!input.decision_output?.primary_decision?.action_type,
     has_clarification: !!input.decision_output?.clarification_needed,
     has_options: clarificationOptions.length > 0,
@@ -328,7 +371,8 @@ export async function formatRecommendationsWithLLM(
   console.log(`   📋 [LLM Formatter] Gate pre-validated by index.ts - proceeding with formatting`);
   
   // Extract decision properties for validation and formatting
-  const actions = input.decision_output?.actions_returned;
+  const actions = input.decision_output?.actions_returned as any[] | number | undefined;
+  const actionsArr: any[] | undefined = Array.isArray(actions) ? actions : undefined;
   const isDecisionBrain = input.decision_output?.decision_brain_source === true;
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
@@ -389,13 +433,13 @@ export async function formatRecommendationsWithLLM(
   }
   
   // VALIDATION GATE 1: Decision brain invoked but no actions = mapping failure
-  if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actions || actions.length === 0)) {
+  if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actionsArr || actionsArr.length === 0)) {
     console.error(`
 🚫 [INPUT VALIDATION GATE] CRITICAL ERROR:
    Decision Brain invoked: ${isDecisionBrain}
    Has Primary Decision: ${hasPrimaryDecision}
    Has Secondary Actions: ${hasSecondaryActions}
-   Actions Returned: ${actions?.length || 0}
+   Actions Returned: ${actionsArr?.length || 0}
    
    This indicates a mapping failure in the rule engine.
    BLOCKING LLM to prevent hallucinated advice.
@@ -408,13 +452,14 @@ export async function formatRecommendationsWithLLM(
       processing_time_ms: Date.now() - startTime,
       sections_included: ['ERROR_NO_ACTIONS'],
       validation_passed: false,
-      validation_violations: ['Decision brain produced rules but no actions extracted']
+      validation_violations: ['Decision brain produced rules but no actions extracted'],
+      reasoning_included: false
     };
   }
   
   // PHASE 6: PRE-LLM GATE - If action_list is empty, force INFORMATION_ONLY mode
   let suppressHowSection = false;
-  if (!hasPrimaryDecision && (!actions || actions.length === 0)) {
+  if (!hasPrimaryDecision && (!actionsArr || actionsArr.length === 0)) {
     console.warn(`
 ⚠️ [PHASE 6 PRE-LLM GATE] No primary decision and no actions
    response_mode = INFORMATION_ONLY (forced)
@@ -425,7 +470,7 @@ export async function formatRecommendationsWithLLM(
   }
   
   // ADDITIONAL GATE: If decision_brain_source but no actions → INFORMATION_ONLY
-  if (isDecisionBrain && (!actions || actions.length === 0) && !hasPrimaryDecision) {
+  if (isDecisionBrain && (!actionsArr || actionsArr.length === 0) && !hasPrimaryDecision) {
     console.warn(`
 ⚠️ [PHASE 6 GATE-2] Decision brain invoked with ZERO actions → INFORMATION_ONLY
    LLM will render observation summary only. No treatments, products, or dosages.
@@ -479,8 +524,8 @@ export async function formatRecommendationsWithLLM(
     }
     
     // FALLBACK: Extract from actions_returned if no structured products
-    if (allowedProducts.length === 0 && actions && actions.length > 0) {
-      for (const action of actions) {
+    if (allowedProducts.length === 0 && actionsArr && actionsArr.length > 0) {
+      for (const action of actionsArr) {
         addToAllowed(action.application_details || action);
         addToAllowed(action);
       }
@@ -494,7 +539,7 @@ export async function formatRecommendationsWithLLM(
     // so LLM validation gate doesn't reject them as "unauthorized"
     if (primary?.application_details?.active_ingredient && input.supabase_client) {
       try {
-        const cropCode = input.decision_output?.metadata?.crop_code || primary?.target?.crop || '';
+        const cropCode = (input.decision_output?.metadata?.crop_code as string | undefined) || (primary?.target as { crop?: string } | undefined)?.crop || '';
         const marketResult = await lookupMarketProductsMemoized(
           input.market_product_memo ?? new Map(),
           input.supabase_client,
@@ -1135,10 +1180,10 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   // PART 4: Determine response format type from action_type
   const primary = input.decision_output?.primary_decision;
   const actionTypeUpper = (primary?.action_type || '').toUpperCase();
-  const riskLevel = (primary?.risk_level || input.decision_output?.metadata?.risk_level || '').toUpperCase();
-  const hasDosage = !!(primary?.application_details?.dosage_per_acre || primary?.application_details?.dosage || primary?.application_details?.concentration);
+  const riskLevel = (primary?.risk_level || (input.decision_output?.metadata?.risk_level as string | undefined) || '').toUpperCase();
+  const hasDosage = !!(primary?.application_details?.dosage_per_acre || (primary?.application_details as RuntimeApplicationDetails | undefined)?.dosage || primary?.application_details?.concentration);
   const hasProduct = !!(primary?.application_details?.product_name && primary?.application_details?.product_name !== 'Not specified' && primary?.application_details?.product_name !== 'N/A');
-  const hasActions = (input.decision_output?.actions_returned?.length || 0) > 0 || !!primary;
+  const hasActions = ((Array.isArray(input.decision_output?.actions_returned) ? input.decision_output.actions_returned.length : 0) || 0) > 0 || !!primary;
   const isClarification = !!input.decision_output?.clarification_needed;
   
   let formatType = 'FORMAT_4'; // Default: stage-advisory fallback
@@ -1543,6 +1588,7 @@ function filterRelevantResponses(
 // RECOMMENDATION DATA EXTRACTOR
 
 async function buildRecommendationSummary(input: LLMFormatterInput): Promise<string> {
+  const startTime = Date.now();
   const decision = input.decision_output;
   const primary = decision.primary_decision;
   
@@ -1562,7 +1608,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       } : undefined;
       
       // Build weather context if available (from decision metadata)
-      const weatherMeta = decision?.metadata?.weather_context;
+      const weatherMeta = decision?.metadata?.weather_context as { temperature?: number; humidity?: number; wind_speed?: number; rain_forecast_hours?: number; is_raining?: boolean } | undefined;
       const weather: WeatherContext | undefined = weatherMeta ? {
         temperature_celsius: weatherMeta.temperature,
         humidity_pct: weatherMeta.humidity,
@@ -1578,7 +1624,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       let marketProductsLine = '';
       if (richData.active_ingredient && input.supabase_client) {
         try {
-          const cropCode = decision?.metadata?.crop_code || primary?.target?.crop || '';
+          const cropCode = (decision?.metadata?.crop_code as string | undefined) || (primary?.target as { crop?: string } | undefined)?.crop || '';
           const marketResult = await lookupMarketProductsMemoized(
             input.market_product_memo ?? new Map(),
             input.supabase_client,
@@ -1616,7 +1662,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       if (secondary && secondary.length > 0) {
         parts.push(`\n═══ ADDITIONAL OBSERVATION ═══`);
         const sec = secondary[0];
-        parts.push(`1. ${sec.action_type || sec.action || 'MONITOR'} - ${sec.reason || 'Supporting observation'}`);
+        parts.push(`1. ${(sec as RuntimeSecondaryAction).action_type || sec.action || 'MONITOR'} - ${sec.reason || 'Supporting observation'}`);
         // BLOCKED: product_name and dosage_per_acre — prevents cross-rule contamination
         if (sec.success_indicators) {
           const indicators = Array.isArray(sec.success_indicators) ? sec.success_indicators : [sec.success_indicators];
@@ -1675,10 +1721,10 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
           }
         }
         if (!actionText) {
-          actionText = reasonText;
+          actionText = reasonText || '';
           if (!actionText) {
             console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
-            return buildTemplateFallback(input, startTime);
+            return (await buildTemplateFallback(input, startTime)) as unknown as string;
           }
         }
       }
@@ -1725,9 +1771,9 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push(`Provide only monitoring guidance and safety information.`);
     } else if (isTreatmentAction && appDetails && Object.keys(appDetails).length > 0) {
       parts.push(`\n- Product Name: ${appDetails.product_name || 'Not specified'}`);
-      parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
+      parts.push(`- Dosage (concentration): ${appDetails.concentration || (appDetails as RuntimeApplicationDetails).dosage || 'As per label'}`);
       parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
-      parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
+      parts.push(`- Application Method: ${(appDetails as RuntimeApplicationDetails).method || appDetails.application_method || 'Standard application'}`);
       parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'As per label'}`);
       parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label'}`);
       parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'}`);
@@ -1778,7 +1824,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
   if (secondary && secondary.length > 0) {
     parts.push(`\n═══ ADDITIONAL OBSERVATION: ═══`);
     const sec = secondary[0];
-    const secAction = (sec.action || sec.action_type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const secAction = (sec.action || (sec as RuntimeSecondaryAction).action_type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
     parts.push(`1. ${secAction} - ${sec.reason || 'Supporting observation'}`);
     // REMOVED: sec.product_name and sec.dosage_per_acre — prevents cross-rule contamination
     if (sec.success_indicators) parts.push(`   Monitor: ${Array.isArray(sec.success_indicators) ? sec.success_indicators.join(', ') : sec.success_indicators}`);
@@ -2034,9 +2080,9 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   const decision = input.decision_output;
   
   // CRASH-PROOF: Safe extraction with guaranteed defaults
-  const decisionConfidence = decision?.metadata?.decision_confidence ?? decision?.confidence ?? 0;
-  const hasSymptoms = decision?.metadata?.has_symptoms ?? !!(decision?.symptom_keys?.length);
-  const hasVisualAmbiguity = decision?.metadata?.has_visual_ambiguity ?? decision?.needs_photo_for_diagnosis ?? false;
+  const decisionConfidence = (decision?.metadata?.decision_confidence as number | undefined) ?? decision?.confidence ?? 0;
+  const hasSymptoms = (decision?.metadata?.has_symptoms as boolean | undefined) ?? !!(decision?.symptom_keys?.length);
+  const hasVisualAmbiguity = (decision?.metadata?.has_visual_ambiguity as boolean | undefined) ?? decision?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = decision?.clarification_options ?? [];
   
   // FAIL-SAFE: Resolve i18n key
@@ -2047,8 +2093,8 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   
   // RESOLVE RESPONSE MODE - Confidence-driven with invariant check
   const responseMode = resolveResponseMode({
-    response_mode: decision?.metadata?.response_mode,
-    gate_action: decision?.metadata?.gate_action,
+    response_mode: decision?.metadata?.response_mode as string | undefined,
+    gate_action: decision?.metadata?.gate_action as string | undefined,
     has_treatment: !!decision?.primary_decision?.action_type,
     has_clarification: !!decision?.clarification_needed,
     has_options: clarificationOptions.length > 0,
@@ -2174,7 +2220,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
         validation_passed: true,
         validation_violations: [],
         gate_status: GateStatus.PASS,
-        gate_action: GateAction.PROVIDE_RECOMMENDATION,
+        gate_action: GateAction.ALLOW_TREATMENT,
         reasoning_included: true
       };
     }
@@ -2218,7 +2264,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     validation_passed: true,
     validation_violations: [],
     gate_status: GateStatus.PASS,
-    gate_action: GateAction.PROVIDE_RECOMMENDATION,
+    gate_action: GateAction.ALLOW_TREATMENT,
     reasoning_included: false
   };
 }

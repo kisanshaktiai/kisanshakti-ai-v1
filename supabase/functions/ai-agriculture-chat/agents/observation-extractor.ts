@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Added optional color_mentioned field to ObservationExtraction (consumed by understanding-completeness-checker.ts) — type-only.
+
 // STAGE 2: OBSERVATION EXTRACTOR (LLM, STRICT)
 
 export const OBSERVATION_EXTRACTOR_VERSION = '1.0.0';
@@ -10,6 +13,9 @@ export type SymptomDistribution = 'uniform' | 'patchy' | 'border' | 'spreading' 
 export interface ObservationExtraction {
   // Raw crop name as mentioned by farmer (NOT code)
   crop_mentioned?: string;
+
+  /** Optional — color descriptors mentioned by farmer, read by understanding-completeness-checker */
+  color_mentioned?: string;
   
   // EXACT farmer words describing symptoms
   raw_symptom_text: string[];

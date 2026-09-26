@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 15:47 UTC — Type-only fix: cast Partial<ContextManagerInput> to ContextManagerInput at call sites where current_input is guaranteed set by runtime logic.
 // AGENT 2A: CONTEXT-AWARE CONVERSATION MANAGER - PRODUCTION v1.0
 
 import {
@@ -490,10 +492,10 @@ export function processContextManager(
   }
   
   // 2. Detect context switch
-  const contextSwitch = detectContextSwitch(input, existingSession, allActiveSessions);
+  const contextSwitch = detectContextSwitch(input as ContextManagerInput, existingSession, allActiveSessions);
   
   // 3. Update accumulated knowledge
-  accumulatedKnowledge = updateAccumulatedKnowledge(accumulatedKnowledge, input);
+  accumulatedKnowledge = updateAccumulatedKnowledge(accumulatedKnowledge, input as ContextManagerInput);
   
   // 4. State transitions based on input
   let previousState = session.current_state;

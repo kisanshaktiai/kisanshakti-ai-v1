@@ -1,5 +1,6 @@
 // Feedback Learning & Improvement Engine
 // CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Cast .insert() calls to any at 3 sites (confidence_adjustments/efficacy_updates/learning_suggestions) — client lacks Database generic so table rows type as never (type-only).
 //   2026-09-26 15:35 UTC — Narrow casts for untyped Supabase client rows (createClient generic 'never') and rpc-in-update payload; fixed insert/update overload mismatches without changing query shape.
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -681,15 +682,15 @@ export class FeedbackLearningEngine {
   }
   
   private async saveConfidenceAdjustment(adjustment: ConfidenceAdjustment): Promise<void> {
-    await this.supabase.from('confidence_adjustments').insert(adjustment);
+    await (this.supabase.from('confidence_adjustments') as any).insert(adjustment);
   }
   
   private async saveEfficacyUpdate(update: EfficacyUpdate): Promise<void> {
-    await this.supabase.from('efficacy_updates').insert(update);
+    await (this.supabase.from('efficacy_updates') as any).insert(update);
   }
   
   private async saveSuggestion(suggestion: LearningSuggestion): Promise<void> {
-    await this.supabase.from('learning_suggestions').insert(suggestion);
+    await (this.supabase.from('learning_suggestions') as any).insert(suggestion);
   }
 }
 

@@ -1,5 +1,12 @@
 // PHASE-18: CANONICAL OBSERVATION ONTOLOGY (DATABASE-ALIGNED)
 
+// CHANGE LOG (newest first)
+//   2026-09-26 21:00 UTC — Type-only fix: added 4 missing enum members
+//     (BOLL_DAMAGE, WEBBING_PRESENT, HONEYDEW_STICKY,
+//     INSECT_PRESENCE_CONFIRMED) referenced by decision/observation-code-mapper.ts
+//     but previously absent from this enum, causing TS2339 errors. Purely
+//     additive — no existing member renamed, removed, or reassigned.
+
 export const OBSERVATION_ONTOLOGY_VERSION = '2.0.0'; // Phase-18: Canonical DB-aligned
 
 // CANONICAL ENGLISH OBSERVABLE KEYS
@@ -228,6 +235,10 @@ export enum ObservationKey {
   SYMPTOM_POWDER = 'SYMPTOM_POWDER',
   SYMPTOM_FRASS = 'SYMPTOM_FRASS',
   SYMPTOM_WEBBING = 'SYMPTOM_WEBBING',
+  BOLL_DAMAGE = 'BOLL_DAMAGE',
+  WEBBING_PRESENT = 'WEBBING_PRESENT',
+  HONEYDEW_STICKY = 'HONEYDEW_STICKY',
+  INSECT_PRESENCE_CONFIRMED = 'INSECT_PRESENCE_CONFIRMED',
   ACTION_SPRAY_DONE = 'ACTION_SPRAY_DONE',
   ACTION_FERTILIZER_APPLIED = 'ACTION_FERTILIZER_APPLIED',
   ACTION_IRRIGATION_DONE = 'ACTION_IRRIGATION_DONE',

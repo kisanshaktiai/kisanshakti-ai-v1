@@ -1,6 +1,24 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 18:10 UTC — Added local ObservationExtractionLegacy interface (optional legacy/canonical fields) to fix type errors without changing runtime behavior
 // STAGE 4: UNDERSTANDING COMPLETENESS CHECKER (SYMBOLIC - NO LLM)
 
 import type { ObservationExtraction } from './observation-extractor.ts';
+
+// Legacy/canonical fields populated at runtime by the Language Induction Layer
+// but not declared on the base ObservationExtraction type.
+interface ObservationExtractionLegacy extends ObservationExtraction {
+  extracted_observations?: string[];
+  color_mentioned?: string[];
+  size_mentioned?: string;
+  behavior_mentioned?: string;
+  secondary_symptoms?: string[];
+  plant_healthy?: boolean;
+  plant_dying?: boolean;
+  no_problem_mentioned?: boolean;
+  timing_just_started?: boolean;
+  severity_level?: string;
+  is_urgent?: boolean;
+}
 
 export const UNDERSTANDING_CHECKER_VERSION = '2.0.0'; // SSOT-compliant version
 
@@ -48,7 +66,7 @@ interface CriticalFieldCheck {
   field: string;
   weight: number;
   description: string;
-  isKnown: (obs: ObservationExtraction, landContext?: any) => boolean;
+  isKnown: (obs: ObservationExtractionLegacy, landContext?: any) => boolean;
 }
 
 const CRITICAL_FIELDS: CriticalFieldCheck[] = [
@@ -115,7 +133,7 @@ const VAGUE_OBSERVATION_CODES = new Set([
 ]);
 
 // Detects if symptoms are vague and need clarification to distinguish
-export function detectSymptomAmbiguity(observations: ObservationExtraction): boolean {
+export function detectSymptomAmbiguity(observations: ObservationExtractionLegacy): boolean {
   // Check if any extracted observation codes are vague
   const observationCodes = observations.extracted_observations || [];
   const hasVagueObservation = observationCodes.some(code => 
@@ -132,7 +150,7 @@ export function detectSymptomAmbiguity(observations: ObservationExtraction): boo
   const hasBehavior = observations.behavior_mentioned !== undefined;
   const hasSpecificLocation = observations.affected_part !== 'unknown' && 
                               observations.affected_part !== 'whole' &&
-                              observations.affected_part !== '';
+                              (observations.affected_part as string) !== '';
   const hasSecondarySymptom = observations.secondary_symptoms && observations.secondary_symptoms.length > 0;
   
   // Count distinguishing features
@@ -152,7 +170,7 @@ export function detectSymptomAmbiguity(observations: ObservationExtraction): boo
 
 // CONTRADICTION DETECTION - USING CANONICAL FLAGS
 
-function detectContradictions(obs: ObservationExtraction): string[] {
+function detectContradictions(obs: ObservationExtractionLegacy): string[] {
   const contradictions: string[] = [];
   
   // Use canonical flags from Language Induction Layer instead of language strings
@@ -220,7 +238,7 @@ function determineClarificationPriority(unknownFields: string[]): 'crop' | 'symp
 
 // URGENCY DETECTION - USING CANONICAL FLAGS
 
-function detectUrgency(observations: ObservationExtraction): boolean {
+function detectUrgency(observations: ObservationExtractionLegacy): boolean {
   // Use urgency flag from Language Induction Layer (already extracted)
   if (observations.is_urgent === true) {
     return true;

@@ -1,6 +1,7 @@
 // RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
 
 // CHANGE LOG (newest first)
+//   2026-09-26 16:15 UTC — Added optional scientific_source to RuleResult (DB-populated field read by symbolic-rules-bridge.ts's convertToRuleResult); widened ActionType to accept runtime DB string values; ActionTiming.reason/ApplicationDetails.application_method now accept null; made ApplicationDetails.quantity_per_acre/total_quantity/water_requirement optional; BlockedAction fields relaxed to optional with legacy blocked_by alias; added FieldConditions.ndvi_trend. No existing required field types changed for already-populated call sites.
 //   2026-09-26 15:50 UTC — Added soil_organic_carbon to FieldConditions; made WeatherForecast core fields optional and added alternate shape fields (rain_probability, suitable_for_spraying, risk_factors); added product_name/product_type/weighted_confidence/normalized_score/success_indicators to layered_rule_result.primary_decision, matched_responses, and primary_matched_response, and widened their action_type to ActionType; added optional priority to PrimaryDecision; added 'PARTIAL' to DecisionStatus.
 //   2026-09-26 15:42 UTC — Added optional DB/JSONB-populated fields to ApplicationDetails, PrimaryDecision, DecisionOutput, SecondaryAction, RuleResult, RecommendationDetails; added 'CULTURAL' to ProductType; added optional soil_phosphorus_state/soil_potassium_state to FieldConditions; re-exported FarmerCommunication from communication-types.ts for legacy import paths. No existing field types changed.
 
@@ -77,6 +78,8 @@ export interface FieldConditions {
   soil_organic_carbon?: number;
   ndvi?: number;
   ndvi_state?: 'EXCELLENT' | 'HEALTHY' | 'MODERATE_STRESS' | 'HIGH_STRESS' | 'CRITICAL';
+  /** Optional — populated from satellite/NDVI JSONB data */
+  ndvi_trend?: string;
   last_irrigation_date?: string;
   last_fertilizer_date?: string;
 }
@@ -363,7 +366,8 @@ export type ActionType =
   | 'NO_ACTION'
   | 'MONITOR_ONLY'
   | 'ESCALATE_TO_EXPERT'
-  | 'NO_INTERVENTION_REQUIRED'; // GAP #1: Positive terminal diagnosis - this is a SUCCESS state
+  | 'NO_INTERVENTION_REQUIRED' // GAP #1: Positive terminal diagnosis - this is a SUCCESS state
+  | (string & {}); // widened: runtime action_type values are sourced from DB/JSONB and validated at read-time, not by the type system
 
 export type UrgencyLevel = 'IMMEDIATE' | 'WITHIN_24H' | 'WITHIN_48H' | 'WITHIN_WEEK' | 'NON_URGENT';
 
@@ -373,7 +377,8 @@ export interface ActionTiming {
   best_time_of_day?: 'EARLY_MORNING' | 'MORNING' | 'EVENING' | 'ANY';
   weather_dependency: boolean;
   weather_requirements?: string;
-  reason: string;
+  /** Runtime callers may pass null when no reason text was resolved from the rule */
+  reason: string | null;
   reason_mr?: string;
   reason_hi?: string;
 }
@@ -384,10 +389,12 @@ export interface ApplicationDetails {
   product_type: ProductType;
   active_ingredient?: string | null;
   concentration: string;
-  quantity_per_acre: string;
-  total_quantity: string;
-  water_requirement: string;
-  application_method: ApplicationMethod;
+  /** Optional — some CULTURAL-practice application details omit quantity fields */
+  quantity_per_acre?: string;
+  total_quantity?: string;
+  water_requirement?: string;
+  /** Runtime callers may pass null when no application method applies (e.g. CULTURAL_PRACTICE) */
+  application_method?: ApplicationMethod | null;
   coverage_instructions: string;
   coverage_instructions_mr?: string;
   coverage_instructions_hi?: string;
@@ -480,13 +487,16 @@ export interface SecondaryAction {
 
 export interface BlockedAction {
   action: string;
-  blocked_by_rule: string;
-  priority: string;
+  /** Optional — some runtime call sites populate `blocked_by` instead (legacy alias, see below) */
+  blocked_by_rule?: string;
+  priority?: string;
   reason: string;
   reason_mr?: string;
   reason_hi?: string;
   regulation_reference?: string;
-  alternatives: string[];
+  alternatives?: string[];
+  /** Legacy alias for blocked_by_rule populated by some orchestrator call sites */
+  blocked_by?: string;
 }
 
 // ECONOMIC ASSESSMENT
@@ -652,6 +662,8 @@ export interface RuleResult {
   metadata?: Record<string, unknown>;
   /** Optional — raw action-type string from the source rule (pre-normalization), broader than `action` */
   action_type?: string;
+  /** Optional — DB-populated scientific-source citation carried through from the bundled/DB rule */
+  scientific_source?: string;
   /** Optional — rule-authored action text (SSOT narration source) */
   action_text?: string;
 }

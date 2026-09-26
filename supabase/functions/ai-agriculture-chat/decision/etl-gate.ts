@@ -47,7 +47,7 @@ export function lookupETLFromStandards(
   pestCode: string | undefined,
   cropCode: string | undefined,
   growthStage: string | undefined
-): { etl_value_min?: number; etl_value_max?: number; sampling_method?: string } | null {
+): { etl_value_min?: number; etl_value_max?: number; sampling_method?: string; sampling_unit?: string } | null {
   if (!etlStandardsCache || !pestCode) return null;
   
   const matches = etlStandardsCache.filter(s => {

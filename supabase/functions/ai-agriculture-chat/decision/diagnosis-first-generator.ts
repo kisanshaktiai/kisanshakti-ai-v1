@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 00:00 UTC — Type fix: explicit annotation for `options` array so optional `cause` field is preserved when pushing photo option (no runtime change)
 //   2026-08-07 17:50 UTC — GAP A: cause labels resolve by decision_rules.i18n_key
 //     first; sentence-based translateCause is fallback only; [I18N_KEY_MISS]
 //     warning deduped per key per request.
@@ -765,7 +766,15 @@ export function formatForClarificationUI(
   const codeLike = (s: string): boolean =>
     !s || s.includes('_') || /^[A-Z0-9 ]+$/.test(s.trim());
 
-  const options = output.diagnoses.flatMap(d => {
+  const options: Array<{
+    id: string;
+    label: string;
+    observation_key: string;
+    rule_id: string;
+    confidence_boost: number;
+    icon?: string;
+    cause?: string;
+  }> = output.diagnoses.flatMap(d => {
     const obs = (d.observation_label || '').trim();
     const cause = (d.cause_label || '').trim();
 

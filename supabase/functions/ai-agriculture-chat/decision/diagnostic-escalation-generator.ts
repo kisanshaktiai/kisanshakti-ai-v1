@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 18:15 UTC — Typed language-keyed template indexing with keyof typeof casts (type-only, no runtime change)
 // DIAGNOSTIC ESCALATION RESPONSE GENERATOR
 
 import type {
@@ -193,7 +195,7 @@ export function generateDiagnosticEscalationResponse(
   input: DiagnosticEscalationInput
 ): string {
   const { language, crop_name, crop_name_local, growth_stage, days_since_sowing } = input;
-  const t = TEMPLATES[language] || TEMPLATES.en;
+  const t = TEMPLATES[language as keyof typeof TEMPLATES] || TEMPLATES.en;
   
   const lines: string[] = [];
   
@@ -360,7 +362,7 @@ function buildRequiredInputs(
   language: string
 ): RequiredInput[] {
   const inputs: RequiredInput[] = [];
-  const t = TEMPLATES[language] || TEMPLATES.en;
+  const t = TEMPLATES[language as keyof typeof TEMPLATES] || TEMPLATES.en;
   
   // Always recommend photo for pest/disease hypotheses
   const hasPestOrDisease = hypotheses.some(h => h.category === 'PEST' || h.category === 'DISEASE');
@@ -427,7 +429,7 @@ function buildDiagnosticSummary(hypotheses: DiagnosticHypothesis[], language: st
       hi: `${cropName} फसल में लक्षणों का विश्लेषण जारी है।`,
       en: `Analyzing symptoms in ${cropName} crop.`
     };
-    return templates[language] || templates.en;
+    return templates[language as keyof typeof templates] || templates.en;
   }
   
   const topCauses = hypotheses.slice(0, 2).map(h => h.cause_name).join(' or ');
@@ -436,7 +438,7 @@ function buildDiagnosticSummary(hypotheses: DiagnosticHypothesis[], language: st
     hi: `लक्षण ${topCauses} की ओर इशारा करते हैं। पुष्टि के लिए और जानकारी चाहिए।`,
     en: `Symptoms suggest ${topCauses}. More information needed for confirmation.`
   };
-  return templates[language] || templates.en;
+  return templates[language as keyof typeof templates] || templates.en;
 }
 
 function buildInterimMonitoring(hypotheses: DiagnosticHypothesis[], language: string): string[] {
@@ -463,7 +465,7 @@ function buildInterimMonitoring(hypotheses: DiagnosticHypothesis[], language: st
     }
   };
   
-  const t = templates[language] || templates.en;
+  const t = templates[language as keyof typeof templates] || templates.en;
   
   // Always include spread monitoring
   monitoring.push(t.spread);

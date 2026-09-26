@@ -1,5 +1,8 @@
 // CAUSAL HYPOTHESIS ARBITRATION ENGINE v1.0.0
 
+// CHANGE LOG (newest first)
+// 2026-09-26 00:00 UTC — Type fix: widened decision_path/clarification_reason unions to include ORPHAN_HYPOTHESIS_FALLBACK and dynamic reason strings (no runtime change)
+
 import { SymbolContract } from '../runtime/symbol-contract.ts';
 import { stageCompatibility } from './stage-symbol-resolver.ts';
 
@@ -85,9 +88,9 @@ export interface ArbitrationResult {
   competing: HypothesisScore[];
   all_scores: HypothesisScore[];
   needs_clarification: boolean;
-  clarification_reason?: 'COMPETING_HYPOTHESES' | 'BELOW_THRESHOLD' | 'ALL_ELIMINATED';
+  clarification_reason?: 'COMPETING_HYPOTHESES' | 'BELOW_THRESHOLD' | 'ALL_ELIMINATED' | string;
   discriminator_question?: DiscriminatorQuestion;
-  decision_path: 'HYPOTHESIS_SCOPED' | 'FULL_RULE_SCOPE' | 'CLARIFICATION_REQUIRED';
+  decision_path: 'HYPOTHESIS_SCOPED' | 'FULL_RULE_SCOPE' | 'CLARIFICATION_REQUIRED' | 'ORPHAN_HYPOTHESIS_FALLBACK';
   eliminated_hypotheses: Array<{ id: string; reason: string }>;
   hypotheses_evaluated: number;
 }
