@@ -373,6 +373,9 @@ Deno.serve(async (req) => {
 
     const { text, language } = body;
     if (!text || typeof text !== 'string') return json({ error: 'text is required' }, 400);
+    // format: 'binary' returns the audio bytes as the response body. The app
+    // plays them from an object URL: no base64 decode, one third less data.
+    const wantsBinary = body.format === 'binary';
 
     const locale = typeof language === 'string' && language ? language : 'hi-IN';
     const trimmed = text.slice(0, MAX_TEXT_LENGTH);
@@ -385,6 +388,7 @@ Deno.serve(async (req) => {
 
     let lastError = '';
     for (const vendor of vendors) {
+      const startedAt = Date.now();
       try {
         const result =
           vendor === 'bhashini'
@@ -392,6 +396,23 @@ Deno.serve(async (req) => {
             : vendor === 'google'
               ? await synthesiseGoogle(trimmed, locale)
               : await synthesiseLovable(trimmed, locale);
+        // One metering line per successful synthesis. Values only, never the text.
+        console.log(
+          `[text-to-speech] ok vendor=${result.vendor} tier=${result.tier} locale=${locale} chars=${trimmed.length} ms=${Date.now() - startedAt} tenant=${req.headers.get('x-tenant-id') ?? '-'} farmer=${req.headers.get('x-farmer-id') ?? '-'}`,
+        );
+        if (wantsBinary) {
+          const bytes = Uint8Array.from(atob(result.audioContent), (c) => c.charCodeAt(0));
+          return new Response(bytes, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': result.mimeType,
+              'Content-Length': String(bytes.byteLength),
+              'X-TTS-Vendor': result.vendor,
+              'X-TTS-Tier': result.tier,
+            },
+          });
+        }
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);

@@ -1,6 +1,6 @@
 /**
  * TTSSettingsPanel - TTS settings panel component
- * Includes speed, volume, and auto-read toggles
+ * Includes enable, speed and volume controls
  */
 
 import React from 'react';
@@ -15,10 +15,7 @@ import {
   Volume2, 
   Play, 
   RotateCcw, 
-  Zap,
-  MessageSquare,
-  Bell,
-  Calendar
+  Zap
 } from 'lucide-react';
 import { useTTSSettingsStore, TTS_LANGUAGES, TTSLanguageCode } from '@/stores/ttsSettingsStore';
 import { useTTS } from '@/hooks/useTTS';
@@ -39,15 +36,9 @@ export function TTSSettingsPanel({ className, compact = false }: TTSSettingsPane
     isEnabled,
     rate,
     volume,
-    autoReadChat,
-    autoReadAlerts,
-    autoReadSchedule,
     setEnabled,
     setRate,
     setVolume,
-    setAutoReadChat,
-    setAutoReadAlerts,
-    setAutoReadSchedule,
     resetToDefaults,
   } = useTTSSettingsStore();
 
@@ -198,37 +189,6 @@ export function TTSSettingsPanel({ className, compact = false }: TTSSettingsPane
               step={0.1}
               className="w-full"
             />
-          </div>
-
-          {/* Auto-Read Toggles */}
-          <div className="space-y-3 pt-2 border-t">
-            <Label className="text-sm font-medium">{t('profile.tts.autoRead', 'Auto Read')}</Label>
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{t('profile.tts.autoReadChat', 'AI Chat Responses')}</span>
-                </div>
-                <Switch checked={autoReadChat} onCheckedChange={setAutoReadChat} />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{t('profile.tts.autoReadAlerts', 'Weather & Alerts')}</span>
-                </div>
-                <Switch checked={autoReadAlerts} onCheckedChange={setAutoReadAlerts} />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{t('profile.tts.autoReadSchedule', 'Daily Tasks')}</span>
-                </div>
-                <Switch checked={autoReadSchedule} onCheckedChange={setAutoReadSchedule} />
-              </div>
-            </div>
           </div>
 
           {/* Test & Reset Buttons */}

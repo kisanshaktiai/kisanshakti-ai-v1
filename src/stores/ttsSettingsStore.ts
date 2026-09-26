@@ -24,11 +24,6 @@ interface TTSSettingsState {
   pitch: number;        // Speech pitch: 0.5 - 2.0
   volume: number;       // Volume: 0.0 - 1.0
   
-  // Feature toggles
-  autoReadChat: boolean;      // Auto-read AI chat responses
-  autoReadAlerts: boolean;    // Auto-read weather/task alerts
-  autoReadSchedule: boolean;  // Auto-read schedule items
-  
   // Playback state (not persisted)
   currentMessageId: string | null;
   isPaused: boolean;
@@ -38,9 +33,6 @@ interface TTSSettingsState {
   setRate: (rate: number) => void;
   setPitch: (pitch: number) => void;
   setVolume: (volume: number) => void;
-  setAutoReadChat: (enabled: boolean) => void;
-  setAutoReadAlerts: (enabled: boolean) => void;
-  setAutoReadSchedule: (enabled: boolean) => void;
   updateSettings: (settings: Partial<Pick<TTSSettingsState, 'rate' | 'pitch' | 'volume'>>) => void;
   setCurrentMessageId: (id: string | null) => void;
   setPaused: (paused: boolean) => void;
@@ -52,9 +44,6 @@ const DEFAULT_SETTINGS = {
   rate: 1.0,
   pitch: 1.0,
   volume: 1.0,
-  autoReadChat: false,
-  autoReadAlerts: true,
-  autoReadSchedule: false,
   currentMessageId: null,
   isPaused: false,
 };
@@ -71,12 +60,6 @@ export const useTTSSettingsStore = create<TTSSettingsState>()(
       setPitch: (pitch) => set({ pitch: Math.max(0.5, Math.min(2.0, pitch)) }),
       
       setVolume: (volume) => set({ volume: Math.max(0.0, Math.min(1.0, volume)) }),
-      
-      setAutoReadChat: (enabled) => set({ autoReadChat: enabled }),
-      
-      setAutoReadAlerts: (enabled) => set({ autoReadAlerts: enabled }),
-      
-      setAutoReadSchedule: (enabled) => set({ autoReadSchedule: enabled }),
       
       updateSettings: (settings) => set((state) => ({
         ...state,
@@ -106,9 +89,6 @@ export const useTTSSettingsStore = create<TTSSettingsState>()(
         rate: state.rate,
         pitch: state.pitch,
         volume: state.volume,
-        autoReadChat: state.autoReadChat,
-        autoReadAlerts: state.autoReadAlerts,
-        autoReadSchedule: state.autoReadSchedule,
       }),
     }
   )

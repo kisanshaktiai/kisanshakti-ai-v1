@@ -12,9 +12,9 @@ interface UseTextToSpeechProps {
 }
 
 export function useTextToSpeech({
-  language = 'hi',
-  rate = 0.95,
-  pitch = 1.0,
+  language,
+  rate,
+  pitch,
   onError,
 }: UseTextToSpeechProps = {}) {
   const s = useSpeech({ language, rate, pitch, onError });

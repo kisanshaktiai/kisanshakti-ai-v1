@@ -28,9 +28,7 @@ export function GeneralChatWelcomeCard({ onQuickAction }: GeneralChatWelcomeCard
   const { session } = useAuthStore();
   const [farmerName, setFarmerName] = useState<string>('');
   
-  const { speak, isSpeaking, stop } = useTextToSpeech({
-    language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
-  });
+  const { speak, isSpeaking, stop } = useTextToSpeech({ language });
 
   useEffect(() => {
     const fetchFarmerName = async () => {

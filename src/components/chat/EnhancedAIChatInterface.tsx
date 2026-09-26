@@ -42,8 +42,6 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
-import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
-import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
 import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
@@ -52,7 +50,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { prefetchLandChatContext } from '@/hooks/useLandChatContext';
 import type { Message } from './types';
 import { normalizeConfidencePct } from './types';
-import { beginPwaWork } from '@/utils/pwaActivity';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
@@ -66,8 +63,6 @@ export function EnhancedAIChatInterface() {
   const langStore = useLanguageStore();
   const language = langStore.currentLanguage || 'en';
   const isOnline = useOfflineStatus();
-  const { needsDownload, isInitialized, currentLanguage } = useVoiceInitialization();
-  const [showVoiceDownload, setShowVoiceDownload] = useState(false);
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
@@ -321,11 +316,10 @@ export function EnhancedAIChatInterface() {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   
-  const speechLang = language === 'hi' ? 'hi-IN' : language === 'mr' ? 'mr-IN' : language === 'en' ? 'en-IN' : 'hi-IN';
   
   const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
     onTranscript: (text) => setTranscript(text),
-    language: speechLang
+    language
   });
   
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
@@ -1262,8 +1256,6 @@ export function EnhancedAIChatInterface() {
       return;
     }
     
-    const releasePwaWork = beginPwaWork();
-
     // ⚡ OPTIMISTIC UPDATE: Generate temp ID and show message INSTANTLY
     const tempId = `temp_${Date.now()}`;
     const userMessageId = crypto.randomUUID();
@@ -1613,7 +1605,6 @@ export function EnhancedAIChatInterface() {
         sessionId: sessionIds[activeTab] || ''
       });
     } finally {
-      releasePwaWork();
       setIsLoading(false);
       setLoadingMessage('');
       // Optimistically bump local quota counter; server-side commit is authoritative.
@@ -1869,10 +1860,6 @@ export function EnhancedAIChatInterface() {
   };
 
   const startListening = () => {
-    if (needsDownload && !isInitialized) {
-      setShowVoiceDownload(true);
-      return;
-    }
     originalStartListening();
   };
 
@@ -1906,16 +1893,6 @@ export function EnhancedAIChatInterface() {
           onDiagnosed={activeTab !== 'general'
             ? (r) => { void sendMessage(r.farmerText, undefined, undefined, r.diagnosisId); }
             : undefined}
-        />
-      )}
-
-      {/* Voice Download Modal */}
-      {showVoiceDownload && (
-        <VoiceDownloadCard
-          language={language}
-          languageName={language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : 'English'}
-          onComplete={() => setShowVoiceDownload(false)}
-          onSkip={() => setShowVoiceDownload(false)}
         />
       )}
 

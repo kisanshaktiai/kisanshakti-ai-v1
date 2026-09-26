@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { getVoicePlatformInfo, getUnsupportedMessage } from '@/services/voice/voicePlatformDetector';
+import { useSpeech } from '@/hooks/useSpeech';
 
 interface VoiceSuggestion {
   id: string;
@@ -58,6 +59,8 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   const [showPanel, setShowPanel] = useState(false);
   const [isSpeakingSuggestion, setIsSpeakingSuggestion] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  // Suggestion read-out goes through the one speech engine (device voice, farmer settings).
+  const { speak: speakViaEngine, stop: stopSpeech } = useSpeech({ language: currentLanguage || 'en' });
   const isPressedRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -141,25 +144,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   };
 
   const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = getLanguageCode();
-      utterance.rate = 0.9;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
-
-  const getLanguageCode = (): string => {
-    const langMap: Record<string, string> = {
-      'en': 'en-US',
-      'hi': 'hi-IN',
-      'mr': 'mr-IN',
-      'ta': 'ta-IN',
-      'pa': 'pa-IN',
-    };
-    return langMap[currentLanguage || 'en'] || 'en-US';
+    void speakViaEngine(text, currentLanguage || 'en');
   };
 
   const getWelcomeMessage = () => {
@@ -213,7 +198,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
     setIsSpeakingSuggestion(true);
     
     // Stop any ongoing speech
-    window.speechSynthesis.cancel();
+    stopSpeech();
     
     // Speak response
     if (suggestion.response_text) {
@@ -288,7 +273,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
     console.log('[Voice] Press END');
     isPressedRef.current = false;
     setShowPanel(false);
-    window.speechSynthesis.cancel();
+    stopSpeech();
     
     // Small delay before stopping to ensure last words are captured
     timeoutRef.current = setTimeout(() => {
@@ -301,7 +286,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
     console.log('[Voice] Press CANCEL');
     isPressedRef.current = false;
     setShowPanel(false);
-    window.speechSynthesis.cancel();
+    stopSpeech();
     
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
