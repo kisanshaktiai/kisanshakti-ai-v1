@@ -1,4 +1,6 @@
 // CONFLICT RESOLVER - Priority-Based Decision Resolution
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Narrow type casts for rule metadata fields (pest_code/disease_code/action_text/reason_text/knowledge_text) missing on RuleResult/RecommendationDetails types; cast actionType to ActionType.
 
 import type {
   DecisionsByPriority,
@@ -374,10 +376,11 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   const dosage = rec?.dosage || extractDosageFromReason(rule.reason);
   
   // CRITICAL FIX: Extract pest/disease codes from rule metadata, not just keyword matching
-  const pestCode = rule.pest_code || (rule.cause?.toUpperCase().includes('PEST') || 
+  const ruleAny = rule as unknown as { pest_code?: string; disease_code?: string };
+  const pestCode = ruleAny.pest_code || (rule.cause?.toUpperCase().includes('PEST') || 
                    rule.cause?.toUpperCase().includes('BORER') || 
                    rule.cause?.toUpperCase().includes('WHITEFLY') ? rule.cause : undefined);
-  const diseaseCode = rule.disease_code || (rule.cause?.toUpperCase().includes('DISEASE') || 
+  const diseaseCode = ruleAny.disease_code || (rule.cause?.toUpperCase().includes('DISEASE') || 
                       rule.cause?.toUpperCase().includes('BLIGHT') ||
                       rule.cause?.toUpperCase().includes('ROT') ? rule.cause : undefined);
   
@@ -388,7 +391,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   
   return {
     // PRODUCTION HARDENING: These fields are REQUIRED for valid PrimaryDecision
-    action_type: actionType,
+    action_type: actionType as ActionType,
     rule_id: rule.rule_id, // CRITICAL: Include rule_id for traceability
     specific_action: productName || rule.cause,
     target: {
@@ -419,9 +422,9 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
         max_applications_season: 3
       },
       // NEW RESPONSE CONTRACT: Pass structured response fields
-      action_text: rec?.action_text || rule.action_text,
-      reason_text: rec?.reason_text || rule.reason_text,
-      knowledge_text: rec?.knowledge_text || rule.knowledge_text
+      ...( { action_text: (rec as any)?.action_text || (rule as any).action_text,
+      reason_text: (rec as any)?.reason_text || (rule as any).reason_text,
+      knowledge_text: (rec as any)?.knowledge_text || (rule as any).knowledge_text } as unknown as {} )
     },
     expected_outcomes: {
       efficacy_percent: rec?.efficacy_percent || 75,

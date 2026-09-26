@@ -374,7 +374,7 @@ export interface ApplicationDetails {
   quantity_per_acre: string;
   total_quantity: string;
   water_requirement: string;
-  application_method: ApplicationMethod | null;
+  application_method: ApplicationMethod;
   coverage_instructions: string;
   coverage_instructions_mr?: string;
   coverage_instructions_hi?: string;
@@ -395,6 +395,8 @@ export interface ApplicationDetails {
   action_text?: string;
   /** Rule-authored reason text (SSOT narration source) */
   reason_text?: string;
+  /** Rule-authored knowledge/explanation text (SSOT narration source) */
+  knowledge_text?: string;
   reason_text_mr?: string;
   reason_text_hi?: string;
   /** i18n lookup key for localized rule text */
