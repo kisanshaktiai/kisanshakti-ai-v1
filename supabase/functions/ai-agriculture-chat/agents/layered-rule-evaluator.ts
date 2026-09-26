@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 15:37 UTC — Type-only fixes: Rule.condition_code, ETL lookup args from state, visual_symptom array coercion, weather/_sourceRule narrow casts (no logic change)
  * 2026-09-05 — BRAIN-ONLY EXCLUSION: candidates that farmer-text-filter would
  *   blank (isDiagnosisRule / isDifferentialText) are not eligible for primary.
  *   They remain matched/applied. Logs [BRAIN_ONLY_EXCLUDED].
@@ -667,8 +668,8 @@ export function evaluateRulesLayered(
       const etlApplicable = rule.then.action_details?.etl_applicable;
       if (etlApplicable !== false) {
         // Try DB-backed ETL standards first, fall back to rule-level values
-        const pestCode = rule.then.action_details?.pest_code || rule.condition?.condition_code;
-        const dbETL = lookupETLFromStandards(pestCode, options?.cropCode, options?.growthStage);
+        const pestCode = rule.then.action_details?.pest_code || rule.condition_code;
+        const dbETL = lookupETLFromStandards(pestCode, (state as { crop_type?: string }).crop_type, (state as { growth_stage?: string }).growth_stage);
         
         const etlInput: ETLInput = {
           rule_id: rule.id,
@@ -930,7 +931,7 @@ export function evaluateRulesLayered(
       
       if (!isNutrition) return true; // Non-nutrition rules pass through
       
-      const currentSymptoms = state.visual_symptoms || [];
+      const currentSymptoms = (Array.isArray(state.visual_symptom) ? state.visual_symptom : (state.visual_symptom ? [state.visual_symptom] : [])) as string[];
       
       // Zinc specificity gate
       const zincGate = passesZincSpecificityGate(r.rule_id, [], { all_observations: currentSymptoms });
@@ -1011,7 +1012,7 @@ export function evaluateRulesLayered(
     const confirmedObs = (state as any).confirmed_observations;
     const primarySymptomSource = (confirmedObs && confirmedObs.length > 0) 
       ? confirmedObs 
-      : (state.visual_symptoms || []);
+      : ((Array.isArray(state.visual_symptom) ? state.visual_symptom : (state.visual_symptom ? [state.visual_symptom] : [])) as string[]);
     const currentSymptoms = primarySymptomSource.map((s: string) => canonicalObsCode(s)).filter(Boolean);
     
     // 2026-09-04 — CONTEXT EVIDENCE. Live trace_mtn1l8je_iv4uhe ("आता कोणते खत
@@ -1213,6 +1214,7 @@ export function evaluateRulesLayered(
       
       result.primary_decision = {
         // PR-7 F1: expose the winning ExecutableRule so downstream gates
+        // @ts-expect-error narrow extension for internal tracing, not part of PrimaryDecision contract
         _sourceRule: best,
         rule_id: best.rule_id,
         action_type: best.action_type,
@@ -1643,7 +1645,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             // Severity
             severity: state.severity || '',
             // Weather context
-            weather: state.weather || {},
+            weather: (state as { weather?: unknown }).weather || {},
             // Data confidence
             data_confidence: state.data_confidence || '',
             // Extended context for strict constraint evaluation

@@ -754,11 +754,11 @@ serve(async (req) => {
         const isGeneralSession = !requestedLandId;
         const sessionHasLand = existingSession.land_id !== null;
         
-        if (isGeneralSession && sessionState?.pending_clarification_options?.length > 0) {
-          console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
-          sessionState.pending_clarification_options = [];
-          sessionState.pending_clarification_observation_keys = [];
-          sessionState.pending_clarification_options_structured = [];
+        if (isGeneralSession && (sessionState?.pending_clarification_options?.length ?? 0) > 0) {
+          console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState?.pending_clarification_options?.length} pending options for General session`);
+          if (sessionState) sessionState.pending_clarification_options = [];
+          if (sessionState) sessionState.pending_clarification_observation_keys = [];
+          if (sessionState) sessionState.pending_clarification_options_structured = [];
         }
         
         // Also clear land-specific context for general sessions
@@ -1241,9 +1241,9 @@ serve(async (req) => {
           pendingClarificationOptionsStructured: sessionState.pending_clarification_options_structured || [],
           // CUMULATIVE EVIDENCE LEDGERS (2026-07-27) — survive across turns so
           // prior farmer selections are never re-offered / re-asked.
-          confirmedObservationKeys: sessionState.confirmed_observation_keys || [],
-          askedObservationKeys: sessionState.asked_observation_keys || [],
-          clarificationRoundCounter: sessionState.clarification_round_counter || 0,
+          confirmedObservationKeys: (sessionState as any).confirmed_observation_keys || [],
+          askedObservationKeys: (sessionState as any).asked_observation_keys || [],
+          clarificationRoundCounter: (sessionState as any).clarification_round_counter || 0,
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // FIX 1 (2026-08-17): the key the orchestrator TAP path already reads.
@@ -1388,7 +1388,7 @@ serve(async (req) => {
         (orchestratorResponse.type as string) === 'CLARIFICATION_NEEDED';
       if (_isClarif) {
         const { getConfigNumber } = await import('./utils/db-ssot/system-config-cache.ts');
-        const _maxRounds = Number(await getConfigNumber(supabase, 'max_clarification_rounds', 3)) || 3;
+        const _maxRounds = Number(await getConfigNumber(supabase, 'max_clarification_rounds')) || 3;
         const _outKeys = ((orchestratorResponse as any)?.question?.options ?? [])
           .map((o: any) => String(o?.observation_key ?? '').trim().toLowerCase())
           .filter((k: string) => k && k !== 'photo_upload');
@@ -1559,7 +1559,7 @@ serve(async (req) => {
       responseType: orchestratorResponse.type,
       agentsUsed: (orchestratorResponse.metadata as any)?.agents_used ?? [],
       cropCode: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
-      growthStage: orchestratorResponse.dataAudit?.land?.current_crop_stage ?? null,
+      growthStage: (orchestratorResponse.dataAudit?.land as any)?.current_crop_stage ?? null,
     });
 
 
@@ -1587,7 +1587,7 @@ serve(async (req) => {
           rule_id: rawDecisionOutput.primary_decision.rule_id,
           product: rawDecisionOutput.primary_decision.application_details?.product_name,
           target: rawDecisionOutput.primary_decision.target,
-          priority: rawDecisionOutput.primary_decision.priority
+          priority: (rawDecisionOutput.primary_decision as any).priority
         })}`);
       }
       if (rawDecisionOutput.secondary_actions?.length > 0) {
@@ -1597,7 +1597,7 @@ serve(async (req) => {
       }
       
       // PRODUCTION HARDENING: PRIMARY DECISION INVARIANT
-      if (rawDecisionOutput.status === 'SUCCESS' || rawDecisionOutput.status === 'PARTIAL') {
+      if (rawDecisionOutput.status === 'SUCCESS' || (rawDecisionOutput.status as string) === 'PARTIAL') {
         const primaryDecision = rawDecisionOutput.primary_decision;
         const hasValidActionType = !!primaryDecision?.action_type;
         const hasRuleId = !!primaryDecision?.rule_id || !!primaryDecision?.application_details?.rule_id;
@@ -1619,23 +1619,23 @@ serve(async (req) => {
           
           const isLayeredSafetyGate = isSafetyGateRule(layeredPrimaryDecision?.rule_id);
           
-          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type && !isLayeredSafetyGate) {
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && (layeredPrimaryDecision as any).action_type && !isLayeredSafetyGate) {
             console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
             
             // BUG-1 FIX: Never set placeholder product_name — leave null for formatter
-            const recoveredProductName = layeredPrimaryDecision.product_name || null;
-            const recoveredProductType = layeredPrimaryDecision.product_type || null;
+            const recoveredProductName = (layeredPrimaryDecision as any).product_name || null;
+            const recoveredProductType = (layeredPrimaryDecision as any).product_type || null;
             
             rawDecisionOutput.primary_decision = {
-              action_type: layeredPrimaryDecision.action_type,
+              action_type: (layeredPrimaryDecision as any).action_type,
               rule_id: layeredPrimaryDecision.rule_id,
-              specific_action: layeredPrimaryDecision.action_type,
+              specific_action: (layeredPrimaryDecision as any).action_type,
               target: {},
               urgency: 'WITHIN_24H',
               priority: layeredPrimaryDecision.priority,
               // SSOT: Propagate ledger-derived confidence
-              weighted_confidence: layeredPrimaryDecision.weighted_confidence,
-              normalized_score: layeredPrimaryDecision.normalized_score,
+              weighted_confidence: (layeredPrimaryDecision as any).weighted_confidence,
+              normalized_score: (layeredPrimaryDecision as any).normalized_score,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
@@ -1645,14 +1645,14 @@ serve(async (req) => {
               provenance: 'Recovered from layered_rule_result.primary_decision',
               application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType),
               expected_outcomes: {
-                efficacy_percent: layeredPrimaryDecision.weighted_confidence 
-                  ? Math.round(layeredPrimaryDecision.weighted_confidence * 100) : 75,
+                efficacy_percent: (layeredPrimaryDecision as any).weighted_confidence 
+                  ? Math.round((layeredPrimaryDecision as any).weighted_confidence * 100) : 75,
                 time_to_visible_effect_days: '3-5',
-                success_indicators: layeredPrimaryDecision.success_indicators || []
+                success_indicators: (layeredPrimaryDecision as any).success_indicators || []
               }
             };
             
-            console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+            console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${(layeredPrimaryDecision as any).action_type}`);
           } else if (isLayeredSafetyGate) {
             console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping GLOBAL_SAFETY rule ${layeredPrimaryDecision?.rule_id} as primary — moving to warnings`);
             // Move safety gate rule to warnings instead
@@ -1669,33 +1669,33 @@ serve(async (req) => {
             const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
             const isPrimaryMatchSafetyGate = isSafetyGateRule(primaryMatchedResponse?.rule_id);
             
-            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type && !isPrimaryMatchSafetyGate) {
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && (primaryMatchedResponse as any).action_type && !isPrimaryMatchSafetyGate) {
               console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
               rawDecisionOutput.primary_decision = {
-                action_type: primaryMatchedResponse.action_type,
+                action_type: (primaryMatchedResponse as any).action_type,
                 rule_id: primaryMatchedResponse.rule_id,
-                specific_action: primaryMatchedResponse.action_type,
+                specific_action: (primaryMatchedResponse as any).action_type,
                 target: {},
                 urgency: 'WITHIN_24H',
                 priority: primaryMatchedResponse.priority,
-                weighted_confidence: primaryMatchedResponse.weighted_confidence,
+                weighted_confidence: (primaryMatchedResponse as any).weighted_confidence,
                 timing: {
                   recommended_start: new Date().toISOString(),
                   recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   weather_dependency: false,
                   reason: 'Recovered from primary_matched_response'
                 },
-                application_details: buildRichApplicationDetails(primaryMatchedResponse, primaryMatchedResponse.product_name || null, primaryMatchedResponse.product_type || null),
+                application_details: buildRichApplicationDetails(primaryMatchedResponse, (primaryMatchedResponse as any).product_name || null, (primaryMatchedResponse as any).product_type || null),
                 expected_outcomes: {
-                  efficacy_percent: primaryMatchedResponse.weighted_confidence 
-                    ? Math.round(primaryMatchedResponse.weighted_confidence * 100) : 75,
+                  efficacy_percent: (primaryMatchedResponse as any).weighted_confidence 
+                    ? Math.round((primaryMatchedResponse as any).weighted_confidence * 100) : 75,
                   time_to_visible_effect_days: '3-5',
-                  success_indicators: primaryMatchedResponse.success_indicators || []
+                  success_indicators: (primaryMatchedResponse as any).success_indicators || []
                 }
               };
               
-              console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
+              console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${(primaryMatchedResponse as any).action_type}`);
             } else if (isPrimaryMatchSafetyGate) {
               console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping safety rule ${primaryMatchedResponse?.rule_id} from primary_matched_response`);
             }
@@ -1720,29 +1720,29 @@ serve(async (req) => {
                 
                 const firstMatch = eligibleResponses[0];
                 rawDecisionOutput.primary_decision = {
-                  action_type: firstMatch.action_type,
+                  action_type: (firstMatch as any).action_type,
                   rule_id: firstMatch.rule_id,
                   specific_action: firstMatch.cause || 'Recommendation',
                   target: {},
                   urgency: 'WITHIN_24H',
                   priority: firstMatch.priority,
-                  weighted_confidence: firstMatch.weighted_confidence,
+                  weighted_confidence: (firstMatch as any).weighted_confidence,
                   timing: {
                     recommended_start: new Date().toISOString(),
                     recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                     weather_dependency: false,
                     reason: 'Recovered from matched responses'
                   },
-                  application_details: buildRichApplicationDetails(firstMatch, firstMatch.product_name || null, firstMatch.product_type || null),
+                  application_details: buildRichApplicationDetails(firstMatch, (firstMatch as any).product_name || null, (firstMatch as any).product_type || null),
                   expected_outcomes: {
-                    efficacy_percent: firstMatch.weighted_confidence 
-                      ? Math.round(firstMatch.weighted_confidence * 100) : 75,
+                    efficacy_percent: (firstMatch as any).weighted_confidence 
+                      ? Math.round((firstMatch as any).weighted_confidence * 100) : 75,
                     time_to_visible_effect_days: '3-5',
-                    success_indicators: firstMatch.success_indicators || []
+                    success_indicators: (firstMatch as any).success_indicators || []
                   }
                 };
                 
-                console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+                console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${(firstMatch as any).action_type}`);
               } else {
                 // PRIORITY 4: No eligible responses - generate system fallback
                 // PRODUCTION OBSERVABILITY: Log full diagnostic context before fallback

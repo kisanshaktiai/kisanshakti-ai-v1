@@ -389,7 +389,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   console.log(`   product=${productName}, dosage=${dosage}`);
   console.log(`   pest=${pestCode}, disease=${diseaseCode}`);
   
-  return {
+  return ({
     // PRODUCTION HARDENING: These fields are REQUIRED for valid PrimaryDecision
     action_type: actionType as ActionType,
     rule_id: rule.rule_id, // CRITICAL: Include rule_id for traceability
@@ -439,7 +439,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
     // Preserve multilingual reasons for LLM formatter (LEGACY - for backward compat)
     reason_mr: (rule as any).reason_mr,
     reason_hi: (rule as any).reason_hi
-  };
+  } as unknown as PrimaryDecision);
 }
 
 // CRITICAL FIX: Extract product name from reason text when not explicitly provided
