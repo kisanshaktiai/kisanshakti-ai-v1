@@ -11420,7 +11420,7 @@ export class AIAgentOrchestrator {
       const { data: soilHealth } = soilResult as any;
       const { data: ndviData } = ndviLatestResult as any;
       const { data: ndviHistory } = ndviHistoryResult as any;
-      const { data: cropSchedule } = cropScheduleResult as any; // TYPE-FIX: widen Supabase Promise.all destructures to any</br>
+      const { data: cropSchedule } = cropScheduleResult as any; // TYPE-FIX: widen Supabase Promise.all destructures to any
       
       if (landError || !land) {
         // SECURITY: If land not found OR farmer doesn't own this land, return null

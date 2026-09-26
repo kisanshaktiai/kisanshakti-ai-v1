@@ -150,7 +150,7 @@ export function detectSymptomAmbiguity(observations: ObservationExtractionLegacy
   const hasBehavior = observations.behavior_mentioned !== undefined;
   const hasSpecificLocation = observations.affected_part !== 'unknown' && 
                               observations.affected_part !== 'whole' &&
-                              observations.affected_part !== '';
+                              (observations.affected_part as string) !== '';
   const hasSecondarySymptom = observations.secondary_symptoms && observations.secondary_symptoms.length > 0;
   
   // Count distinguishing features
