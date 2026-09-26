@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Narrow casts on normalizePriority()/action_type to satisfy RuleResult's RulePriority/action union without altering runtime values
 // SYMBOLIC RULES BRIDGE - Lightweight Stub (v1.0.0-stub)
 
 import type { RuleResult, RuleExecutionInput } from './rule-engine-types.ts';
@@ -233,8 +235,8 @@ export function convertToRuleResult(
   
   return {
     rule_id: rule.rule_id,
-    priority: normalizePriority(rule.priority as any),
-    action: rule.action_type || 'RECOMMEND',
+    priority: normalizePriority(rule.priority as any) as unknown as RulePriority,
+    action: (rule.action_type || 'RECOMMEND') as RuleResult['action'],
     cause: rule.cause,
     reason: reason,
     alternatives: r.alternatives,

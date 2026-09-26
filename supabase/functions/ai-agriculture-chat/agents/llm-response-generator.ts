@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Fixed TS2484 duplicate export conflict: SymbolicNarrationInput and NarrationOutput are already exported at their interface declarations, so removed them from the redundant `export type {...}` re-export line (kept ValidationResult since it's not exported elsewhere).
 // LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
@@ -602,7 +604,7 @@ export async function generateNarratedResponse(
 
 // EXPORTED TYPES FOR UPSTREAM MODULES
 
-export type { SymbolicNarrationInput, NarrationOutput, ValidationResult };
+export type { ValidationResult };
 
 // LEGACY EXPORTS - BACKWARD COMPATIBILITY FOR ORCHESTRATOR
 

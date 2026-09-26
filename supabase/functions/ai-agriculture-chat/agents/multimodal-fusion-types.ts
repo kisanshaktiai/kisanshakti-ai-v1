@@ -1,5 +1,8 @@
 // MULTI-MODAL FUSION ENGINE - Type Definitions
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:47 UTC — Added optional legacy aliases 'temperature' (WeatherData.current) and 'temperature_max' (WeatherData.forecast_24h) for consumer back-compat with pre-refactor field names.
+
 // INPUT SOURCES
 
 export interface MultiModalInput {
@@ -85,6 +88,8 @@ export interface WeatherData {
     rainfall_last_72h_mm?: number;
     uv_index?: number;
     cloud_cover_percent?: number;
+    /** @deprecated legacy alias for temperature_c, kept for back-compat reads */
+    temperature?: number;
   };
   forecast_24h: {
     rain_probability_percent: number;
@@ -93,6 +98,8 @@ export interface WeatherData {
     temperature_min_c?: number;
     wind_max_kmh: number;
     humidity_avg_percent?: number;
+    /** @deprecated legacy alias for temperature_max_c, kept for back-compat reads */
+    temperature_max?: number;
   };
   forecast_72h: Array<{
     date: string;

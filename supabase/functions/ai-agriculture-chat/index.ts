@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Type-only fixes: narrow casts for loosely-typed
+//     runtime objects (orchestratorResponse.metadata/decision_output/
+//     communication, sessionState, layeredPrimaryDecision, decisionOutput,
+//     etc.) to eliminate deno-check TS errors; no behavior changed.
+// CHANGE LOG (newest first)
 //   2026-09-17 20:30 UTC — TRANSLATION WIRING FIX: forceTranslateResponse used
 //     an exclusive if(OPENAI)/else if(GEMINI) chain, so with an OpenAI key
 //     present (live: 429 insufficient_quota) no other provider was ever tried
@@ -390,7 +395,7 @@ async function persistRuntimeTraceSafetyNet(params: {
         locked_intent: _rtc.context?.intent?.code ?? null,
         allowed_scopes: [],
         forbidden_actions: [],
-        symbolic_decision_id: _persistedId,
+        // symbolic_decision_id set via ..._auditPatch below (duplicate removed to avoid TS2783)
         // FIX 3 (2026-08-29): was hardcoded [] — read the collector snapshot.
         rules_fired: Array.isArray((_rtc as any).rules?.applied)
           ? (_rtc as any).rules.applied.map((r: any) => (typeof r === 'string' ? r : (r?.rule_id ?? String(r)))).filter(Boolean)
@@ -754,11 +759,11 @@ serve(async (req) => {
         const isGeneralSession = !requestedLandId;
         const sessionHasLand = existingSession.land_id !== null;
         
-        if (isGeneralSession && sessionState?.pending_clarification_options?.length > 0) {
-          console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
-          sessionState.pending_clarification_options = [];
-          sessionState.pending_clarification_observation_keys = [];
-          sessionState.pending_clarification_options_structured = [];
+        if (isGeneralSession && (sessionState?.pending_clarification_options?.length ?? 0) > 0) {
+          console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState?.pending_clarification_options?.length} pending options for General session`);
+          if (sessionState) sessionState.pending_clarification_options = [];
+          if (sessionState) sessionState.pending_clarification_observation_keys = [];
+          if (sessionState) sessionState.pending_clarification_options_structured = [];
         }
         
         // Also clear land-specific context for general sessions
@@ -1241,9 +1246,9 @@ serve(async (req) => {
           pendingClarificationOptionsStructured: sessionState.pending_clarification_options_structured || [],
           // CUMULATIVE EVIDENCE LEDGERS (2026-07-27) — survive across turns so
           // prior farmer selections are never re-offered / re-asked.
-          confirmedObservationKeys: sessionState.confirmed_observation_keys || [],
-          askedObservationKeys: sessionState.asked_observation_keys || [],
-          clarificationRoundCounter: sessionState.clarification_round_counter || 0,
+          confirmedObservationKeys: (sessionState as any).confirmed_observation_keys || [],
+          askedObservationKeys: (sessionState as any).asked_observation_keys || [],
+          clarificationRoundCounter: (sessionState as any).clarification_round_counter || 0,
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
           lockedCropContext: sessionState.lockedCropContext,
           // FIX 1 (2026-08-17): the key the orchestrator TAP path already reads.
@@ -1384,11 +1389,11 @@ serve(async (req) => {
     }
     try {
 
-      const _isClarif = orchestratorResponse.type === 'CLARIFICATION_QUESTION' ||
-        orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+      const _isClarif = (orchestratorResponse.type as string) === 'CLARIFICATION_QUESTION' ||
+        (orchestratorResponse.type as string) === 'CLARIFICATION_NEEDED';
       if (_isClarif) {
         const { getConfigNumber } = await import('./utils/db-ssot/system-config-cache.ts');
-        const _maxRounds = Number(await getConfigNumber(supabase, 'max_clarification_rounds', 3)) || 3;
+        const _maxRounds = Number(await getConfigNumber(supabase as any, 'max_clarification_rounds')) || 3;
         const _outKeys = ((orchestratorResponse as any)?.question?.options ?? [])
           .map((o: any) => String(o?.observation_key ?? '').trim().toLowerCase())
           .filter((k: string) => k && k !== 'photo_upload');
@@ -1557,9 +1562,9 @@ serve(async (req) => {
       detectedLanguage,
       startTime,
       responseType: orchestratorResponse.type,
-      agentsUsed: orchestratorResponse.metadata?.agents_used ?? [],
+      agentsUsed: (orchestratorResponse.metadata as any)?.agents_used ?? [],
       cropCode: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
-      growthStage: orchestratorResponse.dataAudit?.land?.current_crop_stage ?? null,
+      growthStage: (orchestratorResponse.dataAudit?.land as any)?.current_crop_stage ?? null,
     });
 
 
@@ -1587,7 +1592,7 @@ serve(async (req) => {
           rule_id: rawDecisionOutput.primary_decision.rule_id,
           product: rawDecisionOutput.primary_decision.application_details?.product_name,
           target: rawDecisionOutput.primary_decision.target,
-          priority: rawDecisionOutput.primary_decision.priority
+          priority: (rawDecisionOutput.primary_decision as any).priority
         })}`);
       }
       if (rawDecisionOutput.secondary_actions?.length > 0) {
@@ -1597,7 +1602,7 @@ serve(async (req) => {
       }
       
       // PRODUCTION HARDENING: PRIMARY DECISION INVARIANT
-      if (rawDecisionOutput.status === 'SUCCESS' || rawDecisionOutput.status === 'PARTIAL') {
+      if (rawDecisionOutput.status === 'SUCCESS' || (rawDecisionOutput.status as string) === 'PARTIAL') {
         const primaryDecision = rawDecisionOutput.primary_decision;
         const hasValidActionType = !!primaryDecision?.action_type;
         const hasRuleId = !!primaryDecision?.rule_id || !!primaryDecision?.application_details?.rule_id;
@@ -1619,40 +1624,40 @@ serve(async (req) => {
           
           const isLayeredSafetyGate = isSafetyGateRule(layeredPrimaryDecision?.rule_id);
           
-          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type && !isLayeredSafetyGate) {
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && (layeredPrimaryDecision as any).action_type && !isLayeredSafetyGate) {
             console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
             
             // BUG-1 FIX: Never set placeholder product_name — leave null for formatter
-            const recoveredProductName = layeredPrimaryDecision.product_name || null;
-            const recoveredProductType = layeredPrimaryDecision.product_type || null;
+            const recoveredProductName = (layeredPrimaryDecision as any).product_name || null;
+            const recoveredProductType = (layeredPrimaryDecision as any).product_type || null;
             
             rawDecisionOutput.primary_decision = {
-              action_type: layeredPrimaryDecision.action_type,
+              action_type: (layeredPrimaryDecision as any).action_type,
               rule_id: layeredPrimaryDecision.rule_id,
-              specific_action: layeredPrimaryDecision.action_type,
+              specific_action: (layeredPrimaryDecision as any).action_type,
               target: {},
               urgency: 'WITHIN_24H',
               priority: layeredPrimaryDecision.priority,
               // SSOT: Propagate ledger-derived confidence
-              weighted_confidence: layeredPrimaryDecision.weighted_confidence,
-              normalized_score: layeredPrimaryDecision.normalized_score,
+              weighted_confidence: (layeredPrimaryDecision as any).weighted_confidence,
+              normalized_score: (layeredPrimaryDecision as any).normalized_score,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                 weather_dependency: false,
-                reason: null
+                reason: null as any
               },
               provenance: 'Recovered from layered_rule_result.primary_decision',
-              application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType),
+              application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType) as any,
               expected_outcomes: {
-                efficacy_percent: layeredPrimaryDecision.weighted_confidence 
-                  ? Math.round(layeredPrimaryDecision.weighted_confidence * 100) : 75,
+                efficacy_percent: (layeredPrimaryDecision as any).weighted_confidence 
+                  ? Math.round((layeredPrimaryDecision as any).weighted_confidence * 100) : 75,
                 time_to_visible_effect_days: '3-5',
-                success_indicators: layeredPrimaryDecision.success_indicators || []
+                success_indicators: (layeredPrimaryDecision as any).success_indicators || []
               }
             };
             
-            console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+            console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${(layeredPrimaryDecision as any).action_type}`);
           } else if (isLayeredSafetyGate) {
             console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping GLOBAL_SAFETY rule ${layeredPrimaryDecision?.rule_id} as primary — moving to warnings`);
             // Move safety gate rule to warnings instead
@@ -1669,33 +1674,33 @@ serve(async (req) => {
             const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
             const isPrimaryMatchSafetyGate = isSafetyGateRule(primaryMatchedResponse?.rule_id);
             
-            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type && !isPrimaryMatchSafetyGate) {
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && (primaryMatchedResponse as any).action_type && !isPrimaryMatchSafetyGate) {
               console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
               rawDecisionOutput.primary_decision = {
-                action_type: primaryMatchedResponse.action_type,
+                action_type: (primaryMatchedResponse as any).action_type,
                 rule_id: primaryMatchedResponse.rule_id,
-                specific_action: primaryMatchedResponse.action_type,
+                specific_action: (primaryMatchedResponse as any).action_type,
                 target: {},
                 urgency: 'WITHIN_24H',
                 priority: primaryMatchedResponse.priority,
-                weighted_confidence: primaryMatchedResponse.weighted_confidence,
+                weighted_confidence: (primaryMatchedResponse as any).weighted_confidence,
                 timing: {
                   recommended_start: new Date().toISOString(),
                   recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   weather_dependency: false,
                   reason: 'Recovered from primary_matched_response'
                 },
-                application_details: buildRichApplicationDetails(primaryMatchedResponse, primaryMatchedResponse.product_name || null, primaryMatchedResponse.product_type || null),
+                application_details: buildRichApplicationDetails(primaryMatchedResponse, (primaryMatchedResponse as any).product_name || null, (primaryMatchedResponse as any).product_type || null) as any,
                 expected_outcomes: {
-                  efficacy_percent: primaryMatchedResponse.weighted_confidence 
-                    ? Math.round(primaryMatchedResponse.weighted_confidence * 100) : 75,
+                  efficacy_percent: (primaryMatchedResponse as any).weighted_confidence 
+                    ? Math.round((primaryMatchedResponse as any).weighted_confidence * 100) : 75,
                   time_to_visible_effect_days: '3-5',
-                  success_indicators: primaryMatchedResponse.success_indicators || []
+                  success_indicators: (primaryMatchedResponse as any).success_indicators || []
                 }
               };
               
-              console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
+              console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${(primaryMatchedResponse as any).action_type}`);
             } else if (isPrimaryMatchSafetyGate) {
               console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping safety rule ${primaryMatchedResponse?.rule_id} from primary_matched_response`);
             }
@@ -1720,29 +1725,29 @@ serve(async (req) => {
                 
                 const firstMatch = eligibleResponses[0];
                 rawDecisionOutput.primary_decision = {
-                  action_type: firstMatch.action_type,
+                  action_type: (firstMatch as any).action_type,
                   rule_id: firstMatch.rule_id,
                   specific_action: firstMatch.cause || 'Recommendation',
                   target: {},
                   urgency: 'WITHIN_24H',
                   priority: firstMatch.priority,
-                  weighted_confidence: firstMatch.weighted_confidence,
+                  weighted_confidence: (firstMatch as any).weighted_confidence,
                   timing: {
                     recommended_start: new Date().toISOString(),
                     recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                     weather_dependency: false,
                     reason: 'Recovered from matched responses'
                   },
-                  application_details: buildRichApplicationDetails(firstMatch, firstMatch.product_name || null, firstMatch.product_type || null),
+                  application_details: buildRichApplicationDetails(firstMatch, (firstMatch as any).product_name || null, (firstMatch as any).product_type || null) as any,
                   expected_outcomes: {
-                    efficacy_percent: firstMatch.weighted_confidence 
-                      ? Math.round(firstMatch.weighted_confidence * 100) : 75,
+                    efficacy_percent: (firstMatch as any).weighted_confidence 
+                      ? Math.round((firstMatch as any).weighted_confidence * 100) : 75,
                     time_to_visible_effect_days: '3-5',
-                    success_indicators: firstMatch.success_indicators || []
+                    success_indicators: (firstMatch as any).success_indicators || []
                   }
                 };
                 
-                console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+                console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${(firstMatch as any).action_type}`);
               } else {
                 // PRIORITY 4: No eligible responses - generate system fallback
                 // PRODUCTION OBSERVABILITY: Log full diagnostic context before fallback
@@ -1761,7 +1766,7 @@ serve(async (req) => {
                 }
                 console.error(`   generating SYSTEM_FALLBACK`);
                 
-                rawDecisionOutput.status = 'SYSTEM_FALLBACK';
+                (rawDecisionOutput as any).status = 'SYSTEM_FALLBACK';
                 rawDecisionOutput.primary_decision = {
                   action_type: 'MONITOR_ONLY',
                   rule_id: 'INVARIANT_FALLBACK',
@@ -1882,14 +1887,14 @@ serve(async (req) => {
     
     // CRITICAL FIX: Check if Static Data Gate already handled this query
     const isStaticGateResponse = 
-      orchestratorResponse.decision_output?.metadata?.template_type === 'STATIC_DIRECT' ||
-      orchestratorResponse.communication?.metadata?.source === 'STATIC_DATA_GATE';
+      (orchestratorResponse.decision_output as any)?.metadata?.template_type === 'STATIC_DIRECT' ||
+      (orchestratorResponse.communication as any)?.metadata?.source === 'STATIC_DATA_GATE';
     
     if (isStaticGateResponse) {
       // Static Gate already generated the response - use it directly
       console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
-      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
-                        orchestratorResponse.communication?.main_message?.full_text?.en ||
+      responseContent = (orchestratorResponse.communication as any)?.main_message?.full_text?.[detectedLanguage] ||
+                        (orchestratorResponse.communication as any)?.main_message?.full_text?.en ||
                         'Information not available';
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
@@ -1905,7 +1910,7 @@ serve(async (req) => {
           (Array.isArray(actions_returned) && actions_returned.length > 0) ||
           !!_do?.metadata?.winner_rule_id ||
           !!_do?.winner_rule?.rule_id ||
-          (Array.isArray(orchestratorResponse.metadata?.rules_applied) &&
+          (Array.isArray((orchestratorResponse.metadata as any)?.rules_applied) &&
             orchestratorResponse.metadata!.rules_applied.length > 0);
         if (!backed) {
           console.error(
@@ -1928,8 +1933,8 @@ serve(async (req) => {
       
       try {
         // FIX: Build land context for LLM with fallback chain
-        const lockedCropCtx = orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
-                              orchestratorResponse.metadata?.lockedCropContext;
+        const lockedCropCtx = (orchestratorResponse.decision_output as any)?.metadata?.lockedCropContext ||
+                              (orchestratorResponse.metadata as any)?.lockedCropContext;
         
         const landContext = orchestratorResponse.dataAudit?.land?.found ? {
           // Priority 1: From dataAudit (normal land-linked path)
@@ -2005,20 +2010,20 @@ serve(async (req) => {
                                         decisionOutput.observation_keys ||
                                         decisionOutput.canonical_observations ||
                                         [];
-        const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
+        const symptomKeysFromMetadata = (orchestratorResponse.metadata as any)?.symptomKeys || [];
         const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
         
         // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
-        const rawSymbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
+        const rawSymbolicConfidence = (orchestratorResponse.decision_output as any)?.layered_rule_result
           ?.primary_decision?.weighted_confidence
-          ?? orchestratorResponse.decision_output?.layered_rule_result
+          ?? (orchestratorResponse.decision_output as any)?.layered_rule_result
             ?.primary_decision?.confidence_score
           ?? 0;
         // BUG FIX: Guard against NaN from division-by-zero in rule evaluator
         const symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
         
         const unifiedGateInput: UnifiedGateInput = {
-          authority_decision: orchestratorResponse.decision_output?.authority_decision || {
+          authority_decision: (orchestratorResponse.decision_output as any)?.authority_decision || {
             authority: 'NONE',
             authority_status: 'UNCONFIRMED',
             treatments_allowed: false,
@@ -2028,20 +2033,20 @@ serve(async (req) => {
           crop_name: finalCropName,
           growth_stage: finalGrowthStage,
           days_since_sowing: finalDaysSinceSowing,
-          stage_source: orchestratorResponse.metadata?.stageSource || 'UNKNOWN',
+          stage_source: (orchestratorResponse.metadata as any)?.stageSource || 'UNKNOWN',
           symptom_keys: mergedSymptomKeys,
-          is_specific_symptom: !!orchestratorResponse.decision_output?.primary_decision?.target,
-          clarification_turn_count: orchestratorResponse.metadata?.clarificationTurnCount || 0,
-          pending_clarification: orchestratorResponse.decision_output?.clarification_needed || false,
-          has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
+          is_specific_symptom: !!(orchestratorResponse.decision_output as any)?.primary_decision?.target,
+          clarification_turn_count: (orchestratorResponse.metadata as any)?.clarificationTurnCount || 0,
+          pending_clarification: (orchestratorResponse.decision_output as any)?.clarification_needed || false,
+          has_emergency_indicators: (orchestratorResponse.metadata as any)?.isEmergency || false,
           land_id: landId,
           decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
-          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined
+          hypothesis_confidence: (orchestratorResponse.decision_output as any)?.hypothesis_result?.hypothesis_score ?? undefined
         } as any;
         
         // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
-        const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||
-          orchestratorResponse.decision_output?.layered_rule_result?.primary_decision?.rule_id);
+        const primaryDecisionExists = !!((orchestratorResponse.decision_output as any)?.primary_decision?.rule_id ||
+          (orchestratorResponse.decision_output as any)?.layered_rule_result?.primary_decision?.rule_id);
         
         if (primaryDecisionExists && symbolicConfidence === 0) {
           console.error(`🚨 [INVARIANT] Confidence pipeline inconsistency: primary_decision exists but symbolic_confidence=0`);
@@ -2053,7 +2058,7 @@ serve(async (req) => {
         console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
         
         // FIX 1: Read gate result from orchestrator if already evaluated there (avoid duplicate gate)
-        const orchestratorGateResult = orchestratorResponse.metadata?.gate_result;
+        const orchestratorGateResult = (orchestratorResponse.metadata as any)?.gate_result;
         let unifiedGateResult: any;
         
         if (orchestratorGateResult && orchestratorGateResult.gate_status) {
@@ -2067,15 +2072,15 @@ serve(async (req) => {
           // Apply suppression guard to prevent silent recommendation drops
           const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
           const symbolicDecisionForGuard = {
-            decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
+            decision_brain_source: (orchestratorResponse as any).decision_brain_source || decisionOutputSsot.decision_brain_source,
             // SSOT: Use decision_output fields first, fallback to metadata
             rules_fired: decisionOutputSsot.rules_applied || 
                          decisionOutputSsot.layered_rule_result?.rules_applied || 
-                         orchestratorResponse.metadata?.rulesFired || [],
+                         (orchestratorResponse.metadata as any)?.rulesFired || [],
             actions_returned: decisionOutputSsot.actions_returned || 
-                              orchestratorResponse.metadata?.actionsReturned || [],
+                              (orchestratorResponse.metadata as any)?.actionsReturned || [],
             matched_responses: decisionOutputSsot.matched_responses || 
-                               orchestratorResponse.metadata?.matchedResponses || []
+                               (orchestratorResponse.metadata as any)?.matchedResponses || []
           };
           
           console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
@@ -2113,7 +2118,7 @@ serve(async (req) => {
               _q3Crop && _q3Stage &&
               typeof _q3Das === 'number' && _intentCodeResolved
             );
-            if (_ssotLockValid && orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+            if (_ssotLockValid && (orchestratorResponse.type as string) !== 'CLARIFICATION_QUESTION') {
               try {
                 const _rescue = await attemptDbClarificationRescue(orchestratorResponse, {
                   supabase,
@@ -2166,8 +2171,8 @@ serve(async (req) => {
               crop_name: finalCropName || 'Unknown',
               growth_stage: finalGrowthStage || 'Unknown',
               days_since_sowing: finalDaysSinceSowing,
-              symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
-              matched_rules: orchestratorResponse.metadata?.matchedRules || [],
+              symptom_keys: (orchestratorResponse.metadata as any)?.symptomKeys || [],
+              matched_rules: (orchestratorResponse.metadata as any)?.matchedRules || [],
               current_confidence: unifiedGateResult.diagnostic_escalation?.current_confidence || 0.4,
               treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7
             };
@@ -2182,14 +2187,15 @@ serve(async (req) => {
             const _escOptionCount =
               (((orchestratorResponse as any)?.question?.options ?? []) as any[])
                 .filter((o: any) => o && (o.observation_key || o.value)).length;
-            if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION' && _escOptionCount >= 2) {
+            if ((orchestratorResponse.type as string) !== 'CLARIFICATION_QUESTION' && _escOptionCount >= 2) {
               orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
               orchestratorResponse.metadata = {
                 ...orchestratorResponse.metadata,
                 diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
+                // @ts-ignore -- metadata is a loosely-typed record at runtime
                 orchestrator_type: 'DIAGNOSTIC_ESCALATION'
               };
-            } else if (orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+            } else if ((orchestratorResponse.type as string) !== 'CLARIFICATION_QUESTION') {
               console.warn(
                 `[ESCALATION_SUPPRESSED_LOW_OPTIONS] site=unified_gate options=${_escOptionCount} action=fall_through_to_advisory`,
               );
@@ -2387,7 +2393,7 @@ serve(async (req) => {
             // Use template fallback instead of potentially incorrect LLM output
             console.log(`   📋 Falling back to template-based response for safety`);
             
-            if (orchestratorResponse.decision_output?.primary_decision) {
+            if ((orchestratorResponse.decision_output as any)?.primary_decision) {
               responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
                 orchestratorResponse.decision_output, 
                 detectedLanguage,
@@ -2412,7 +2418,7 @@ serve(async (req) => {
         
         // CRITICAL FIX: When LLM times out, build response directly from decision_output
         // instead of relying on potentially incomplete FarmerCommunication
-        if (orchestratorResponse.decision_output?.primary_decision) {
+        if ((orchestratorResponse.decision_output as any)?.primary_decision) {
           console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
           responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
             orchestratorResponse.decision_output, 
@@ -2679,7 +2685,7 @@ serve(async (req) => {
       // 2026-09-07 — the formatter prompt instructs "TOTAL dosage = dosage_per_acre × land area", then this gate
       // rejected the product (2 kg × 0.72 acre = 1.44 kg) as not DB-backed → fallback (trace_mtqr4nqt_a2r8e3).
       // A rendered quantity is accepted when it equals a DB quantity × the land area (rounded to 0/1/2 dp).
-      const _areaAcres = Number(orchestratorResponse.decision_output?.land_context?.area_acres
+      const _areaAcres = Number((orchestratorResponse.decision_output as any)?.land_context?.area_acres
         ?? (orchestratorResponse as any)?.land_context?.area_acres ?? NaN);
       const _dbQty: Array<{ n: number; u: string }> = [];
       for (const m of _dbCorpus.matchAll(/(\d+(?:\.\d+)?)(ml|l|litre|liter|g|kg|gm|gram)\b/g)) _dbQty.push({ n: parseFloat(m[1]), u: m[2] });
@@ -2730,7 +2736,7 @@ serve(async (req) => {
       // "1. POTASSIUM SULPHATE" and nothing else, because generateValidationFailureFallback reads
       // `dosage` (the field is `dosage_per_acre`) and never prints action/reason/method. When a primary
       // decision exists, render the same WHAT → HOW → WHY → SAFETY → CHECK card the template path uses.
-      if (orchestratorResponse.decision_output?.primary_decision) {
+      if ((orchestratorResponse.decision_output as any)?.primary_decision) {
         console.log(`   📋 [VALIDATION_FALLBACK] rendering full deterministic card from decision_output`);
         responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
           orchestratorResponse.decision_output,
@@ -2765,7 +2771,7 @@ serve(async (req) => {
         message_type: photoDiagnosisId ? 'image_analysis' : 'text',
         image_urls: null,
         is_training_candidate: true,
-        inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+        inferred_intent: (orchestratorResponse.metadata as any)?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
         conversation_turn_number: messages.length,
         metadata: {
           source: 'orchestrator_v1',
@@ -2793,7 +2799,7 @@ serve(async (req) => {
           // the explainer's model chain comes from the AI model registry (task brain.explain); the
           // service-role client reads the route and writes the usage ledger for this farmer.
           const { explainerLLM: _explainerLLM } = await import('./agents/llm-response-formatter.ts');
-          const _explainTrace = orchestratorResponse.metadata?.trace_id ?? null;
+          const _explainTrace = (orchestratorResponse.metadata as any)?.trace_id ?? null;
           advisorCard = await buildAdvisorCard({
             decision: _d, lang: detectedLanguage, supabase,
             llm: (system: string, user: string) => _explainerLLM(system, user, { db: supabase, farmerId: finalFarmerId, traceId: _explainTrace }),
@@ -2801,7 +2807,7 @@ serve(async (req) => {
               ?? (orchestratorResponse as any)?.decision_output?.land_context
               ?? (orchestratorResponse as any)?.metadata?.land_context ?? null,
             greetingFallback: getUiString('chat.greeting', detectedLanguage),
-            products: _prods, traceId: orchestratorResponse.metadata?.trace_id,
+            products: _prods, traceId: (orchestratorResponse.metadata as any)?.trace_id,
           });
           if (advisorCard) console.log(`[ADVISOR_CARD] built kind=${advisorCard.kind} explained_by=${advisorCard.source.explained_by} products=${advisorCard.products.length} replaced=${(advisorCard.source.replaced_terms || []).length}`);
         }
@@ -2840,10 +2846,10 @@ serve(async (req) => {
         metadata: {
           advisor_card: advisorCard,   // 2026-09-09 — structured farmer card the UI renders
           orchestrator_type: orchestratorResponse.type,
-          confidence: orchestratorResponse.metadata?.confidence,
-          safety_status: orchestratorResponse.metadata?.safety_status,
-          rules_applied: orchestratorResponse.metadata?.rules_applied,
-          agents_used: orchestratorResponse.metadata?.agents_used,
+          confidence: (orchestratorResponse.metadata as any)?.confidence,
+          safety_status: (orchestratorResponse.metadata as any)?.safety_status,
+          rules_applied: (orchestratorResponse.metadata as any)?.rules_applied,
+          agents_used: (orchestratorResponse.metadata as any)?.agents_used,
           decision_id: orchestratorResponse.decision_id,
           trace_id: traceId,
           actions_returned_count: actions_returned?.length || 0,
@@ -2864,11 +2870,11 @@ serve(async (req) => {
             translation_applied: !responseHasTargetLanguage
           },
           // P0 FIX: Persist clarification options for reload after app restart
-          clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
+          clarification_options: ((orchestratorResponse.type as string) === 'CLARIFICATION_QUESTION' || (orchestratorResponse.type as string) === 'CLARIFICATION_NEEDED')
             ? {
                 question: responseContent,
                 options: orchestratorResponse.question?.options || [],
-                selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
+                selectionType: (orchestratorResponse.metadata as any)?.selectionType || 'SINGLE_CHOICE'
               }
             : undefined,
           // P0 FIX: Persist structured decision data for rich card reload
@@ -2878,12 +2884,12 @@ serve(async (req) => {
                 secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
                 blocked_actions: orchestratorResponse.decision_output.blocked_actions,
                 land_context: orchestratorResponse.dataAudit?.land,
-                confidence: orchestratorResponse.metadata?.confidence,
-                risk_level: orchestratorResponse.decision_output.risk_level
+                confidence: (orchestratorResponse.metadata as any)?.confidence,
+                risk_level: (orchestratorResponse.decision_output as any).risk_level
               }
             : undefined,
           // P0 FIX: Persist diagnostic escalation data
-          diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
+          diagnostic_escalation_data: (orchestratorResponse.metadata as any)?.diagnostic_escalation_data || undefined
         }
       });
       
@@ -2918,15 +2924,15 @@ serve(async (req) => {
     
     // CRITICAL FIX: Extract pest from multiple sources (not just action.target which may not exist)
     // Safely handle rules_applied which may be an object, array, or undefined
-    const rulesAppliedArray = Array.isArray(orchestratorResponse.metadata?.rules_applied) 
+    const rulesAppliedArray = Array.isArray((orchestratorResponse.metadata as any)?.rules_applied) 
       ? orchestratorResponse.metadata.rules_applied 
       : [];
     
     const lastPest = 
       primaryAction?.target?.pest_code ||
       primaryAction?.pest_code ||
-      decisionOutput?.primary_decision?.target?.pest ||
-      decisionOutput?.input_context?.pest?.code ||
+      (decisionOutput?.primary_decision?.target as any)?.pest ||
+      (decisionOutput as any)?.input_context?.pest?.code ||
       rulesAppliedArray.find((r: string) => r.includes('PEST'))?.split('_')[1] ||
       null;
     
@@ -2934,15 +2940,15 @@ serve(async (req) => {
     const lastDisease = 
       primaryAction?.target?.disease_code ||
       primaryAction?.disease_code ||
-      decisionOutput?.primary_decision?.target?.disease ||
-      decisionOutput?.input_context?.disease?.code ||
+      (decisionOutput?.primary_decision?.target as any)?.disease ||
+      (decisionOutput as any)?.input_context?.disease?.code ||
       null;
     
     // CRITICAL FIX: Extract crop from multiple sources
     const lastCrop = 
-      decisionOutput?.input_context?.crop?.name ||
-      decisionOutput?.input_context?.crop?.code ||
-      decisionOutput?.primary_decision?.crop_name ||
+      (decisionOutput as any)?.input_context?.crop?.name ||
+      (decisionOutput as any)?.input_context?.crop?.code ||
+      (decisionOutput?.primary_decision as any)?.crop_name ||
       primaryAction?.crop_code ||
       orchestratorResponse.dataAudit?.land?.current_crop ||
       null;
@@ -2980,12 +2986,12 @@ serve(async (req) => {
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     // FIX C (2026-08-08) — PERSISTENCE ACCEPTANCE: any turn that actually ships
     // options must persist them as pending, regardless of the type string.
-    const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
-                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED' ||
+    const isClarificationResponse = (orchestratorResponse.type as string) === 'CLARIFICATION_QUESTION' || 
+                                    (orchestratorResponse.type as string) === 'CLARIFICATION_NEEDED' ||
                                     ((orchestratorResponse.question?.options?.length ?? 0) > 0);
     const rawOptions: any[] = orchestratorResponse.question?.options || [];
     const clarificationOptions = rawOptions.map((o: any) => o?.label).filter(Boolean) ||
-                                  orchestratorResponse.metadata?.pendingClarificationOptions || [];
+                                  (orchestratorResponse.metadata as any)?.pendingClarificationOptions || [];
     // SYMBOLIC IDENTITY: persist observation_key per option index so the next
     const clarificationObservationKeys: string[] =
       rawOptions
@@ -2998,7 +3004,7 @@ serve(async (req) => {
       console.error(
         `[CLARIFICATION_OPTIONS_LOST] type=${orchestratorResponse.type} ` +
         `question=${!!orchestratorResponse.question} ` +
-        `metadata_options=${(orchestratorResponse.metadata?.options || []).length} ` +
+        `metadata_options=${((orchestratorResponse.metadata as any)?.options || []).length} ` +
         `reason=clarification_emitted_with_zero_options`,
       );
     }
@@ -3020,17 +3026,17 @@ serve(async (req) => {
       .filter((o) => o.label || o.observation_key);
     
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
-    const sessionStateUpdateFromOrchestrator = orchestratorResponse.session_state_update ||
-      orchestratorResponse.metadata?.session_state_update ||
-      orchestratorResponse.decision_output?.metadata?.session_state_update;
+    const sessionStateUpdateFromOrchestrator = (orchestratorResponse as any).session_state_update ||
+      (orchestratorResponse.metadata as any)?.session_state_update ||
+      (orchestratorResponse.decision_output as any)?.metadata?.session_state_update;
     
     const clarificationAnswered = sessionStateUpdateFromOrchestrator?.clarification_answered === true ||
-      orchestratorResponse.decision_output?.metadata?.clarification_resolved === true;
+      (orchestratorResponse.decision_output as any)?.metadata?.clarification_resolved === true;
     
     // P0-3 FIX: Extract lockedCropContext for session persistence.
     const candidateLockedCropContextFromResponse =
-      orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
-      orchestratorResponse.metadata?.lockedCropContext ||
+      (orchestratorResponse.decision_output as any)?.metadata?.lockedCropContext ||
+      (orchestratorResponse.metadata as any)?.lockedCropContext ||
       (orchestratorResponse.dataAudit?.land?.found ? {
         crop_name: orchestratorResponse.dataAudit.land.current_crop,
         growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
@@ -3153,11 +3159,11 @@ serve(async (req) => {
     const now = new Date().toISOString();
     
     // Extract current problem code from orchestrator response
-    const currentIntentCode = orchestratorResponse.metadata?.intent_code || 
-                              orchestratorResponse.decision_output?.metadata?.intent_code || '';
+    const currentIntentCode = (orchestratorResponse.metadata as any)?.intent_code || 
+                              (orchestratorResponse.decision_output as any)?.metadata?.intent_code || '';
     const currentDiagnosis = lastPest || lastDisease || 
-                              orchestratorResponse.decision_output?.primary_decision?.target?.pest_code ||
-                              orchestratorResponse.decision_output?.primary_decision?.target?.disease_code || '';
+                              (orchestratorResponse.decision_output as any)?.primary_decision?.target?.pest_code ||
+                              (orchestratorResponse.decision_output as any)?.primary_decision?.target?.disease_code || '';
     
     // Build simple query hash for repeat detection (normalize: lowercase, remove spaces/punctuation)
     const queryHash = userMessageContent.toLowerCase()
@@ -3294,9 +3300,9 @@ serve(async (req) => {
             language,
             source: 'orchestrator_v1',
             last_response_type: orchestratorResponse.type,
-            agents_used: orchestratorResponse.metadata?.agents_used,
-            confidence: orchestratorResponse.metadata?.confidence,
-            rules_applied: orchestratorResponse.metadata?.rules_applied,
+            agents_used: (orchestratorResponse.metadata as any)?.agents_used,
+            confidence: (orchestratorResponse.metadata as any)?.confidence,
+            rules_applied: (orchestratorResponse.metadata as any)?.rules_applied,
             decision_id: orchestratorResponse.decision_id,
             recommendations_provided: recommendationsProvided,
             recommendations_count: actions_returned?.length || 0,
@@ -3307,7 +3313,7 @@ serve(async (req) => {
               turn_count: decisionTracking.turn_count,
               has_photo: !!photoDiagnosisId,
               last_intent: orchestratorResponse.type,
-              safety_status: orchestratorResponse.metadata?.safety_status,
+              safety_status: (orchestratorResponse.metadata as any)?.safety_status,
               has_recommendations: recommendationsProvided
             }
           }
@@ -3800,7 +3806,7 @@ function validateResponseBeforeSave(params: {
     const hasCropScheduleData = orchestratorResponse.dataAudit?.crop_schedule?.found === true;
     
     // CRITICAL FIX: Also check decision_output.input_context for crop data when dataAudit is incomplete
-    const inputContext = orchestratorResponse.decision_output?.input_context || {};
+    const inputContext = (orchestratorResponse.decision_output as any)?.input_context || {};
     const fallbackDays = inputContext.days_after_sowing || inputContext.farmer_context?.days_after_sowing;
     const fallbackStage = inputContext.crop_stage || inputContext.farmer_context?.crop_stage;
     
@@ -4192,7 +4198,7 @@ function extractAndAuditActionsWithFilterTrace(orchestratorResponse: Orchestrato
       dosage: primary.application_details?.concentration,
       timing: primary.timing,
       urgency: primary.urgency,
-      priority: primary.priority || 'HIGH',
+      priority: (primary as any).priority || 'HIGH',
       ipm_level: primary.ipm_level,
       rule_id: primary.rule_id,
       efficacy_percent: primary.expected_outcomes?.efficacy_percent,
@@ -4239,8 +4245,8 @@ function extractAndAuditActionsWithFilterTrace(orchestratorResponse: Orchestrato
         reason: secondary.reason,
         timing: secondary.timing,
         priority: secondary.priority || 'MEDIUM',
-        ipm_level: secondary.ipm_level,
-        rule_id: secondary.rule_id,
+        ipm_level: (secondary as any).ipm_level,
+        rule_id: (secondary as any).rule_id,
         actions: [secondary.action]
       });
     }
@@ -4409,7 +4415,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
   console.log(`📝 [PostProcessor] Response assembly:`, {
     has_communication: !!response.communication,
     has_decision_output: !!response.decision_output,
-    comm_keys: response.communication?.main_message ? Object.keys(response.communication.main_message) : [],
+    comm_keys: (response.communication as any)?.main_message ? Object.keys(response.communication.main_message) : [],
     decision_status: (response.decision_output as any)?.status,
     has_primary: !!response.decision_output?.primary_decision,
     // P6: graph observability at the response boundary
@@ -4449,23 +4455,23 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
       return generateNoRecommendationsFallback(response, lang);
       
     case 'CLARIFICATION_QUESTION':
-    case 'CLARIFICATION_NEEDED':
+    case 'CLARIFICATION_NEEDED' as any:
       // Priority 1: question object with language-specific text (prefer lang, fallback to en)
       const questionText = (response.question as any)?.[`text_${lang}`] || response.question?.text_en || '';
       if (questionText) return questionText;
       
       // Priority 2: communication.main_message.full_text (ZERO_CODE_GATE path)
-      const commFullText = response.communication?.main_message?.full_text;
+      const commFullText = (response.communication as any)?.main_message?.full_text;
       if (commFullText) {
         const commText = commFullText[lang] || commFullText['en'] || '';
         if (commText) return commText;
       }
       
       // Priority 3: communication.farmer_message (legacy path)
-      if (response.communication?.farmer_message) return response.communication.farmer_message;
+      if ((response.communication as any)?.farmer_message) return (response.communication as any).farmer_message;
       
       // Priority 4: response.response (direct response field)
-      if (response.response) return response.response;
+      if ((response as any).response) return (response as any).response;
       
       // Fallback: generate clarification prompt
       return generateClarificationPrompt(response, lang);
@@ -4476,8 +4482,8 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
       return (response.blocked_reason as any)?.[`reason_${lang}`] || response.blocked_reason?.reason_en || '';
     case 'ESCALATION_REQUIRED':
       return (response.escalation as any)?.[`message_${lang}`] || response.escalation?.message_en || '';
-    case 'LLM_RESPONSE':
-      return response.llm_response || 
+    case 'LLM_RESPONSE' as any:
+      return (response as any).llm_response || 
              response.escalation?.message_en || '';
     
     // CRITICAL FIX: Handle SYSTEM_ERROR properly - provide helpful advice
@@ -4487,11 +4493,11 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
       return generateHelpfulErrorResponse(lang, fallbackAdvice, __landCtx);
 
     // SC-2 FIX (2026-07-25): DIAGNOSTIC_ESCALATION — emitted by
-    case 'DIAGNOSTIC_ESCALATION': {
-      const commFull = response.communication?.main_message?.full_text as any;
+    case 'DIAGNOSTIC_ESCALATION' as any: {
+      const commFull = (response.communication as any)?.main_message?.full_text as any;
       const commText = commFull?.[lang] || commFull?.en || '';
       if (commText) return commText;
-      if (response.communication?.farmer_message) return response.communication.farmer_message;
+      if ((response.communication as any)?.farmer_message) return (response.communication as any).farmer_message;
       const escText = (response.escalation as any)?.[`message_${lang}`] || response.escalation?.message_en || '';
       if (escText) return escText;
       console.warn(`   ⚠️ DIAGNOSTIC_ESCALATION with no communication payload — using generic escalation prompt`);
@@ -4513,10 +4519,10 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   parts.push(`${getUiString('chat.greeting', lang)} 🌾`);
   
   // Extract context clues from response
-  const nluIntent = response.metadata?.nlu_output?.primary_intent;
-  const detectedPest = response.metadata?.nlu_output?.pest_mentions?.[0];
-  const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
-  const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
+  const nluIntent = (response.metadata as any)?.nlu_output?.primary_intent;
+  const detectedPest = (response.metadata as any)?.nlu_output?.pest_mentions?.[0];
+  const detectedDisease = (response.metadata as any)?.nlu_output?.disease_mentions?.[0];
+  const detectedCrop = (response.metadata as any)?.nlu_output?.crop_mentions?.[0];
   
   // NOTE: Reaching this fallback means the OBSERVATION_REQUIRED contract
   if (detectedPest || detectedDisease) {
@@ -5129,16 +5135,16 @@ function transformOrchestratorResponseWithContent(
       metadata: {
         type: 'decision',
         orchestrator_type: 'DECISION_PROVIDED', // Normalized enum
-        confidence: response.metadata?.confidence,
-        safety_status: response.metadata?.safety_status,
-        rules_applied: response.metadata?.rules_applied,
-        agents_used: response.metadata?.agents_used,
+        confidence: (response.metadata as any)?.confidence,
+        safety_status: (response.metadata as any)?.safety_status,
+        rules_applied: (response.metadata as any)?.rules_applied,
+        agents_used: (response.metadata as any)?.agents_used,
         decision_id: response.decision_id,
         trace_id: traceId,
         ai_model: aiModelUsed || 'template',
         actions_count: actionsReturned?.length || 0
       },
-      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, response.dataAudit),
+      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, response.dataAudit ?? undefined),
       source: 'orchestrator_v1'
     };
   }
@@ -5177,12 +5183,12 @@ function transformOrchestratorResponse(
         metadata: {
           type: 'decision',
           orchestrator_type: 'DECISION_PROVIDED',
-          confidence: response.metadata?.confidence,
-          safety_status: response.metadata?.safety_status,
-          rules_applied: response.metadata?.rules_applied,
-          agents_used: response.metadata?.agents_used,
+          confidence: (response.metadata as any)?.confidence,
+          safety_status: (response.metadata as any)?.safety_status,
+          rules_applied: (response.metadata as any)?.rules_applied,
+          agents_used: (response.metadata as any)?.agents_used,
           decision_id: response.decision_id,
-          trace_id: response.metadata?.trace_id
+          trace_id: (response.metadata as any)?.trace_id
         },
         quickReplies: generateQuickRepliesFromCommunication(comm, language),
         source: 'orchestrator_v1'
@@ -5210,8 +5216,8 @@ function transformOrchestratorResponse(
       // Priority: question.options > communication.options > empty array
       const rawOptions = (typeof question === 'object' && Array.isArray(question?.options)) 
         ? question.options 
-        : (response.communication?.options && Array.isArray(response.communication.options))
-          ? response.communication.options
+        : ((response.communication as any)?.options && Array.isArray((response.communication as any).options))
+          ? (response.communication as any).options
           : [];
       
       // ✅ CRITICAL FIX: Safe array mapping with null checks
@@ -5246,11 +5252,11 @@ function transformOrchestratorResponse(
             description: typeof o === 'object' ? o?.description : undefined,
             diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),
-          selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',
-          trace_id: response.metadata?.trace_id,
-          validation_failed: response.metadata?.validation_failed,
+          selectionType: (response.metadata as any)?.selectionType || 'SINGLE_CHOICE',
+          trace_id: (response.metadata as any)?.trace_id,
+          validation_failed: (response.metadata as any)?.validation_failed,
           // Also include scope for UI context
-          clarification_scope: response.metadata?.clarification_scope || 'GENERAL'
+          clarification_scope: (response.metadata as any)?.clarification_scope || 'GENERAL'
         },
         quickReplies: safeQuickReplies.length > 0 
           ? safeQuickReplies 
@@ -5318,11 +5324,11 @@ function transformOrchestratorResponse(
       };
 
     // 2026-08-20 — DIAGNOSTIC_ESCALATION must never fall through to default.
-    case 'DIAGNOSTIC_ESCALATION': {
+    case 'DIAGNOSTIC_ESCALATION' as any: {
       const dLandCtx = deriveLandCtx(response as any);
-      const dComm = (response.communication?.main_message?.full_text as any);
+      const dComm = ((response.communication as any)?.main_message?.full_text as any);
       const dText = dComm?.[language] || dComm?.en
-        || response.communication?.farmer_message
+        || (response.communication as any)?.farmer_message
         || (response.escalation as any)?.[`message_${language}`]
         || response.escalation?.message_en
         || buildContextAwareFallback(dLandCtx, language)
@@ -5336,9 +5342,9 @@ function transformOrchestratorResponse(
         metadata: {
           type: 'diagnostic_escalation',
           orchestrator_type: 'DIAGNOSTIC_ESCALATION',
-          confidence: response.metadata?.confidence,
-          agents_used: response.metadata?.agents_used,
-          trace_id: response.metadata?.trace_id
+          confidence: (response.metadata as any)?.confidence,
+          agents_used: (response.metadata as any)?.agents_used,
+          trace_id: (response.metadata as any)?.trace_id
         },
         source: 'orchestrator_v1'
       };

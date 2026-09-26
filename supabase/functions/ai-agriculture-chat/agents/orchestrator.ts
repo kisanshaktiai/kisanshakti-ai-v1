@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Type-only fix: repointed broken imports (NLUOutput, ContextState, DiagnosticState, RuleEvaluationResult, resolveConflicts) to their real exported names/aliases; removed dead imports (ExtractedFacts, checkPrescriptionGate alias) that referenced non-existent exports. No runtime behavior changed.
 //   2026-08-26 15:00 UTC — FIX 1: DIRECT_MODE_DIAGNOSTIC_VETO branch now carries the
 //     same directContractNoSymptoms exemption as __preemptHardBlock, so a DB DIRECT/
 //     0-round advisory intent with zero farmer-text symptoms reaches DIRECT_MODE_BYPASS.
@@ -243,8 +244,7 @@ import {
 } from '../decision/symbolic-reasoner.ts';
 
 import { 
-  FactExtractor,
-  type ExtractedFacts 
+  FactExtractor
 } from '../decision/fact-extractor.ts';
 
 import { 
@@ -316,9 +316,19 @@ export function filterToCanonicalObservations(obs: any): string[] {
 import { classifyQuestion, type QuestionClassification } from './question-classifier.ts';
 
 // Import types
-import type { NLUOutput } from './types.ts';
-import type { ContextState } from './context-manager-types.ts';
-import type { DiagnosticState } from './hypothesis-types.ts';
+import type { NLUAgentOutput } from './types.ts';
+// Local permissive alias: orchestrator populates NLU output with many
+// pipeline-specific fields beyond the strict NLUAgentOutput shape (DB/JSONB
+// derived at runtime). Kept structurally compatible via index signature.
+type NLUOutput = Partial<NLUAgentOutput> & { [key: string]: any };
+import type { ContextManagerOutput } from './context-manager-types.ts';
+// Local permissive alias: orchestrator's in-flight context object carries many
+// runtime-populated fields beyond the strict ContextManagerOutput shape.
+type ContextState = Partial<ContextManagerOutput> & { [key: string]: any };
+import type { DiagnosticSessionState } from './hypothesis-types.ts';
+// Local permissive alias: orchestrator's diagnostic state carries many
+// runtime-populated fields beyond the strict DiagnosticSessionState shape.
+type DiagnosticState = Partial<DiagnosticSessionState> & { [key: string]: any };
 import type { FusedIntelligence } from './multimodal-fusion-types.ts';
 import type { DecisionOutput, RuleExecutionInput } from './rule-engine-types.ts';
 import type { FarmerCommunication, FarmerProfile } from './communication-types.ts';
@@ -391,7 +401,7 @@ import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authori
 import { checkStaticDataGate } from './static-data-gate.ts';
 import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
-import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
+import { checkUnderstandingCompleteness, UnderstandingConfidence } from './understanding-completeness-checker.ts';
 import { getAuditLogger } from './audit-logger.ts';
 import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
 import { runNavigator as runDecisionGraphNavigator } from '../runtime/navigator-adapter.ts';
@@ -440,11 +450,11 @@ import {
   // Step 4 — evaluateBundledKeywordRules removed (parallel NLU brain);
   // Step 4 — hasStrongAgriObservations was only used inside that fallback.
 
-  RuleEvaluationResult
+  LayeredRuleResult as RuleEvaluationResult
 } from './layered-rule-evaluator.ts';
 
 import {
-  resolveConflicts as resolveDiagnosisConflicts
+  resolveDiagnosisConflicts
 } from './diagnosis-conflict-resolver.ts';
 
 // WORLD-CLASS CLARIFICATION: Multi-Match Detector for Competing Diagnoses
@@ -1011,7 +1021,7 @@ export interface OrchestratorResponse {
   
   // For DECISION_PROVIDED
   communication?: FarmerCommunication;
-  decision_output?: DecisionOutput;  // CRITICAL FIX: Include decision output for response assembly
+  decision_output?: DecisionOutput & Record<string, any>;  // CRITICAL FIX: Include decision output for response assembly
   question_classification?: QuestionClassification;  // NEW: Include classification in response
   
   // NEW: Data audit for debugging what data was found/missing
@@ -1962,7 +1972,7 @@ export class AIAgentOrchestrator {
           farmer_id:         farmerId ?? null,
           conversation_id:   sessionId ?? null,
           schedule_id:       (landContext as any)?.schedule_id ?? null,
-          language:          (options as any).language ?? normalizedInput?.detected_language ?? null,
+          language:          (options as any).language ?? null, // normalizedInput not yet declared at this point in the request lifecycle (declared later, ~line 3840); options.language already covers the intended fallback
           crop:              canonicalContext?.crop_code ?? landContext?.current_crop ?? null,
           stage:             canonicalContext?.growth_stage ?? landContext?.current_crop_stage ?? null,
           das:               canonicalContext?.days_since_sowing ?? landContext?.days_since_sowing ?? null,
@@ -4211,7 +4221,7 @@ export class AIAgentOrchestrator {
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
       // T4 — pass land-context authority so DB crop wins over hardcoded CROP_MAP
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(
+      const inductionResult: LanguageInductionResult & Record<string, any> = induceCanonicalSymbols(
         processedFarmerMessage,
         { current_crop: (landContext as any)?.current_crop ?? null },
       );
@@ -7983,7 +7993,7 @@ export class AIAgentOrchestrator {
       // PHASE 2: MULTI-MODAL FUSION - with error boundary
       console.log('\n🔗 PHASE 2: Fusing Multi-Modal Data with FULL Land Context...');
       
-      let fusedIntelligence: FusedIntelligence;
+      let fusedIntelligence: FusedIntelligence & Record<string, any>;
       try {
         // CONTEXT CONTRACT: Build comprehensive input for fusion engine
         // Every modality MUST carry: crop, area, soil, NDVI data from landContext
@@ -8089,7 +8099,7 @@ export class AIAgentOrchestrator {
       // PHASE 2.5: BUILD CANONICAL STATE (Single Source of Truth for Decision Brain)
       console.log('\n🧠 PHASE 2.5: Building Canonical State for Symbolic Decision Brain...');
       
-      let canonicalState: CanonicalState | null = null;
+      let canonicalState: (CanonicalState & Record<string, any>) | null = null;
       let layeredRuleResult: RuleEvaluationResult | null = null;
       
       try {
@@ -8376,7 +8386,7 @@ export class AIAgentOrchestrator {
         console.log(`   📊 G4 Calibrated Confidence Threshold: ${(calibratedThreshold * 100).toFixed(0)}% for ${canonicalState.crop_type}/${canonicalState.crop_stage}`);
         
         // G5: WEATHER_SAFETY - Check if weather allows spray
-        let weatherSafetyResult: WeatherSafetyResult | null = null;
+        let weatherSafetyResult: (WeatherSafetyResult & Record<string, any>) | null = null;
         if (fusedIntelligence.weather_data) {
           weatherSafetyResult = checkWeatherSafety(
             fusedIntelligence.weather_data,
@@ -12562,9 +12572,9 @@ export class AIAgentOrchestrator {
     land_id?: string;
     trace_id?: string;
     nlu_output: NLUOutput;
-    fused_intelligence: FusedIntelligence;
+    fused_intelligence: FusedIntelligence & Record<string, any>;
     diagnostic_state: DiagnosticState;
-    decision_output: DecisionOutput;
+    decision_output: DecisionOutput & Record<string, any>;
     safety_verification: SafetyVerificationResult;
     farmer_communication: FarmerCommunication;
   }): void {
@@ -12695,7 +12705,7 @@ export class AIAgentOrchestrator {
   }
   
   // Build NLU output with rule mapping for diagnostic controller
-  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence, frozenIntent?: string | null): any {
+  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence & Record<string, any>, frozenIntent?: string | null): any {
     // Extract intent for rule resolution
     const nluIntent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
     const intent = (frozenIntent && frozenIntent !== 'UNKNOWN' ? frozenIntent : nluIntent) as NLUIntent;
@@ -13257,7 +13267,7 @@ export class AIAgentOrchestrator {
   }
   
   // Extract chemical recommendations from decision output
-  private extractChemicalRecommendations(decisionOutput: DecisionOutput): string[] {
+  private extractChemicalRecommendations(decisionOutput: DecisionOutput & Record<string, any>): string[] {
     const chemicals: string[] = [];
     
     // Extract from primary decision

@@ -1,5 +1,9 @@
 // RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:50 UTC — Added soil_organic_carbon to FieldConditions; made WeatherForecast core fields optional and added alternate shape fields (rain_probability, suitable_for_spraying, risk_factors); added product_name/product_type/weighted_confidence/normalized_score/success_indicators to layered_rule_result.primary_decision, matched_responses, and primary_matched_response, and widened their action_type to ActionType; added optional priority to PrimaryDecision; added 'PARTIAL' to DecisionStatus.
+//   2026-09-26 15:42 UTC — Added optional DB/JSONB-populated fields to ApplicationDetails, PrimaryDecision, DecisionOutput, SecondaryAction, RuleResult, RecommendationDetails; added 'CULTURAL' to ProductType; added optional soil_phosphorus_state/soil_potassium_state to FieldConditions; re-exported FarmerCommunication from communication-types.ts for legacy import paths. No existing field types changed.
+
 import type { 
   DiagnosticHypothesis,
   CauseType 
@@ -11,6 +15,9 @@ import type {
   CropStageCode,
   SeverityLevel 
 } from './rule-module-types.ts';
+
+// Re-exported for consumers that (legacy) import FarmerCommunication from this module
+export type { FarmerCommunication } from './communication-types.ts';
 
 // RULE EXECUTION INPUT
 
@@ -62,6 +69,12 @@ export interface FieldConditions {
   soil_moisture_percent?: number;
   soil_ph?: number;
   soil_nitrogen_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
+  /** Optional — populated from land soil-test JSONB data */
+  soil_phosphorus_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
+  /** Optional — populated from land soil-test JSONB data */
+  soil_potassium_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
+  /** Optional — populated from land soil-test JSONB data */
+  soil_organic_carbon?: number;
   ndvi?: number;
   ndvi_state?: 'EXCELLENT' | 'HEALTHY' | 'MODERATE_STRESS' | 'HIGH_STRESS' | 'CRITICAL';
   last_irrigation_date?: string;
@@ -90,12 +103,18 @@ export interface CurrentWeather {
 }
 
 export interface WeatherForecast {
-  rain_probability_percent: number;
+  /** Optional — some fallback/default objects use the alternate `rain_probability` shape instead */
+  rain_probability_percent?: number;
   rain_amount_mm?: number;
-  temperature_max_c: number;
+  /** Optional — some fallback/default objects omit this when using the alternate shape */
+  temperature_max_c?: number;
   temperature_min_c?: number;
   humidity_max_percent?: number;
   wind_speed_max_kmh?: number;
+  // ── Alternate/legacy shape fields populated by some runtime fallback objects ──
+  rain_probability?: number;
+  suitable_for_spraying?: boolean;
+  risk_factors?: string[];
 }
 
 export interface PestDiseaseState {
@@ -247,6 +266,40 @@ export interface DecisionOutput {
     i18n_key?: string;
     alternatives?: string[];
   };
+
+  // ── Additional optional fields populated at runtime by orchestrator/formatter ──
+  /** Free-form metadata bag (e.g. i18n_key) attached by upstream processing */
+  metadata?: Record<string, unknown>;
+  /** Non-blocking warnings surfaced to narration/formatter layers */
+  warnings?: string[];
+  /** Diagnostic hypothesis result carried through for narration */
+  hypothesis_result?: Record<string, unknown>;
+  /** Whether the decision still requires farmer clarification */
+  clarification_needed?: boolean;
+  /** Number of actions returned to the farmer (analytics) */
+  actions_returned?: number;
+  /** Whether a photo is needed before diagnosis can proceed */
+  needs_photo_for_diagnosis?: boolean;
+  /** Overall confidence score shorthand (alias-ish of confidence) */
+  confidence_score?: number;
+  /** Secondary decisions built by orchestrator (parallel structure to secondary_actions) */
+  secondary_decisions?: SecondaryAction[];
+  /** @deprecated Legacy alias for secondary_actions kept for backward-compatible reads */
+  secondary_recommendations?: SecondaryAction[];
+  /** Legacy single matched-response recovery field */
+  primary_matched_response?: {
+    rule_id: string;
+    cause: string;
+    action_type: string;
+    priority?: number;
+    action_text?: string;
+    reason_text?: string;
+    knowledge_text?: string;
+    i18n_key?: string;
+    response_mr?: string;
+    response_hi?: string;
+    response_en?: string;
+  };
 }
 
 // RuleExecutionInput is defined once at the top of this file (line 26)
@@ -260,7 +313,9 @@ export type DecisionStatus =
   | 'ESCALATED'
   | 'FALLBACK_MODE'
   // Step 1 — GraphTruth-compliant sentinel: the symbolic brain reached the
-  | 'NEEDS_MORE_EVIDENCE';
+  | 'NEEDS_MORE_EVIDENCE'
+  // Runtime-observed partial-success status
+  | 'PARTIAL';
 
 export interface PrimaryDecision {
   action_type: ActionType;
@@ -281,6 +336,18 @@ export interface PrimaryDecision {
   expected_outcomes: ExpectedOutcomes;
   
   ipm_level?: number;
+
+  // ── Optional fields populated from DB-driven layered rule evaluation ──
+  /** ID of the rule that produced this decision */
+  rule_id?: string;
+  /** Convenience alias for application_details.product_name */
+  product_name?: string;
+  /** Confidence score after applying rule-weighting logic */
+  weighted_confidence?: number;
+  /** Rich product lookup data (dosage, active ingredient, etc.) merged from master_products */
+  product_details?: Record<string, unknown>;
+  /** Optional — raw rule priority carried through from layered rule evaluation */
+  priority?: number;
 }
 
 export type ActionType = 
@@ -315,7 +382,7 @@ export interface ApplicationDetails {
   product_name: string;
   product_name_local?: string;
   product_type: ProductType;
-  active_ingredient?: string;
+  active_ingredient?: string | null;
   concentration: string;
   quantity_per_acre: string;
   total_quantity: string;
@@ -334,10 +401,41 @@ export interface ApplicationDetails {
   ppe_required?: string[];
   
   waiting_period_days?: number;
-  phi_days?: number;
+  phi_days?: number | null;
+
+  // ── Optional rich fields populated from decision_rules/master_products JSONB at runtime ──
+  /** Rule-authored action text (SSOT narration source) */
+  action_text?: string;
+  /** Rule-authored reason text (SSOT narration source) */
+  reason_text?: string;
+  /** Rule-authored knowledge/explanation text (SSOT narration source) */
+  knowledge_text?: string;
+  reason_text_mr?: string;
+  reason_text_hi?: string;
+  /** i18n lookup key for localized rule text */
+  i18n_key?: string;
+  /** Free-form timing text/object attached to the rule/product */
+  timing?: string | Record<string, unknown>;
+  /** Water volume for spray mixing (may come pre-computed or per-acre) */
+  water_volume?: string | null;
+  water_volume_per_acre?: string | null;
+  /** Alias for dosage sourced directly from the rule (vs concentration/quantity_per_acre) */
+  dosage_per_acre?: string | null;
+  efficacy_percent?: number;
+  weather_restrictions?: string[];
+  /** Trilingual product display names */
+  names?: { mr?: string; hi?: string; en?: string };
+  organic_alternative?: string | Record<string, unknown> | null;
+  mode_of_action?: string | null;
+  success_indicators?: string[] | null;
+  bee_toxicity?: 'LOW' | 'MEDIUM' | 'HIGH' | string | null;
+  roi_yield_gain_pct?: number | null;
+  category?: string;
+  /** ID of the rule that produced this application detail (used for tracing) */
+  rule_id?: string;
 }
 
-export type ProductType = 'BIOLOGICAL' | 'BOTANICAL' | 'CHEMICAL' | 'ORGANIC' | 'FERTILIZER' | 'GROWTH_REGULATOR';
+export type ProductType = 'BIOLOGICAL' | 'BOTANICAL' | 'CHEMICAL' | 'ORGANIC' | 'FERTILIZER' | 'GROWTH_REGULATOR' | 'CULTURAL';
 
 export type ApplicationMethod = 
   | 'FOLIAR_SPRAY'
@@ -374,6 +472,10 @@ export interface SecondaryAction {
   reason_hi?: string;
   timing: string;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** Optional — success indicators populated from rule/product JSONB */
+  success_indicators?: string[];
+  /** Optional — dosage populated from rule/product JSONB (used by formatter for allowed-dosage checks) */
+  dosage_per_acre?: string;
 }
 
 export interface BlockedAction {
@@ -548,6 +650,10 @@ export interface RuleResult {
   recommendation?: RecommendationDetails;
   confidence: number;
   metadata?: Record<string, unknown>;
+  /** Optional — raw action-type string from the source rule (pre-normalization), broader than `action` */
+  action_type?: string;
+  /** Optional — rule-authored action text (SSOT narration source) */
+  action_text?: string;
 }
 
 export interface RecommendationDetails {
@@ -559,6 +665,12 @@ export interface RecommendationDetails {
   efficacy_percent?: number;
   ipm_level?: number;
   benefit_cost_ratio?: number;
+  /** Optional — raw action-type string from the source rule */
+  action_type?: string;
+  /** Optional — dosage expressed per acre, as populated from rule/product JSONB */
+  dosage_per_acre?: string;
+  /** Optional — rule-authored action text (SSOT narration source) */
+  action_text?: string;
 }
 
 // CROP ECONOMICS DATA

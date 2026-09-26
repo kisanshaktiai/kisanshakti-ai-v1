@@ -1,4 +1,6 @@
 // Feedback Learning & Improvement Engine
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Narrow casts for untyped Supabase client rows (createClient generic 'never') and rpc-in-update payload; fixed insert/update overload mismatches without changing query shape.
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import type {
@@ -63,8 +65,8 @@ export class FeedbackLearningEngine {
       updated_at: new Date().toISOString()
     };
     
-    const { error } = await this.supabase
-      .from('treatment_outcomes')
+    const { error } = await (this.supabase
+      .from('treatment_outcomes') as any)
       .insert(outcome);
     
     if (error) {
@@ -84,14 +86,14 @@ export class FeedbackLearningEngine {
   ): Promise<void> {
     const fieldName = `day_${day}_check`;
     
-    const { error } = await this.supabase
-      .from('treatment_outcomes')
+    const { error } = await (this.supabase
+      .from('treatment_outcomes') as any)
       .update({
-        [`follow_up_data`]: this.supabase.rpc('jsonb_set_nested', {
+        [`follow_up_data`]: this.supabase.rpc('jsonb_set_nested' as any, {
           target: 'follow_up_data',
           path: [fieldName],
           value: responses
-        }),
+        } as any),
         updated_at: new Date().toISOString()
       })
       .eq('outcome_id', outcomeId);
@@ -494,8 +496,9 @@ export class FeedbackLearningEngine {
       .select('*')
       .order('success_rate', { ascending: false });
     
-    const topRules = (rulePerformance || []).slice(0, 5);
-    const underperforming = (rulePerformance || []).filter(
+    const typedRulePerformance = (rulePerformance || []) as any[];
+    const topRules = typedRulePerformance.slice(0, 5);
+    const underperforming = typedRulePerformance.filter(
       r => r.success_rate < RULE_REVIEW_TRIGGERS.LOW_SUCCESS_RATE
     );
     

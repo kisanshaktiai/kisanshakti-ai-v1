@@ -1,5 +1,8 @@
 // FARMER COMMUNICATION GENERATOR - TYPE DEFINITIONS v3.0
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:40 UTC — Made TrilingualText.mr/hi optional (en required) to match runtime usage (English-only templates translated by LLM at runtime); added optional sections_count to FarmerCommunication.metadata for richer analytics payloads.
+
 // INPUT TYPES
 
 export type SupportedLanguage = string;
@@ -28,8 +31,10 @@ export interface ConversationContext {
 // TRILINGUAL TEXT STRUCTURE
 
 export interface TrilingualText {
-  mr: string;
-  hi: string;
+  /** Optional — many templates are English-only; LLM narration translates at runtime */
+  mr?: string;
+  /** Optional — many templates are English-only; LLM narration translates at runtime */
+  hi?: string;
   en: string;
 }
 
@@ -262,6 +267,8 @@ export interface FarmerCommunication {
     complexity_score: number;
     adapted_for_literacy: boolean;
     adapted_for_emotion: boolean;
+    /** Optional — count of sections actually included in this communication */
+    sections_count?: number;
   };
 }
 

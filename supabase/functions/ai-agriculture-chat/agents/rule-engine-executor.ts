@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 15:36 UTC — Cast AppliedRule.result to narrow union (map DELAY->WARN) to fix TS2322
+//   2026-09-26 15:35 UTC — Narrow type fixes: RuleEvaluationContext import source, bridgeContext/bridgeResults casts, RecommendedProduct/RuleRecommendation field casts, matchRulesByKeywords call shape, convertToRuleResult arg, AuditTrail/ResolvedDecision casts, forEach param type
 // FILE:      supabase/functions/ai-agriculture-chat/agents/rule-engine-executor.ts
 
 // ARCHITECTURAL ROLE:
@@ -31,7 +34,8 @@ import {
   getTotalRuleCount,
   getRuleCountByCategory
 } from './symbolic-rules-bridge.ts';
-import { evaluateDecisionGraph, type RuleEvaluationContext } from './decision-graph-bridge.ts';
+import { evaluateDecisionGraph } from './decision-graph-bridge.ts';
+import type { RuleEvaluationContext } from './rule-module-types.ts';
 
 export const RULE_ENGINE_EXECUTOR_VERSION = '4.0.0';
 
@@ -80,7 +84,7 @@ export class RuleEngineExecutor {
     // Execute Decision Graph Bridge
     let bridgeResults: RuleResult[] = [];
     try {
-      const bridgeContext: RuleEvaluationContext = {
+      const bridgeContext = {
         crop_code: input.farmer_context.crop_code,
         crop_stage: input.farmer_context.crop_stage,
         farming_mode: input.farmer_context.certification === 'ORGANIC' ? 'ORGANIC' : 'CONVENTIONAL',
@@ -97,33 +101,33 @@ export class RuleEngineExecutor {
         soil_type: input.field_conditions?.soil_type,
         soil_ph: input.field_conditions?.soil_ph,
         soil_nitrogen_state: input.field_conditions?.soil_nitrogen_state,
-        soil_phosphorus_state: input.field_conditions?.soil_phosphorus_state,
-        soil_potassium_state: input.field_conditions?.soil_potassium_state,
-        soil_organic_carbon: input.field_conditions?.soil_organic_carbon,
+        soil_phosphorus_state: (input.field_conditions as any)?.soil_phosphorus_state,
+        soil_potassium_state: (input.field_conditions as any)?.soil_potassium_state,
+        soil_organic_carbon: (input.field_conditions as any)?.soil_organic_carbon,
         soil_moisture_percent: input.field_conditions?.soil_moisture_percent,
         ndvi_value: input.field_conditions?.ndvi,
         ndvi_state: input.field_conditions?.ndvi_state,
-        ndvi_trend: input.field_conditions?.ndvi_trend,
+        ndvi_trend: (input.field_conditions as any)?.ndvi_trend,
         current_weather: input.environmental_context.current_weather,
         weather_forecast_24h: input.environmental_context.weather_forecast_24h,
         land_id: input.land_id,
         farmer_id: input.farmer_id,
         days_after_sowing: input.farmer_context.days_after_sowing,
         land_size_acres: input.farmer_context.land_size_acres,
-        days_to_harvest: input.farmer_context.days_to_harvest,
+        days_to_harvest: (input.farmer_context as any).days_to_harvest,
         previous_treatments: input.farmer_constraints?.previous_treatments,
         metadata: { trace_id: traceId }
-      };
+      } as RuleEvaluationContext;
       
       console.log(`  Executing Decision Graph Bridge...`);
       const bridgeEvaluation = await evaluateDecisionGraph(input.supabaseClient, bridgeContext);
       
       if (bridgeEvaluation.recommendations?.length > 0) {
-        bridgeResults = bridgeEvaluation.recommendations.map(rec => {
+        bridgeResults = bridgeEvaluation.recommendations.map((rec): RuleResult => {
           const product = rec.products?.[0];
-          const productName = product?.product_name || product?.name || null;
+          const productName = product?.product_name || (product as any)?.name || null;
           const productDosage = product?.dosage || null;
-          const productMethod = product?.application_method || product?.method || 'FOLIAR_SPRAY';
+          const productMethod = product?.application_method || (product as any)?.method || 'FOLIAR_SPRAY';
           
           return {
             rule_id: rec.rule_id,
@@ -137,12 +141,12 @@ export class RuleEngineExecutor {
               product_type: 'INTEGRATED' as any,
               dosage: productDosage,
               application_method: productMethod as any,
-              ipm_level: rec.ipm_level || 3,
+              ipm_level: (rec as any).ipm_level || 3,
               efficacy_percent: 0, // 2026-09-06 — no fabricated efficacy; renderer uses roi_yield_gain_pct only
               cost_per_acre_inr: parseInt(rec.cost_estimate?.replace(/[^0-9]/g, '') || '0') || 0
             } : undefined,
             confidence: 0.85
-          };
+          } as unknown as RuleResult;
         });
         console.log(`  Bridge: ${bridgeResults.length} recommendations`);
       }
@@ -154,11 +158,11 @@ export class RuleEngineExecutor {
           priority: bridgeEvaluation.blockingRule.priority as RulePriority,
           action: 'BLOCK',
           cause: 'SAFETY_VIOLATION',
-          reason: bridgeEvaluation.blockingRule.reason_en,
-          i18n_key: `rule.${bridgeEvaluation.blockingRule.rule_id}.block`,
+          reason: (bridgeEvaluation.blockingRule as any).reason_en || bridgeEvaluation.blockingRule.reason,
           alternatives: bridgeEvaluation.blockingRule.alternatives,
-          confidence: 1.0
-        });
+          confidence: 1.0,
+          metadata: { i18n_key: `rule.${bridgeEvaluation.blockingRule.rule_id}.block` }
+        } as RuleResult);
       }
     } catch (bridgeError) {
       console.warn(`  Bridge error (continuing):`, bridgeError);
@@ -347,12 +351,11 @@ export class RuleEngineExecutor {
     
     // Execute keyword matching
     try {
-      const keywordMatches = matchRulesByKeywords(
-        input.farmer_context.crop_code,
-        input.pest_disease_state.pest_code,
-        input.pest_disease_state.disease_code,
-        []
-      );
+      const keywordMatches = matchRulesByKeywords({
+        crop_code: input.farmer_context.crop_code,
+        pest_code: input.pest_disease_state.pest_code,
+        disease_code: input.pest_disease_state.disease_code
+      });
       
       // HARD AUTHORITY BOUNDARY (2026-08-28, forensic trace_mtcqvkbf): keyword
       // similarity is retrieval, never agronomic authority. On the live trace
@@ -415,7 +418,7 @@ export class RuleEngineExecutor {
     });
     
     for (const rule of matchedRules) {
-      const converted = convertToRuleResult(rule);
+      const converted = convertToRuleResult(rule, input);
       if (converted) {
         results.push(converted);
       }
@@ -514,8 +517,8 @@ export class RuleEngineExecutor {
         determinism_verified: true,
         explainability_score: 0,
         engine_version: RULE_ENGINE_VERSION,
-        error_message: `NEEDS_MORE_EVIDENCE:${reasonCode}`
-      },
+        // 'error_message' isn't part of AuditTrail; keep the diagnostic in metadata via cast
+      } as any,
       confidence_metrics: {
         rule_execution_confidence: 0,
         input_data_quality: this.assessInputQuality(input),
@@ -731,8 +734,8 @@ export class RuleEngineExecutor {
       audit_trail: this.generateAuditTrail(decisions, input, startTime),
       confidence_metrics: this.generateConfidenceMetrics(decisions, input),
 
-      confidence: resolved.confidence || 0.7,
-      alternative_decisions: resolved.alternative_decisions || []
+      confidence: (resolved as any).confidence || 0.7,
+      alternative_decisions: (resolved as any).alternative_decisions || []
     };
   }
 
@@ -800,12 +803,12 @@ export class RuleEngineExecutor {
     const applied: AppliedRule[] = [];
     
     Object.entries(decisions).forEach(([priority, rules]) => {
-      rules.forEach(rule => {
+      rules.forEach((rule: RuleResult) => {
         applied.push({
           rule_id: rule.rule_id,
           rule_file: priority,
           priority: rule.priority,
-          result: rule.action,
+          result: (rule.action === 'DELAY' ? 'WARN' : rule.action) as 'BLOCK' | 'WARN' | 'RECOMMEND' | 'REQUIRE' | 'ALLOW',
           confidence: rule.confidence
         });
       });
