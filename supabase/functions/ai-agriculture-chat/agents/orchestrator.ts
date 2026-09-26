@@ -1972,7 +1972,7 @@ export class AIAgentOrchestrator {
           farmer_id:         farmerId ?? null,
           conversation_id:   sessionId ?? null,
           schedule_id:       (landContext as any)?.schedule_id ?? null,
-          language:          (options as any).language ?? normalizedInput?.detected_language ?? null,
+          language:          (options as any).language ?? null, // normalizedInput not yet declared at this point in the request lifecycle (declared later, ~line 3840); options.language already covers the intended fallback
           crop:              canonicalContext?.crop_code ?? landContext?.current_crop ?? null,
           stage:             canonicalContext?.growth_stage ?? landContext?.current_crop_stage ?? null,
           das:               canonicalContext?.days_since_sowing ?? landContext?.days_since_sowing ?? null,

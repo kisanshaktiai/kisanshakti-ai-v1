@@ -1,6 +1,7 @@
 // RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
 
 // CHANGE LOG (newest first)
+//   2026-09-26 15:50 UTC — Added soil_organic_carbon to FieldConditions; made WeatherForecast core fields optional and added alternate shape fields (rain_probability, suitable_for_spraying, risk_factors); added product_name/product_type/weighted_confidence/normalized_score/success_indicators to layered_rule_result.primary_decision, matched_responses, and primary_matched_response, and widened their action_type to ActionType; added optional priority to PrimaryDecision; added 'PARTIAL' to DecisionStatus.
 //   2026-09-26 15:42 UTC — Added optional DB/JSONB-populated fields to ApplicationDetails, PrimaryDecision, DecisionOutput, SecondaryAction, RuleResult, RecommendationDetails; added 'CULTURAL' to ProductType; added optional soil_phosphorus_state/soil_potassium_state to FieldConditions; re-exported FarmerCommunication from communication-types.ts for legacy import paths. No existing field types changed.
 
 import type { 
@@ -72,6 +73,8 @@ export interface FieldConditions {
   soil_phosphorus_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
   /** Optional — populated from land soil-test JSONB data */
   soil_potassium_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
+  /** Optional — populated from land soil-test JSONB data */
+  soil_organic_carbon?: number;
   ndvi?: number;
   ndvi_state?: 'EXCELLENT' | 'HEALTHY' | 'MODERATE_STRESS' | 'HIGH_STRESS' | 'CRITICAL';
   last_irrigation_date?: string;
@@ -100,12 +103,18 @@ export interface CurrentWeather {
 }
 
 export interface WeatherForecast {
-  rain_probability_percent: number;
+  /** Optional — some fallback/default objects use the alternate `rain_probability` shape instead */
+  rain_probability_percent?: number;
   rain_amount_mm?: number;
-  temperature_max_c: number;
+  /** Optional — some fallback/default objects omit this when using the alternate shape */
+  temperature_max_c?: number;
   temperature_min_c?: number;
   humidity_max_percent?: number;
   wind_speed_max_kmh?: number;
+  // ── Alternate/legacy shape fields populated by some runtime fallback objects ──
+  rain_probability?: number;
+  suitable_for_spraying?: boolean;
+  risk_factors?: string[];
 }
 
 export interface PestDiseaseState {
@@ -304,7 +313,9 @@ export type DecisionStatus =
   | 'ESCALATED'
   | 'FALLBACK_MODE'
   // Step 1 — GraphTruth-compliant sentinel: the symbolic brain reached the
-  | 'NEEDS_MORE_EVIDENCE';
+  | 'NEEDS_MORE_EVIDENCE'
+  // Runtime-observed partial-success status
+  | 'PARTIAL';
 
 export interface PrimaryDecision {
   action_type: ActionType;
@@ -335,6 +346,8 @@ export interface PrimaryDecision {
   weighted_confidence?: number;
   /** Rich product lookup data (dosage, active ingredient, etc.) merged from master_products */
   product_details?: Record<string, unknown>;
+  /** Optional — raw rule priority carried through from layered rule evaluation */
+  priority?: number;
 }
 
 export type ActionType = 
