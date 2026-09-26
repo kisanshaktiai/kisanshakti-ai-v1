@@ -201,9 +201,19 @@ export function PWAUpdatePrompt() {
       // Give the newly-activated worker one event-loop turn to settle before
       // reloading the current route.
       window.setTimeout(() => {
-        if (!disposed) {
-          window.location.reload();
+        if (disposed) return;
+
+        // Final safety gate: work can start in the small window between the
+        // first safety check and this reload timer.
+        if (!isSafeToActivate()) {
+          reloadScheduledRef.current = false;
+          sessionStorage.removeItem(RELOAD_SCHEDULED_KEY);
+          reloadPendingRef.current = true;
+          console.log('[PWA] Reload was deferred because new work started');
+          return;
         }
+
+        window.location.reload();
       }, 100);
     };
 
