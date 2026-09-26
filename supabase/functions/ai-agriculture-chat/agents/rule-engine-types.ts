@@ -325,6 +325,16 @@ export interface PrimaryDecision {
   expected_outcomes: ExpectedOutcomes;
   
   ipm_level?: number;
+
+  // ── Optional fields populated from DB-driven layered rule evaluation ──
+  /** ID of the rule that produced this decision */
+  rule_id?: string;
+  /** Convenience alias for application_details.product_name */
+  product_name?: string;
+  /** Confidence score after applying rule-weighting logic */
+  weighted_confidence?: number;
+  /** Rich product lookup data (dosage, active ingredient, etc.) merged from master_products */
+  product_details?: Record<string, unknown>;
 }
 
 export type ActionType = 
@@ -379,9 +389,38 @@ export interface ApplicationDetails {
   
   waiting_period_days?: number;
   phi_days?: number;
+
+  // ── Optional rich fields populated from decision_rules/master_products JSONB at runtime ──
+  /** Rule-authored action text (SSOT narration source) */
+  action_text?: string;
+  /** Rule-authored reason text (SSOT narration source) */
+  reason_text?: string;
+  reason_text_mr?: string;
+  reason_text_hi?: string;
+  /** i18n lookup key for localized rule text */
+  i18n_key?: string;
+  /** Free-form timing text/object attached to the rule/product */
+  timing?: string | Record<string, unknown>;
+  /** Water volume for spray mixing (may come pre-computed or per-acre) */
+  water_volume?: string;
+  water_volume_per_acre?: string;
+  /** Alias for dosage sourced directly from the rule (vs concentration/quantity_per_acre) */
+  dosage_per_acre?: string;
+  efficacy_percent?: number;
+  weather_restrictions?: string[];
+  /** Trilingual product display names */
+  names?: { mr?: string; hi?: string; en?: string };
+  organic_alternative?: string | Record<string, unknown>;
+  mode_of_action?: string;
+  success_indicators?: string[];
+  bee_toxicity?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  roi_yield_gain_pct?: number;
+  category?: string;
+  /** ID of the rule that produced this application detail (used for tracing) */
+  rule_id?: string;
 }
 
-export type ProductType = 'BIOLOGICAL' | 'BOTANICAL' | 'CHEMICAL' | 'ORGANIC' | 'FERTILIZER' | 'GROWTH_REGULATOR';
+export type ProductType = 'BIOLOGICAL' | 'BOTANICAL' | 'CHEMICAL' | 'ORGANIC' | 'FERTILIZER' | 'GROWTH_REGULATOR' | 'CULTURAL';
 
 export type ApplicationMethod = 
   | 'FOLIAR_SPRAY'
@@ -418,6 +457,10 @@ export interface SecondaryAction {
   reason_hi?: string;
   timing: string;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** Optional — success indicators populated from rule/product JSONB */
+  success_indicators?: string[];
+  /** Optional — dosage populated from rule/product JSONB (used by formatter for allowed-dosage checks) */
+  dosage_per_acre?: string;
 }
 
 export interface BlockedAction {
@@ -592,6 +635,8 @@ export interface RuleResult {
   recommendation?: RecommendationDetails;
   confidence: number;
   metadata?: Record<string, unknown>;
+  /** Optional — raw action-type string from the source rule (pre-normalization), broader than `action` */
+  action_type?: string;
 }
 
 export interface RecommendationDetails {
@@ -603,6 +648,10 @@ export interface RecommendationDetails {
   efficacy_percent?: number;
   ipm_level?: number;
   benefit_cost_ratio?: number;
+  /** Optional — raw action-type string from the source rule */
+  action_type?: string;
+  /** Optional — dosage expressed per acre, as populated from rule/product JSONB */
+  dosage_per_acre?: string;
 }
 
 // CROP ECONOMICS DATA

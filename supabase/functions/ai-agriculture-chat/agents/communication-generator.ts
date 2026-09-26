@@ -1,4 +1,10 @@
 // FARMER COMMUNICATION GENERATOR v3.1
+//
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Type-only fixes: camelCase property access for
+//   ExtractedCauseInfo/ExtractedEconomicInfo, narrow casts for English-only
+//   TrilingualText literals, metadata/FollowUpPlan extra-field casts, voice
+//   enum cast. No behavior/text changes.
 
 import type { DecisionOutput, EconomicAssessment, PrimaryDecision } from './rule-engine-types.ts';
 import { getNarratorVoice } from '../utils/language-utils.ts';
@@ -1339,7 +1345,7 @@ export class CommunicationGenerator {
         }
       },
       repeat_application_note: repeatNote
-    };
+    } as unknown as FollowUpPlan;
   }
   
   // MESSAGE COMPILATION
@@ -1353,7 +1359,7 @@ export class CommunicationGenerator {
   ): any {
     const greeting = (GREETINGS[lang] || GREETINGS['en'])?.[0] || 'Hello,';
     const empathyLine = profile.emotional_state !== 'NEUTRAL' 
-      ? (EMPATHY_LINES[profile.emotional_state]?.[lang] || EMPATHY_LINES[profile.emotional_state]?.['en'] || '')
+      ? ((EMPATHY_LINES[profile.emotional_state] as unknown as Record<string,string>)?.[lang] || (EMPATHY_LINES[profile.emotional_state] as unknown as Record<string,string>)?.['en'] || '')
       : undefined;
     const closing = (CLOSINGS[lang] || CLOSINGS['en'])?.[0] || 'Best wishes! 🌾';
     
@@ -1376,7 +1382,7 @@ export class CommunicationGenerator {
   private generateNotification(action: ImmediateAction, lang: SupportedLanguage): FarmerNotification {
     return {
       title: 'Advice ready for your crop! 🌾',
-      body: action.action_summary[lang] || action.action_summary['en'] || '',
+      body: (action.action_summary as unknown as Record<string,string>)[lang] || action.action_summary['en'] || '',
       icon: action.emoji,
       priority: action.urgency_indicator.urgency_level === 'IMMEDIATE' ? 'HIGH' : 'NORMAL'
     };
@@ -1431,7 +1437,7 @@ export class CommunicationGenerator {
       text_to_speak: voiceText,
       language: lang,
       estimated_duration_seconds: Math.ceil(voiceText.split(/\s+/).length / 2.5), // ~150 words/min
-      narrator_voice: getNarratorVoice(lang)
+      narrator_voice: getNarratorVoice(lang) as VoiceVersion['narrator_voice']
     };
   }
   
@@ -1503,7 +1509,7 @@ export class CommunicationGenerator {
   private getEmojiDescriptions(lang: SupportedLanguage): Record<string, string> {
     const descriptions: Record<string, string> = {};
     for (const [emoji, trilingual] of Object.entries(EMOJI_DESCRIPTIONS)) {
-      descriptions[emoji] = trilingual[lang];
+      descriptions[emoji] = (trilingual as unknown as Record<string,string>)[lang];
     }
     return descriptions;
   }
