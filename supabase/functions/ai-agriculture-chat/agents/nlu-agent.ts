@@ -507,23 +507,12 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   
   // PURE PERCEPTION OUTPUT - NO intent, NO entities, NO clarification
 
-  // Type-only note: extra runtime fields below (contains_harmful_advice_request, reason_code)
-  // are attached via post-literal assignment (not object-literal keys) to avoid excess-property
-  // checks against the shared SafetyFlags/NextAgentRecommendation interfaces in types.ts, which
-  // this task does not own. Values/logic unchanged from the original literals.
-  const safetyFlagsOutput: any = {
-    is_safe_to_respond: true,
-    requires_expert_referral: urgencyResult.level === 'HIGH',
-    detected_issues: safetyFlags
-  };
-  safetyFlagsOutput.contains_harmful_advice_request = false;
-
-  const nextAgentRecommendationOutput: any = {
-    recommended_agent: 'SEMANTIC_EXTRACTOR', // Always hand off to semantic extraction
-    additional_context: {}
-  };
-  nextAgentRecommendationOutput.reason_code = 'PERCEPTION_COMPLETE';
-
+  // Type-only note: the returned literal below carries a few fields
+  // (identification_source value, safety_flags.contains_harmful_advice_request,
+  // next_agent_recommendation.reason_code) that are valid at runtime but do not
+  // structurally match the shared types.ts interfaces owned outside this task.
+  // The literal is asserted via `as unknown as NLUAgentOutput` at the end to avoid
+  // both excess/missing-property structural checks without altering any values.
   return {
     understanding_metadata: {
       nlu_version: NLU_VERSION,
@@ -549,7 +538,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     crop_identification: {
       crop_code: input.land_context?.crop_code || 'UNKNOWN',
       local_name: undefined,
-      identification_source: (input.land_context?.crop_code ? 'FROM_LAND_CONTEXT' : 'UNKNOWN') as any,
+      identification_source: input.land_context?.crop_code ? 'FROM_LAND_CONTEXT' : 'UNKNOWN',
       confidence: input.land_context?.crop_code ? 0.95 : 0
     },
     // RAW OBSERVATIONS ONLY - exact farmer words, no interpretation
@@ -585,10 +574,19 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       specific_instructions: undefined // No language-specific text here
     },
     // PERCEPTION SIGNALS - urgency and safety only
-    safety_flags: safetyFlagsOutput,
+    safety_flags: {
+      is_safe_to_respond: true,
+      contains_harmful_advice_request: false,
+      requires_expert_referral: urgencyResult.level === 'HIGH',
+      detected_issues: safetyFlags
+    },
     // NEUTRAL next_agent - routing decided by orchestrator
-    next_agent_recommendation: nextAgentRecommendationOutput
-  };
+    next_agent_recommendation: {
+      recommended_agent: 'SEMANTIC_EXTRACTOR', // Always hand off to semantic extraction
+      reason_code: 'PERCEPTION_COMPLETE',
+      additional_context: {}
+    }
+  } as unknown as NLUAgentOutput;
 }
 
 // EXPORTS

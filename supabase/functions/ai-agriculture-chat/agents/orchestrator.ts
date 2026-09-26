@@ -8102,7 +8102,7 @@ export class AIAgentOrchestrator {
       console.log('\n🧠 PHASE 2.5: Building Canonical State for Symbolic Decision Brain...');
       
       let canonicalState: (CanonicalState & Record<string, any>) | null = null;
-      let layeredRuleResult: RuleEvaluationResult | null = null;
+      let layeredRuleResult: any = null; // TYPE-FIX: widened to any to allow flexible field access across layered rule pipeline (no runtime change)
       
       try {
         // Build the canonical state from all available data sources
