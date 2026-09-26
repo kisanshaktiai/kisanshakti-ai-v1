@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth, getSessionToken } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
@@ -1374,7 +1374,10 @@ export function EnhancedAIChatInterface() {
 
       const cleanHistory = conversationHistory.map(m => ({ role: m.role, content: m.content }));
       
-      const sessionToken = localStorage.getItem('app_session_token') || '';
+      // Server-verified session token (client.ts, key 'ks_session_token'). The old
+      // 'app_session_token' key is never written, so chat sent an empty token and
+      // the F-SEC-1 session guard answered 401 SESSION_REQUIRED.
+      const sessionToken = getSessionToken() || '';
       
       // CRITICAL: If this send originated from a proactive alert, attach the
       // alert's Decision-Brain payload so the orchestrator narrates from
@@ -1690,7 +1693,10 @@ export function EnhancedAIChatInterface() {
       console.log('🤖 [Orchestrator] Generating targeted solution:', type);
       
       // Send to orchestrator with suggestion type context
-      const sessionToken = localStorage.getItem('app_session_token') || '';
+      // Server-verified session token (client.ts, key 'ks_session_token'). The old
+      // 'app_session_token' key is never written, so chat sent an empty token and
+      // the F-SEC-1 session guard answered 401 SESSION_REQUIRED.
+      const sessionToken = getSessionToken() || '';
       
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
