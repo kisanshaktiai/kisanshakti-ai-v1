@@ -807,7 +807,7 @@ export class RuleEngineExecutor {
           rule_id: rule.rule_id,
           rule_file: priority,
           priority: rule.priority,
-          result: rule.action,
+          result: (rule.action === 'DELAY' ? 'WARN' : rule.action) as 'BLOCK' | 'WARN' | 'RECOMMEND' | 'REQUIRE' | 'ALLOW',
           confidence: rule.confidence
         });
       });
