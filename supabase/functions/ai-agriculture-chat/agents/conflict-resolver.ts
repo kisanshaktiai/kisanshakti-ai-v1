@@ -437,8 +437,8 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
     },
     ipm_level: rec?.ipm_level,
     // Preserve multilingual reasons for LLM formatter (LEGACY - for backward compat)
-    reason_mr: rule.reason_mr,
-    reason_hi: rule.reason_hi
+    reason_mr: (rule as any).reason_mr,
+    reason_hi: (rule as any).reason_hi
   };
 }
 
