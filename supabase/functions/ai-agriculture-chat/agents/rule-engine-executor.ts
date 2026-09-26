@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 15:36 UTC — Cast AppliedRule.result to narrow union (map DELAY->WARN) to fix TS2322
 //   2026-09-26 15:35 UTC — Narrow type fixes: RuleEvaluationContext import source, bridgeContext/bridgeResults casts, RecommendedProduct/RuleRecommendation field casts, matchRulesByKeywords call shape, convertToRuleResult arg, AuditTrail/ResolvedDecision casts, forEach param type
 // FILE:      supabase/functions/ai-agriculture-chat/agents/rule-engine-executor.ts
 

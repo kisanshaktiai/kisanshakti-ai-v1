@@ -369,12 +369,12 @@ export interface ApplicationDetails {
   product_name: string;
   product_name_local?: string;
   product_type: ProductType;
-  active_ingredient?: string;
+  active_ingredient?: string | null;
   concentration: string;
   quantity_per_acre: string;
   total_quantity: string;
   water_requirement: string;
-  application_method: ApplicationMethod;
+  application_method: ApplicationMethod | null;
   coverage_instructions: string;
   coverage_instructions_mr?: string;
   coverage_instructions_hi?: string;
@@ -388,7 +388,7 @@ export interface ApplicationDetails {
   ppe_required?: string[];
   
   waiting_period_days?: number;
-  phi_days?: number;
+  phi_days?: number | null;
 
   // ── Optional rich fields populated from decision_rules/master_products JSONB at runtime ──
   /** Rule-authored action text (SSOT narration source) */
@@ -402,19 +402,19 @@ export interface ApplicationDetails {
   /** Free-form timing text/object attached to the rule/product */
   timing?: string | Record<string, unknown>;
   /** Water volume for spray mixing (may come pre-computed or per-acre) */
-  water_volume?: string;
-  water_volume_per_acre?: string;
+  water_volume?: string | null;
+  water_volume_per_acre?: string | null;
   /** Alias for dosage sourced directly from the rule (vs concentration/quantity_per_acre) */
-  dosage_per_acre?: string;
+  dosage_per_acre?: string | null;
   efficacy_percent?: number;
   weather_restrictions?: string[];
   /** Trilingual product display names */
   names?: { mr?: string; hi?: string; en?: string };
-  organic_alternative?: string | Record<string, unknown>;
-  mode_of_action?: string;
-  success_indicators?: string[];
-  bee_toxicity?: 'LOW' | 'MEDIUM' | 'HIGH' | string;
-  roi_yield_gain_pct?: number;
+  organic_alternative?: string | Record<string, unknown> | null;
+  mode_of_action?: string | null;
+  success_indicators?: string[] | null;
+  bee_toxicity?: 'LOW' | 'MEDIUM' | 'HIGH' | string | null;
+  roi_yield_gain_pct?: number | null;
   category?: string;
   /** ID of the rule that produced this application detail (used for tracing) */
   rule_id?: string;
@@ -637,6 +637,8 @@ export interface RuleResult {
   metadata?: Record<string, unknown>;
   /** Optional — raw action-type string from the source rule (pre-normalization), broader than `action` */
   action_type?: string;
+  /** Optional — rule-authored action text (SSOT narration source) */
+  action_text?: string;
 }
 
 export interface RecommendationDetails {
@@ -652,6 +654,8 @@ export interface RecommendationDetails {
   action_type?: string;
   /** Optional — dosage expressed per acre, as populated from rule/product JSONB */
   dosage_per_acre?: string;
+  /** Optional — rule-authored action text (SSOT narration source) */
+  action_text?: string;
 }
 
 // CROP ECONOMICS DATA
