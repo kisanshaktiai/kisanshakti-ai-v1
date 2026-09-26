@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
 import { normalizeSoilType, soilTypeLabel, SOIL_TYPES } from '@/lib/soilType';
+import { beginPwaWork } from '@/utils/pwaActivity';
 
 interface LatLng {
   lat: number;
@@ -170,6 +171,8 @@ export function EditLandWizard({
       return;
     }
 
+    const releasePwaWork = beginPwaWork();
+
     setIsLoading(true);
     try {
       // Use the lands API to update which will inject tenant_id and farmer_id server-side
@@ -220,6 +223,7 @@ export function EditLandWizard({
         variant: 'destructive',
       });
     } finally {
+      releasePwaWork();
       setIsLoading(false);
     }
   };
