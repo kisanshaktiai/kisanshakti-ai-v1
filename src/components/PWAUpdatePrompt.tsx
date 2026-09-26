@@ -18,6 +18,7 @@ import {
   getActiveNetworkRequests,
   getActivePwaWork,
   installPwaFetchTracking,
+  isPwaReloadSafe,
 } from '@/utils/pwaActivity';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 
@@ -58,17 +59,7 @@ export function PWAUpdatePrompt() {
   const isSafeToActivate = useCallback(() => {
     if (document.visibilityState !== 'visible') return false;
     if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0) return false;
-    if (getActiveNetworkRequests() > 0 || getActivePwaWork() > 0) return false;
-
-    // Application-level long-running work can opt into this explicit marker.
-    if (document.querySelector('[data-ksai-work-in-progress="true"]')) return false;
-
-    // Never interrupt a farmer who is actively editing a form/composer.
-    if (isEditableElement(document.activeElement)) return false;
-
-    // Respect existing busy indicators exposed by the UI without inventing
-    // feature-specific application state.
-    if (document.querySelector('[aria-busy="true"]')) return false;
+    if (!isPwaReloadSafe()) return false;
 
     return Date.now() - lastActivityRef.current >= SAFE_IDLE_MS;
   }, []);
