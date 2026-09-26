@@ -326,7 +326,7 @@ export async function formatRecommendationsWithLLM(
   // BUG-C FIX: Also check symptom_keys on decision_output directly
   const hasSymptoms = (input.decision_output?.metadata?.has_symptoms as boolean | undefined) ??
                        !!(input.decision_output?.symptom_keys?.length);
-  const hasVisualAmbiguity = input.decision_output?.metadata?.has_visual_ambiguity ?? 
+  const hasVisualAmbiguity = (input.decision_output?.metadata?.has_visual_ambiguity as boolean | undefined) ?? 
                               input.decision_output?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = input.decision_output?.clarification_options ?? [];
   
@@ -1724,7 +1724,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
           actionText = reasonText || '';
           if (!actionText) {
             console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
-            return buildTemplateFallback(input, startTime);
+            return (await buildTemplateFallback(input, startTime)) as unknown as string;
           }
         }
       }
@@ -2082,7 +2082,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   // CRASH-PROOF: Safe extraction with guaranteed defaults
   const decisionConfidence = (decision?.metadata?.decision_confidence as number | undefined) ?? decision?.confidence ?? 0;
   const hasSymptoms = (decision?.metadata?.has_symptoms as boolean | undefined) ?? !!(decision?.symptom_keys?.length);
-  const hasVisualAmbiguity = decision?.metadata?.has_visual_ambiguity ?? decision?.needs_photo_for_diagnosis ?? false;
+  const hasVisualAmbiguity = (decision?.metadata?.has_visual_ambiguity as boolean | undefined) ?? decision?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = decision?.clarification_options ?? [];
   
   // FAIL-SAFE: Resolve i18n key

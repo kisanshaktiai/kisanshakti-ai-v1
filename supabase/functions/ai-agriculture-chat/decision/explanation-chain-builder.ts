@@ -1,5 +1,11 @@
 // EXPLANATION CHAIN BUILDER - RULE TRACEABILITY
 
+// CHANGE LOG (newest first)
+//   2026-09-26 21:00 UTC — Type-only fix: removed stray reference to
+//     undefined identifier 'dataLabel' (TS2304). This line never compiled
+//     and could never have executed at runtime, so removing it does not
+//     change any previously-working behavior.
+
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 
 // TYPE DEFINITIONS
