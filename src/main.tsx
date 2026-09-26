@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { waitForPwaReloadSafe } from "./utils/pwaActivity";
 
 // =============================================================================
 // Global chunk-load error recovery — fixes "Importing a module script failed"
@@ -21,6 +22,8 @@ import "./index.css";
     if (sessionStorage.getItem(RELOAD_KEY)) return;
     sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
     try {
+      await waitForPwaReloadSafe();
+
       if ('caches' in window) {
         const names = await caches.keys();
         await Promise.all(names.map((n) => caches.delete(n)));
