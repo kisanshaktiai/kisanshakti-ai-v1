@@ -1773,50 +1773,175 @@ export type Database = {
           },
         ]
       }
+      ai_model_catalog: {
+        Row: {
+          api_contract: Json
+          api_model_id: string
+          change_reason: string
+          created_at: string
+          input_modalities: string[]
+          model_key: string
+          notes: string | null
+          provider: string
+          replacement_model_key: string | null
+          shutdown_date: string | null
+          source_url: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          api_contract: Json
+          api_model_id: string
+          change_reason: string
+          created_at?: string
+          input_modalities?: string[]
+          model_key: string
+          notes?: string | null
+          provider: string
+          replacement_model_key?: string | null
+          shutdown_date?: string | null
+          source_url?: string | null
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          api_contract?: Json
+          api_model_id?: string
+          change_reason?: string
+          created_at?: string
+          input_modalities?: string[]
+          model_key?: string
+          notes?: string | null
+          provider?: string
+          replacement_model_key?: string | null
+          shutdown_date?: string | null
+          source_url?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_model_catalog_replacement_model_key_fkey"
+            columns: ["replacement_model_key"]
+            isOneToOne: false
+            referencedRelation: "ai_model_catalog"
+            referencedColumns: ["model_key"]
+          },
+        ]
+      }
       ai_model_metrics: {
         Row: {
           accuracy_score: number | null
           avg_response_time_ms: number | null
+          cost_usd: number | null
           created_at: string | null
+          error_class: string | null
           error_rate: number | null
+          fallback_used: boolean
+          farmer_id: string | null
+          function_name: string | null
+          http_status: number | null
           id: string
           metadata: Json | null
           model_name: string
+          model_requested: string | null
           model_version: string | null
+          price_id: string | null
           query_count: number | null
           resource_usage: Json | null
+          task_key: string | null
           tenant_id: string | null
           timestamp: string
         }
         Insert: {
           accuracy_score?: number | null
           avg_response_time_ms?: number | null
+          cost_usd?: number | null
           created_at?: string | null
+          error_class?: string | null
           error_rate?: number | null
+          fallback_used?: boolean
+          farmer_id?: string | null
+          function_name?: string | null
+          http_status?: number | null
           id?: string
           metadata?: Json | null
           model_name: string
+          model_requested?: string | null
           model_version?: string | null
+          price_id?: string | null
           query_count?: number | null
           resource_usage?: Json | null
+          task_key?: string | null
           tenant_id?: string | null
           timestamp?: string
         }
         Update: {
           accuracy_score?: number | null
           avg_response_time_ms?: number | null
+          cost_usd?: number | null
           created_at?: string | null
+          error_class?: string | null
           error_rate?: number | null
+          fallback_used?: boolean
+          farmer_id?: string | null
+          function_name?: string | null
+          http_status?: number | null
           id?: string
           metadata?: Json | null
           model_name?: string
+          model_requested?: string | null
           model_version?: string | null
+          price_id?: string | null
           query_count?: number | null
           resource_usage?: Json | null
+          task_key?: string | null
           tenant_id?: string | null
           timestamp?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_model_metrics_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_model_metrics_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "ai_model_metrics_model_key_fkey"
+            columns: ["model_name"]
+            isOneToOne: false
+            referencedRelation: "ai_model_catalog"
+            referencedColumns: ["model_key"]
+          },
+          {
+            foreignKeyName: "ai_model_metrics_model_requested_fkey"
+            columns: ["model_requested"]
+            isOneToOne: false
+            referencedRelation: "ai_model_catalog"
+            referencedColumns: ["model_key"]
+          },
+          {
+            foreignKeyName: "ai_model_metrics_price_id_fkey"
+            columns: ["price_id"]
+            isOneToOne: false
+            referencedRelation: "ai_model_pricing"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_model_metrics_task_key_fkey"
+            columns: ["task_key"]
+            isOneToOne: false
+            referencedRelation: "ai_task_route"
+            referencedColumns: ["task_key"]
+          },
           {
             foreignKeyName: "ai_model_metrics_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1828,6 +1953,7 @@ export type Database = {
       }
       ai_model_pricing: {
         Row: {
+          cached_input_cost_per_1k: number | null
           created_at: string
           currency: string
           effective_from: string
@@ -1837,9 +1963,11 @@ export type Database = {
           model_name: string
           notes: string | null
           output_cost_per_1k: number
+          source_url: string | null
           updated_at: string
         }
         Insert: {
+          cached_input_cost_per_1k?: number | null
           created_at?: string
           currency?: string
           effective_from?: string
@@ -1849,9 +1977,11 @@ export type Database = {
           model_name: string
           notes?: string | null
           output_cost_per_1k?: number
+          source_url?: string | null
           updated_at?: string
         }
         Update: {
+          cached_input_cost_per_1k?: number | null
           created_at?: string
           currency?: string
           effective_from?: string
@@ -1861,9 +1991,18 @@ export type Database = {
           model_name?: string
           notes?: string | null
           output_cost_per_1k?: number
+          source_url?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_model_pricing_model_key_fkey"
+            columns: ["model_name"]
+            isOneToOne: false
+            referencedRelation: "ai_model_catalog"
+            referencedColumns: ["model_key"]
+          },
+        ]
       }
       ai_prompt_runs: {
         Row: {
@@ -1978,6 +2117,42 @@ export type Database = {
           updated_by?: string | null
           user_prompt_template?: string
           variables_schema?: Json
+        }
+        Relationships: []
+      }
+      ai_registry_audit_log: {
+        Row: {
+          action: string
+          change_reason: string | null
+          changed_by: string | null
+          created_at: string
+          id: string
+          new_value: Json | null
+          old_value: Json | null
+          row_key: string
+          table_name: string
+        }
+        Insert: {
+          action: string
+          change_reason?: string | null
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          row_key: string
+          table_name: string
+        }
+        Update: {
+          action?: string
+          change_reason?: string | null
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          row_key?: string
+          table_name?: string
         }
         Relationships: []
       }
@@ -2117,6 +2292,75 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_variety_data_quality"
             referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      ai_task_route: {
+        Row: {
+          change_reason: string
+          created_at: string
+          description: string
+          is_active: boolean
+          params: Json
+          required_modalities: string[]
+          task_key: string
+          updated_at: string
+        }
+        Insert: {
+          change_reason: string
+          created_at?: string
+          description: string
+          is_active?: boolean
+          params?: Json
+          required_modalities?: string[]
+          task_key: string
+          updated_at?: string
+        }
+        Update: {
+          change_reason?: string
+          created_at?: string
+          description?: string
+          is_active?: boolean
+          params?: Json
+          required_modalities?: string[]
+          task_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_task_route_step: {
+        Row: {
+          created_at: string
+          model_key: string
+          step_no: number
+          task_key: string
+        }
+        Insert: {
+          created_at?: string
+          model_key: string
+          step_no: number
+          task_key: string
+        }
+        Update: {
+          created_at?: string
+          model_key?: string
+          step_no?: number
+          task_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_task_route_step_model_key_fkey"
+            columns: ["model_key"]
+            isOneToOne: false
+            referencedRelation: "ai_model_catalog"
+            referencedColumns: ["model_key"]
+          },
+          {
+            foreignKeyName: "ai_task_route_step_task_key_fkey"
+            columns: ["task_key"]
+            isOneToOne: false
+            referencedRelation: "ai_task_route"
+            referencedColumns: ["task_key"]
           },
         ]
       }
@@ -43953,6 +44197,13 @@ export type Database = {
         Returns: Json
       }
       aggregate_weather_data: { Args: never; Returns: undefined }
+      ai_route_model_problem: {
+        Args: {
+          p_model: Database["public"]["Tables"]["ai_model_catalog"]["Row"]
+          p_route: Database["public"]["Tables"]["ai_task_route"]["Row"]
+        }
+        Returns: string
+      }
       apply_stage_transitions: { Args: { p_land_id: string }; Returns: Json }
       archive_tenant_data: {
         Args: {
