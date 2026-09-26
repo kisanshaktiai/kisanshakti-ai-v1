@@ -273,6 +273,9 @@ export interface AuthoritativeLandState {
     age_days: number | null;
     history: { value: number; date: string }[];
     data_fresh: boolean;
+    evidence?: unknown;
+    decision_grade?: unknown;
+    trend_method_mixed?: boolean;
   };
   
   // Weather (AUTHORITATIVE)
