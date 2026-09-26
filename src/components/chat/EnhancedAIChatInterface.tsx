@@ -52,6 +52,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { prefetchLandChatContext } from '@/hooks/useLandChatContext';
 import type { Message } from './types';
 import { normalizeConfidencePct } from './types';
+import { beginPwaWork } from '@/utils/pwaActivity';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
@@ -1261,6 +1262,8 @@ export function EnhancedAIChatInterface() {
       return;
     }
     
+    const releasePwaWork = beginPwaWork();
+
     // ⚡ OPTIMISTIC UPDATE: Generate temp ID and show message INSTANTLY
     const tempId = `temp_${Date.now()}`;
     const userMessageId = crypto.randomUUID();
@@ -1610,6 +1613,7 @@ export function EnhancedAIChatInterface() {
         sessionId: sessionIds[activeTab] || ''
       });
     } finally {
+      releasePwaWork();
       setIsLoading(false);
       setLoadingMessage('');
       // Optimistically bump local quota counter; server-side commit is authoritative.
