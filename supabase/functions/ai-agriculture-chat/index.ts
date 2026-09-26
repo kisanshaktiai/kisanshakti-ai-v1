@@ -390,7 +390,7 @@ async function persistRuntimeTraceSafetyNet(params: {
         locked_intent: _rtc.context?.intent?.code ?? null,
         allowed_scopes: [],
         forbidden_actions: [],
-        symbolic_decision_id: _persistedId,
+        // symbolic_decision_id set via ..._auditPatch below (duplicate removed to avoid TS2783)
         // FIX 3 (2026-08-29): was hardcoded [] — read the collector snapshot.
         rules_fired: Array.isArray((_rtc as any).rules?.applied)
           ? (_rtc as any).rules.applied.map((r: any) => (typeof r === 'string' ? r : (r?.rule_id ?? String(r)))).filter(Boolean)
