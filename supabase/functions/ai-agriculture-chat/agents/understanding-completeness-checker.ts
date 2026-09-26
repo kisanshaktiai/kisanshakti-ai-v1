@@ -66,7 +66,7 @@ interface CriticalFieldCheck {
   field: string;
   weight: number;
   description: string;
-  isKnown: (obs: ObservationExtraction, landContext?: any) => boolean;
+  isKnown: (obs: ObservationExtractionLegacy, landContext?: any) => boolean;
 }
 
 const CRITICAL_FIELDS: CriticalFieldCheck[] = [
@@ -133,7 +133,7 @@ const VAGUE_OBSERVATION_CODES = new Set([
 ]);
 
 // Detects if symptoms are vague and need clarification to distinguish
-export function detectSymptomAmbiguity(observations: ObservationExtraction): boolean {
+export function detectSymptomAmbiguity(observations: ObservationExtractionLegacy): boolean {
   // Check if any extracted observation codes are vague
   const observationCodes = observations.extracted_observations || [];
   const hasVagueObservation = observationCodes.some(code => 
@@ -170,7 +170,7 @@ export function detectSymptomAmbiguity(observations: ObservationExtraction): boo
 
 // CONTRADICTION DETECTION - USING CANONICAL FLAGS
 
-function detectContradictions(obs: ObservationExtraction): string[] {
+function detectContradictions(obs: ObservationExtractionLegacy): string[] {
   const contradictions: string[] = [];
   
   // Use canonical flags from Language Induction Layer instead of language strings
@@ -238,7 +238,7 @@ function determineClarificationPriority(unknownFields: string[]): 'crop' | 'symp
 
 // URGENCY DETECTION - USING CANONICAL FLAGS
 
-function detectUrgency(observations: ObservationExtraction): boolean {
+function detectUrgency(observations: ObservationExtractionLegacy): boolean {
   // Use urgency flag from Language Induction Layer (already extracted)
   if (observations.is_urgent === true) {
     return true;

@@ -853,9 +853,9 @@ async function queryAnchorHypotheses(
       if (masterErr) {
         console.warn(`[HYP_GRAPH_CROP_SCOPE_ERR] ${masterErr.message} — falling back to unscoped scan`);
       } else {
-        cropHypIds = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))];
-        console.log(`[HYP_GRAPH_CROP_SCOPE] trace=${trace} crop=${cropKey} hypotheses=${cropHypIds.length}`);
-        if (cropHypIds.length === 0) cropHypIds = null; // nothing curated → don't blank the graph
+        const resolvedCropHypIds: string[] = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))];
+        console.log(`[HYP_GRAPH_CROP_SCOPE] trace=${trace} crop=${cropKey} hypotheses=${resolvedCropHypIds.length}`);
+        cropHypIds = resolvedCropHypIds.length === 0 ? null : resolvedCropHypIds; // nothing curated → don't blank the graph
       }
     }
 
