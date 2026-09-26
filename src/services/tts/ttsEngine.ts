@@ -20,7 +20,7 @@
  * the engine says so.
  */
 
-import { prepareForSpeech } from '@/services/tts/ttsTextPrepare';
+import { prepareForSpeech, CLOUD_FIRST_CHUNK_CHARS, CLOUD_TARGET_CHARS, CLOUD_MAX_CHARS } from '@/services/tts/ttsTextPrepare';
 import { deviceProvider } from '@/services/tts/providers/deviceProvider';
 import { cloudProvider } from '@/services/tts/providers/cloudProvider';
 import { languageInfo, toLocale } from '@/services/tts/ttsLanguages';
@@ -60,7 +60,8 @@ export interface SpeechOptions {
 }
 
 export interface SpeechCallbacks {
-  onStart?: (source: SpeechSource) => void;
+  /** requestId lets a screen stop only the read it started (see stopRequest). */
+  onStart?: (source: SpeechSource, requestId: number) => void;
   onChunk?: (index: number, total: number, chunk: string) => void;
   onProgress?: (percent: number) => void;
   onEnd?: () => void;
@@ -148,11 +149,9 @@ class TTSEngine {
       volume: clamp(options.volume ?? DEFAULTS.volume, 0, 1),
     };
 
-    const { chunks } = prepareForSpeech(text);
-    if (chunks.length === 0) {
-      return { success: false, source: 'none', isFallback: false, voiceUnavailable: false, error: 'nothing-speakable' };
-    }
-
+    // The provider is chosen first because the chunk size depends on it: the
+    // device voice handles long utterances well, a cloud voice must start on
+    // a short first chunk and keep the rest small so the read never stalls.
     const mode: QualityMode = options.quality ?? 'auto';
     const cloudForbidden = options.allowCloud === false || mode === 'offline_first' || mode === 'data_saver';
     // data_saver and offline_first keep synthesis on the handset, so an OS
@@ -196,8 +195,20 @@ class TTSEngine {
 
     const voiceIndex = deviceVoice?.index;
 
+    const { chunks } = source === 'cloud'
+      ? prepareForSpeech(text, {
+          firstChunkChars: CLOUD_FIRST_CHUNK_CHARS,
+          targetChars: CLOUD_TARGET_CHARS,
+          maxChars: CLOUD_MAX_CHARS,
+        })
+      : prepareForSpeech(text);
+    if (chunks.length === 0) {
+      this.speaking = false;
+      return { success: false, source: 'none', isFallback: false, voiceUnavailable: false, error: 'nothing-speakable' };
+    }
+
     this.speaking = true;
-    callbacks.onStart?.(source);
+    callbacks.onStart?.(source, id);
 
     try {
       for (let i = 0; i < chunks.length; i++) {
@@ -211,10 +222,12 @@ class TTSEngine {
         callbacks.onChunk?.(i, chunks.length, chunks[i]);
         callbacks.onProgress?.(Math.round((i / chunks.length) * 100));
 
-        // Prepare the next paragraph while this one plays, so there is no
-        // silent wait between paragraphs.
-        if (source === 'cloud' && i + 1 < chunks.length) {
-          cloudProvider.prefetch(chunks[i + 1], language);
+        // Prepare the next two chunks while this one plays, so there is no
+        // silent wait between chunks. cloudProvider de-duplicates in-flight
+        // requests, so the play call below never issues a second request.
+        if (source === 'cloud') {
+          if (i + 1 < chunks.length) cloudProvider.prefetch(chunks[i + 1], language);
+          if (i + 2 < chunks.length) cloudProvider.prefetch(chunks[i + 2], language);
         }
 
         const ok =
@@ -234,15 +247,22 @@ class TTSEngine {
               callbacks.onError?.('tts-failed');
               return { success: false, source, locale, isFallback, voiceUnavailable: false, error: 'tts-failed' };
             }
-          } else if (source === 'cloud' && deviceLocale) {
-            // A cloud failure must never leave the farmer with silence when the
-            // handset could have spoken it.
-            source = 'device';
-            const spoken = await deviceProvider.speakChunk(chunks[i], language, { ...opts, voiceIndex });
-            if (!spoken) {
-              this.speaking = false;
-              callbacks.onError?.('tts-failed');
-              return { success: false, source, locale, isFallback, voiceUnavailable: false, error: 'tts-failed' };
+          } else if (source === 'cloud') {
+            // One more cloud attempt (a dropped rural connection is common),
+            // then the handset voice if it has the language. A read must never
+            // just stop: the farmer hears every chunk or gets an error.
+            const retried = await this.playCloudChunk(chunks[i], language, opts);
+            if (this.stopped || id !== this.requestId) return this.interrupted(source, locale, isFallback);
+            if (!retried) {
+              const spoken = deviceLocale
+                ? await deviceProvider.speakChunk(chunks[i], language, { ...opts, voiceIndex })
+                : false;
+              if (!spoken) {
+                this.speaking = false;
+                callbacks.onError?.('tts-failed');
+                return { success: false, source, locale, isFallback, voiceUnavailable: false, error: 'tts-failed' };
+              }
+              source = 'device';
             }
           } else {
             this.speaking = false;
@@ -279,7 +299,10 @@ class TTSEngine {
    * creating a fresh element per chunk gets the second chunk onwards blocked.
    */
   private getAudioElement(): HTMLAudioElement {
-    if (!this.audio) this.audio = new Audio();
+    if (!this.audio) {
+      this.audio = new Audio();
+      this.audio.preload = 'auto';
+    }
     return this.audio;
   }
 
@@ -321,6 +344,15 @@ class TTSEngine {
     this.paused = false;
     if (this.audio) void this.audio.play().catch(() => undefined);
     if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.resume();
+  }
+
+  /**
+   * Stop only if `requestId` is the read currently playing. A screen unmounting
+   * must not silence a read another screen started (the engine is shared).
+   */
+  stopRequest(requestId: number | null | undefined): void {
+    if (requestId == null || requestId !== this.requestId) return;
+    this.stop();
   }
 
   stop(): void {

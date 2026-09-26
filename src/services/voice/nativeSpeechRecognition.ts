@@ -5,6 +5,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
+import { TTS_LANGUAGES, toLocale } from '@/services/tts/ttsLanguages';
 
 // Dynamic import to prevent build errors
 let SpeechRecognitionPlugin: any = null;
@@ -24,18 +25,9 @@ export interface NativeSpeechConfig {
   maxAlternatives?: number;
 }
 
-// Language code mapping for native platforms
-const LANGUAGE_MAP: Record<string, string> = {
-  'en': 'en-IN',
-  'hi': 'hi-IN',
-  'mr': 'mr-IN',
-  'pa': 'pa-IN',
-  'ta': 'ta-IN',
-  'te': 'te-IN',
-  'bn': 'bn-IN',
-  'gu': 'gu-IN',
-  'kn': 'kn-IN',
-};
+// Recognition locale comes from the app's language SSOT (ttsLanguages.ts),
+// so the chat mic, voice navigation and read-aloud all agree on the same
+// locale for every language the app ships.
 
 class NativeSpeechRecognitionService {
   private isInitialized = false;
@@ -43,6 +35,7 @@ class NativeSpeechRecognitionService {
   private webRecognition: any = null;
   private startTime = 0;
   private currentLanguage = 'en-IN';
+  private lastPartialTranscript = '';
   private onResultCallback: ((result: SpeechRecognitionResult) => void) | null = null;
   private onEndCallback: (() => void) | null = null;
   private onErrorCallback: ((error: string) => void) | null = null;
@@ -164,7 +157,8 @@ class NativeSpeechRecognitionService {
     this.onResultCallback = onResult;
     this.onEndCallback = onEnd;
     this.onErrorCallback = onError || null;
-    this.currentLanguage = LANGUAGE_MAP[config.language] || config.language || 'en-IN';
+    this.currentLanguage = toLocale(config.language);
+    this.lastPartialTranscript = '';
 
     // Try native first
     if (Capacitor.isNativePlatform() && SpeechRecognitionPlugin) {
@@ -178,9 +172,11 @@ class NativeSpeechRecognitionService {
   private async startNativeListening(config: NativeSpeechConfig): Promise<boolean> {
     try {
       // Set up listeners
+      await SpeechRecognitionPlugin.removeAllListeners();
       SpeechRecognitionPlugin.addListener('partialResults', (data: any) => {
         if (data.matches && data.matches.length > 0) {
           const latencyMs = performance.now() - this.startTime;
+          this.lastPartialTranscript = data.matches[0];
           this.onResultCallback?.({
             transcript: data.matches[0],
             confidence: 0.85, // Native doesn't always provide confidence
@@ -188,6 +184,16 @@ class NativeSpeechRecognitionService {
             provider: 'native',
             latencyMs,
           });
+        }
+      });
+      // The OS recogniser stops on its own after silence. Without this the
+      // service would stay "listening" forever and the caller would never get
+      // a final transcript, because native stop() returns no matches.
+      SpeechRecognitionPlugin.addListener('listeningState', (data: { status?: 'started' | 'stopped' }) => {
+        if (data?.status === 'stopped' && this.isListening) {
+          this.isListening = false;
+          this.emitNativeFinal();
+          this.onEndCallback?.();
         }
       });
 
@@ -274,22 +280,16 @@ class NativeSpeechRecognitionService {
 
     if (Capacitor.isNativePlatform() && SpeechRecognitionPlugin) {
       try {
+        // Plugin stop() resolves void on native; the last partial result is the
+        // final transcript (partialResults is always requested above).
         const result = await SpeechRecognitionPlugin.stop();
         await SpeechRecognitionPlugin.removeAllListeners();
-        
-        if (result.matches && result.matches.length > 0) {
-          const latencyMs = performance.now() - this.startTime;
-          const finalResult: SpeechRecognitionResult = {
-            transcript: result.matches[0],
-            confidence: 0.9,
-            isFinal: true,
-            provider: 'native',
-            latencyMs,
-          };
-          this.onResultCallback?.(finalResult);
-          this.onEndCallback?.();
-          return finalResult;
+        if (result?.matches && result.matches.length > 0) {
+          this.lastPartialTranscript = result.matches[0];
         }
+        const finalResult = this.emitNativeFinal();
+        this.onEndCallback?.();
+        return finalResult;
       } catch (error) {
         console.error('[NativeSpeech] Stop error:', error);
       }
@@ -307,6 +307,22 @@ class NativeSpeechRecognitionService {
     return null;
   }
 
+  /** Deliver the last native partial as the final transcript, once. */
+  private emitNativeFinal(): SpeechRecognitionResult | null {
+    const transcript = this.lastPartialTranscript.trim();
+    this.lastPartialTranscript = '';
+    if (!transcript) return null;
+    const finalResult: SpeechRecognitionResult = {
+      transcript,
+      confidence: 0.9,
+      isFinal: true,
+      provider: 'native',
+      latencyMs: performance.now() - this.startTime,
+    };
+    this.onResultCallback?.(finalResult);
+    return finalResult;
+  }
+
   /**
    * Check if currently listening
    */
@@ -318,7 +334,7 @@ class NativeSpeechRecognitionService {
    * Get available languages
    */
   getSupportedLanguages(): string[] {
-    return Object.keys(LANGUAGE_MAP);
+    return Object.keys(TTS_LANGUAGES);
   }
 
   /**

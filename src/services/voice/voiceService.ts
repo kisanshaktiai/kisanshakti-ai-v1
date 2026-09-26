@@ -13,6 +13,8 @@ import {
   initCapacitorSpeechRecognition 
 } from './capacitorSpeechRecognition';
 import { Capacitor } from '@capacitor/core';
+import { ttsEngine } from '@/services/tts/ttsEngine';
+import { toLocale } from '@/services/tts/ttsLanguages';
 
 export class VoiceService {
   private config: VoiceConfig;
@@ -23,7 +25,6 @@ export class VoiceService {
   private languageDetector: LanguageDetector;
   private tenantId: string = '';
   private recognition: any = null;
-  private synthesis: SpeechSynthesis;
   private isOnline: boolean = navigator.onLine;
   private lastSpokenText: string = '';
   private useNativeSpeech: boolean = false;
@@ -37,7 +38,6 @@ export class VoiceService {
     this.dialogManager = new DialogManager();
     this.slotExtractor = new SlotExtractor(config.language);
     this.languageDetector = new LanguageDetector();
-    this.synthesis = window.speechSynthesis;
     
     // Check if we should use native speech recognition
     this.useNativeSpeech = shouldUseCapacitorSpeech();
@@ -95,23 +95,8 @@ export class VoiceService {
   }
 
   private getLanguageCode(): string {
-    const langMap: Record<string, string> = {
-      'en': 'en-US',
-      'hi': 'hi-IN',
-      'mr': 'mr-IN',
-      'ta': 'ta-IN',
-      'pa': 'pa-IN',
-      'te': 'te-IN',
-      'bn': 'bn-IN',
-      'gu': 'gu-IN',
-      'kn': 'kn-IN',
-      'ml': 'ml-IN',
-      'or': 'or-IN',
-      'as': 'as-IN',
-      'ur': 'ur-IN',
-      'sa': 'sa-IN',
-    };
-    return langMap[this.config.language] || 'en-US';
+    // Recognition locale from the app's language SSOT; never a default to another language.
+    return toLocale(this.config.language);
   }
 
   async startListening(
@@ -260,51 +245,35 @@ export class VoiceService {
     const startTime = Date.now();
     this.lastSpokenText = options.text;
 
-    return new Promise((resolve, reject) => {
-      if (options.ssml) {
-        // Handle SSML if needed
-        // For now, strip SSML tags and speak plain text
-        options.text = options.text.replace(/<[^>]*>/g, '');
-      }
+    // SSML is not used by the engine; speak the plain text.
+    const text = options.ssml ? options.text.replace(/<[^>]*>/g, '') : options.text;
 
-      const utterance = new SpeechSynthesisUtterance(options.text);
-      utterance.lang = this.getLanguageCode();
-      utterance.rate = options.rate || 1.0;
-      utterance.pitch = options.pitch || 1.0;
-
-      // Select voice if specified
-      if (options.voice) {
-        const voices = this.synthesis.getVoices();
-        const voice = voices.find(v => v.name === options.voice);
-        if (voice) {
-          utterance.voice = voice;
-        }
-      }
-
-      utterance.onend = () => {
-        const latency = Date.now() - startTime;
-        this.analytics.recordMetric({
-          asrLatency: 0,
-          intentAccuracy: 0,
-          ttsLatency: latency,
-          language: this.config.language,
-          offline: !this.isOnline,
-          timestamp: Date.now(),
-        });
-        resolve();
-      };
-
-      utterance.onerror = (error) => {
-        console.error('TTS error:', error);
-        reject(error);
-      };
-
-      this.synthesis.speak(utterance);
+    // Voice navigation speaks through the one speech engine (device voice
+    // offline, cloud voice online, farmer settings applied) instead of a
+    // browser utterance the installed app cannot rely on.
+    const result = await ttsEngine.speak(text, options.language || this.config.language, {
+      rate: options.rate,
+      pitch: options.pitch,
     });
+
+    const latency = Date.now() - startTime;
+    this.analytics.recordMetric({
+      asrLatency: 0,
+      intentAccuracy: 0,
+      ttsLatency: latency,
+      language: this.config.language,
+      offline: !this.isOnline,
+      timestamp: Date.now(),
+    });
+
+    if (!result.success) {
+      console.error('TTS error:', result.error);
+      throw new Error(result.error || 'tts-failed');
+    }
   }
 
   stopSpeaking(): void {
-    this.synthesis.cancel();
+    ttsEngine.stop();
   }
 
   async changeLanguage(language: string): Promise<void> {

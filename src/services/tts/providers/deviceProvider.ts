@@ -139,7 +139,7 @@ export const deviceProvider = {
       const result = await nativeTTSService.speak(
         chunk,
         language,
-        { rate: opts.rate, pitch: opts.pitch, volume: opts.volume, voiceIndex: opts.voiceIndex },
+        { rate: opts.rate, pitch: opts.pitch, volume: opts.volume, voiceIndex: opts.voiceIndex, prepared: true },
         {}
       );
       return result.success;
