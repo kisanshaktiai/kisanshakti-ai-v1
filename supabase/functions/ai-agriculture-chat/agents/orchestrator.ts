@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Type-only fix: repointed broken imports (NLUOutput, ContextState, DiagnosticState, RuleEvaluationResult, resolveConflicts) to their real exported names/aliases; removed dead imports (ExtractedFacts, checkPrescriptionGate alias) that referenced non-existent exports. No runtime behavior changed.
 //   2026-08-26 15:00 UTC — FIX 1: DIRECT_MODE_DIAGNOSTIC_VETO branch now carries the
 //     same directContractNoSymptoms exemption as __preemptHardBlock, so a DB DIRECT/
 //     0-round advisory intent with zero farmer-text symptoms reaches DIRECT_MODE_BYPASS.
@@ -243,8 +244,7 @@ import {
 } from '../decision/symbolic-reasoner.ts';
 
 import { 
-  FactExtractor,
-  type ExtractedFacts 
+  FactExtractor
 } from '../decision/fact-extractor.ts';
 
 import { 
@@ -316,9 +316,19 @@ export function filterToCanonicalObservations(obs: any): string[] {
 import { classifyQuestion, type QuestionClassification } from './question-classifier.ts';
 
 // Import types
-import type { NLUOutput } from './types.ts';
-import type { ContextState } from './context-manager-types.ts';
-import type { DiagnosticState } from './hypothesis-types.ts';
+import type { NLUAgentOutput } from './types.ts';
+// Local permissive alias: orchestrator populates NLU output with many
+// pipeline-specific fields beyond the strict NLUAgentOutput shape (DB/JSONB
+// derived at runtime). Kept structurally compatible via index signature.
+type NLUOutput = Partial<NLUAgentOutput> & { [key: string]: any };
+import type { ContextManagerOutput } from './context-manager-types.ts';
+// Local permissive alias: orchestrator's in-flight context object carries many
+// runtime-populated fields beyond the strict ContextManagerOutput shape.
+type ContextState = Partial<ContextManagerOutput> & { [key: string]: any };
+import type { DiagnosticSessionState } from './hypothesis-types.ts';
+// Local permissive alias: orchestrator's diagnostic state carries many
+// runtime-populated fields beyond the strict DiagnosticSessionState shape.
+type DiagnosticState = Partial<DiagnosticSessionState> & { [key: string]: any };
 import type { FusedIntelligence } from './multimodal-fusion-types.ts';
 import type { DecisionOutput, RuleExecutionInput } from './rule-engine-types.ts';
 import type { FarmerCommunication, FarmerProfile } from './communication-types.ts';
@@ -391,7 +401,7 @@ import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authori
 import { checkStaticDataGate } from './static-data-gate.ts';
 import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
-import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
+import { checkUnderstandingCompleteness, UnderstandingConfidence } from './understanding-completeness-checker.ts';
 import { getAuditLogger } from './audit-logger.ts';
 import { resetRuntimeTraceCollector, getRuntimeTraceCollector } from '../runtime/runtime-trace-collector.ts';
 import { runNavigator as runDecisionGraphNavigator } from '../runtime/navigator-adapter.ts';
@@ -440,11 +450,11 @@ import {
   // Step 4 — evaluateBundledKeywordRules removed (parallel NLU brain);
   // Step 4 — hasStrongAgriObservations was only used inside that fallback.
 
-  RuleEvaluationResult
+  LayeredRuleResult as RuleEvaluationResult
 } from './layered-rule-evaluator.ts';
 
 import {
-  resolveConflicts as resolveDiagnosisConflicts
+  resolveDiagnosisConflicts
 } from './diagnosis-conflict-resolver.ts';
 
 // WORLD-CLASS CLARIFICATION: Multi-Match Detector for Competing Diagnoses

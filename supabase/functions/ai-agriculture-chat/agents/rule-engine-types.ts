@@ -1,5 +1,8 @@
 // RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:42 UTC — Added optional DB/JSONB-populated fields to ApplicationDetails, PrimaryDecision, DecisionOutput, SecondaryAction, RuleResult, RecommendationDetails; added 'CULTURAL' to ProductType; added optional soil_phosphorus_state/soil_potassium_state to FieldConditions; re-exported FarmerCommunication from communication-types.ts for legacy import paths. No existing field types changed.
+
 import type { 
   DiagnosticHypothesis,
   CauseType 
@@ -11,6 +14,9 @@ import type {
   CropStageCode,
   SeverityLevel 
 } from './rule-module-types.ts';
+
+// Re-exported for consumers that (legacy) import FarmerCommunication from this module
+export type { FarmerCommunication } from './communication-types.ts';
 
 // RULE EXECUTION INPUT
 
@@ -62,6 +68,10 @@ export interface FieldConditions {
   soil_moisture_percent?: number;
   soil_ph?: number;
   soil_nitrogen_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
+  /** Optional — populated from land soil-test JSONB data */
+  soil_phosphorus_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
+  /** Optional — populated from land soil-test JSONB data */
+  soil_potassium_state?: 'LOW' | 'ADEQUATE' | 'HIGH';
   ndvi?: number;
   ndvi_state?: 'EXCELLENT' | 'HEALTHY' | 'MODERATE_STRESS' | 'HIGH_STRESS' | 'CRITICAL';
   last_irrigation_date?: string;
@@ -246,6 +256,40 @@ export interface DecisionOutput {
     reason: string;
     i18n_key?: string;
     alternatives?: string[];
+  };
+
+  // ── Additional optional fields populated at runtime by orchestrator/formatter ──
+  /** Free-form metadata bag (e.g. i18n_key) attached by upstream processing */
+  metadata?: Record<string, unknown>;
+  /** Non-blocking warnings surfaced to narration/formatter layers */
+  warnings?: string[];
+  /** Diagnostic hypothesis result carried through for narration */
+  hypothesis_result?: Record<string, unknown>;
+  /** Whether the decision still requires farmer clarification */
+  clarification_needed?: boolean;
+  /** Number of actions returned to the farmer (analytics) */
+  actions_returned?: number;
+  /** Whether a photo is needed before diagnosis can proceed */
+  needs_photo_for_diagnosis?: boolean;
+  /** Overall confidence score shorthand (alias-ish of confidence) */
+  confidence_score?: number;
+  /** Secondary decisions built by orchestrator (parallel structure to secondary_actions) */
+  secondary_decisions?: SecondaryAction[];
+  /** @deprecated Legacy alias for secondary_actions kept for backward-compatible reads */
+  secondary_recommendations?: SecondaryAction[];
+  /** Legacy single matched-response recovery field */
+  primary_matched_response?: {
+    rule_id: string;
+    cause: string;
+    action_type: string;
+    priority?: number;
+    action_text?: string;
+    reason_text?: string;
+    knowledge_text?: string;
+    i18n_key?: string;
+    response_mr?: string;
+    response_hi?: string;
+    response_en?: string;
   };
 }
 

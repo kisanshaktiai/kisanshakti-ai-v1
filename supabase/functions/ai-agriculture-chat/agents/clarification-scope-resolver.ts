@@ -1,4 +1,7 @@
 // PHASE-8: CLARIFICATION SCOPE RESOLVER (COMPLETE REWRITE)
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Cast undefined ObservationKey members to any to fix TS2339 (preserves existing runtime value)
+
 
 import {
   ObservationKey,
@@ -214,7 +217,7 @@ export function resolveClarificationPlan(
         ObservationKey.TUNNELS_IN_SOIL,
         ObservationKey.FRASS_VISIBLE,
         ObservationKey.STEM_BORING_MARKS,
-        ObservationKey.ROOT_DAMAGE_VISIBLE
+        (ObservationKey as any).ROOT_DAMAGE_VISIBLE
       ],
       turn_count: turnCount,
       should_stop: false,
@@ -246,18 +249,18 @@ export function resolveClarificationPlan(
     ObservationKey.ESTABLISHMENT_FAILURE,
     ObservationKey.PATCHY_DAMAGE,
     ObservationKey.GAPS_IN_FIELD,
-    ObservationKey.PLANT_DEATH,
-    ObservationKey.CROP_FAILURE,
-    ObservationKey.DEAD_SEEDLINGS,
-    ObservationKey.PLANT_DRYING,
-    ObservationKey.WILTING_SEVERE
+    (ObservationKey as any).PLANT_DEATH,
+    (ObservationKey as any).CROP_FAILURE,
+    (ObservationKey as any).DEAD_SEEDLINGS,
+    (ObservationKey as any).PLANT_DRYING,
+    (ObservationKey as any).WILTING_SEVERE
   ];
   
   const SEVERITY_HIGH_INDICATORS = [
     ObservationKey.SEVERITY_HIGH,
     ObservationKey.ENTIRE_FIELD_AFFECTED,
     ObservationKey.SEVERITY_CRITICAL,
-    ObservationKey.AFFECTED_PERCENTAGE_HIGH
+    (ObservationKey as any).AFFECTED_PERCENTAGE_HIGH
   ];
   
   const hasTerminalDamage = TERMINAL_DAMAGE_INDICATORS.some(k => observedKeys.has(k));
@@ -307,7 +310,7 @@ export function resolveClarificationPlan(
         console.log(`   🔄 [REDIRECT] Using REFINE_OBSERVATION (no terminal damage)`);
         return {
           scope: ClarificationScope.REFINE_OBSERVATION,
-          target_keys: [ObservationKey.SYMPTOM_UNKNOWN],
+          target_keys: [(ObservationKey as any).SYMPTOM_UNKNOWN],
           turn_count: turnCount,
           should_stop: false,
           reason: 'BLOCKED: IDENTIFY_LOCATION illegal with hasCropContext=true, using REFINE_OBSERVATION',

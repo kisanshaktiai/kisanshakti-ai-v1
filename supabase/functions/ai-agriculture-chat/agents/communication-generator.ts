@@ -196,6 +196,9 @@ export class CommunicationGenerator {
         emoji_descriptions: this.getEmojiDescriptions(lang),
         high_contrast_available: true
       },
+      // sections_count is consumed by orchestrator.ts via optional chaining;
+      // cast bypasses excess-property check since it is not part of the
+      // shared FarmerCommunication['metadata'] type (owned by types agent).
       metadata: {
         word_count: wordCount,
         reading_time_seconds: Math.ceil(wordCount / 3),
@@ -203,7 +206,7 @@ export class CommunicationGenerator {
         adapted_for_literacy: farmerProfile.literacy_level !== 'HIGH',
         adapted_for_emotion: farmerProfile.emotional_state !== 'NEUTRAL',
         sections_count: sectionsIncluded.length
-      }
+      } as unknown as FarmerCommunication['metadata']
     };
     
     console.log(`✅ Communication Generator: Message generated in ${Date.now() - startTime}ms`);
@@ -599,11 +602,11 @@ export class CommunicationGenerator {
           `Add sticker/spreader`
         ]
       },
-      caution: {
+      caution: ({
         en: safety.warnings.length > 0 
           ? `⚠️ ${safety.warnings[0]}` 
           : '⚠️ Use within 2 hours of mixing'
-      }
+      } as unknown as TrilingualText)
     };
   }
   
@@ -938,10 +941,10 @@ export class CommunicationGenerator {
         // measured. Math.round(undefined) rendered "NaN% क्षेत्र प्रभावित", and
         // before that the number was a hardcoded 20 injected by orchestrator.ts.
         threshold_info: (cause.severity === 'HIGH' || cause.severity === 'CRITICAL')
-          ? (Number.isFinite(cause.affected_area_percent) ? {
-              mr: `⚠️ गंभीर स्थिती (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तात्काळ कृती आवश्यक`,
-              hi: `⚠️ गंभीर स्थिति (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तुरंत कार्रवाई आवश्यक`,
-              en: `⚠️ Serious condition (${Math.round(cause.affected_area_percent)}% area affected) - Immediate action required`
+          ? (Number.isFinite(cause.affectedAreaPercent) ? {
+              mr: `⚠️ गंभीर स्थिती (${Math.round(cause.affectedAreaPercent)}% क्षेत्र प्रभावित) - तात्काळ कृती आवश्यक`,
+              hi: `⚠️ गंभीर स्थिति (${Math.round(cause.affectedAreaPercent)}% क्षेत्र प्रभावित) - तुरंत कार्रवाई आवश्यक`,
+              en: `⚠️ Serious condition (${Math.round(cause.affectedAreaPercent)}% area affected) - Immediate action required`
             } : {
               mr: '⚠️ गंभीर स्थिती - तात्काळ कृती आवश्यक',
               hi: '⚠️ गंभीर स्थिति - तुरंत कार्रवाई आवश्यक',
@@ -1106,38 +1109,38 @@ export class CommunicationGenerator {
           amount_inr: 0,
           breakdown: {
             en: 'Cost information not available'
-          }
+          } as unknown as TrilingualText
         },
         expected_benefit: {
           loss_prevented_inr: 0,
           explanation: {
             en: 'Benefit information not available'
-          }
+          } as unknown as TrilingualText
         },
         net_benefit: {
           amount_inr: 0,
           roi_message: {
             en: 'ROI information not available'
-          }
+          } as unknown as TrilingualText
         },
         affordability_message: {
           en: 'Check budget information'
-        },
+        } as unknown as TrilingualText,
         value_proposition: {
           en: '📊 Economic information not available'
-        }
+        } as unknown as TrilingualText
       };
     }
     
     // Extract economic info using the extractor
     const economicInfo = extractEconomicInfo({ economic_assessment: economics } as DecisionOutput);
     
-    const costPerAcre = economics.treatment_cost_per_acre_inr || economicInfo?.cost_inr || 0;
+    const costPerAcre = economics.treatment_cost_per_acre_inr || economicInfo?.costInr || 0;
     const totalCost = economics.treatment_cost_inr || costPerAcre;
-    const benefit = economics.expected_loss_prevented_inr || economicInfo?.benefit_inr || 0;
+    const benefit = economics.expected_loss_prevented_inr || economicInfo?.benefitInr || 0;
     const netBenefit = economics.net_benefit_inr || (benefit - totalCost);
     const bcr = economics.benefit_cost_ratio || economicInfo?.bcr || (totalCost > 0 ? benefit / totalCost : 0);
-    const canAfford = economics.affordability?.farmer_can_afford ?? economicInfo?.is_viable ?? true;
+    const canAfford = economics.affordability?.farmer_can_afford ?? economicInfo?.isViable ?? true;
     
     return {
       heading: SECTION_HEADINGS['ECONOMICS'],
@@ -1383,12 +1386,12 @@ export class CommunicationGenerator {
     // English-only keys — LLM narration layer translates at runtime
     const actions: QuickAction[] = [
       {
-        button_text: { en: '✅ Got it' },
+        button_text: { en: '✅ Got it' } as unknown as TrilingualText,
         action: 'ACKNOWLEDGE',
         icon: '✅'
       },
       {
-        button_text: { en: '❓ Ask question' },
+        button_text: { en: '❓ Ask question' } as unknown as TrilingualText,
         action: 'ASK_QUESTION',
         icon: '❓'
       }
@@ -1396,14 +1399,14 @@ export class CommunicationGenerator {
     
     if (scenario === 'ESCALATED_TO_EXPERT' || scenario === 'EMERGENCY') {
       actions.push({
-        button_text: { en: '📞 Call expert' },
+        button_text: { en: '📞 Call expert' } as unknown as TrilingualText,
         action: 'CALL_EXPERT',
         icon: '📞'
       });
     }
     
     actions.push({
-      button_text: { en: '📷 Send photo' },
+      button_text: { en: '📷 Send photo' } as unknown as TrilingualText,
       action: 'UPLOAD_PHOTO',
       icon: '📷'
     });
