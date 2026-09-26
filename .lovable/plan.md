@@ -1,35 +1,19 @@
-# Compact weather-card update
+# Home "Farming Reels" not showing — root cause and fix
 
-## Goal
-Make the home weather card easier for rural farmers to scan without redesigning its structure or changing weather calculations, while showing only authenticated provider alert levels.
+## Root cause (confirmed)
+1. The video service the home screen calls first (`youtube-channel-feed`) is **not deployed**. It returns `404 NOT_FOUND` (checked live); the browser logs it as "Failed to fetch".
+2. The app then falls back to reading the channel's Shorts page through a free text-reader service. That service now gets YouTube's consent/shell page with no video links, so nothing is found.
+3. The last fallback goes through public relay services for the channel feed. They either fail or get "not found" from YouTube.
+4. All three sources come back empty, so the section is hidden on purpose. The code says: "If the feed is unavailable, the section hides itself". That's why the thumbnails that showed before are gone now.
 
-## Changes
-- Increase the card typography from its current size and use stronger font weights so key weather information is easier to read on narrow mobile screens.
-- Keep every updated color tied to the existing tenant theme tokens; no fixed colors will be introduced.
-- Preserve the compact rain badge as `38% / 6h` (localized as `38% / 6 hours` or its language equivalent).
-- Add a short, prominent sentence below the location/update row: “Today rain probability is {{value}}% in the next {{hours}} hours.”
-- Show the sentence whenever forecast data is available, including a real 0% probability, rather than hiding it.
-- Add matching English, Hindi, and Marathi translation keys using natural farmer-friendly wording.
-- Continue deriving the percentage from the maximum hourly rain probability across the next six forecast hours; no hardcoded weather value.
-- Color the rain-probability line only from an active authenticated weather-service alert linked to the farmer’s location: green, yellow, orange, red, or purple/magenta according to the provider alert level. Light blue is reserved for provider-classified very light rain, drizzle, or snow.
-- Do not infer an official alert color from the rain percentage. If no current authenticated alert exists, use the normal theme information color and do not present an invented warning level.
+The channel itself is fine. Its official feed returns 4 videos when checked directly (pnmSYco8yPU, GtcfVHuzcvY, u56UkYiB064, LDR_y9n7sc8).
 
-## Confirmed current state
-- The home card’s six-hour percentage already comes from live hourly forecast probability, with the daily forecast as fallback.
-- `weather_alerts` has fields for provider source, severity, IMD color code, warning codes, validity, and location, but currently contains zero rows.
-- The IMD provider includes a district-warning reader and verified IMD color mapping, but it is not currently called by the weather function; therefore the card cannot truthfully display an official alert color yet.
+## Fix
+1. Deploy `youtube-channel-feed`. The code and config already exist, and `verify_jwt = false` stays as it is. The service reads YouTube's official feed on the server, so it doesn't need the unreliable relays.
+2. In the server feed, use the Shorts link format (`/shorts/ID`) to match the app's own parser. Also read view counts from the feed.
+3. In `useYouTubeChannelReels`, don't cache an empty result for 10 minutes. Retry once after a short delay so a temporary failure doesn't hide the section.
+4. Check that the service returns the 4 videos, and that the home screen shows the thumbnails on a phone-sized screen.
 
-## Technical details
-- Update the inline home weather card in `src/pages/Home.tsx` and the shared weather response/store types needed to carry alert provenance.
-- Wire the existing IMD district-warning reader into the authenticated weather flow, persist current warnings to `weather_alerts`, and return only a current location-matched alert to the card. Preserve existing provider fallback behavior for forecast data.
-- Map the provider’s own color/severity value to semantic theme variants; never calculate warning severity from locally invented percentage thresholds.
-- Add the new interpolation key to the three existing weather locale files.
-- Reuse semantic roles such as `primary`, `foreground`, `muted-foreground`, and `info`.
-- Keep the existing click, expand/collapse, refresh, and weather-fetch behavior unchanged.
-- Do not add a schema migration; the required authenticated alert columns already exist.
-
-## Verification
-- Run the app type check and theme-token guard.
-- Add or run a focused weather contract test confirming provider color passthrough, location/time filtering, and neutral fallback when no alert exists.
-- Verify the card at the current narrow mobile viewport in English, Hindi, and Marathi.
-- Confirm long translated text wraps cleanly without overlapping temperature, controls, or forecast metrics.
+## Not changing
+- The card's look, the Reels page and the video table.
+- The "official channel only" rule: no demo or made-up videos.
