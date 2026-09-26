@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 21:10 UTC — Type-only fixes: made NLUContractOutput.has_forbidden_fields optional (caller sites often omit it); widened logSymbolicDecision's rules_fired param to accept AppliedRule-shaped objects in addition to strings, with a local cast on assignment to the still-string[] internal field (no behavior change).
 //   2026-09-26 15:40 UTC — Type-only fix: relocated @ts-ignore directives to
 //     the exact .insert() call lines (untyped Supabase client resolves
 //     table rows as never) so deno check passes; no behavior changed.
@@ -77,7 +78,7 @@ export interface NLUContractOutput {
   observations: string[];
   confidence: number;
   // FORBIDDEN fields (logged if present = violation)
-  has_forbidden_fields: boolean;
+  has_forbidden_fields?: boolean;
   forbidden_field_names?: string[];
 }
 
@@ -447,12 +448,12 @@ export class AuditLogger {
   // Log symbolic decision output
   logSymbolicDecision(decision: {
     decision_id: string;
-    rules_fired: string[];
+    rules_fired: any[];
     actions_returned: any[];
     actions_filtered_out?: any[];
   }): void {
     this.currentTurn.symbolic_decision_id = decision.decision_id;
-    this.currentTurn.rules_fired = decision.rules_fired;
+    this.currentTurn.rules_fired = decision.rules_fired as string[];
     this.currentTurn.actions_returned = decision.actions_returned;
     this.currentTurn.actions_filtered_out = decision.actions_filtered_out || [];
     this.addAgent('SYMBOLIC_BRAIN');

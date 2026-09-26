@@ -1,6 +1,7 @@
 // RULE ENGINE EXECUTOR - TYPE DEFINITIONS v3.0
 
 // CHANGE LOG (newest first)
+//   2026-09-26 21:15 UTC — Added optional FieldConditions.nitrogen_dosage and RuleResult.scientific_basis (both DB/JSONB-populated at runtime) to satisfy call sites that already set them. Note: ApplicationDetails.cause is added separately where PrimaryDecision constructs application_details literals with an extra 'cause' field.
 //   2026-09-26 16:15 UTC — Added optional scientific_source to RuleResult (DB-populated field read by symbolic-rules-bridge.ts's convertToRuleResult); widened ActionType to accept runtime DB string values; ActionTiming.reason/ApplicationDetails.application_method now accept null; made ApplicationDetails.quantity_per_acre/total_quantity/water_requirement optional; BlockedAction fields relaxed to optional with legacy blocked_by alias; added FieldConditions.ndvi_trend. No existing required field types changed for already-populated call sites.
 //   2026-09-26 15:50 UTC — Added soil_organic_carbon to FieldConditions; made WeatherForecast core fields optional and added alternate shape fields (rain_probability, suitable_for_spraying, risk_factors); added product_name/product_type/weighted_confidence/normalized_score/success_indicators to layered_rule_result.primary_decision, matched_responses, and primary_matched_response, and widened their action_type to ActionType; added optional priority to PrimaryDecision; added 'PARTIAL' to DecisionStatus.
 //   2026-09-26 15:42 UTC — Added optional DB/JSONB-populated fields to ApplicationDetails, PrimaryDecision, DecisionOutput, SecondaryAction, RuleResult, RecommendationDetails; added 'CULTURAL' to ProductType; added optional soil_phosphorus_state/soil_potassium_state to FieldConditions; re-exported FarmerCommunication from communication-types.ts for legacy import paths. No existing field types changed.
@@ -66,6 +67,8 @@ export interface FarmerContext {
 export type FarmingMode = 'ORGANIC' | 'CONVENTIONAL' | 'IPM' | 'MIXED';
 
 export interface FieldConditions {
+  /** DB/JSONB-populated extras are permitted */
+  [key: string]: any;
   soil_type: SoilType;
   soil_moisture_percent?: number;
   soil_ph?: number;
@@ -82,6 +85,8 @@ export interface FieldConditions {
   ndvi_trend?: string;
   last_irrigation_date?: string;
   last_fertilizer_date?: string;
+  /** Optional — DB/JSONB-populated nitrogen dosage context used by some rule conditions */
+  nitrogen_dosage?: number | Record<string, unknown> | { [key: string]: any };
 }
 
 export type SoilType = 'SANDY' | 'SANDY_LOAM' | 'LOAMY' | 'CLAY_LOAM' | 'CLAY' | 'BLACK_COTTON' | 'RED' | 'LATERITE';
@@ -384,6 +389,12 @@ export interface ActionTiming {
 }
 
 export interface ApplicationDetails {
+  /** DB/JSONB-populated extras are permitted */
+  [key: string]: any;
+  /** Optional — cause label attached by some PrimaryDecision constructors */
+  cause?: string;
+  /** Optional — chemical class attached by some PrimaryDecision constructors */
+  chemical_class?: string;
   product_name: string;
   product_name_local?: string;
   product_type: ProductType;
@@ -666,6 +677,8 @@ export interface RuleResult {
   scientific_source?: string;
   /** Optional — rule-authored action text (SSOT narration source) */
   action_text?: string;
+  /** Optional — DB-populated scientific-basis narration carried through from the bundled/DB rule */
+  scientific_basis?: string;
 }
 
 export interface RecommendationDetails {

@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 21:25 UTC — Type-only fix: cast the deduped hypothesis_id array to string[] (Set<unknown> spread otherwise widens to unknown[]); no runtime change.
  * 2026-09-26 00:00 UTC — Type fix: cropHypIds narrowing via resolvedCropHypIds local (fixes possibly-null TS18047); Set unpack typed as string[] (no runtime change)
  * 2026-09-03 — S1 biological stage gate now eliminates ONLY when the failing
  *   STAGE condition has is_required=true (stagePassRaw.required_fail); a
@@ -854,7 +855,7 @@ async function queryAnchorHypotheses(
       if (masterErr) {
         console.warn(`[HYP_GRAPH_CROP_SCOPE_ERR] ${masterErr.message} — falling back to unscoped scan`);
       } else {
-        const resolvedCropHypIds: string[] = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))];
+        const resolvedCropHypIds: string[] = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))] as string[];
         console.log(`[HYP_GRAPH_CROP_SCOPE] trace=${trace} crop=${cropKey} hypotheses=${resolvedCropHypIds.length}`);
         cropHypIds = resolvedCropHypIds.length === 0 ? null : resolvedCropHypIds; // nothing curated → don't blank the graph
       }

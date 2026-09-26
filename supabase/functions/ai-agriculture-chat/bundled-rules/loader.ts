@@ -6,6 +6,7 @@
  * STATUS:    ACTIVE
  *
  * CHANGE LOG (newest first):
+ *   2026-09-26 21:00 UTC — Type-only fixes: annotated map callback return as BundledRule, cast normalizeActionType() result to BundledRule['action_type'], removed duplicate ExecutableRule re-export (already exported via its own `export interface`).
  *   2026-08-02 18:02 UTC — decision-rule loading remains delegated exclusively
  *       to rule-repository; the client import is retained for alias loading.
  *   2026-07-17 08:55 UTC — filterRulesByIntent: forensic fix. `rule_intent`
@@ -101,7 +102,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     const data = await getAllRules();
 
     console.log(`✅ [RuleLoader] Loaded ${data.length} rules from shared snapshot`);
-    return (data || []).map(row => {
+    return (data || []).map((row): BundledRule => {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
 
@@ -140,7 +141,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         observable_characteristics: normalizeObservableChars(row.observable_characteristics),
         
         alternatives: row.alternatives || [],
-        action_type: normalizeActionType(row.action_type),
+        action_type: normalizeActionType(row.action_type) as BundledRule['action_type'],
         
         // PHASE 1: Graph Control Fields
         blocks_rule_ids: row.blocks_rule_ids || [],
@@ -157,7 +158,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         
         // Safety fields (normalized)
         phi_days: row.phi_days,
-        bee_toxicity: normalizeBeeToxicity(row.bee_toxicity),
+        bee_toxicity: normalizeBeeToxicity(row.bee_toxicity) as 'HIGH' | 'MODERATE' | 'LOW' | 'SAFE' | undefined,
         ipm_level: row.ipm_level,
         etl_threshold: row.etl_threshold,
         active_ingredient: row.active_ingredient,
@@ -1213,4 +1214,4 @@ export function clearCaches(): void {
 }
 
 // Re-export types
-export type { BundledRule, ExecutableRule };
+export type { BundledRule };

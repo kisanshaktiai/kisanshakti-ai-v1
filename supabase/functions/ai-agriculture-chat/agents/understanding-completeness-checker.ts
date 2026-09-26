@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-09-26 21:05 UTC — Converted ObservationExtractionLegacy from `interface ... extends` to an intersection type (ObservationExtraction & {...}) so conflicting optional field types (e.g. color_mentioned/severity_level) widen instead of erroring; resolves TS2430/TS2345 at call sites passing ObservationExtraction where the legacy type was expected.
 //   2026-09-26 18:10 UTC — Added local ObservationExtractionLegacy interface (optional legacy/canonical fields) to fix type errors without changing runtime behavior
 // STAGE 4: UNDERSTANDING COMPLETENESS CHECKER (SYMBOLIC - NO LLM)
 
@@ -6,7 +7,7 @@ import type { ObservationExtraction } from './observation-extractor.ts';
 
 // Legacy/canonical fields populated at runtime by the Language Induction Layer
 // but not declared on the base ObservationExtraction type.
-interface ObservationExtractionLegacy extends ObservationExtraction {
+type ObservationExtractionLegacy = ObservationExtraction & {
   extracted_observations?: string[];
   color_mentioned?: string[];
   size_mentioned?: string;
@@ -18,7 +19,7 @@ interface ObservationExtractionLegacy extends ObservationExtraction {
   timing_just_started?: boolean;
   severity_level?: string;
   is_urgent?: boolean;
-}
+};
 
 export const UNDERSTANDING_CHECKER_VERSION = '2.0.0'; // SSOT-compliant version
 
@@ -267,7 +268,7 @@ function detectUrgency(observations: ObservationExtractionLegacy): boolean {
 // MAIN CHECKER FUNCTION - WITH ADAPTIVE THRESHOLDS
 
 export function checkUnderstandingCompleteness(
-  observations: ObservationExtraction,
+  observations: ObservationExtractionLegacy,
   landContext?: {
     current_crop?: string;
     growth_stage?: string;

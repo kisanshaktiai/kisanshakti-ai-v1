@@ -1,5 +1,6 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-26 21:40 UTC — Type-only fix: literal 'hypothesis_graph' in graphOptions map now uses `as const` so it matches ObservationOption.source's string-literal type instead of widening to `string`.
  * 2026-07-27 — Track A: retired clarification_fallback_questions; rescue path
  *   now reads observation_intent_master.allowed_observation_groups →
  *   observation_master → observation_translations, with a label-collision guard.
@@ -107,7 +108,7 @@ export async function loadObservationSelectorOptions(
       hypothesis_id: o.hypothesis_id,
       hypothesis_condition_id: o.hypothesis_condition_id,
       graph_version: 'hypothesis_graph_v1',
-      source: 'hypothesis_graph',
+      source: 'hypothesis_graph' as const,
     }));
     if (graphOptions.length > 0) return graphOptions;
 
