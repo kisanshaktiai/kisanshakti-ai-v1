@@ -19,6 +19,7 @@ import CropScheduleView from '@/components/schedule/CropScheduleView';
 import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
+import { beginPwaWork } from '@/utils/pwaActivity';
 import { useLocation } from '@/hooks/useLocation';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
@@ -130,6 +131,8 @@ export default function Schedule() {
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
     
+    const releasePwaWork = beginPwaWork();
+
     // Set generating state FIRST before anything else
     setGenerating(true);
     setGeneratingCropName(localizedCropName || cropName);
@@ -383,6 +386,7 @@ export default function Schedule() {
         ),
       });
     } finally {
+      releasePwaWork();
       setGenerating(false);
     }
   };
