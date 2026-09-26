@@ -14,10 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import {
-  installPwaFetchTracking,
-  isPwaReloadSafe,
-} from '@/utils/pwaActivity';
+import { isPwaReloadSafe } from '@/utils/pwaActivity';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 
 const UPDATE_APPROVED_KEY = '__ksai_sw_update_approved__';
@@ -129,8 +126,6 @@ export function PWAUpdatePrompt() {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
       return;
     }
-
-    installPwaFetchTracking();
 
     let disposed = false;
     let initialCheckTimer: number | undefined;
