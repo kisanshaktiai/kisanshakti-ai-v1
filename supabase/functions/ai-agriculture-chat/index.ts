@@ -5145,7 +5145,7 @@ function transformOrchestratorResponseWithContent(
         ai_model: aiModelUsed || 'template',
         actions_count: actionsReturned?.length || 0
       },
-      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, (response.dataAudit ?? undefined) as any),
+      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, (actionsReturned ?? undefined), (response.dataAudit ?? undefined) as any),
       source: 'orchestrator_v1'
     };
   }

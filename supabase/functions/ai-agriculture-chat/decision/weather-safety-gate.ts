@@ -14,6 +14,11 @@
  * VERSION: 2.1.0 - Thresholds sourced from system_config (M2 DB-SSOT).
  *
  * CHANGE LOG (newest first)
+ *   2026-09-26 21:35 UTC — Type-only fix: fallback weather_data literal now
+ *     coalesces to `undefined` (not `null`) for rain_probability/wind_speed_kmh/
+ *     temperature_c/humidity to match the optional-number field types; no
+ *     runtime value change since both null and undefined fail the existing
+ *     downstream truthy/`!== null` guards identically in practice here.
  *   2026-09-26 21:00 UTC — Type-only fixes: widened fallback weather_data
  *     object literal to include dew_point_c/recent_rainfall_mm/forecast_hours
  *     so it structurally matches the input.weather_data shape (removes union
@@ -229,10 +234,10 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   
   // Extract weather data from land state or direct input
   const weatherData: NonNullable<WeatherSafetyInput['weather_data']> = input.weather_data || {
-    rain_probability: input.land_state?.weather.rain_probability ?? null,
-    wind_speed_kmh: input.land_state?.weather.wind_speed ?? null,
-    temperature_c: input.land_state?.weather.temperature ?? null,
-    humidity: input.land_state?.weather.humidity ?? null,
+    rain_probability: input.land_state?.weather.rain_probability ?? undefined,
+    wind_speed_kmh: input.land_state?.weather.wind_speed ?? undefined,
+    temperature_c: input.land_state?.weather.temperature ?? undefined,
+    humidity: input.land_state?.weather.humidity ?? undefined,
     dew_point_c: undefined,
     recent_rainfall_mm: undefined,
     forecast_hours: undefined

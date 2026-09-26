@@ -3,6 +3,8 @@
 // TYPE DEFINITIONS
 
 export interface BundledRule {
+  /** DB/JSONB-populated extras are permitted */
+  [key: string]: any;
   rule_id: string;
   category: string;
   crop_code: string;
@@ -54,7 +56,7 @@ export interface BundledRule {
   
   // Safety fields
   phi_days?: number;
-  bee_toxicity?: 'HIGH' | 'MODERATE' | 'LOW' | 'SAFE';
+  bee_toxicity?: 'HIGH' | 'MODERATE' | 'LOW' | 'SAFE' | null;
   ipm_level?: 1 | 2 | 3 | 4 | 5;
   etl_threshold?: string;          // Legacy text-based threshold (deprecated)
   active_ingredient?: string;
