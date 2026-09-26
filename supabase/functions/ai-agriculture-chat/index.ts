@@ -1393,7 +1393,7 @@ serve(async (req) => {
         (orchestratorResponse.type as string) === 'CLARIFICATION_NEEDED';
       if (_isClarif) {
         const { getConfigNumber } = await import('./utils/db-ssot/system-config-cache.ts');
-        const _maxRounds = Number(await getConfigNumber(supabase as any, 'max_clarification_rounds')) || 3;
+        const _maxRounds = Number(getConfigNumber('max_clarification_rounds', 3)) || 3;
         const _outKeys = ((orchestratorResponse as any)?.question?.options ?? [])
           .map((o: any) => String(o?.observation_key ?? '').trim().toLowerCase())
           .filter((k: string) => k && k !== 'photo_upload');
@@ -1631,7 +1631,7 @@ serve(async (req) => {
             const recoveredProductName = (layeredPrimaryDecision as any).product_name || null;
             const recoveredProductType = (layeredPrimaryDecision as any).product_type || null;
             
-            rawDecisionOutput.primary_decision = {
+            (rawDecisionOutput as any).primary_decision = {
               action_type: (layeredPrimaryDecision as any).action_type,
               rule_id: layeredPrimaryDecision.rule_id,
               specific_action: (layeredPrimaryDecision as any).action_type,
@@ -1662,7 +1662,7 @@ serve(async (req) => {
             console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping GLOBAL_SAFETY rule ${layeredPrimaryDecision?.rule_id} as primary — moving to warnings`);
             // Move safety gate rule to warnings instead
             if (!rawDecisionOutput.warnings) rawDecisionOutput.warnings = [];
-            rawDecisionOutput.warnings.push({
+            (rawDecisionOutput.warnings as any[]).push({
               type: 'SAFETY_GATE',
               rule_id: layeredPrimaryDecision?.rule_id,
               message: layeredPrimaryDecision?.action_text || 'Safety precaution applies',
@@ -1677,7 +1677,7 @@ serve(async (req) => {
             if (primaryMatchedResponse && primaryMatchedResponse.rule_id && (primaryMatchedResponse as any).action_type && !isPrimaryMatchSafetyGate) {
               console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
-              rawDecisionOutput.primary_decision = {
+              (rawDecisionOutput as any).primary_decision = {
                 action_type: (primaryMatchedResponse as any).action_type,
                 rule_id: primaryMatchedResponse.rule_id,
                 specific_action: (primaryMatchedResponse as any).action_type,
@@ -1724,7 +1724,7 @@ serve(async (req) => {
                 console.log(`   🔄 RECOVERY: Using eligible matched_response (${eligibleResponses.length} available)`);
                 
                 const firstMatch = eligibleResponses[0];
-                rawDecisionOutput.primary_decision = {
+                (rawDecisionOutput as any).primary_decision = {
                   action_type: (firstMatch as any).action_type,
                   rule_id: firstMatch.rule_id,
                   specific_action: firstMatch.cause || 'Recommendation',
@@ -1767,7 +1767,7 @@ serve(async (req) => {
                 console.error(`   generating SYSTEM_FALLBACK`);
                 
                 (rawDecisionOutput as any).status = 'SYSTEM_FALLBACK';
-                rawDecisionOutput.primary_decision = {
+                (rawDecisionOutput as any).primary_decision = {
                   action_type: 'MONITOR_ONLY',
                   rule_id: 'INVARIANT_FALLBACK',
                   specific_action: 'CONTINUE_MONITORING',
@@ -1911,7 +1911,7 @@ serve(async (req) => {
           !!_do?.metadata?.winner_rule_id ||
           !!_do?.winner_rule?.rule_id ||
           (Array.isArray((orchestratorResponse.metadata as any)?.rules_applied) &&
-            orchestratorResponse.metadata!.rules_applied.length > 0);
+            ((orchestratorResponse.metadata as any)!.rules_applied as any[]).length > 0);
         if (!backed) {
           console.error(
             `[DECISION_WITHOUT_DB_BACKING][${traceId}] type=DECISION_PROVIDED actions=0 ` +
@@ -2194,7 +2194,7 @@ serve(async (req) => {
                 diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
                 // @ts-ignore -- metadata is a loosely-typed record at runtime
                 orchestrator_type: 'DIAGNOSTIC_ESCALATION'
-              };
+              } as any;
             } else if ((orchestratorResponse.type as string) !== 'CLARIFICATION_QUESTION') {
               console.warn(
                 `[ESCALATION_SUPPRESSED_LOW_OPTIONS] site=unified_gate options=${_escOptionCount} action=fall_through_to_advisory`,
@@ -2744,7 +2744,7 @@ serve(async (req) => {
           supabase,
           marketProductMemo,
           farmingPreference as any
-        ), detectedLanguage);
+        ) as any);
       } else {
         responseContent = generateValidationFailureFallback(
           detectedLanguage,
@@ -2924,8 +2924,8 @@ serve(async (req) => {
     
     // CRITICAL FIX: Extract pest from multiple sources (not just action.target which may not exist)
     // Safely handle rules_applied which may be an object, array, or undefined
-    const rulesAppliedArray = Array.isArray((orchestratorResponse.metadata as any)?.rules_applied) 
-      ? orchestratorResponse.metadata.rules_applied 
+    const rulesAppliedArray: any[] = Array.isArray((orchestratorResponse.metadata as any)?.rules_applied) 
+      ? (orchestratorResponse.metadata as any).rules_applied 
       : [];
     
     const lastPest = 
@@ -4415,7 +4415,7 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
   console.log(`📝 [PostProcessor] Response assembly:`, {
     has_communication: !!response.communication,
     has_decision_output: !!response.decision_output,
-    comm_keys: (response.communication as any)?.main_message ? Object.keys(response.communication.main_message) : [],
+    comm_keys: (response.communication as any)?.main_message ? Object.keys((response.communication as any).main_message) : [],
     decision_status: (response.decision_output as any)?.status,
     has_primary: !!response.decision_output?.primary_decision,
     // P6: graph observability at the response boundary
@@ -5144,7 +5144,7 @@ function transformOrchestratorResponseWithContent(
         ai_model: aiModelUsed || 'template',
         actions_count: actionsReturned?.length || 0
       },
-      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, response.dataAudit ?? undefined),
+      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, (response.dataAudit ?? undefined) as any),
       source: 'orchestrator_v1'
     };
   }
