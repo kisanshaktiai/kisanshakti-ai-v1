@@ -14,7 +14,11 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { getActiveNetworkRequests } from '@/utils/pwaActivity';
+import {
+  getActiveNetworkRequests,
+  getActivePwaWork,
+  installPwaFetchTracking,
+} from '@/utils/pwaActivity';
 import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 
 const UPDATE_APPROVED_KEY = '__ksai_sw_update_approved__';
@@ -49,11 +53,12 @@ export function PWAUpdatePrompt() {
   const pendingUpdateRef = useRef(false);
   const activationRequestedRef = useRef(false);
   const reloadScheduledRef = useRef(false);
+  const reloadPendingRef = useRef(false);
 
   const isSafeToActivate = useCallback(() => {
     if (document.visibilityState !== 'visible') return false;
     if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0) return false;
-    if (getActiveNetworkRequests() > 0) return false;
+    if (getActiveNetworkRequests() > 0 || getActivePwaWork() > 0) return false;
 
     // Application-level long-running work can opt into this explicit marker.
     if (document.querySelector('[data-ksai-work-in-progress="true"]')) return false;
@@ -141,6 +146,8 @@ export function PWAUpdatePrompt() {
       return;
     }
 
+    installPwaFetchTracking();
+
     let disposed = false;
     let initialCheckTimer: number | undefined;
     let updateInterval: number | undefined;
@@ -150,6 +157,7 @@ export function PWAUpdatePrompt() {
     sessionStorage.removeItem(UPDATE_APPROVED_KEY);
     sessionStorage.removeItem(RELOAD_SCHEDULED_KEY);
     reloadScheduledRef.current = false;
+    reloadPendingRef.current = false;
 
     const markActivity = () => {
       lastActivityRef.current = Date.now();
@@ -171,27 +179,44 @@ export function PWAUpdatePrompt() {
       window.addEventListener(eventName, markActivity, { passive: true });
     });
 
-    const handleControllerChange = () => {
-      console.log('[PWA] Service worker controller changed');
-
+      const tryReloadWhenSafe = () => {
       const approved = sessionStorage.getItem(UPDATE_APPROVED_KEY);
       const alreadyScheduled = reloadScheduledRef.current
         || sessionStorage.getItem(RELOAD_SCHEDULED_KEY) === '1';
 
-      if (approved && !alreadyScheduled) {
-        reloadScheduledRef.current = true;
-        sessionStorage.setItem(RELOAD_SCHEDULED_KEY, '1');
-        sessionStorage.removeItem(UPDATE_APPROVED_KEY);
+      if (!approved || alreadyScheduled || !reloadPendingRef.current) return;
 
-        console.log('[PWA] Reload authorized for completed update transaction');
+      if (!isSafeToActivate()) {
+        console.log('[PWA] Controller changed, but reload is deferred until work is complete');
+        return;
+      }
 
-        // Give the newly-activated worker one event-loop turn to settle before
-        // reloading the current route.
-        window.setTimeout(() => {
-          if (!disposed) {
-            window.location.reload();
-          }
-        }, 100);
+      reloadPendingRef.current = false;
+      reloadScheduledRef.current = true;
+      sessionStorage.setItem(RELOAD_SCHEDULED_KEY, '1');
+      sessionStorage.removeItem(UPDATE_APPROVED_KEY);
+
+      console.log('[PWA] Reload authorized after completed update transaction');
+
+      // Give the newly-activated worker one event-loop turn to settle before
+      // reloading the current route.
+      window.setTimeout(() => {
+        if (!disposed) {
+          window.location.reload();
+        }
+      }, 100);
+    };
+
+    const handleControllerChange = () => {
+      console.log('[PWA] Service worker controller changed');
+
+      const approved = sessionStorage.getItem(UPDATE_APPROVED_KEY);
+      if (approved) {
+        // Activation and reload are separate gates. A request can start between
+        // SKIP_WAITING and controllerchange, so controllerchange must never
+        // blindly reload the page.
+        reloadPendingRef.current = true;
+        tryReloadWhenSafe();
       } else {
         console.log('[PWA] Controller change detected without approved update; no reload');
       }
@@ -252,8 +277,11 @@ export function PWAUpdatePrompt() {
         updateInterval = window.setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS);
 
         pendingRetryInterval = window.setInterval(() => {
-          if (!disposed && pendingUpdateRef.current) {
-            tryActivatePendingUpdate();
+          if (!disposed) {
+            if (pendingUpdateRef.current) {
+              tryActivatePendingUpdate();
+            }
+            tryReloadWhenSafe();
           }
         }, ACTIVATION_RETRY_MS);
 
@@ -263,6 +291,11 @@ export function PWAUpdatePrompt() {
               lastActivityRef.current = Date.now();
               window.setTimeout(() => {
                 if (!disposed) tryActivatePendingUpdate();
+              }, SAFE_IDLE_MS);
+            } else if (reloadPendingRef.current) {
+              lastActivityRef.current = Date.now();
+              window.setTimeout(() => {
+                if (!disposed) tryReloadWhenSafe();
               }, SAFE_IDLE_MS);
             } else {
               void checkForUpdate();
@@ -292,6 +325,7 @@ export function PWAUpdatePrompt() {
 
     return () => {
       disposed = true;
+      reloadPendingRef.current = false;
 
       if (initialCheckTimer !== undefined) window.clearTimeout(initialCheckTimer);
       if (updateInterval !== undefined) window.clearInterval(updateInterval);
