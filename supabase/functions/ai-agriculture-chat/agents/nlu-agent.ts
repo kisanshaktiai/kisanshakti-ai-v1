@@ -506,7 +506,24 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   console.log(`⚡ [NLU] Perception complete in ${processingTime}ms, AI used: ${!!aiResult}, observations: ${rawObservations.length}`);
   
   // PURE PERCEPTION OUTPUT - NO intent, NO entities, NO clarification
-  
+
+  // Type-only note: extra runtime fields below (contains_harmful_advice_request, reason_code)
+  // are attached via post-literal assignment (not object-literal keys) to avoid excess-property
+  // checks against the shared SafetyFlags/NextAgentRecommendation interfaces in types.ts, which
+  // this task does not own. Values/logic unchanged from the original literals.
+  const safetyFlagsOutput: any = {
+    is_safe_to_respond: true,
+    requires_expert_referral: urgencyResult.level === 'HIGH',
+    detected_issues: safetyFlags
+  };
+  safetyFlagsOutput.contains_harmful_advice_request = false;
+
+  const nextAgentRecommendationOutput: any = {
+    recommended_agent: 'SEMANTIC_EXTRACTOR', // Always hand off to semantic extraction
+    additional_context: {}
+  };
+  nextAgentRecommendationOutput.reason_code = 'PERCEPTION_COMPLETE';
+
   return {
     understanding_metadata: {
       nlu_version: NLU_VERSION,
@@ -568,18 +585,9 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       specific_instructions: undefined // No language-specific text here
     },
     // PERCEPTION SIGNALS - urgency and safety only
-    safety_flags: {
-      is_safe_to_respond: true,
-      contains_harmful_advice_request: false,
-      requires_expert_referral: urgencyResult.level === 'HIGH',
-      detected_issues: safetyFlags
-    } as any,
+    safety_flags: safetyFlagsOutput,
     // NEUTRAL next_agent - routing decided by orchestrator
-    next_agent_recommendation: {
-      recommended_agent: 'SEMANTIC_EXTRACTOR', // Always hand off to semantic extraction
-      reason_code: 'PERCEPTION_COMPLETE',
-      additional_context: {}
-    } as any
+    next_agent_recommendation: nextAgentRecommendationOutput
   };
 }
 
