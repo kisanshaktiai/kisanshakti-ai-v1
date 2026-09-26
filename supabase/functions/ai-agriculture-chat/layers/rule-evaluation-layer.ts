@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 16:15 UTC — Filled previously-missing required SymbolicFact fields (all_observations, has_pest_evidence, soil micronutrient ppm fields) with safe defaults in the legacy non-authoritative fact-builder branch so the literal satisfies SymbolicFact (type-only; this branch never sourced those values before either).
 // RULE EVALUATION LAYER - Layer 3 in 5-Layer Symbolic Brain Architecture
 
 import { SymbolicReasoner, type SymbolicFact, type InferenceResult } from '../decision/symbolic-reasoner.ts';

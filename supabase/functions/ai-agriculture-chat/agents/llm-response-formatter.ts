@@ -26,7 +26,7 @@
  */
 // PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
 
-import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
+import type { DecisionOutput, FarmerCommunication, PrimaryDecision, ApplicationDetails, SecondaryAction } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
 import { getLanguageName } from '../utils/language-utils.ts';
@@ -160,16 +160,16 @@ export interface LLMFormatterInput {
 // LOCAL RUNTIME TYPE EXTENSIONS (type-only; decision_output carries extra
 // fields populated at runtime by the rule engine/orchestrator that are not
 // declared on the shared rule-engine-types.ts interfaces).
-interface RuntimePrimaryDecision extends Omit<import('./rule-engine-types.ts').PrimaryDecision, 'target'> {
+interface RuntimePrimaryDecision extends Omit<PrimaryDecision, 'target'> {
   target?: { pest_code?: string; disease_code?: string; nutrient_deficiency?: string; crop?: string };
   risk_level?: string;
   canonical_group?: string;
 }
-interface RuntimeApplicationDetails extends import('./rule-engine-types.ts').ApplicationDetails {
+interface RuntimeApplicationDetails extends ApplicationDetails {
   dosage?: string;
   method?: string;
 }
-interface RuntimeSecondaryAction extends import('./rule-engine-types.ts').SecondaryAction {
+interface RuntimeSecondaryAction extends SecondaryAction {
   action_type?: string;
 }
 interface RuntimeDecisionOutput extends Omit<DecisionOutput, 'primary_decision' | 'secondary_actions' | 'actions_returned'> {

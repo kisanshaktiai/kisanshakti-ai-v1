@@ -947,6 +947,7 @@ export type OrchestratorResponseType =
   | 'PHOTO_REQUEST'
   | 'SAFETY_BLOCKED'
   | 'ESCALATION_REQUIRED'
+  | 'DIAGNOSIS_PROVIDED'
   | 'SYSTEM_ERROR';
 
 // Data Audit interface - shows what data was found/missing for debugging
@@ -1033,23 +1034,23 @@ export interface OrchestratorResponse {
     text_mr: string;
     text_hi: string;
     text_en: string;
-    options?: Array<{ value: string; label: string }>;
-  };
+    options?: Array<{ value: string; label: string } & Record<string, any>>;
+  } & Record<string, any>;
   
   // For PHOTO_REQUEST
   photo_instructions?: {
-    text_mr: string;
-    text_hi: string;
-    text_en: string;
-    tips: string[];
-  };
+    text_mr?: string;
+    text_hi?: string;
+    text_en?: string;
+    tips?: string[];
+  } & Record<string, any>;
   
   // For SAFETY_BLOCKED
   blocked_reason?: {
-    reason_mr: string;
-    reason_hi: string;
-    reason_en: string;
-  };
+    reason_mr?: string;
+    reason_hi?: string;
+    reason_en?: string;
+  } & Record<string, any>;
   alternatives?: Array<{
     alternative: string;
     product_name: string;
@@ -1061,10 +1062,10 @@ export interface OrchestratorResponse {
     level: string;
     expert_type: string;
     sla_hours: number;
-    message_mr: string;
-    message_hi: string;
-    message_en: string;
-  };
+    message_mr?: string;
+    message_hi?: string;
+    message_en?: string;
+  } & Record<string, any>;
   
   // For SYSTEM_ERROR
   error?: {
@@ -1098,7 +1099,7 @@ export interface OrchestratorResponse {
     clarification_reason?: string;
     clarification_scope?: string;
     scope_validation_passed?: boolean;
-  };
+  } & Record<string, any>;
 }
 
 export class AIAgentOrchestrator {
