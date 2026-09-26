@@ -1,6 +1,24 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 18:10 UTC — Added local ObservationExtractionLegacy interface (optional legacy/canonical fields) to fix type errors without changing runtime behavior
 // STAGE 4: UNDERSTANDING COMPLETENESS CHECKER (SYMBOLIC - NO LLM)
 
 import type { ObservationExtraction } from './observation-extractor.ts';
+
+// Legacy/canonical fields populated at runtime by the Language Induction Layer
+// but not declared on the base ObservationExtraction type.
+interface ObservationExtractionLegacy extends ObservationExtraction {
+  extracted_observations?: string[];
+  color_mentioned?: string[];
+  size_mentioned?: string;
+  behavior_mentioned?: string;
+  secondary_symptoms?: string[];
+  plant_healthy?: boolean;
+  plant_dying?: boolean;
+  no_problem_mentioned?: boolean;
+  timing_just_started?: boolean;
+  severity_level?: string;
+  is_urgent?: boolean;
+}
 
 export const UNDERSTANDING_CHECKER_VERSION = '2.0.0'; // SSOT-compliant version
 
