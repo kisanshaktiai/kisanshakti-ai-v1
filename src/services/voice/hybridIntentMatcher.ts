@@ -404,6 +404,8 @@ class HybridIntentMatcher {
    * Cloud AI fallback for complex queries
    */
   private async matchCloud(transcript: string): Promise<MatchedIntent | null> {
+    // Offline: never wait on a network call — local matching is the answer.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
     try {
       const { data, error } = await supabase.functions.invoke('voice-navigation-agent', {
         body: {

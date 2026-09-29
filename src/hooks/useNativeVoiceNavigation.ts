@@ -188,9 +188,11 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
     setState(prev => ({
       ...prev,
       isListening: false,
-      error: error === 'not-allowed' 
-        ? 'Microphone permission denied' 
-        : 'Recognition failed, please try again',
+      error: error === 'not-allowed'
+        ? 'Microphone permission denied'
+        : error === 'offline' || error === 'network'
+          ? 'No internet — browser voice needs internet. The installed app works offline.'
+          : 'Recognition failed, please try again',
     }));
 
     if (error === 'not-allowed') {
@@ -206,10 +208,16 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
   const startListening = useCallback(async () => {
     if (state.isListening) return;
 
+    // Open the listening panel INSTANTLY (optimistic). Permission checks and
+    // recogniser start-up run behind it and revert this on failure.
+    startTimeRef.current = performance.now();
+    setState(prev => ({ ...prev, isListening: true, error: null, transcript: '', partialTranscript: '', lastIntent: null }));
+    ttsStop();
+
     // Check permission first
     const permission = await nativeSpeechRecognition.checkPermission();
     if (permission === 'denied') {
-      setState(prev => ({ ...prev, error: 'Microphone permission denied' }));
+      setState(prev => ({ ...prev, isListening: false, error: 'Microphone permission denied' }));
       toast({
         title: 'Permission Required',
         description: 'Please enable microphone in settings',
@@ -221,24 +229,12 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
     if (permission === 'prompt') {
       const granted = await nativeSpeechRecognition.requestPermission();
       if (!granted) {
-        setState(prev => ({ ...prev, error: 'Microphone permission denied' }));
+        setState(prev => ({ ...prev, isListening: false, error: 'Microphone permission denied' }));
         return;
       }
     }
 
-    // Clear previous state
-    setState(prev => ({
-      ...prev,
-      transcript: '',
-      partialTranscript: '',
-      error: null,
-      lastIntent: null,
-    }));
     lastProcessedRef.current = '';
-    startTimeRef.current = performance.now();
-
-    // Stop any ongoing TTS
-    ttsStop();
 
     // Start recognition
     const started = await nativeSpeechRecognition.startListening(
@@ -252,8 +248,8 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
       handleError
     );
 
-    if (started) {
-      setState(prev => ({ ...prev, isListening: true }));
+    if (!started) {
+      setState(prev => ({ ...prev, isListening: false }));
     }
   }, [state.isListening, currentLanguage, handleResult, handleEnd, handleError, ttsStop, toast]);
 
