@@ -12,12 +12,12 @@ export interface ProviderWeatherSignal {
 
 const TONES = {
   neutral: 'text-info bg-info/15 border-info/25',
-  blue: 'text-chat-section-blue-icon bg-chat-section-blue-bg border-chat-section-blue-border',
-  green: 'text-chat-section-green-icon bg-chat-section-green-bg border-chat-section-green-border',
-  yellow: 'text-chat-section-yellow-icon bg-chat-section-yellow-bg border-chat-section-yellow-border',
+  blue: 'text-[var(--chat-section-blue-icon)] bg-[var(--chat-section-blue-bg)] border-[var(--chat-section-blue-border)]',
+  green: 'text-[var(--chat-section-green-icon)] bg-[var(--chat-section-green-bg)] border-[var(--chat-section-green-border)]',
+  yellow: 'text-[var(--chat-section-yellow-icon)] bg-[var(--chat-section-yellow-bg)] border-[var(--chat-section-yellow-border)]',
   orange: 'text-warning bg-warning-soft border-warning/40',
-  red: 'text-chat-section-red-icon bg-chat-section-red-bg border-chat-section-red-border',
-  purple: 'text-chat-section-purple-icon bg-chat-section-purple-bg border-chat-section-purple-border',
+  red: 'text-[var(--chat-section-red-icon)] bg-[var(--chat-section-red-bg)] border-[var(--chat-section-red-border)]',
+  purple: 'text-[var(--chat-section-purple-icon)] bg-[var(--chat-section-purple-bg)] border-[var(--chat-section-purple-border)]',
 } as const;
 
 /** Probability colors are deliberately simple for quick field decisions. */
@@ -33,11 +33,11 @@ export function resolveRainProbabilityTone(probability: number): string {
 /** Temperature bands use familiar cool-to-hot semantic colors. */
 export function resolveTemperatureTone(temperatureC: number | null | undefined): string {
   if (temperatureC == null || !Number.isFinite(temperatureC)) return 'text-foreground';
-  if (temperatureC <= 15) return 'text-chat-section-blue-icon';
-  if (temperatureC <= 25) return 'text-chat-section-green-icon';
-  if (temperatureC <= 32) return 'text-chat-section-yellow-icon';
+  if (temperatureC <= 15) return 'text-[var(--chat-section-blue-icon)]';
+  if (temperatureC <= 25) return 'text-[var(--chat-section-green-icon)]';
+  if (temperatureC <= 32) return 'text-[var(--chat-section-yellow-icon)]';
   if (temperatureC <= 38) return 'text-warning';
-  return 'text-chat-section-red-icon';
+  return 'text-[var(--chat-section-red-icon)]';
 }
 
 /**

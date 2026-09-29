@@ -62,7 +62,7 @@ export function lazyWithRetry<T extends ComponentType<any>>(
           sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
           // Wait until no active app work is in progress before replacing
           // the document. This recovery path is automatic.
-          await waitForPwaReloadSafe();
+          await waitForPwaReloadSafe(1000, 5000);
 
           // Clear any caches that might be serving stale index/chunks
           try {

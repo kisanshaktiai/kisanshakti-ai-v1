@@ -24,7 +24,7 @@ installPwaFetchTracking();
     if (sessionStorage.getItem(RELOAD_KEY)) return;
     sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
     try {
-      await waitForPwaReloadSafe();
+      await waitForPwaReloadSafe(1000, 5000);
 
       if ('caches' in window) {
         const names = await caches.keys();
