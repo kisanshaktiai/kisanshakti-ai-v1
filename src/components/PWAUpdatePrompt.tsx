@@ -175,7 +175,8 @@ export function PWAUpdatePrompt() {
       reloadPendingRef.current = false;
       reloadScheduledRef.current = true;
       sessionStorage.setItem(RELOAD_SCHEDULED_KEY, '1');
-      sessionStorage.removeItem(UPDATE_APPROVED_KEY);
+      // UPDATE_APPROVED_KEY is cleared only right before the actual reload so a
+      // deferred reload (final gate below) can still be retried later.
 
       console.log('[PWA] Reload authorized after completed update transaction');
 
@@ -194,6 +195,7 @@ export function PWAUpdatePrompt() {
           return;
         }
 
+        sessionStorage.removeItem(UPDATE_APPROVED_KEY);
         window.location.reload();
       }, 100);
     };

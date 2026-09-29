@@ -35,12 +35,17 @@ export function isPwaReloadSafe(): boolean {
   return true;
 }
 
-export function waitForPwaReloadSafe(retryMs = 1000): Promise<void> {
+/**
+ * Resolves when reload is safe, or after maxWaitMs (if given) so crash
+ * recovery can never hang indefinitely behind a focused input or a stuck request.
+ */
+export function waitForPwaReloadSafe(retryMs = 1000, maxWaitMs?: number): Promise<void> {
   if (isPwaReloadSafe()) return Promise.resolve();
 
   return new Promise((resolve) => {
+    const deadline = maxWaitMs != null ? Date.now() + maxWaitMs : Infinity;
     const check = () => {
-      if (!isPwaReloadSafe()) return;
+      if (!isPwaReloadSafe() && Date.now() < deadline) return;
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', check);
       resolve();
