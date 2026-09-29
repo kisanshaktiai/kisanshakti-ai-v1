@@ -106,7 +106,10 @@ class NativeSpeechRecognitionService {
 
     // Web browser - permission requested when starting recognition
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Release the mic immediately — a held stream blocks/delays the
+      // speech recogniser from opening the microphone.
+      stream.getTracks().forEach((t) => t.stop());
       return true;
     } catch {
       return false;
@@ -216,6 +219,12 @@ class NativeSpeechRecognitionService {
   }
 
   private startWebListening(config: NativeSpeechConfig): boolean {
+    // Browser speech recognition is server-based; offline it only fails after
+    // a multi-second network timeout. Fail fast with a clear reason instead.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      this.onErrorCallback?.('offline');
+      return false;
+    }
     if (!this.webRecognition) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
