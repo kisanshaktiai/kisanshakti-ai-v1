@@ -94,6 +94,10 @@ class NativeSpeechRecognitionService {
    * Request microphone permission
    */
   async requestPermission(): Promise<boolean> {
+    // The native plugin loads asynchronously. Asking before it is ready fell
+    // through to the browser getUserMedia path, which the Android WebView
+    // refuses, so the mic reported "permission denied" in the installed app.
+    if (Capacitor.isNativePlatform()) await this.initialize();
     if (Capacitor.isNativePlatform() && SpeechRecognitionPlugin) {
       try {
         const result = await SpeechRecognitionPlugin.requestPermissions();
@@ -120,6 +124,7 @@ class NativeSpeechRecognitionService {
    * Check permission status
    */
   async checkPermission(): Promise<'granted' | 'denied' | 'prompt'> {
+    if (Capacitor.isNativePlatform()) await this.initialize();
     if (Capacitor.isNativePlatform() && SpeechRecognitionPlugin) {
       try {
         const result = await SpeechRecognitionPlugin.checkPermissions();

@@ -38,6 +38,21 @@ const AUDIO_CACHE_MAX = 120;
 const inFlight = new Map<string, Promise<string | null>>();
 
 /**
+ * Rural networks often report "online" while requests stall. Without a cap the
+ * engine waited on the vendor check forever, so Read Aloud and the voice
+ * command announcement never started. On timeout the device voice speaks.
+ */
+const STATUS_TIMEOUT_MS = 2500;
+const SYNTH_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/**
  * Farmer/tenant identity for the backend's metering and per-farmer rate limit.
  * Same headers every other function call in the app sends.
  */
@@ -87,10 +102,13 @@ export const cloudProvider = {
 
     statusPromise = (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('text-to-speech', {
-          body: { action: 'status' },
-          headers: identityHeaders(),
-        });
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke('text-to-speech', {
+            body: { action: 'status' },
+            headers: identityHeaders(),
+          }),
+          STATUS_TIMEOUT_MS
+        );
         if (error || !data) throw error || new Error('no status');
         cachedStatus = {
           available: Array.isArray(data.available) ? data.available : [],
@@ -140,10 +158,13 @@ export const cloudProvider = {
         // other content type comes back as text and cannot be played). The
         // audio's real type is read from its first bytes, then it plays from an
         // object URL without the base64 decode and the 33% larger transfer.
-        const { data, error } = await supabase.functions.invoke('text-to-speech', {
-          body: { action: 'synthesize', text: chunk, language: locale, format: 'binary' },
-          headers: identityHeaders(),
-        });
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke('text-to-speech', {
+            body: { action: 'synthesize', text: chunk, language: locale, format: 'binary' },
+            headers: identityHeaders(),
+          }),
+          SYNTH_TIMEOUT_MS
+        );
         if (error || !data) return null;
 
         let url: string;
