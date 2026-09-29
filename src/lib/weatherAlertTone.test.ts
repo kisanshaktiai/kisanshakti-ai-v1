@@ -17,7 +17,7 @@ describe('resolveWeatherAlertTone', () => {
     expect(resolveWeatherAlertTone(
       null,
       { provider: 'OpenWeather', main: 'Rain', description: 'light rain' },
-    )).toContain('text-chat-section-green-icon');
+    )).toContain('text-[var(--chat-section-green-icon)]');
   });
 
   it('does not invent an alert color without provider provenance', () => {
