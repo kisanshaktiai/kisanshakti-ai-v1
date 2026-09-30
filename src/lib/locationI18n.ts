@@ -74,7 +74,8 @@ const CONSONANTS: [string, string][] = [
 ];
 
 function translitWord(word: string, lang: string): string {
-  const w = word.toLowerCase();
+  // Common Indian place-name endings spelled short in English
+  const w = word.toLowerCase().replace(/pur$/, 'poor').replace(/nagar$/, 'nagar').replace(/([^aeiou])a$/, '$1aa');
   let out = '';
   let i = 0;
   let prevConsonant = false;
