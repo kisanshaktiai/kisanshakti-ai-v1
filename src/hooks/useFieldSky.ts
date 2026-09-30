@@ -76,12 +76,12 @@ const daysBetween = (a?: string | null, b?: string | null): number | null => {
   return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
 };
 
-export function useFieldSky(landId: string | null): FieldSky {
+export function useFieldSky(landId: string | null, refreshKey = 0): FieldSky {
   const { session } = useAuthStore();
   const { tenant } = useTenant();
   const tenantId = session?.tenantId ?? tenant?.id;
 
-  const ndvi = useNDVIAnalysis(landId);
+  const ndvi = useNDVIAnalysis(landId, refreshKey);
   const weather = useLandWeatherState(landId);
   const canopy = useSatelliteWaterLayers(landId || undefined, 'canopy_moisture_signal');
   const surface = useSatelliteWaterLayers(landId || undefined, 'surface_water_trace');

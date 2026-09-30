@@ -40,6 +40,7 @@ export default function NDVIAnalysis() {
   const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<'today' | 'map' | 'season'>('today');
   // Cost: a Google map is billed when it is CREATED. Create it only when the farmer first opens
   // the Map tab; after that keep it mounted (forceMount + hidden) so switching tabs never re-bills.
@@ -54,9 +55,9 @@ export default function NDVIAnalysis() {
   useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId((landsWithData[0] ?? lands[0]).id); }, [lands, landsWithData, selectedLandId]);
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
 
-  const sky = useFieldSky(selectedLandId);
+  const sky = useFieldSky(selectedLandId, refreshKey);
 
-  const onRefresh = async () => { setIsRefreshing(true); await refetchLands(); toast({ title: t('ndvi.refresh.data_refreshed', 'Data refreshed') }); setIsRefreshing(false); };
+  const onRefresh = async () => { setIsRefreshing(true); try { setRefreshKey(k => k + 1); await refetchLands(); toast({ title: t('ndvi.refresh.data_refreshed', 'Data refreshed') }); } finally { setIsRefreshing(false); } };
   const onSpeak = (text: string) => { if (isSpeaking) return stop(); speak(text); };
 
   const boundary = useMemo(() => { const coords = selectedLand?.boundary_polygon_old?.coordinates?.[0]; return coords ? coords.map((c: number[]) => ({ lat: c[1], lng: c[0] })) : []; }, [selectedLand]);
