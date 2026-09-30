@@ -13,7 +13,7 @@ export interface PlaceParts {
 export function useLocalizedPlace() {
   const { i18n } = useTranslation();
   const [, force] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => subscribeLocationI18n(force), []);
+  useEffect(() => { const off = subscribeLocationI18n(force); return () => { off(); }; }, []);
   const lang = i18n.language || 'en';
   const place = (name: string | null | undefined, kind: PlaceKind) => localizePlace(name, kind, lang);
   const join = (p: PlaceParts, order: PlaceKind[] = ['village', 'taluka', 'district', 'state']) =>
