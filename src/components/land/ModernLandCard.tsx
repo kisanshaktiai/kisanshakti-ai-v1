@@ -55,7 +55,6 @@ interface ModernLandCardProps {
     planting_date?: string;
     expected_harvest_date?: string;
     boundary_polygon_old?: any;
-    ndvi_thumbnail_url?: string | null;
     center_point_old?: any;
     updated_at?: string;
     created_at?: string;
@@ -154,8 +153,6 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
               boundary={land.boundary_polygon_old}
               centerPoint={land.center_point_old}
               landName={land.name}
-              thumbnailPath={land.ndvi_thumbnail_url}
-              landId={land.id}
               className="w-full h-full group-hover:scale-110 transition-transform duration-500"
             />
             
