@@ -126,7 +126,7 @@ function fetchDistrict(name: string) {
       .maybeSingle();
     districtCache.set(key, data ?? null);
   })()
-    .catch(() => districtCache.set(key, null))
+    .catch(() => { districtCache.set(key, null); })
     .finally(() => { pending.delete(key); listeners.forEach((l) => l()); });
   pending.set(key, p);
 }
