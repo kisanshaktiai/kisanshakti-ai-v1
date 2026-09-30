@@ -47,9 +47,11 @@ import {
 import { SyncStatus } from '@/components/sync/SyncStatus';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
 import { SubscriptionCard } from '@/components/subscription/SubscriptionCard';
+import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
 
 export default function Profile() {
   const { t } = useTranslation();
+  const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
@@ -88,12 +90,8 @@ export default function Profile() {
 
   // Format location string
   const getLocation = () => {
-    const parts = [];
-    if (user?.village) parts.push(user.village);
-    if (user?.taluka) parts.push(user.taluka);
-    if (user?.district) parts.push(user.district);
-    if (user?.state) parts.push(user.state);
-    return parts.length > 0 ? parts.join(', ') : 'Location not set';
+    const s = joinPlace({ village: user?.village, taluka: user?.taluka, district: user?.district, state: user?.state });
+    return s || t('profile.info.not_set', 'Location not set');
   };
 
   // Format crops array
@@ -218,7 +216,7 @@ export default function Profile() {
                 <MapPin className="w-4 h-4 text-primary" />
                 <div>
                   <p className="text-xs text-muted-foreground">{t('profile.info.location')}</p>
-                  <p className="text-sm font-medium truncate">{user?.district || t('profile.info.not_set')}</p>
+                  <p className="text-sm font-medium truncate">{placeName(user?.district, 'district') || t('profile.info.not_set')}</p>
                 </div>
               </div>
             </div>

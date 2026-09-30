@@ -5,6 +5,7 @@ import { MarketPriceCard } from './MarketPriceCard';
 import { Button } from '@/components/ui/button';
 import { MapPin, Navigation, RefreshCw, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
 
 interface NearbyMarketsSectionProps {
   markets: MarketPrice[];
@@ -22,6 +23,7 @@ export function NearbyMarketsSection({
   embedded = false,
 }: NearbyMarketsSectionProps) {
   const { t } = useTranslation();
+  const { join: joinPlace, place: placeName } = useLocalizedPlace();
 
   if (!farmerLocation?.lat || !farmerLocation?.lon) {
     return (
@@ -60,7 +62,7 @@ export function NearbyMarketsSection({
                 {t('market.intelligence.nearbyTitle', 'Markets within 50km')}
               </h3>
               <p className="text-xs text-muted-foreground truncate">
-                {farmerLocation.district}, {farmerLocation.state}
+                {joinPlace(farmerLocation, ['district','state'])}
               </p>
             </div>
           </div>
@@ -82,7 +84,7 @@ export function NearbyMarketsSection({
 
       {embedded && (
         <p className="text-[11px] text-muted-foreground px-1">
-          📍 {farmerLocation.district}, {farmerLocation.state}
+          📍 {joinPlace(farmerLocation, ['district','state'])}
         </p>
       )}
 

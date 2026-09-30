@@ -32,6 +32,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, RadialBarChart, RadialBar
 } from 'recharts';
+import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
 
 interface Land {
   id: string;
@@ -88,6 +89,7 @@ interface CropHistory {
 export default function LandDetails() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
+  const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
@@ -337,7 +339,7 @@ export default function LandDetails() {
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
                 <p className="truncate">
-                  {land.village && `${land.village}, `}{land.taluka || land.district}
+                  {joinPlace({ village: land.village, taluka: land.taluka || undefined, district: land.taluka ? undefined : land.district }, ['village','taluka','district'])}
                 </p>
               </div>
             </div>
@@ -558,9 +560,7 @@ export default function LandDetails() {
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.location_label')}</p>
                     <p className="text-base font-semibold text-foreground">
-                      {[land.village, land.taluka, land.district, land.state]
-                        .filter(Boolean)
-                        .join(', ') || t('lands.details.not_specified')}
+                      {joinPlace(land) || t('lands.details.not_specified')}
                     </p>
                   </div>
                   
