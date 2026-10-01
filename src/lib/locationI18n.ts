@@ -4,9 +4,8 @@
  * The database keeps canonical English names (+ UUID FKs). The UI localises:
  *   Tier 1  districts: official DB columns districts.name_<lang> (fetched on demand, cached)
  *   Tier 1b states: small built-in map (36 rows) for hi/mr
- *   Tier 2  talukas / villages / anything unmatched: offline rule-based
- *           Roman → Devanagari transliteration for hi/mr
- *   Other languages without data fall back to the English name (never invented).
+ *   Talukas, villages, and any name without an official translation fall back
+ *   to the canonical English name. Approximate transliteration is never shown.
  * UUIDs are never shown.
  */
 import { supabase } from '@/integrations/supabase/client';
@@ -16,7 +15,6 @@ export type PlaceKind = 'state' | 'district' | 'taluka' | 'village';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (v?: string | null) => !!v && UUID_RE.test(v.trim());
 
-const DEVANAGARI_LANGS = new Set(['hi', 'mr']);
 const DISTRICT_LANG_COLS = new Set(['as', 'bn', 'gu', 'hi', 'kn', 'ml', 'mr', 'or', 'pa', 'ta', 'te', 'ur']);
 
 const STATES: Record<string, { hi: string; mr: string }> = {
@@ -58,56 +56,6 @@ const STATES: Record<string, { hi: string; mr: string }> = {
   puducherry: { hi: 'पुडुचेरी', mr: 'पुदुच्चेरी' },
 };
 
-// ---------- Tier 2: Roman → Devanagari (rule based, offline) ----------
-const VOWELS: [string, string, string][] = [
-  // roman, independent, matra
-  ['aa', 'आ', 'ा'], ['ai', 'ऐ', 'ै'], ['au', 'औ', 'ौ'], ['ee', 'ई', 'ी'], ['ii', 'ई', 'ी'],
-  ['oo', 'ऊ', 'ू'], ['uu', 'ऊ', 'ू'], ['a', 'अ', ''], ['e', 'ए', 'े'], ['i', 'इ', 'ि'],
-  ['o', 'ओ', 'ो'], ['u', 'उ', 'ु'],
-];
-const CONSONANTS: [string, string][] = [
-  ['ksh', 'क्ष'], ['chh', 'छ'], ['shh', 'ष'], ['kh', 'ख'], ['gh', 'घ'], ['ch', 'च'], ['jh', 'झ'],
-  ['th', 'थ'], ['dh', 'ध'], ['ph', 'फ'], ['bh', 'भ'], ['sh', 'श'], ['gn', 'ग्न'], ['ny', 'न्य'],
-  ['k', 'क'], ['g', 'ग'], ['c', 'क'], ['j', 'ज'], ['t', 'ट'], ['d', 'ड'], ['n', 'न'], ['p', 'प'],
-  ['b', 'ब'], ['m', 'म'], ['y', 'य'], ['r', 'र'], ['l', 'ल'], ['v', 'व'], ['w', 'व'], ['s', 'स'],
-  ['h', 'ह'], ['f', 'फ'], ['z', 'झ'], ['q', 'क'], ['x', 'क्स'],
-];
-
-function translitWord(word: string, lang: string): string {
-  // Common Indian place-name endings spelled short in English
-  const w = word.toLowerCase().replace(/pur$/, 'poor').replace(/nagar$/, 'nagar').replace(/([^aeiou])a$/, '$1aa');
-  let out = '';
-  let i = 0;
-  let prevConsonant = false;
-  while (i < w.length) {
-    const c = CONSONANTS.find(([r]) => w.startsWith(r, i));
-    if (c) {
-      if (prevConsonant) out += '्';
-      out += c[1];
-      i += c[0].length;
-      prevConsonant = true;
-      continue;
-    }
-    const v = VOWELS.find(([r]) => w.startsWith(r, i));
-    if (v) {
-      // Trailing single 'a' after consonant: Marathi/Hindi drop it (Kolhapur-a → कोल्हापूर)
-      out += prevConsonant ? v[2] : v[1];
-      i += v[0].length;
-      prevConsonant = false;
-      continue;
-    }
-    out += w[i];
-    i += 1;
-    prevConsonant = false;
-  }
-  void lang;
-  return out;
-}
-
-export function transliterateToDevanagari(text: string, lang = 'mr'): string {
-  return text.replace(/[A-Za-z]+/g, (m) => translitWord(m, lang));
-}
-
 // ---------- Tier 1: district official names (cached) ----------
 const districtCache = new Map<string, Record<string, string | null> | null>();
 const pending = new Map<string, Promise<void>>();
@@ -148,6 +96,7 @@ export function localizePlace(name: string | null | undefined, kind: PlaceKind, 
     const v = row?.[`name_${l}`];
     if (v) return v;
   }
-  if (DEVANAGARI_LANGS.has(l)) return transliterateToDevanagari(raw, l);
+  // Never guess a place-name spelling. Canonical English is safer than a
+  // plausible-looking but incorrect local-script name.
   return raw;
 }
