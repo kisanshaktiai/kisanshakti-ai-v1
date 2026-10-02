@@ -50,43 +50,46 @@ serve(async (req) => {
       );
     }
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new APIError('OPENAI_API_KEY not configured', 500);
-    }
-
     const sourceLangName = LANGUAGE_NAMES[sourceLanguage] || sourceLanguage;
     const targetLangName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
 
-    // Handle batch translation
-    if (batch && texts && Array.isArray(texts)) {
-      const translations = await Promise.all(
-        texts.map(async (t: string) => {
-          return await translateSingle(t, sourceLangName, targetLangName, OPENAI_API_KEY);
-        })
-      );
+    // Provider failures (credits, rate limits) degrade to the original text
+    // with HTTP 200 so the screen never breaks; `degraded` tells the client why.
+    const safe = async (t: string): Promise<{ text: string; err?: APIError }> => {
+      try {
+        return { text: await translateSingle(t, sourceLangName, targetLangName) };
+      } catch (e) {
+        const err = e instanceof APIError ? e : new APIError(String(e), 500);
+        console.error('Translation error:', err.status, err.message);
+        return { text: t, err };
+      }
+    };
 
+    if (batch && texts && Array.isArray(texts)) {
+      const results = await Promise.all(texts.map((t: string) => safe(t)));
+      const failed = results.find((r) => r.err)?.err;
       return new Response(
-        JSON.stringify({ translations }),
+        JSON.stringify({
+          translations: results.map((r) => r.text),
+          ...(failed ? { degraded: true, reason: failed.status } : {}),
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Single text translation
-    const translatedText = await translateSingle(text, sourceLangName, targetLangName, OPENAI_API_KEY);
-
+    const r = await safe(text);
     return new Response(
-      JSON.stringify({ translatedText }),
+      JSON.stringify({
+        translatedText: r.text,
+        ...(r.err ? { degraded: true, reason: r.err.status } : {}),
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Translation error:', error);
-    
-    // Properly surface 402 and 429 errors
-    const status = error instanceof APIError ? error.status : 500;
+    console.error('Translation request error:', error);
+    const status = error instanceof APIError ? error.status : 400;
     const message = error instanceof Error ? error.message : 'Unknown error';
-    
     return new Response(
       JSON.stringify({ error: message }),
       { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -94,11 +97,31 @@ serve(async (req) => {
   }
 });
 
+async function callProvider(
+  url: string, apiKey: string, model: string, prompt: string,
+): Promise<string> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }] }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Provider ${model} error:`, response.status, errorText.slice(0, 300));
+    // OpenAI reports exhausted credits as 429 insufficient_quota — treat as billing (402).
+    const isQuota = /insufficient_quota|credit_balance_exhausted/.test(errorText);
+    throw new APIError(`Translation API error: ${response.status}`, isQuota ? 402 : response.status);
+  }
+  const data = await response.json();
+  const out = data.choices?.[0]?.message?.content?.trim();
+  if (!out) throw new APIError('No translation received', 500);
+  return out;
+}
+
 async function translateSingle(
-  text: string, 
-  sourceLang: string, 
-  targetLang: string, 
-  apiKey: string
+  text: string,
+  sourceLang: string,
+  targetLang: string,
 ): Promise<string> {
   const prompt = `You are a professional translator specializing in Indian agricultural terminology. Translate the following text from ${sourceLang} to ${targetLang}. 
 
@@ -112,42 +135,19 @@ IMPORTANT RULES:
 Text to translate:
 ${text}`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 2000,
-    }),
-  });
+  const lovableKey = Deno.env.get('LOVABLE_API_KEY');
+  const openaiKey = Deno.env.get('OPENAI_API_KEY');
+  let lastErr: APIError = new APIError('No translation provider configured', 500);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('OpenAI API error:', response.status, errorText);
-    
-    // Pass through rate limit errors
-    if (response.status === 429) {
-      throw new APIError('Rate limit exceeded. Please try again later.', 429);
-    }
-    if (response.status === 402 || response.status === 401) {
-      throw new APIError('OpenAI API authentication/billing error.', response.status);
-    }
-    
-    throw new APIError(`Translation API error: ${response.status}`, response.status);
+  if (lovableKey) {
+    try {
+      return await callProvider('https://ai.gateway.lovable.dev/v1/chat/completions', lovableKey, 'openai/gpt-6-astra', prompt);
+    } catch (e) { lastErr = e as APIError; }
   }
-
-  const data = await response.json();
-  const translatedText = data.choices?.[0]?.message?.content?.trim();
-
-  if (!translatedText) {
-    throw new APIError('No translation received', 500);
+  if (openaiKey) {
+    try {
+      return await callProvider('https://api.openai.com/v1/chat/completions', openaiKey, 'gpt-4o-mini', prompt);
+    } catch (e) { lastErr = e as APIError; }
   }
-
-  return translatedText;
+  throw lastErr;
 }
