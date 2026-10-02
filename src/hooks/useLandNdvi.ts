@@ -7,18 +7,20 @@ export interface LandNdviReading {
   landId: string;
   ndvi: number;
   date: string;
+  /** Age in days and freshness, both from v_ndvi_decision_grade (the DB's own window). */
+  ageDays: number | null;
+  isFresh: boolean;
 }
-
-/** Readings older than this are not trusted for colouring alert cards. */
-const MAX_AGE_DAYS = 21;
 
 /**
  * Latest trustworthy satellite reading per land, for the given land ids.
- * Read-only, cached; used purely for presentation (card colour).
+ * Read-only, cached; shown next to an alert with its date and freshness.
  *
- * "Trustworthy" is decided by the database, not here: v_ndvi_decision_grade
- * holds only observed optical passes that passed the pipeline's quality
- * gates, so radar rows and rejected scenes never colour a card.
+ * "Trustworthy" and "fresh" are decided by the database, not here:
+ * v_ndvi_decision_grade holds only observed optical passes that passed the
+ * pipeline's quality gates and carries is_fresh / age_days. (2026-10-02: the
+ * hook used its own 21-day cut-off, wider than the view's window, so a pass
+ * the evaluator treats as stale was presented as current.)
  */
 export function useLandNdvi(landIds: string[]) {
   const { tenant } = useTenant();
@@ -34,14 +36,11 @@ export function useLandNdvi(landIds: string[]) {
     staleTime: 10 * 60_000,
     queryFn: async () => {
       const client = supabaseWithAuth(farmerId, tenantId);
-      const cutoff = new Date(Date.now() - MAX_AGE_DAYS * 86_400_000).toISOString().slice(0, 10);
-
       const { data: rows, error } = await client
         .from('v_ndvi_decision_grade')
-        .select('land_id, acquisition_date, ndvi_value')
+        .select('land_id, acquisition_date, ndvi_value, age_days, is_fresh')
         .in('land_id', ids)
-        .gte('acquisition_date', cutoff)
-        .order('acquisition_date', { ascending: false })
+        .eq('recency_rank', 1)
         .limit(1000);
 
       if (error) throw error;
@@ -51,7 +50,10 @@ export function useLandNdvi(landIds: string[]) {
         if (!row.land_id || !row.acquisition_date || map.has(row.land_id)) continue; // rows arrive newest-first
         const value = Number(row.ndvi_value);
         if (row.ndvi_value == null || Number.isNaN(value)) continue;
-        map.set(row.land_id, { landId: row.land_id, ndvi: value, date: row.acquisition_date });
+        map.set(row.land_id, {
+          landId: row.land_id, ndvi: value, date: row.acquisition_date,
+          ageDays: row.age_days == null ? null : Number(row.age_days), isFresh: row.is_fresh === true,
+        });
       }
       return map;
     },

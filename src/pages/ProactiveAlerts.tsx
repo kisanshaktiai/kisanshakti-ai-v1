@@ -11,11 +11,10 @@ import {
   AlertTriangle, Bell, CheckCircle, CloudRain, Bug,
   Droplets, Thermometer, Leaf, Clock, Volume2,
   ChevronRight, Sprout, Wind, X, MessageCircle,
-  ArrowLeft, History, RotateCcw, Share2,
+  ArrowLeft, History, RotateCcw, Share2, Satellite,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'framer-motion';
 import { useEnhancedTTS } from '@/hooks/useEnhancedTTS';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
@@ -24,7 +23,8 @@ import { toast } from '@/hooks/use-toast';
 import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
 import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
-import { ndviTone, formatNdviValue, NdviTone } from '@/lib/ndviColor';
+import { formatNdviValue } from '@/lib/ndviColor';
+import { alertSourceText, useTranslatedTexts, type AlertTextField } from '@/hooks/useAlertText';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
@@ -58,6 +58,8 @@ const toneRail: Record<Tone, string> = {
   muted:       'bg-muted-foreground/40',
 };
 
+const PRIORITY_TONE: Record<string, Tone> = { CRITICAL: 'destructive', HIGH: 'warning', MEDIUM: 'primary', LOW: 'muted' };
+
 const PRIORITY_DOT: Record<string, string> = {
   CRITICAL: 'bg-destructive',
   HIGH:     'bg-warning',
@@ -65,20 +67,24 @@ const PRIORITY_DOT: Record<string, string> = {
   LOW:      'bg-success',
 };
 
-const STATUS_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
-  ACTED:     { mr: 'केले',     hi: 'किया',   en: 'Done' },
-  DISMISSED: { mr: 'नाकारले',  hi: 'खारिज',  en: 'Dismissed' },
-  SEEN:      { mr: 'पाहिले',   hi: 'देखा',   en: 'Seen' },
-};
+/** Alerts built by evaluator v128+ carry trigger_data.graph_advice; only their
+ *  action text is decision-graph output, so older rows' action text is not shown. */
+const hasGraphAdvice = (a: ProactiveAlert) => !!a.trigger_data && 'graph_advice' in a.trigger_data;
 
-function getLocalizedText(alert: ProactiveAlert, field: 'title' | 'message' | 'action_text', lang: string): string {
-  if (lang === 'mr') return (alert as any)[`${field}_mr`] || (alert as any)[`${field}_en`] || '';
-  if (lang === 'hi') return (alert as any)[`${field}_hi`] || (alert as any)[`${field}_en`] || '';
-  return (alert as any)[`${field}_en`] || '';
+/** "3 hours ago" in the app language (Intl), not English for everyone. */
+function relativeTime(iso: string, lang: string): string {
+  const diffSec = (new Date(iso).getTime() - Date.now()) / 1000;
+  const steps: Array<[Intl.RelativeTimeFormatUnit, number]> = [['second', 60], ['minute', 60], ['hour', 24], ['day', 7], ['week', 4.35], ['month', 12], ['year', Infinity]];
+  let v = diffSec;
+  for (const [unit, size] of steps) {
+    if (Math.abs(v) < size) {
+      try { return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(Math.round(v), unit); }
+      catch { return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(Math.round(v), unit); }
+    }
+    v /= size;
+  }
+  return '';
 }
-
-const localized = (lang: string, mr: string, hi: string, en: string) =>
-  lang === 'mr' ? mr : lang === 'hi' ? hi : en;
 
 export default function ProactiveAlerts() {
   const { t, i18n } = useTranslation();
@@ -87,6 +93,7 @@ export default function ProactiveAlerts() {
   const { alerts, loading, unreadCount, showHistory, setShowHistory, markSeen, markActed, dismissAlert } =
     useProactiveAlerts({ skipRealtime: true });
   const { speak, isSpeaking, stop } = useEnhancedTTS();
+  const reduceMotion = useReducedMotion();
   const lang = i18n.language || 'en';
   const { user } = useAuthStore();
   const { tenant } = useTenant();
@@ -103,11 +110,20 @@ export default function ProactiveAlerts() {
     [alerts],
   );
   const ndviByLand = useLandNdvi(alertLandIds);
-  const avgNdvi = useMemo(() => {
-    const values = Array.from(ndviByLand.values()).map(r => r.ndvi);
-    if (values.length === 0) return undefined;
-    return values.reduce((a, b) => a + b, 0) / values.length;
-  }, [ndviByLand]);
+
+  // Text in the app language: the row's own column, else English translated once.
+  const toTranslate = useMemo(() => alerts.flatMap((a) =>
+    (['title', 'message', 'action_text'] as AlertTextField[])
+      .filter((f) => f !== 'action_text' || hasGraphAdvice(a))
+      .map((f) => alertSourceText(a, f, lang))
+      .filter((x) => x.needsTranslation)
+      .map((x) => x.text)), [alerts, lang]);
+  const { tr } = useTranslatedTexts(toTranslate, lang);
+  const textOf = (a: ProactiveAlert, f: AlertTextField) => {
+    if (f === 'action_text' && !hasGraphAdvice(a)) return '';
+    const src = alertSourceText(a, f, lang);
+    return src.needsTranslation ? tr(src.text) : src.text;
+  };
 
   // One-tap germination answer → record_germination via edge function.
   const handleGerminationAnswer = async (alert: ProactiveAlert, confirmed: boolean) => {
@@ -150,12 +166,11 @@ export default function ProactiveAlerts() {
 
   const handleSpeak = (alert: ProactiveAlert) => {
     if (isSpeaking) { stop(); return; }
-    const title = getLocalizedText(alert, 'title', lang);
-    const message = getLocalizedText(alert, 'message', lang);
-    const action = getLocalizedText(alert, 'action_text', lang);
-    // The speech engine maps the app language to a device locale itself. The
-    // previous ternary sent every language except Marathi and Hindi to en-IN.
-    speak(`${title}. ${message}. ${action}`, lang);
+    const title = textOf(alert, 'title');
+    const message = textOf(alert, 'message');
+    const action = textOf(alert, 'action_text');
+    // The speech engine maps the app language to a device locale itself.
+    speak([title, message, action].filter(Boolean).join('. '), lang);
   };
 
   const handleAskAI = (alert: ProactiveAlert) => {
@@ -165,9 +180,9 @@ export default function ProactiveAlerts() {
   };
 
   const handleShare = (alert: ProactiveAlert) => {
-    const title = getLocalizedText(alert, 'title', lang);
-    const message = getLocalizedText(alert, 'message', lang);
-    const action = getLocalizedText(alert, 'action_text', lang);
+    const title = textOf(alert, 'title');
+    const message = textOf(alert, 'message');
+    const action = textOf(alert, 'action_text');
     const landName = alert.land?.name ? ` (${alert.land.name})` : '';
     const full = `🌾 *KisanShakti AI*${landName}\n\n⚠️ *${title}*\n\n${message}${action ? `\n\n✅ ${action}` : ''}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(full)}`, '_blank');
@@ -253,7 +268,7 @@ export default function ProactiveAlerts() {
     return (
       <div className="min-h-full bg-background pb-nav-safe">
         <Header
-          t={t} lang={lang} navigate={navigate}
+          t={t} navigate={navigate}
           showHistory={false} setShowHistory={setShowHistory}
           unreadCount={0}
         />
@@ -274,7 +289,7 @@ export default function ProactiveAlerts() {
   return (
     <div className="min-h-full bg-background pb-nav-safe">
       <Header
-        t={t} lang={lang} navigate={navigate}
+        t={t} navigate={navigate}
         showHistory={showHistory} setShowHistory={setShowHistory}
         unreadCount={unreadCount}
       />
@@ -286,7 +301,7 @@ export default function ProactiveAlerts() {
         ))}
 
         {/* Mini Report Summary */}
-        <ReportSummary summary={summary} lang={lang} avgNdvi={avgNdvi} />
+        <ReportSummary summary={summary} />
 
         {/* Land cards row — AI-chat style */}
         {(landBuckets.length > 0 || hasUnresolved) && (
@@ -296,8 +311,8 @@ export default function ProactiveAlerts() {
                 active={!selectedLandId}
                 onClick={() => setLandFilter(null)}
                 emoji="📋"
-                name={localized(lang, 'सर्व शेत', 'सभी भूमि', 'All lands')}
-                subtitle={`${summary.lands || 0} ${localized(lang, 'शेत', 'भूमि', 'lands')}`}
+                name={t('alerts.title_all_lands', 'All lands')}
+                subtitle={t('alerts.land_count', { count: summary.lands || 0, defaultValue: '{{count}} lands' })}
                 count={alerts.length}
                 counts={{
                   CRITICAL: summary.CRITICAL || 0,
@@ -305,7 +320,6 @@ export default function ProactiveAlerts() {
                   MEDIUM: summary.MEDIUM || 0,
                   LOW: summary.LOW || 0,
                 }}
-                lang={lang}
               />
               {landBuckets.map(b => (
                 <LandCard
@@ -318,8 +332,7 @@ export default function ProactiveAlerts() {
                   count={b.count}
                   counts={b.counts}
                   topPriority={b.topPriority}
-                  ndvi={ndviByLand.get(b.id)?.ndvi}
-                  lang={lang}
+                  ndvi={ndviByLand.get(b.id)}
                 />
               ))}
               {hasUnresolved && (
@@ -327,10 +340,9 @@ export default function ProactiveAlerts() {
                   active={selectedLandId === '__unresolved__'}
                   onClick={() => setLandFilter(selectedLandId === '__unresolved__' ? null : '__unresolved__')}
                   emoji="🌾"
-                  name={localized(lang, 'इतर शेत', 'अन्य भूमि', 'Other lands')}
+                  name={t('alerts.other_lands', 'Other lands')}
                   count={summary.unresolved}
                   counts={{ CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }}
-                  lang={lang}
                 />
               )}
             </div>
@@ -341,7 +353,7 @@ export default function ProactiveAlerts() {
         {showHistory && (
           <div className="bg-muted/60 rounded-xl px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
             <History className="h-3 w-3" />
-            {localized(lang, 'सर्व जुन्या सूचना दाखवत आहे', 'सभी पुरानी सूचनाएं दिखा रहा है', 'Showing all alerts including history')}
+            {t('alerts.history_banner', 'Showing all alerts, including old ones')}
           </div>
         )}
 
@@ -350,7 +362,7 @@ export default function ProactiveAlerts() {
           <div className="rounded-2xl border border-dashed border-border p-6 text-center">
             <Bell className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
             <p className="text-sm text-muted-foreground">
-              {localized(lang, 'या शेतासाठी कोणतीही सूचना नाही', 'इस भूमि के लिए कोई अलर्ट नहीं', 'No alerts for this land')}
+              {t('alerts.no_alerts_for_land', 'No alerts for this land')}
             </p>
           </div>
         )}
@@ -358,81 +370,67 @@ export default function ProactiveAlerts() {
         {/* Alerts */}
         <LayoutGroup>
           <AnimatePresence mode="popLayout">
-            {sortedAlerts.map((alert) => {
+            {sortedAlerts.map((alert, index) => {
               const cat = CATEGORY_TOKEN[alert.alert_category] || CATEGORY_TOKEN.GENERAL;
               const Icon = cat.icon;
-              const title = getLocalizedText(alert, 'title', lang);
-              const message = getLocalizedText(alert, 'message', lang);
-              const actionText = getLocalizedText(alert, 'action_text', lang);
+              const title = textOf(alert, 'title');
+              const message = textOf(alert, 'message');
+              const actionText = textOf(alert, 'action_text');
               const isUnread = alert.status === 'PENDING' || alert.status === 'DELIVERED';
-              const isHistorical = alert.status === 'ACTED' || alert.status === 'DISMISSED';
+              const isHistorical = !['PENDING', 'DELIVERED', 'SEEN'].includes(alert.status);
               const isCritical = alert.priority === 'CRITICAL';
-              const statusLabel = STATUS_LABEL[alert.status];
               const reading: LandNdviReading | undefined = alert.land_id ? ndviByLand.get(alert.land_id) : undefined;
-              const tone: NdviTone | null = reading && !isHistorical ? ndviTone(reading.ndvi) : null;
+              // Rail and badge follow priority; the icon keeps the category's colour.
+              const railTone: Tone = PRIORITY_TONE[alert.priority] ?? 'muted';
 
               return (
                 <motion.div
                   key={alert.id}
-                  layout
-                  initial={{ opacity: 0, y: 8 }}
+                  layout={!reduceMotion}
+                  initial={reduceMotion ? false : { opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.18 }}
+                  transition={{ duration: 0.22, delay: reduceMotion ? 0 : Math.min(index, 6) * 0.04 }}
                 >
                   <Card
                     onClick={() => isUnread && markSeen(alert.id)}
-                    style={tone ? { backgroundColor: tone.surface, borderColor: tone.border } : undefined}
                     className={cn(
                       'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all',
                       isHistorical && 'opacity-70',
-                      isCritical && !tone && 'ring-1 ring-destructive/40',
+                      isCritical && !isHistorical && 'ring-1 ring-destructive/40',
                     )}
                   >
-                    {/* Left crop-health rail (falls back to category tone) */}
-                    <span
-                      aria-hidden
-                      style={tone ? { backgroundColor: tone.color } : undefined}
-                      className={cn(
-                        'absolute left-0 top-0 bottom-0 w-1.5',
-                        !tone && toneRail[isCritical ? 'destructive' : cat.tone],
-                      )}
-                    />
+                    {/* Left rail: the alert's own priority/category, never a crop-agnostic NDVI colour */}
+                    <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-1.5', toneRail[railTone])} />
+                    {isUnread && !reduceMotion && (
+                      <motion.span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-1.5', toneRail[railTone])}
+                        animate={{ opacity: [1, 0.35, 1] }} transition={{ duration: 2.4, repeat: 2 }} />
+                    )}
 
                     <CardContent className="p-3 pl-4">
                       <div className="flex items-start gap-3">
-                        {/* Icon bubble */}
-                        <div
-                          style={tone ? { backgroundColor: tone.softSurface } : undefined}
-                          className={cn(
-                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                            tone ? 'text-foreground' : toneBg[cat.tone],
-                          )}
-                        >
+                        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', toneBg[cat.tone])}>
                           <Icon className="h-5 w-5" />
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          {/* Title row */}
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-semibold text-sm leading-snug text-foreground line-clamp-2 flex-1">
-                              {title}
-                            </h3>
+                            <h3 className="font-semibold text-[15px] leading-snug text-foreground line-clamp-2 flex-1">{title}</h3>
                             <button
                               className={cn(
-                                'shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition-colors',
+                                'shrink-0 h-9 w-9 rounded-full flex items-center justify-center transition-colors',
                                 isSpeaking ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground hover:bg-accent',
                               )}
                               onClick={(e) => { e.stopPropagation(); handleSpeak(alert); }}
-                              aria-label="Speak"
+                              aria-label={t('alerts.speak', 'Read aloud')}
                             >
                               <Volume2 className={cn('h-4 w-4', isSpeaking && 'animate-pulse')} />
                             </button>
                           </div>
 
-                          {/* Meta row: priority • land • time */}
+                          {/* Meta: priority • land • time • status */}
                           <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[11px] text-muted-foreground">
-                            <Badge variant="outline" className={cn('h-5 px-1.5 gap-1 border-transparent', toneBg[isCritical ? 'destructive' : cat.tone])}>
+                            <Badge variant="outline" className={cn('h-5 px-1.5 gap-1 border-transparent', toneBg[railTone])}>
                               <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[alert.priority] || 'bg-muted-foreground')} />
                               <span className="text-[10px] font-medium uppercase tracking-wide">
                                 {t(`proactive.priority.${alert.priority.toLowerCase()}`, alert.priority)}
@@ -441,61 +439,33 @@ export default function ProactiveAlerts() {
                             {alert.land ? (
                               <LandRef land={alert.land} showArea className="text-[11px]" />
                             ) : alert.land_id ? (
-                              <span className="italic">
-                                🌾 {localized(lang, '(अज्ञात शेत)', '(अज्ञात भूमि)', '(unknown land)')}
-                              </span>
+                              <span className="italic">🌾 {alert.land_name || t('alerts.unknown_land', '(unknown land)')}</span>
                             ) : null}
                             <span className="flex items-center gap-0.5">
                               <Clock className="h-3 w-3" />
-                              {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
+                              {relativeTime(alert.created_at, lang)}
                             </span>
-                            {statusLabel && isHistorical && (
+                            {isHistorical && (
                               <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-border bg-muted">
-                                {statusLabel[lang as 'mr' | 'hi' | 'en'] || statusLabel.en}
+                                {t(`alerts.status.${alert.status.toLowerCase()}`, alert.status)}
                               </Badge>
                             )}
-                            {reading ? (
-                              <span
-                                style={tone ? { backgroundColor: tone.softSurface } : undefined}
-                                className="inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-semibold text-foreground"
-                              >
-                                <span
-                                  className="w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: ndviTone(reading.ndvi).color }}
-                                />
-                                🛰️ NDVI {formatNdviValue(reading.ndvi)}
-                                <span className="font-normal text-muted-foreground">
-                                  · {new Date(reading.date).toLocaleDateString(lang === 'en' ? 'en-IN' : lang)}
-                                </span>
-                              </span>
-                            ) : alert.land_id ? (
-                              <span className="text-[11px] text-muted-foreground">
-                                🛰️ {localized(lang, 'उपग्रह माहिती उपलब्ध नाही', 'उपग्रह जानकारी उपलब्ध नहीं', 'satellite reading not available')}
-                              </span>
-                            ) : null}
                           </div>
+                          {alert.land_id && <NdviChip reading={reading} lang={lang} />}
                         </div>
                       </div>
 
-                      {/* Message */}
                       <p className="text-[15px] text-foreground mt-2.5 leading-relaxed">{message}</p>
 
-                      {/* Action highlight */}
+                      {/* Action — only when it is decision-graph output (v128+ alerts) */}
                       {actionText && (
-                        <div className="mt-2.5 flex items-start gap-1.5 text-xs font-medium text-primary bg-primary/8 rounded-xl px-3 py-2">
+                        <div className="mt-2.5 flex items-start gap-1.5 text-xs font-medium text-primary bg-primary/10 rounded-xl px-3 py-2">
                           <ChevronRight className="h-4 w-4 shrink-0 mt-px" />
                           <span className="leading-snug">{actionText}</span>
                         </div>
                       )}
 
-                      {/* Evidence */}
-                      <AlertEvidenceSection
-                        triggerData={alert.trigger_data || {}}
-                        reasoning={alert.decision_reasoning}
-                        riskBand={tone?.band}
-                        toneSurface={tone?.softSurface}
-                        toneBorder={tone?.border}
-                      />
+                      <AlertEvidenceSection triggerData={alert.trigger_data || {}} category={alert.alert_category} />
 
                       {/* One-tap germination question (DB-authored options) */}
                       {(alert.trigger_data as any)?.question?.type === 'GERMINATION_CHECK' &&
@@ -512,7 +482,7 @@ export default function ProactiveAlerts() {
                                   e.stopPropagation();
                                   handleGerminationAnswer(alert, opt.confirmed === true);
                                 }}
-                                className="rounded-full h-8 text-xs"
+                                className="rounded-full h-9 text-xs"
                               >
                                 {opt[`label_${lang}`] || opt.label_en || opt.key}
                               </Button>
@@ -520,13 +490,12 @@ export default function ProactiveAlerts() {
                           </div>
                         )}
 
-                      {/* Action chips */}
                       <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border/60">
                         <ChipButton onClick={(e) => { e.stopPropagation(); handleAskAI(alert); }} icon={<MessageCircle className="h-3.5 w-3.5" />}>
                           {t('proactive.askAI', 'Ask AI')}
                         </ChipButton>
                         <ChipButton onClick={(e) => { e.stopPropagation(); handleShare(alert); }} icon={<Share2 className="h-3.5 w-3.5" />}>
-                          {localized(lang, 'शेअर', 'शेयर', 'Share')}
+                          {t('alerts.share', 'Share')}
                         </ChipButton>
                         <div className="flex-1" />
                         {!isHistorical && (
@@ -535,10 +504,10 @@ export default function ProactiveAlerts() {
                             icon={<X className="h-3.5 w-3.5" />}
                             variant="ghost"
                           >
-                            {localized(lang, 'नाकार', 'खारिज', 'Dismiss')}
+                            {t('alerts.dismiss', 'Dismiss')}
                           </ChipButton>
                         )}
-                        {!isHistorical && alert.status !== 'ACTED' && (
+                        {!isHistorical && (
                           <ChipButton
                             onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}
                             icon={<CheckCircle className="h-3.5 w-3.5" />}
@@ -564,13 +533,29 @@ export default function ProactiveAlerts() {
 /*  Sub-components                                                            */
 /* -------------------------------------------------------------------------- */
 
+/** The land's newest quality-passed satellite reading, with its date; marked old when the DB says it is not fresh. */
+function NdviChip({ reading, lang }: { reading: LandNdviReading | undefined; lang: string }) {
+  const { t } = useTranslation();
+  if (!reading) {
+    return <p className="mt-1 text-[11px] text-muted-foreground">🛰️ {t('alerts.ndvi_none', 'No recent satellite picture')}</p>;
+  }
+  const date = new Date(`${reading.date}T00:00:00`).toLocaleDateString(lang === 'en' ? 'en-IN' : lang, { day: 'numeric', month: 'short' });
+  return (
+    <p className="mt-1 inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+      <Satellite className="h-3 w-3" />
+      <span className="font-semibold text-foreground">{t('alerts.ndvi_chip', { value: formatNdviValue(reading.ndvi), date, defaultValue: 'Satellite {{value}} · {{date}}' })}</span>
+      {!reading.isFresh && <span className="rounded-full bg-muted px-1.5 py-0.5">{t('alerts.ndvi_old', 'old picture')}</span>}
+    </p>
+  );
+}
+
 function Header({
-  t, lang, navigate, showHistory, setShowHistory, unreadCount,
+  t, navigate, showHistory, setShowHistory, unreadCount,
 }: any) {
   return (
     <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border">
       <div className="px-3 py-2 flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-8 w-8 rounded-lg shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-lg shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
@@ -585,54 +570,44 @@ function Header({
         <Button
           variant={showHistory ? 'default' : 'outline'}
           size="sm"
-          className="h-7 text-[11px] gap-1 rounded-full px-2.5 shrink-0"
+          className="h-8 text-[11px] gap-1 rounded-full px-2.5 shrink-0"
           onClick={() => setShowHistory(!showHistory)}
         >
           {showHistory ? <RotateCcw className="h-3 w-3" /> : <History className="h-3 w-3" />}
-          {showHistory
-            ? localized(lang, 'सध्या', 'अभी', 'Current')
-            : localized(lang, 'जुने', 'पुराने', 'History')}
+          {showHistory ? t('alerts.current', 'Current') : t('alerts.history', 'History')}
         </Button>
       </div>
     </div>
   );
 }
 
-function ReportSummary({ summary, lang, avgNdvi }: { summary: any; lang: string; avgNdvi?: number }) {
-  const avgTone = typeof avgNdvi === 'number' ? ndviTone(avgNdvi) : null;
+function ReportSummary({ summary }: { summary: any }) {
+  const { t } = useTranslation();
   const total = summary.total || 0;
   const segments = ([
-    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
-    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH',     short: 'H' },
-    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM',   short: 'M' },
-    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW',      short: 'L' },
-  ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
+    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL' },
+    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH' },
+    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM' },
+    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW' },
+  ] as { tone: Tone; value: number; key: string }[]).filter(s => s.value > 0);
 
   return (
-    <div
-      style={avgTone ? { backgroundColor: avgTone.surface, borderColor: avgTone.border } : undefined}
-      className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3"
-    >
+    <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
       <div className="flex items-baseline gap-1 shrink-0">
         <span className="text-xl font-bold leading-none">{total}</span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-          {localized(lang, 'सूचना', 'अलर्ट', total === 1 ? 'alert' : 'alerts')}
+          {t('alerts.alerts_count', { count: total, defaultValue: 'alerts' })}
         </span>
       </div>
       <span className="text-muted-foreground/40 text-xs">·</span>
       <div className="text-[11px] text-muted-foreground shrink-0">
-        {summary.lands} {localized(lang, 'शेत', 'भूमि', summary.lands === 1 ? 'land' : 'lands')}
+        {t('alerts.land_count', { count: summary.lands || 0, defaultValue: '{{count}} lands' })}
       </div>
       <div className="flex-1 min-w-0">
         {total > 0 && (
           <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
             {segments.map(s => (
-              <div
-                key={s.key}
-                style={{ width: `${(s.value / total) * 100}%` }}
-                className={cn(toneRail[s.tone])}
-                title={`${s.key}: ${s.value}`}
-              />
+              <div key={s.key} style={{ width: `${(s.value / total) * 100}%` }} className={cn(toneRail[s.tone])} title={`${s.key}: ${s.value}`} />
             ))}
           </div>
         )}
@@ -645,23 +620,18 @@ function ReportSummary({ summary, lang, avgNdvi }: { summary: any; lang: string;
           </span>
         ))}
       </div>
-      {avgTone && typeof avgNdvi === 'number' && (
-        <span
-          style={{ backgroundColor: avgTone.softSurface }}
-          className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full text-[11px] font-semibold text-foreground"
-        >
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: avgTone.color }} />
-          🛰️ {formatNdviValue(avgNdvi)}
-        </span>
-      )}
     </div>
   );
 }
 
-
+/** Crop codes are English data identifiers; the emoji is decoration only. */
+const CROP_EMOJI: Array<[string, string]> = [
+  ['sugarcane', '🎋'], ['cotton', '🪶'], ['rice', '🍚'], ['paddy', '🍚'], ['wheat', '🌾'],
+  ['tomato', '🍅'], ['onion', '🧅'], ['grape', '🍇'], ['maize', '🌽'],
+];
 
 function LandCard({
-  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, ndvi, lang,
+  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, ndvi,
 }: {
   active: boolean;
   onClick: () => void;
@@ -672,23 +642,10 @@ function LandCard({
   count: number;
   counts: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
   topPriority?: string;
-  ndvi?: number;
-  lang: string;
+  ndvi?: LandNdviReading;
 }) {
-  const landTone = typeof ndvi === 'number' ? ndviTone(ndvi) : null;
-  const cropToEmoji = (crop?: string | null): string => {
-    if (!crop) return '🌾';
-    const c = crop.toLowerCase();
-    if (c.includes('sugarcane') || c.includes('ऊस')) return '🎋';
-    if (c.includes('cotton') || c.includes('कापूस')) return '🪶';
-    if (c.includes('rice') || c.includes('धान')) return '🍚';
-    if (c.includes('wheat') || c.includes('गहू')) return '🌾';
-    if (c.includes('tomato')) return '🍅';
-    if (c.includes('onion') || c.includes('कांदा')) return '🧅';
-    if (c.includes('grape') || c.includes('द्राक्ष')) return '🍇';
-    return '🌾';
-  };
-  const displayEmoji = emoji ?? land?.crop_emoji ?? cropToEmoji(land?.current_crop);
+  const crop = String(land?.current_crop ?? '').toLowerCase();
+  const displayEmoji = emoji ?? land?.crop_emoji ?? CROP_EMOJI.find(([k]) => crop.includes(k))?.[1] ?? '🌾';
 
   const dotSegs = (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const)
     .map(k => ({ k, v: counts[k] }))
@@ -697,15 +654,9 @@ function LandCard({
   return (
     <button
       onClick={onClick}
-      style={landTone ? { backgroundColor: landTone.surface, borderColor: landTone.border } : undefined}
       className={cn(
-        'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-all flex flex-col gap-1.5',
-        active
-          ? 'ring-1 ring-primary/40 shadow-sm'
-          : 'hover:bg-accent/30',
-        active && !landTone && 'bg-primary/10 border-primary',
-        !active && !landTone && 'bg-card border-border',
-        active && landTone && 'border-primary',
+        'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-all flex flex-col gap-1.5 min-h-11',
+        active ? 'ring-1 ring-primary/40 shadow-sm bg-primary/10 border-primary' : 'bg-card border-border hover:bg-accent/30',
       )}
     >
       <div className="flex items-center justify-between gap-1.5">
@@ -734,12 +685,10 @@ function LandCard({
           ))}
         </div>
       )}
-      {landTone && typeof ndvi === 'number' && (
-        <div className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: landTone.color }} />
-          <span className="text-[9px] font-semibold text-foreground leading-none">
-            NDVI {formatNdviValue(ndvi)}
-          </span>
+      {ndvi && (
+        <div className="flex items-center gap-1 text-[9px] leading-none text-muted-foreground">
+          <Satellite className="h-2.5 w-2.5" />
+          <span className={cn('font-semibold', ndvi.isFresh ? 'text-foreground' : 'text-muted-foreground')}>NDVI {formatNdviValue(ndvi.ndvi)}</span>
         </div>
       )}
     </button>
@@ -758,7 +707,7 @@ function ChipButton({
     <button
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1 h-8 px-3 rounded-full text-xs font-medium transition-colors',
+        'inline-flex items-center gap-1 h-9 px-3 rounded-full text-xs font-medium transition-colors',
         variant === 'primary' && 'bg-primary text-primary-foreground hover:bg-primary/90',
         variant === 'default' && 'bg-muted text-foreground hover:bg-accent/60',
         variant === 'ghost' && 'text-muted-foreground hover:bg-muted',

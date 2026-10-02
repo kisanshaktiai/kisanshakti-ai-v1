@@ -9,8 +9,25 @@
 //   (ndvi.value / ndvi.previous / ndvi.drop) so compiled decision rules can
 //   reference satellite evidence declaratively. This adds a DATA PATH only —
 //   no NDVI thresholds live in code; thresholds come from rule rows.
-//
-// Additive only. No existing evaluation path is modified by this module.
+// 2026-10-02 (proactive audit) — three evidence gates in evaluateEnvRule and
+//   one new derived field:
+//   * crop_in is compared case-insensitively. FLOWERING_HEAT_RISK authors
+//     ["rice","maize","cotton"] while the context carries "RICE", so the rule
+//     could never fire; WATERLOGGING_GUARD authors upper case and kept working.
+//   * A rule that reads any ndvi.* path needs a fresh, supported pass
+//     (ndvi.is_fresh = 1 from v_ndvi_decision_grade, ndvi.evidence_rank >= 1) —
+//     the gate the legacy NDVI branch already applied. PRO_NDVI_DROP fired
+//     CRITICAL every day on a 27-day-old pass without it.
+//   * A rule that reads derived.root_depletion needs a verified water state
+//     (derived.water_state_verified). The weather pipeline's own guard
+//     (isDepletionUnverifiedCeiling) marks a bucket that sat at the ceiling with
+//     no irrigation evidence; no app path records IRRIGATION_APPLIED, so every
+//     irrigated field ratchets there in a dry spell and the guard releases as
+//     soon as a light shower nudges depletion below 98% of TAW. The state stays
+//     unverified until the bucket is known again: an irrigation event, or the
+//     profile back at field capacity (depletion <= 0).
+
+import { isDepletionUnverifiedCeiling, UNVERIFIED_LOOKBACK_DAYS } from '../weather/water-events.ts';
 
 export interface DerivedEpisode {
   risk_code: string;
@@ -42,6 +59,9 @@ export interface DerivedState {
   n_sd_ratio: number | null;
   confidence: number | null;
   as_of: string | null;
+  /** true = the root-zone bucket rests on known ground (see isWaterStateVerified);
+   *  false = it may have ratcheted without ground truth; null = no rows. */
+  water_state_verified: boolean | null;
   active_episodes: DerivedEpisode[];
 }
 
@@ -53,9 +73,37 @@ export function emptyDerived(): DerivedState {
     water_deficit: null, root_depletion: null, raw_mm: null, taw_mm: null,
     irrigation_urgency: null, harvest_window: null,
     rain_24h: null, infiltration_cap: null, swsi: null, swsi_class: null, n_sd_ratio: null,
-    confidence: null, as_of: null,
+    confidence: null, as_of: null, water_state_verified: null,
     active_episodes: [],
   };
+}
+
+/** One land_weather_state row as the water-state check reads it. */
+export interface WaterStateRow {
+  metric_date: string;
+  root_depletion_mm: number | null;
+  taw_mm: number | null;
+  irrigation_mm_applied: number | null;
+  irrigation_events_used: number | null;
+}
+
+/**
+ * Walk the look-back window newest → oldest. The bucket is known again at the
+ * newest day with an irrigation event or with the profile at field capacity
+ * (depletion <= 0, definitional); anything older does not matter. Before that
+ * point, any day that meets the pipeline's own unverified-ceiling test makes
+ * today's state unverified. No rows → null (unknown, callers fail closed).
+ */
+export function isWaterStateVerified(rowsNewestFirst: WaterStateRow[]): boolean | null {
+  if (rowsNewestFirst.length === 0) return null;
+  const hadIrrigation = rowsNewestFirst.some((r) => (num(r.irrigation_events_used) ?? 0) > 0);
+  for (const r of rowsNewestFirst) {
+    const depl = num(r.root_depletion_mm);
+    if ((num(r.irrigation_events_used) ?? 0) > 0) return true;
+    if (depl != null && depl <= 0) return true;
+    if (isDepletionUnverifiedCeiling(depl, num(r.taw_mm), num(r.irrigation_mm_applied) ?? 0, hadIrrigation)) return false;
+  }
+  return true;
 }
 
 /** derived key -> env_property_master.property_code (for the farmer-visibility guard) */
@@ -95,7 +143,8 @@ export async function batchLoadDerived(
   const map = new Map<string, DerivedState>();
   if (!landIds.length) return map;
 
-  const [lwsRes, gddRes, epRes] = await Promise.all([
+  const windowStart = new Date(Date.now() - UNVERIFIED_LOOKBACK_DAYS * 86400000).toISOString().slice(0, 10);
+  const [lwsRes, gddRes, epRes, waterRes] = await Promise.all([
     supabase.from('land_weather_state')
       .select('land_id, metric_date, et0_mm, et0_pm, et0_method, vpd_kpa, lwd_est_hours, spray_score, frost_risk_score, heat_stress_dh, cold_stress_dh, water_deficit_mm, root_depletion_mm, raw_mm, taw_mm, irrigation_urgency, harvest_window_score, rain_24h_mm, infiltration_cap_mm, swsi, swsi_class, n_sd_ratio, confidence')
       .in('land_id', landIds)
@@ -111,7 +160,19 @@ export async function batchLoadDerived(
       .in('land_id', landIds)
       .neq('phase', 'ended')
       .limit(2000),
+    supabase.from('land_weather_state')
+      .select('land_id, metric_date, root_depletion_mm, taw_mm, irrigation_mm_applied, irrigation_events_used')
+      .in('land_id', landIds)
+      .gte('metric_date', windowStart)
+      .order('metric_date', { ascending: false })
+      .limit(landIds.length * (UNVERIFIED_LOOKBACK_DAYS + 2)),
   ]);
+
+  const waterRows = new Map<string, WaterStateRow[]>();
+  for (const r of (waterRes.data || [])) {
+    if (!waterRows.has(r.land_id)) waterRows.set(r.land_id, []);
+    waterRows.get(r.land_id)!.push(r);
+  }
 
   for (const row of (lwsRes.data || [])) {
     if (map.has(row.land_id)) continue; // newest metric_date wins
@@ -138,6 +199,7 @@ export async function batchLoadDerived(
       n_sd_ratio: num(row.n_sd_ratio),
       confidence: num(row.confidence),
       as_of: row.metric_date ?? null,
+      water_state_verified: waterRes.error ? null : isWaterStateVerified(waterRows.get(row.land_id) ?? []),
       active_episodes: [],
     });
   }
@@ -285,15 +347,32 @@ export function evaluateEnvRule(
   const reasons: string[] = [];
   let episodePhase: string | null = null;
 
-  // Crop scoping (crop_in) — crop-agnostic when absent
+  // Crop scoping (crop_in) — crop-agnostic when absent; authors write either case.
   if (Array.isArray(conditions.crop_in) && conditions.crop_in.length > 0) {
-    if (!ctx.crop_code || !conditions.crop_in.includes(ctx.crop_code)) {
+    const allowed = conditions.crop_in.map((c: unknown) => String(c ?? '').trim().toUpperCase());
+    if (!ctx.crop_code || !allowed.includes(String(ctx.crop_code).trim().toUpperCase())) {
       return notFired(`crop ${ctx.crop_code ?? 'unknown'} not in ${conditions.crop_in.join('/')}`, triggerData);
     }
   }
 
   const preds: any[] = Array.isArray(conditions.all) ? conditions.all : [];
   if (preds.length === 0) return notFired('no predicates', triggerData);
+
+  // Evidence gates — judged on what the rule reads, never on its name.
+  const reads = (prefix: string) => preds.some((p) =>
+    (typeof p?.path === 'string' && p.path.startsWith(prefix)) ||
+    (typeof p?.field === 'string' && p.field.startsWith(prefix)));
+  if (reads('ndvi.')) {
+    if (ctx.ndvi?.is_fresh !== 1) {
+      return notFired(`NDVI pass not fresh (age ${ctx.ndvi?.age_days ?? '?'} d)`, triggerData);
+    }
+    if ((ctx.ndvi?.evidence_rank ?? 0) < 1) return notFired('NDVI evidence insufficient', triggerData);
+  }
+  if (reads('derived.root_depletion') && ctx.derived.water_state_verified !== true) {
+    return notFired(ctx.derived.water_state_verified === false
+      ? 'root-zone water state unverified (bucket at ceiling with no irrigation evidence)'
+      : 'root-zone water state unknown', triggerData);
+  }
 
   for (const p of preds) {
     if (p.episode) {

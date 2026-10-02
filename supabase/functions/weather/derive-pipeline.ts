@@ -61,6 +61,7 @@ import {
   REASON_DEPLETION_UNVERIFIED_CEILING,
   rootZoneIrrigationDecision,
   summarizeIrrigationEvents,
+  UNVERIFIED_LOOKBACK_DAYS,
 } from "./water-events.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -297,7 +298,7 @@ export async function deriveLandDaily(
     // previous-21-day window for the unverified-ceiling guard.
     supabase.from("crop_lifecycle_events").select("id, payload, created_at")
       .eq("land_id", land.id).eq("event_type", "IRRIGATION_APPLIED")
-      .gte("created_at", new Date(anchor.getTime() - 21 * 86400000).toISOString())
+      .gte("created_at", new Date(anchor.getTime() - UNVERIFIED_LOOKBACK_DAYS * 86400000).toISOString())
       .lt("created_at", new Date(anchor.getTime() + 86400000).toISOString()),
   ]);
 

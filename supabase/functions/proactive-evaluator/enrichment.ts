@@ -14,6 +14,9 @@
 // diagnosis, threshold, or treatment not present verbatim in the symbolic
 // payload. It never writes trigger_data.solution. Enrichment only fills
 // NULL/empty text fields — symbolic text always wins.
+// 2026-10-02 (v128): enrichment never writes action_text_*. An action is a
+// suggestion, and suggestions come only from trigger_data.graph_advice
+// (decision-brain graph). An empty action field used to be filled by the model.
 // =====================================================
 
 import type { EvaluatorConfig } from './config.ts';
@@ -46,15 +49,14 @@ export async function enrichAndUpdateAlerts(
         evidence: alert.trigger_data ?? {},
         title_en: alert.title_en ?? null,
         message_en: alert.message_en ?? null,
-        action_en: alert.action_text_en ?? null,
-        symbolic_solution: alert.trigger_data?.solution ?? null,
+        graph_advice: alert.trigger_data?.graph_advice ?? null,
       };
 
       const inventionClause = cfg.neural_invention_allowed === true
         ? '' // explicit config override only; OFF in production
-        : `\nHARD PROHIBITIONS (violating any of these makes the output unusable):\n- Do NOT introduce ANY product name, trade name, chemical, active ingredient, dosage, quantity, concentration, or application rate that does not appear VERBATIM in the symbolic data above.\n- Do NOT invent a diagnosis, threshold, treatment, timing window, or scientific claim.\n- Do NOT change any number present in the symbolic data.\n- If the symbolic data contains no treatment, the rephrased text must contain no treatment — advise field inspection only.\n- You are a TRANSLATOR and SIMPLIFIER of the decision brain's output, never a decision maker.`;
+        : `\nHARD PROHIBITIONS (violating any of these makes the output unusable):\n- Do NOT introduce ANY product name, trade name, chemical, active ingredient, dosage, quantity, concentration, or application rate that does not appear VERBATIM in the symbolic data above.\n- Do NOT invent a diagnosis, threshold, treatment, timing window, or scientific claim.\n- Do NOT change any number present in the symbolic data.\n- If the symbolic data contains no treatment, the rephrased text must contain no treatment and no advice of its own.\n- You are a TRANSLATOR and SIMPLIFIER of the decision brain's output, never a decision maker.`;
 
-      const prompt = `You rewrite farm advisories into simple rural Marathi, Hindi, and English for smallholder farmers. Work ONLY from the symbolic decision data below — it is the single source of truth.\n\nSYMBOLIC DECISION DATA (single source of truth):\n${JSON.stringify(symbolicFacts, null, 2)}\n${inventionClause}\n\nReturn JSON:\n{\n  "title_mr": "Marathi title (max 15 words, simple rural language)",\n  "title_hi": "Hindi title (max 15 words)",\n  "title_en": "English title (max 15 words)",\n  "message_mr": "Marathi rephrasing of message_en using only facts above (50-120 words)",\n  "message_hi": "Hindi rephrasing (50-120 words)",\n  "message_en": "Clearer English rephrasing (50-120 words)",\n  "action_mr": "Marathi rephrasing of action_en (max 30 words)",\n  "action_hi": "Hindi rephrasing (max 30 words)",\n  "action_en": "Clearer English rephrasing (max 30 words)"\n}`;
+      const prompt = `You rewrite farm advisories into simple rural Marathi, Hindi, and English for smallholder farmers. Work ONLY from the symbolic decision data below — it is the single source of truth.\n\nSYMBOLIC DECISION DATA (single source of truth):\n${JSON.stringify(symbolicFacts, null, 2)}\n${inventionClause}\n\nReturn JSON:\n{\n  "title_mr": "Marathi title (max 15 words, simple rural language)",\n  "title_hi": "Hindi title (max 15 words)",\n  "title_en": "English title (max 15 words)",\n  "message_mr": "Marathi rephrasing of message_en using only facts above (50-120 words)",\n  "message_hi": "Hindi rephrasing (50-120 words)",\n  "message_en": "Clearer English rephrasing (50-120 words)"\n}`;
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -88,11 +90,7 @@ export async function enrichAndUpdateAlerts(
       if (enriched.message_mr && !alert.message_mr) updateData.message_mr = enriched.message_mr;
       if (enriched.message_hi && !alert.message_hi) updateData.message_hi = enriched.message_hi;
       if (enriched.message_en && !alert.message_en) updateData.message_en = enriched.message_en;
-      if (enriched.action_mr && !alert.action_text_mr) updateData.action_text_mr = enriched.action_mr;
-      if (enriched.action_hi && !alert.action_text_hi) updateData.action_text_hi = enriched.action_hi;
-      if (enriched.action_en && !alert.action_text_en) updateData.action_text_en = enriched.action_en;
-      // F4: the LLM never writes into trigger_data.solution — the symbolic
-      // solution object is decision-brain output and stays untouched.
+      // v128: no action_text_* and no trigger_data writes — advice is graph output only.
 
       if (Object.keys(updateData).length === 0) continue;
       await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
