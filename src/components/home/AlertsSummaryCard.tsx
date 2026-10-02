@@ -8,12 +8,14 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { alertSourceText, useTranslatedTexts } from '@/hooks/useAlertText';
 
 interface AlertSummary {
   id: string;
   title_en: string;
   title_mr: string | null;
   title_hi: string | null;
+  [langColumn: string]: unknown;
   priority: string;
   alert_category: string;
   created_at: string;
@@ -41,11 +43,14 @@ export function AlertsSummaryCard() {
     const fetchRecentAlerts = async () => {
       console.log('[AlertsSummaryCard] Fetching alerts for farmer:', user.id);
       
+      // Live = open status and not past expiry (same rule as the alerts screen).
+      const nowIso = new Date().toISOString();
       const { data, error } = await supabase
         .from('proactive_alerts')
-        .select('id, title_en, title_mr, title_hi, priority, alert_category, created_at, land_id')
+        .select('*')
         .eq('farmer_id', user.id)
         .in('status', ['PENDING', 'DELIVERED', 'SEEN'])
+        .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
         .order('created_at', { ascending: false })
         .limit(3);
 
@@ -64,38 +69,30 @@ export function AlertsSummaryCard() {
         .from('proactive_alerts')
         .select('id', { count: 'exact', head: true })
         .eq('farmer_id', user.id)
-        .in('status', ['PENDING', 'DELIVERED']);
+        .in('status', ['PENDING', 'DELIVERED'])
+        .or(`expires_at.is.null,expires_at.gt.${nowIso}`);
 
       setTotalUnread(count || 0);
 
-      // Fetch land names
-      const landIds = [...new Set(data.map(a => a.land_id).filter(Boolean))];
-      let landMap: Record<string, string> = {};
-      if (landIds.length > 0) {
-        const { data: lands } = await supabase
-          .from('lands')
-          .select('id, name')
-          .in('id', landIds as string[]);
-        if (lands) {
-          landMap = Object.fromEntries(lands.map(l => [l.id, l.name]));
-        }
-      }
-
-      setAlerts(data.map(a => ({
+      // Land name from the alert itself: a direct lands read returns no rows
+      // under the farmer session token (RLS), so names never showed here.
+      setAlerts(data.map((a) => ({
         ...a,
-        land_name: a.land_id ? landMap[a.land_id] : undefined,
-      })));
+        land_name: (a.trigger_data as { land_name?: string } | null)?.land_name ?? undefined,
+      })) as AlertSummary[]);
     };
 
     fetchRecentAlerts();
   }, [user?.id]);
 
+  const titleSources = alerts.map((a) => alertSourceText(a, 'title', lang));
+  const { tr } = useTranslatedTexts(titleSources.filter((x) => x.needsTranslation).map((x) => x.text), lang);
+
   if (alerts.length === 0) return null;
 
   const getTitle = (a: AlertSummary) => {
-    if (lang === 'mr') return a.title_mr || a.title_en;
-    if (lang === 'hi') return a.title_hi || a.title_en;
-    return a.title_en;
+    const src = alertSourceText(a, 'title', lang);
+    return src.needsTranslation ? tr(src.text) : src.text;
   };
 
   return (
@@ -150,7 +147,7 @@ export function AlertsSummaryCard() {
                     )}
                   </div>
                   <Badge variant="outline" className={cn("text-[9px] px-1 py-0", config.color)}>
-                    {alert.priority}
+                    {t(`proactive.priority.${alert.priority.toLowerCase()}`, alert.priority)}
                   </Badge>
                 </Link>
               );

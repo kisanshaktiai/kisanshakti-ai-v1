@@ -1,309 +1,275 @@
 import { useTranslation } from 'react-i18next';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Eye, Droplets, Shield, Leaf, Target, Clock, CheckCircle2, AlertTriangle, Lightbulb } from 'lucide-react';
+import { ChevronDown, Eye, Droplets, BookOpen, Ban, AlertTriangle, CheckCircle2, Info, Satellite, CloudSun, Sprout } from 'lucide-react';
 import { useState, forwardRef } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useTranslatedTexts } from '@/hooks/useAlertText';
 
+/**
+ * The part of an alert card that says what to do and why.
+ *
+ * What to do comes ONLY from trigger_data.graph_advice — rows of the decision
+ * brain's hypothesis → rule graph that the evaluator found applicable to this
+ * field's crop, stage, day count, region and sowing method, never a dose. The
+ * older trigger_data.solution object (generic text the evaluator wrote when it
+ * could not find a rule) is not shown.
+ *
+ * Why comes from the values the rule was judged on (context, weather,
+ * satellite, soil water), copied by the evaluator into trigger_data. Anything
+ * missing is left out, never filled in. All words are i18n keys; graph text is
+ * English in the DB and is translated on demand.
+ */
 interface AlertEvidenceSectionProps {
   triggerData: Record<string, any>;
-  reasoning: string | null;
-  riskBand?: 'low' | 'moderate' | 'attention' | 'high' | 'critical';
-  /** Crop-health tint inherited from the parent alert card. */
-  toneSurface?: string;
-  toneBorder?: string;
+  category: string;
 }
 
-const RISK_SOLUTION_SURFACE = {
-  low: 'border-success bg-success-soft text-foreground',
-  moderate: 'border-primary bg-primary/10 text-foreground',
-  attention: 'border-warning bg-warning-soft text-foreground',
-  high: 'border-destructive bg-destructive-soft text-foreground',
-  critical: 'border-destructive bg-destructive-soft text-foreground',
-} as const;
-
-// All labels are trilingual — no hardcoded sentences
-const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; mr: string; hi: string }> = {
-  temp: { icon: '🌡️', unit: '°C', en: 'Temperature', mr: 'तापमान', hi: 'तापमान' },
-  humidity: { icon: '💧', unit: '%', en: 'Humidity', mr: 'आर्द्रता', hi: 'नमी' },
-  rain_mm: { icon: '🌧️', unit: 'mm', en: 'Rainfall', mr: 'पाऊस', hi: 'वर्षा' },
-  wind: { icon: '💨', unit: 'km/h', en: 'Wind Speed', mr: 'वाऱ्याचा वेग', hi: 'हवा की गति' },
-  ndvi: { icon: '🛰️', unit: '', en: 'Crop Health (NDVI)', mr: 'पीक आरोग्य (NDVI)', hi: 'फसल स्वास्थ्य (NDVI)' },
-  ndvi_previous: { icon: '🛰️', unit: '', en: 'Previous NDVI', mr: 'मागील NDVI', hi: 'पिछला NDVI' },
-  drop: { icon: '📉', unit: '', en: 'NDVI Drop', mr: 'NDVI घट', hi: 'NDVI गिरावट' },
-  das: { icon: '📅', unit: '', en: 'Days After Sowing', mr: 'पेरणीनंतर दिवस', hi: 'बुवाई के बाद दिन' },
-  soil_n: { icon: '🧪', unit: ' kg/ha', en: 'Nitrogen (N)', mr: 'नायट्रोजन (N)', hi: 'नाइट्रोजन (N)' },
-  soil_p: { icon: '🧪', unit: ' kg/ha', en: 'Phosphorus (P)', mr: 'स्फुरद (P)', hi: 'फॉस्फोरस (P)' },
-  soil_k: { icon: '🧪', unit: ' kg/ha', en: 'Potassium (K)', mr: 'पालाश (K)', hi: 'पोटैशियम (K)' },
-  soil_ph: { icon: '⚗️', unit: '', en: 'Soil pH', mr: 'माती pH', hi: 'मिट्टी pH' },
-  organic_carbon: { icon: '🌱', unit: '%', en: 'Organic Carbon', mr: 'सेंद्रिय कर्ब', hi: 'जैविक कार्बन' },
-  forecast_rain_72h: { icon: '🌦️', unit: '%', en: 'Rain Forecast (72h)', mr: 'पावसाचा अंदाज (72h)', hi: 'वर्षा पूर्वानुमान (72h)' },
-  gdd: { icon: '🔥', unit: '', en: 'Growth Degree Days', mr: 'वाढ डिग्री दिवस', hi: 'ग्रोथ डिग्री डेज' },
-  days_to_harvest: { icon: '🌾', unit: '', en: 'Days to Harvest', mr: 'कापणीसाठी दिवस', hi: 'कटाई तक दिन' },
-  phi_days: { icon: '⚠️', unit: '', en: 'Pre-Harvest Interval', mr: 'कापणीपूर्व कालावधी', hi: 'कटाई पूर्व अंतराल' },
-  stage: { icon: '🌱', unit: '', en: 'Growth Stage', mr: 'वाढीचा टप्पा', hi: 'विकास चरण' },
-  area_acres: { icon: '📐', unit: ' acres', en: 'Field Area', mr: 'शेत क्षेत्र', hi: 'खेत का क्षेत्रफल' },
-  soil_type: { icon: '🏔️', unit: '', en: 'Soil Type', mr: 'माती प्रकार', hi: 'मिट्टी का प्रकार' },
-  irrigation_method: { icon: '🚿', unit: '', en: 'Irrigation Method', mr: 'सिंचन पद्धत', hi: 'सिंचाई विधि' },
-  threshold: { icon: '📏', unit: '', en: 'Threshold', mr: 'मर्यादा', hi: 'सीमा' },
-  crop: { icon: '🌾', unit: '', en: 'Crop', mr: 'पीक', hi: 'फसल' },
-  water_source: { icon: '💧', unit: '', en: 'Water Source', mr: 'पाण्याचा स्रोत', hi: 'पानी का स्रोत' },
+type AdviceItem = {
+  rule_id: string; cause_name_en: string | null; rule_intent: string | null;
+  action_text: string | null; category: string | null;
 };
 
-// Trilingual section headers
-const SECTION_HEADERS: Record<string, { mr: string; hi: string; en: string }> = {
-  problem: { mr: 'समस्या', hi: 'समस्या', en: 'Problem' },
-  cause: { mr: 'कारण', hi: 'कारण', en: 'Why' },
-  steps: { mr: 'काय करावे', hi: 'क्या करें', en: 'What To Do' },
-  safety: { mr: 'सुरक्षा', hi: 'सुरक्षा', en: 'Safety' },
-  organic_alt: { mr: 'सेंद्रिय पर्याय', hi: 'जैविक विकल्प', en: 'Organic Alternative' },
-  expected_benefit: { mr: 'अपेक्षित फायदा', hi: 'अपेक्षित लाभ', en: 'Expected Result' },
-  followup: { mr: 'पुढील तपासणी', hi: 'अगली जांच', en: 'Follow-up' },
-  irrigation: { mr: 'सिंचन सल्ला', hi: 'सिंचाई सलाह', en: 'Irrigation Advice' },
-  evidence: { mr: 'हा इशारा का? (पुरावा)', hi: 'यह अलर्ट क्यों? (प्रमाण)', en: 'Why this alert? (Evidence)' },
-  total_water: { mr: 'एकूण पाणी', hi: 'कुल पानी', en: 'Total Water' },
-  per_acre: { mr: 'प्रति एकर', hi: 'प्रति एकड़', en: 'Per Acre' },
-  duration: { mr: 'कालावधी', hi: 'अवधि', en: 'Duration' },
-  method: { mr: 'पद्धत', hi: 'विधि', en: 'Method' },
-  hours: { mr: 'तास', hi: 'घंटे', en: 'hrs' },
+const INTENT_UI: Record<string, { icon: React.ElementType; cls: string }> = {
+  block:          { icon: Ban,           cls: 'bg-destructive/10 text-destructive border-destructive/30' },
+  warning:        { icon: AlertTriangle, cls: 'bg-warning/15 text-warning-foreground border-warning/30' },
+  command:        { icon: CheckCircle2,  cls: 'bg-primary/10 text-primary border-primary/30' },
+  recommendation: { icon: Info,          cls: 'bg-muted text-foreground border-border' },
+  education:      { icon: BookOpen,      cls: 'bg-muted text-foreground border-border' },
 };
 
-const URGENCY_LABELS: Record<string, { en: string; mr: string; hi: string; color: string }> = {
-  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-destructive text-destructive-foreground' },
-  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-warning text-warning-foreground' },
-  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-warning text-warning-foreground' },
-};
-
-function getLabel(key: string, lang: string): string {
-  const config = EVIDENCE_LABELS[key];
-  if (!config) return key.replace(/_/g, ' ');
-  if (lang === 'mr') return config.mr;
-  if (lang === 'hi') return config.hi;
-  return config.en;
-}
-
-function getHeader(key: string, lang: string): string {
-  const h = SECTION_HEADERS[key];
-  if (!h) return key;
-  return h[lang as 'mr' | 'hi' | 'en'] || h.en;
-}
-
-function getSolutionField(solution: any, field: string, lang: string): string {
-  if (!solution) return '';
-  const key = `${field}_${lang === 'mr' ? 'mr' : lang === 'hi' ? 'hi' : 'en'}`;
-  return solution[key] || solution[`${field}_en`] || '';
-}
-
-function getSolutionSteps(solution: any, lang: string): string[] {
-  if (!solution) return [];
-  const key = `steps_${lang === 'mr' ? 'mr' : lang === 'hi' ? 'hi' : 'en'}`;
-  return solution[key] || solution.steps_en || [];
-}
+const num = (v: unknown): number | null => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const fmt = (v: number | null, digits = 1) => (v == null ? null : Number.isInteger(v) ? String(v) : v.toFixed(digits));
+const stageKey = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '');
 
 export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSectionProps>(
-  function AlertEvidenceSection({ triggerData, reasoning, riskBand = 'moderate', toneSurface, toneBorder }, ref) {
-  const { i18n } = useTranslation();
-  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
-  const lang = i18n.language || 'en';
+  function AlertEvidenceSection({ triggerData, category }, ref) {
+    const { t, i18n } = useTranslation();
+    const lang = i18n.language || 'en';
+    const reduceMotion = useReducedMotion();
+    const [adviceOpen, setAdviceOpen] = useState(false);
+    const [evidenceOpen, setEvidenceOpen] = useState(false);
 
-  const irrigation = triggerData.irrigation;
-  const solution = triggerData.solution;
+    const advice: AdviceItem[] = Array.isArray(triggerData?.graph_advice?.items) ? triggerData.graph_advice.items : [];
+    const hasGraphField = triggerData && 'graph_advice' in triggerData;
+    // Graph text is translated only when the farmer opens the section.
+    const adviceTexts = adviceOpen ? advice.flatMap((a) => [a.action_text ?? '', a.cause_name_en ?? '']).filter(Boolean) : [];
+    const { tr, pending } = useTranslatedTexts(adviceTexts, lang);
 
-  const displayKeys = Object.keys(triggerData).filter(
-    k => !['decision_rule_id', 'condition_code', 'knowledge', 'threshold', 'irrigation', 'solution'].includes(k)
-  );
+    const stageLabel = (s: string | null | undefined) => (s ? t(`sky.stage.${stageKey(s)}`, s.replace(/_/g, ' ').toLowerCase()) : null);
+    const ctx = triggerData?.context ?? null;
+    // Litres are shown only on alerts built by evaluator v128+ (they carry graph_advice),
+    // which attaches them on a verified water state; older rows computed them regardless.
+    const irrigation = category === 'IRRIGATION' && hasGraphField ? triggerData?.irrigation : null;
 
-  if (displayKeys.length === 0 && !reasoning && !irrigation && !solution) return null;
+    // Soil-water rows belong to water and crop-stress alerts only.
+    const showsWater = category === 'IRRIGATION' || category === 'CROP_STRESS';
+    const rows = buildEvidenceRows(triggerData, t, lang, stageLabel).filter((r) => showsWater || r.group !== 'water');
+    const waterUnverified = showsWater && triggerData?.derived?.water_state_verified === false;
 
-  const problem = getSolutionField(solution, 'problem', lang);
-  const cause = getSolutionField(solution, 'cause', lang);
-  const steps = getSolutionSteps(solution, lang);
-  const safety = getSolutionField(solution, 'safety', lang);
-  const organicAlt = getSolutionField(solution, 'organic_alt', lang);
-  const expectedBenefit = getSolutionField(solution, 'expected_benefit', lang);
-  const followup = getSolutionField(solution, 'followup', lang);
-
-  const sectionTitle = (icon: React.ReactNode, headerKey: string, inverse = false) => {
     return (
-      <div className="flex items-center gap-1.5 mb-1">
-        {icon}
-        <span className={cn(
-          'text-sm font-extrabold uppercase',
-          inverse ? 'text-current' : 'text-foreground',
-        )}>{getHeader(headerKey, lang)}</span>
-      </div>
-    );
-  };
+      <div ref={ref} className="mt-3 space-y-2">
+        {/* === WHAT TO DO — decision-graph rows only === */}
+        {advice.length > 0 && (
+          <Collapsible open={adviceOpen} onOpenChange={setAdviceOpen}>
+            <CollapsibleTrigger className="w-full flex min-h-11 items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 text-left">
+              <BookOpen className="h-4 w-4 text-primary shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-foreground">{t('alerts.advice.title', 'What the crop knowledge base says')}</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {t('alerts.advice.count', { count: advice.length, defaultValue: '{{count}} steps for this stage' })}
+                  {ctx?.stage && ctx?.das != null && ` · ${t('alerts.advice.basis', { stage: stageLabel(ctx.stage), das: ctx.das, defaultValue: '{{stage}}, day {{das}}' })}`}
+                </span>
+              </span>
+              <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', adviceOpen && 'rotate-180')} />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 space-y-2">
+              {pending && <p className="text-[11px] text-muted-foreground px-1">{t('alerts.advice.translating', 'Translating…')}</p>}
+              {advice.map((a, i) => (
+                <motion.div key={a.rule_id} initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : i * 0.05 }}>
+                  <AdviceCard item={a} text={tr(a.action_text ?? '')} cause={a.cause_name_en ? tr(a.cause_name_en) : null} />
+                </motion.div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        {/* linked rule, but nothing in the graph applies to this crop/stage/region */}
+        {triggerData?.graph_advice && advice.length === 0 && (
+          <p className="flex items-start gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+            <BookOpen className="h-4 w-4 shrink-0 mt-px" />{t('alerts.advice.none', 'The knowledge base has no specific step for this stage. Walk the field and ask if something looks wrong.')}
+          </p>
+        )}
 
-  return (
-    <div ref={ref} className="mt-3 space-y-2">
-      {/* === SOLUTION CARD (from neural enrichment) === */}
-      {solution && (
-        <div
-          style={toneSurface ? { backgroundColor: toneSurface, borderColor: toneBorder } : undefined}
-          className={cn(
-            'rounded-xl border p-3 space-y-4 shadow-sm',
-            toneSurface ? 'text-foreground' : RISK_SOLUTION_SURFACE[riskBand],
-          )}
-        >
-          {(problem || cause) && (
-            <div className="space-y-1.5">
-              {problem && (
-                <div>
-                  {sectionTitle(<AlertTriangle className="h-3 w-3" />, 'problem', true)}
-                  <p className="text-sm font-semibold text-current leading-relaxed">{problem}</p>
-                </div>
-              )}
-              {cause && (
-                <div>
-                  {sectionTitle(<Lightbulb className="h-3 w-3" />, 'cause', true)}
-                  <p className="text-sm font-semibold text-current leading-relaxed">{cause}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {steps.length > 0 && (
-            <div>
-              {sectionTitle(<Target className="h-3 w-3" />, 'steps', true)}
-              <div className="space-y-2">
-                {steps.map((step, i) => (
-                  <div key={i} className="flex items-start gap-3 text-base font-semibold leading-relaxed">
-                    <span className="shrink-0 w-7 h-7 rounded-full bg-background text-foreground flex items-center justify-center text-sm font-extrabold mt-0.5">
-                      {i + 1}
-                    </span>
-                    <p className="text-current leading-relaxed">{step}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {safety && (
-            <div className="bg-background text-foreground border border-border rounded-lg p-2">
-              {sectionTitle(<Shield className="h-3 w-3 text-destructive" />, 'safety')}
-              <p className="text-sm font-semibold text-foreground leading-relaxed">{safety}</p>
-            </div>
-          )}
-
-          {organicAlt && (
-            <div className="bg-background text-foreground border border-border rounded-lg p-2">
-              {sectionTitle(<Leaf className="h-3 w-3 text-success" />, 'organic_alt')}
-              <p className="text-sm font-semibold text-foreground leading-relaxed">{organicAlt}</p>
-            </div>
-          )}
-
-          {(expectedBenefit || followup) && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {expectedBenefit && (
-                <div className="flex-1 bg-background text-foreground rounded-lg p-2">
-                  {sectionTitle(<CheckCircle2 className="h-3 w-3 text-success" />, 'expected_benefit')}
-                  <p className="text-sm font-semibold text-foreground leading-relaxed">{expectedBenefit}</p>
-                </div>
-              )}
-              {followup && (
-                <div className="flex-1 bg-background text-foreground rounded-lg p-2">
-                  {sectionTitle(<Clock className="h-3 w-3 text-info" />, 'followup')}
-                  <p className="text-sm font-semibold text-foreground leading-relaxed">{followup}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* === IRRIGATION CARD === */}
-      {irrigation && (
-        <div className="rounded-lg border-2 border-info bg-background p-3 space-y-3 text-foreground">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-info-soft dark:bg-info flex items-center justify-center">
-              <Droplets className="h-4 w-4 text-info" />
-            </div>
-            <div className="flex-1">
-              <p className="text-base font-extrabold text-foreground">
-                💧 {getHeader('irrigation', lang)}
-              </p>
+        {/* === WATERING PLAN — FAO-56, IRRIGATION alerts on a verified water state only === */}
+        {irrigation && (
+          <div className="rounded-xl border border-info/40 bg-background p-3 space-y-2 text-foreground">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-full bg-info/15 grid place-items-center"><Droplets className="h-4 w-4 text-info" /></span>
+              <p className="flex-1 text-sm font-bold">{t('alerts.water.title', 'Watering plan')}</p>
               {irrigation.urgency && (
-                <Badge className={cn('mt-1 px-2 py-0.5 text-xs font-bold', URGENCY_LABELS[irrigation.urgency]?.color || 'bg-muted text-foreground')}>
-                  {URGENCY_LABELS[irrigation.urgency]?.[lang as keyof typeof URGENCY_LABELS['IMMEDIATE']] || irrigation.urgency}
+                <Badge className={cn('px-2 py-0.5 text-xs font-bold', irrigation.urgency === 'IMMEDIATE' ? 'bg-destructive text-destructive-foreground' : 'bg-warning text-warning-foreground')}>
+                  {t(`alerts.water.urgency_${irrigation.urgency}`, String(irrigation.urgency))}
                 </Badge>
               )}
             </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded border border-border bg-card px-2 py-2">
-              <p className="text-xs font-bold text-foreground">{getHeader('total_water', lang)}</p>
-              <p className="text-base font-extrabold text-foreground">
-                {Number(irrigation.water_liters_total).toLocaleString()} L
-              </p>
-            </div>
-            <div className="rounded border border-border bg-card px-2 py-2">
-              <p className="text-xs font-bold text-foreground">{getHeader('per_acre', lang)}</p>
-              <p className="text-base font-extrabold text-foreground">
-                {Number(irrigation.water_liters_per_acre).toLocaleString()} L
-              </p>
-            </div>
-            <div className="rounded border border-border bg-card px-2 py-2">
-              <p className="text-xs font-bold text-foreground">{getHeader('duration', lang)}</p>
-              <p className="text-base font-extrabold text-foreground">
-                {irrigation.duration_hours} {getHeader('hours', lang)}
-              </p>
-            </div>
-            <div className="rounded border border-border bg-card px-2 py-2">
-              <p className="text-xs font-bold text-foreground">{getHeader('method', lang)}</p>
-              <p className="text-base font-extrabold text-foreground">
-                {irrigation.method}
-              </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Stat label={t('alerts.water.total', 'Total water')} value={`${Number(irrigation.water_liters_total).toLocaleString(lang)} L`} />
+              <Stat label={t('alerts.water.per_acre', 'Per acre')} value={`${Number(irrigation.water_liters_per_acre).toLocaleString(lang)} L`} />
+              <Stat label={t('alerts.water.duration', 'Time')} value={t('alerts.water.hours', { value: irrigation.duration_hours, defaultValue: '{{value}} h' })} />
+              <Stat label={t('alerts.water.method', 'Method')} value={t(`alerts.water.method_${String(irrigation.method).toUpperCase()}`, String(irrigation.method))} />
             </div>
           </div>
-          
-          {irrigation.timing && (
-            <p className="text-sm font-semibold text-foreground">
-              ⏰ {irrigation.timing}
-            </p>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* === EVIDENCE COLLAPSIBLE === */}
-      {(displayKeys.length > 0 || reasoning) && (
-        <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
-          <CollapsibleTrigger className="flex min-h-11 items-center gap-2 text-sm font-bold text-foreground transition-colors">
-            <Eye className="h-4 w-4" />
-            <span>{getHeader('evidence', lang)}</span>
-            <ChevronDown className={`h-4 w-4 transition-transform ${isEvidenceOpen ? 'rotate-180' : ''}`} />
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2">
-            <div className="rounded-lg border border-border bg-card p-3 space-y-2 text-sm">
-              {reasoning && (
-                <p className="font-semibold text-foreground mb-2">{reasoning}</p>
-              )}
-              {displayKeys.map(key => {
-                const config = EVIDENCE_LABELS[key];
-                const value = triggerData[key];
-                if (value === null || value === undefined) return null;
-                const displayValue = typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(2)) : String(value);
-                return (
-                  <div key={key} className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground">
-                      {config?.icon || '📊'} {getLabel(key, lang)}
-                    </span>
-                    <span className="font-extrabold text-foreground">
-                      {displayValue}{config?.unit || ''}
-                    </span>
+        {/* === WHY — the values the rule was judged on === */}
+        {(rows.length > 0 || waterUnverified) && (
+          <Collapsible open={evidenceOpen} onOpenChange={setEvidenceOpen}>
+            <CollapsibleTrigger className="flex min-h-11 items-center gap-2 text-sm font-semibold text-foreground">
+              <Eye className="h-4 w-4" />
+              <span>{t('alerts.evidence.title', 'Why this alert?')}</span>
+              <ChevronDown className={cn('h-4 w-4 transition-transform', evidenceOpen && 'rotate-180')} />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1">
+              <div className="rounded-xl border border-border bg-card p-3 space-y-3 text-sm">
+                {waterUnverified && (
+                  <p className="flex items-start gap-2 rounded-lg bg-warning/10 px-2 py-2 text-xs text-foreground">
+                    <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-px" />
+                    {t('alerts.evidence.water_unverified', 'We have no record of watering on this field, so this soil-water estimate is not confirmed. If you watered recently, the field may be fine.')}
+                  </p>
+                )}
+                {groupRows(rows).map(([group, items]) => (
+                  <div key={group}>
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                      {GROUP_ICON[group]}{t(`alerts.evidence.${group}`, group)}
+                    </p>
+                    <dl className="divide-y divide-border/50">
+                      {items.map((r) => (
+                        <div key={r.key} className="flex items-start justify-between gap-3 py-1.5">
+                          <dt className="text-muted-foreground">{r.label}</dt>
+                          <dd className="text-right font-semibold text-foreground">{r.value}{r.note && <span className="block text-[11px] font-normal text-muted-foreground">{r.note}</span>}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   </div>
-                );
-              })}
-              {triggerData.knowledge && (
-                <p className="text-sm font-semibold text-foreground mt-2 pt-2 border-t border-border">
-                  📚 {triggerData.knowledge}
-                </p>
-              )}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </div>
+    );
+  });
+
+function AdviceCard({ item, text, cause }: { item: AdviceItem; text: string; cause: string | null }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const intent = String(item.rule_intent ?? 'recommendation').toLowerCase();
+  const ui = INTENT_UI[intent] ?? INTENT_UI.recommendation;
+  const Icon = ui.icon;
+  const long = text.length > 220;
+  return (
+    <div className="rounded-xl border border-border bg-background p-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold', ui.cls)}>
+          <Icon className="h-3.5 w-3.5" />{t(`alerts.advice.intent_${intent}`, t('alerts.advice.intent_recommendation', 'Advice'))}
+        </span>
+        {cause && <span className="text-[11px] text-muted-foreground">{cause}</span>}
+      </div>
+      <p className={cn('mt-2 text-sm leading-relaxed text-foreground whitespace-pre-line', !expanded && long && 'line-clamp-4')}>{text}</p>
+      {long && (
+        <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-1 min-h-9 text-xs font-semibold text-primary">
+          {expanded ? t('alerts.advice.read_less', 'Show less') : t('alerts.advice.read_more', 'Read more')}
+        </button>
       )}
     </div>
   );
-});
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card px-2 py-2">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="text-sm font-bold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+// ---- evidence rows -----------------------------------------------------------
+
+type Group = 'stage' | 'weather' | 'satellite' | 'water' | 'episode';
+type Row = { group: Group; key: string; label: string; value: string; note?: string };
+const GROUP_ICON: Record<Group, React.ReactElement> = {
+  stage: <Sprout className="h-3.5 w-3.5" />, weather: <CloudSun className="h-3.5 w-3.5" />,
+  satellite: <Satellite className="h-3.5 w-3.5" />, water: <Droplets className="h-3.5 w-3.5" />,
+  episode: <AlertTriangle className="h-3.5 w-3.5" />,
+};
+
+function groupRows(rows: Row[]): Array<[Group, Row[]]> {
+  const order: Group[] = ['stage', 'weather', 'satellite', 'water', 'episode'];
+  return order.map((g) => [g, rows.filter((r) => r.group === g)] as [Group, Row[]]).filter(([, r]) => r.length > 0);
+}
+
+function dayLabel(iso: string | null | undefined, lang: string): string | null {
+  if (!iso) return null;
+  const d = new Date(`${String(iso).slice(0, 10)}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(lang === 'en' ? 'en-IN' : lang, { day: 'numeric', month: 'short' });
+}
+
+/** Rows from the structured evidence (v128 alerts); older alerts fall back to their flat numeric keys. */
+function buildEvidenceRows(
+  td: Record<string, any>, t: (k: string, o?: any) => string, lang: string,
+  stageLabel: (s: string | null | undefined) => string | null,
+): Row[] {
+  const rows: Row[] = [];
+  const push = (group: Group, key: string, label: string, value: string | null, note?: string | null) => {
+    if (value == null || value === '') return;
+    rows.push({ group, key, label, value, note: note ?? undefined });
+  };
+  const ctx = td?.context;
+  if (ctx?.stage) {
+    push('stage', 'stage', t('alerts.evidence.stage', 'Crop stage'),
+      ctx.das != null ? t('alerts.evidence.stage_value', { stage: stageLabel(ctx.stage), das: ctx.das, defaultValue: '{{stage}} · day {{das}}' }) : stageLabel(ctx.stage));
+  }
+
+  const w = td?.weather_obs ?? { temp: td?.temp, humidity: td?.humidity, rain_mm: td?.rain_mm, wind: td?.wind };
+  const station = num(w?.distance_km) != null && num(w?.age_hours) != null
+    ? t('alerts.evidence.station', { km: fmt(num(w.distance_km)), hours: fmt(num(w.age_hours)), defaultValue: 'From a weather station {{km}} km away, {{hours}} h old' })
+    : null;
+  push('weather', 'temp', t('alerts.evidence.temp', 'Temperature'), fmt(num(w?.temp)) && `${fmt(num(w?.temp))} °C`, station);
+  push('weather', 'humidity', t('alerts.evidence.humidity', 'Humidity'), fmt(num(w?.humidity), 0) && `${fmt(num(w?.humidity), 0)} %`);
+  push('weather', 'rain', t('alerts.evidence.rain_hour', 'Rain in the last hour'), fmt(num(w?.rain_mm)) && `${fmt(num(w?.rain_mm))} mm`);
+  push('weather', 'wind', t('alerts.evidence.wind', 'Wind'), fmt(num(w?.wind)) && `${fmt(num(w?.wind))} km/h`);
+  push('weather', 'rain72', t('alerts.evidence.rain_72h', 'Chance of rain (3 days)'), fmt(num(w?.rain_probability_72h), 0) && `${fmt(num(w?.rain_probability_72h), 0)} %`);
+
+  const n = td?.ndvi_evidence ?? { value: td?.ndvi, previous: td?.ndvi_previous };
+  const nv = num(n?.value), np = num(n?.previous);
+  if (nv != null) {
+    const age = num(n?.age_days);
+    const note = [dayLabel(n?.date, lang) && t('alerts.evidence.picture_date', { date: dayLabel(n?.date, lang), defaultValue: 'Picture from {{date}}' }),
+      age != null && t('alerts.evidence.picture_age', { days: age, defaultValue: '{{days}} days old' })].filter(Boolean).join(' · ');
+    push('satellite', 'ndvi', t('alerts.evidence.ndvi', 'Crop greenness (NDVI)'), nv.toFixed(2), note || null);
+  }
+  if (np != null) {
+    push('satellite', 'ndvi_prev', t('alerts.evidence.ndvi_previous', 'Earlier reading'), np.toFixed(2),
+      dayLabel(n?.previous_date, lang) && t('alerts.evidence.picture_date', { date: dayLabel(n?.previous_date, lang), defaultValue: 'Picture from {{date}}' }));
+  }
+  if (nv != null && np != null && np - nv > 0) {
+    const gap = num(n?.pass_gap_days);
+    push('satellite', 'drop', t('alerts.evidence.ndvi_drop', 'Fall in greenness'), (np - nv).toFixed(2),
+      gap != null ? t('alerts.evidence.pass_gap', { days: gap, defaultValue: '{{days}} days between the two pictures' }) : null);
+  }
+
+  const d = td?.derived;
+  const used = num(d?.root_depletion), taw = num(d?.taw_mm), raw = num(d?.raw_mm);
+  if (used != null && taw != null) {
+    push('water', 'depletion', t('alerts.evidence.root_depletion', 'Water used from the root zone'),
+      t('alerts.evidence.water_value', { used: fmt(used), total: fmt(taw), defaultValue: '{{used}} of {{total}} mm' }),
+      d?.as_of ? t('alerts.evidence.water_as_of', { date: dayLabel(d.as_of, lang), defaultValue: 'Worked out for {{date}}' }) : null);
+  }
+  if (raw != null) push('water', 'raw', t('alerts.evidence.readily_available', 'Crop starts to feel short at'), `${fmt(raw)} mm`);
+
+  const ep = td?.episode;
+  if (ep?.phase) push('episode', 'phase', t('alerts.evidence.episode', 'Disease weather'), t(`alerts.evidence.phase_${String(ep.phase).toLowerCase()}`, String(ep.phase)));
+  return rows;
+}

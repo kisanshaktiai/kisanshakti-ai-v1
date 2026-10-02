@@ -19,15 +19,48 @@ import {
   type SuppressionRow,
 } from './config.ts';
 import { calculateIrrigationForLand } from './irrigation.ts';
-import { enrichAndUpdateAlerts } from './enrichment.ts';
+import { enrichAndUpdateAlerts, enrichmentAvailable } from './enrichment.ts';
 import { buildGerminationQuestionAlerts } from './germination-question.ts';
+import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
+import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
 
 // =====================================================
-// 2026-09-27 — AI model SSOT: enrichment's model comes from the AI model
-//   registry (task alert.enrich, see enrichment.ts); the enrichmentAvailable()
-//   OPENAI_API_KEY gate before enrichAndUpdateAlerts is removed (the router
-//   skips steps without a key). F13's 'enrichment_model' config key no longer
-//   exists.
+// v128 — PROACTIVE ALERT FORENSIC AUDIT (2026-10-02). Every change maps to a
+// finding verified against live rows (725 alerts / 30 lands / 14 days):
+//  A1  Advice only from the decision-brain graph (graph-advice.ts). The
+//      category/substring rule guess (findBestMatchingDecisionRule) and the
+//      generic text it fell back to (buildContextualSolution: "Immediate field
+//      inspection recommended", "Satellite data shows crop health decline
+//      (NDVI: --)", litres of water on NDVI alerts) are DELETED, with the
+//      hardcoded Marathi/Hindi dictionaries that only they used. Rule action
+//      templates are no longer copied into action_text: an action is a
+//      suggestion, and suggestions come from the graph.
+//  A2  NDVI and water-state evidence gates for env rules (env-derived.ts).
+//      38 of 60 NDVI alerts were raised on passes older than 10 days (max 106);
+//      219 of 271 irrigation alerts were raised while the weather pipeline had
+//      itself capped the water state as unverified (no app path records
+//      irrigation, so the bucket ratchets to TAW on every irrigated field).
+//  A3  Derived weather state older than config derived_max_age_days is not used.
+//  A4  Crop identity from the DB SSOT (_shared/crop-resolver), replacing the
+//      hardcoded multilingual substring table; a land with no resolvable crop
+//      gets no crop alerts (a fallow field was getting irrigation alerts).
+//  A5  decision_rules bridge: the regex "≥ 50% of parsed weather fields"
+//      path is behind config decision_rule_legacy_bridge_enabled (default
+//      false). It fired GLOBAL_SAFETY_OPTIMAL_CONDITIONS_001 183 times in 30
+//      days and SC_DISEASE_RUST_ORANGE_001 ("Spray Propiconazole …") on
+//      weather alone. Compiled predicates (F10) still run. A bridge alert never
+//      carries a dose-bearing action_text.
+//  A6  Water quantity (litres) is attached to IRRIGATION alerts only, and only
+//      on a verified water state.
+//  A7  Alert lifecycle: rows past expires_at, rows superseded by a newer alert
+//      of the same rule on the same land, and rows of a slow-input rule that
+//      no longer fires are set to EXPIRED (never deleted).
+//  A8  Legacy proactive_rules that never reached the env engine (lower-case
+//      condition_type vs the UPPER-case switch) are skipped explicitly with one
+//      log line; they are not activated (their templates carry doses).
+// =====================================================
+
+// =====================================================
 // v124 — DATABASE-DRIVEN REBUILD (forensic-audit remediation)
 // CHANGE LOG vs v123 (every change maps to an audit finding):
 //  F1  Stage lookup case bug fixed: buildStageMap keys UPPERCASE; the dead
@@ -107,6 +140,9 @@ interface ProactiveRule {
 
 interface DecisionRuleProactive {
   id: string;
+  rule_id: string | null;
+  input_class: string | null;
+  rule_intent: string | null;
   crop_code: string | null;
   category: string;
   priority: number;
@@ -179,6 +215,11 @@ interface LandContext {
   forecast_tmin_night: number | null;
   /** v125: cultivation lane (transplanted / direct_seeded) for stage series choice. */
   cultivation_method: string | null;
+  /** v128: v_land_region.region_code — the graph's region gate. */
+  region_code: string | null;
+  /** v128: acquisition dates of the two passes behind ndvi / ndvi_previous. */
+  ndvi_date: string | null;
+  ndvi_previous_date: string | null;
 }
 
 /** v127: every field is a number|null so rules can use gte/lte/eq/lt_field on it. */
@@ -258,6 +299,7 @@ Deno.serve(async (req) => {
     let totalSuppressed = 0;
     let totalUncompilable = 0;
     let totalStageGaps = 0;
+    let totalExpired = 0;
 
     for (const tenantId of tenantIds) {
       const t = await processOneTenant(supabase, tenantId, targetLandId, action);
@@ -268,6 +310,7 @@ Deno.serve(async (req) => {
       totalSuppressed += t.suppressed;
       totalUncompilable += t.uncompilable;
       totalStageGaps += t.stageGaps;
+      totalExpired += t.expired ?? 0;
     }
 
     const elapsed = Date.now() - startTime;
@@ -286,7 +329,8 @@ Deno.serve(async (req) => {
         alerts_suppressed_by_safety: totalSuppressed,
         uncompilable_rules_skipped: totalUncompilable,
         stage_coverage_gaps: totalStageGaps,
-        engine_version: 'v124-db-driven',
+        alerts_expired: totalExpired,
+        engine_version: 'v128-graph-advice',
       },
     }).then(() => {});
 
@@ -297,6 +341,7 @@ Deno.serve(async (req) => {
       rules_fired: totalRulesFired,
       alerts_generated: totalAlerts,
       alerts_suppressed_by_safety: totalSuppressed,
+      alerts_expired: totalExpired,
       execution_time_ms: elapsed,
     });
   } catch (error) {
@@ -314,7 +359,8 @@ async function processOneTenant(
   tenantId: string,
   targetLandId: string | null,
   action: string,
-): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number; suppressed: number; uncompilable: number; stageGaps: number }> {
+): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number; suppressed: number; uncompilable: number; stageGaps: number; expired?: number }> {
+  const runStartIso = new Date().toISOString();
   // F5: config + governed params + suppression loaded up front — DB decides.
   const [cfg, methods, suppression] = await Promise.all([
     loadEvaluatorConfig(supabase, tenantId),
@@ -324,11 +370,18 @@ async function processOneTenant(
 
   const [rulesRes, decisionRulesRes] = await Promise.all([
     supabase.from('proactive_rules').select('*').eq('is_active', true),
-    supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, conditions_compiled, compile_status, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days, active_ingredient, dosage_per_acre, water_volume_per_acre, application_method, organic_alternative, bee_toxicity, farmer_safety_level, treatment_type, chemical_class, confidence_score').eq('is_proactive_rule', true).eq('is_active', true),
+    supabase.from('decision_rules').select('id, rule_id, input_class, rule_intent, crop_code, category, priority, condition_code, stage_applicable, conditions_json, conditions_compiled, compile_status, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days, active_ingredient, dosage_per_acre, water_volume_per_acre, application_method, organic_alternative, bee_toxicity, farmer_safety_level, treatment_type, chemical_class, confidence_score').eq('is_proactive_rule', true).eq('is_active', true),
   ]);
 
   if (rulesRes.error) throw new Error(`Rules load failed: ${rulesRes.error.message}`);
-  const rules: ProactiveRule[] = rulesRes.data || [];
+  // A8: only rules compiled to the env predicate engine are evaluated. The
+  // legacy typed rows never matched the UPPER-case switch (the DB stores
+  // lower case) and their templates prescribe doses — they stay dormant.
+  const allRules: ProactiveRule[] = rulesRes.data || [];
+  const rules: ProactiveRule[] = allRules.filter((r) => isEnvIntelligenceRule(r.conditions));
+  if (allRules.length > rules.length) {
+    console.log(`[LEGACY_RULES_SKIPPED] ${allRules.length - rules.length} active proactive_rules are not compiled to env-intelligence and are not evaluated`);
+  }
   const decisionRules: DecisionRuleProactive[] = decisionRulesRes.data || [];
 
   if (rules.length === 0 && decisionRules.length === 0) {
@@ -431,12 +484,13 @@ async function processOneTenant(
     cfg,
   );
 
-  const [forecastLocMap, tmax5dLocMap, tminNightLocMap, derivedMap, farmerVisibility] = await Promise.all([
+  const [forecastLocMap, tmax5dLocMap, tminNightLocMap, derivedMap, farmerVisibility, regionMap] = await Promise.all([
     batchLoadForecast(supabase, locKeyArray),
     batchLoadForecastTmax5d(supabase, locKeyArray),
     batchLoadForecastTminNight(supabase, locKeyArray),
     batchLoadDerived(supabase, landIds),
     loadFarmerVisibility(supabase),
+    loadLandRegions(supabase, landIds),
   ]);
   console.log(`[ProactiveEvaluator][${tenantId.slice(0, 8)}] [ENV_DERIVED] hydrated derived state for ${derivedMap.size}/${landIds.length} lands`);
   const forecastMap = new Map<string, number>();
@@ -460,12 +514,24 @@ async function processOneTenant(
   // =========================================================
   const landContexts: LandContext[] = [];
   let stageGaps = 0;
+  // A4: crop identity from the DB SSOT, once per distinct label per run.
+  const cropCodeByLabel = new Map<string, string | null>();
+  const resolveCrop = async (label: string | null | undefined): Promise<string | null> => {
+    const key = String(label ?? '').trim();
+    if (!key) return null;
+    if (!cropCodeByLabel.has(key)) {
+      const match = await resolveCropCanonical(supabase, key).catch(() => null);
+      cropCodeByLabel.set(key, match ? match.code.toUpperCase() : null);
+      if (!match) console.warn(`[CROP_UNRESOLVED] label="${key}" has no identity in crops/crop_synonyms — lands with it get no crop alerts`);
+    }
+    return cropCodeByLabel.get(key) ?? null;
+  };
 
   for (const land of lands) {
     const schedule = scheduleMap.get(land.id);
     const sowingDate = schedule?.sowing_date || land.last_sowing_date || land.cultivation_date;
     const cropSource = schedule?.crop_name || land.current_crop;
-    const cropCode = normalizeCropCode(cropSource);
+    const cropCode = await resolveCrop(cropSource);
 
     const das = sowingDate
       ? Math.floor((Date.now() - new Date(sowingDate).getTime()) / (1000 * 60 * 60 * 24))
@@ -487,7 +553,13 @@ async function processOneTenant(
     const ndvi_evidence = buildNdviEvidence(ndviArr, ndviIntelMap.get(land.id));
     const soil = soilMap.get(land.id);
     const forecastRain = forecastMap.get(land.id) ?? null;
-    const derived = derivedMap.get(land.id) || emptyDerived();
+    // A3: a derived row older than the configured age is not today's state.
+    const derivedRow = derivedMap.get(land.id) || emptyDerived();
+    const derivedAge = derivedRow.as_of ? daysBetween(todayStr, derivedRow.as_of) : null;
+    const derived = derivedAge != null && derivedAge <= cfg.derived_max_age_days ? derivedRow : emptyDerived();
+    if (derivedRow.as_of && derived !== derivedRow) {
+      console.warn(`[DERIVED_STALE] land=${land.id.slice(0, 8)} as_of=${derivedRow.as_of} (${derivedAge} d) > ${cfg.derived_max_age_days} d — derived predicates unavailable`);
+    }
     const locKey = (land.center_lat != null && land.center_lon != null)
       ? makeLocationKey(land.center_lat, land.center_lon) : null;
 
@@ -519,8 +591,22 @@ async function processOneTenant(
       forecast_tmax_mean_5d: locKey ? (tmax5dLocMap.get(locKey) ?? null) : null,
       forecast_tmin_night: locKey ? (tminNightLocMap.get(locKey) ?? null) : null,
       cultivation_method: cultivationMethod,
+      region_code: regionMap.get(land.id) ?? null,
+      ndvi_date: ndviArr[0]?.acquisition_date ?? null,
+      ndvi_previous_date: ndviArr[1]?.acquisition_date ?? null,
     });
   }
+
+  // A1: one graph read per run for the crops in play.
+  const graph: GraphData = await loadGraph(
+    supabase,
+    landContexts.map((c) => c.crop_code ?? '').filter(Boolean),
+    rules.flatMap((r) => readGraphLink(r.conditions)?.rule_ids ?? []),
+  );
+  const noCropLands = landContexts.filter((c) => !c.crop_code).length;
+  if (noCropLands > 0) console.log(`[CROP_GATE] ${noCropLands} land(s) without a resolvable crop get no crop alerts`);
+  // A7: rule × land pairs evaluated this run whose condition did not hold.
+  const clearedPairs: Array<{ land_id: string; rule_id: string }> = [];
 
   // =========================================================
   // Evaluate rules
@@ -533,7 +619,8 @@ async function processOneTenant(
   const eventsToInsert: any[] = [];
 
   for (const ctx of landContexts) {
-    const applicableRules = rules.filter((r: ProactiveRule) => {
+    // A4: no resolvable crop → no crop alerts (rule applicability is crop-relative).
+    const applicableRules = !ctx.crop_code ? [] : rules.filter((r: ProactiveRule) => {
       // Contract normalization: case-insensitive crop compare; NULL/'ALL' = crop-agnostic.
       const rc = r.crop_code ? r.crop_code.toUpperCase().trim() : null;
       if (rc && rc !== 'ALL' && rc !== ctx.crop_code) return false;
@@ -546,6 +633,8 @@ async function processOneTenant(
       return true;
     });
     totalRulesEvaluated += applicableRules.length;
+    // A7: a rule that no longer applies to this land (crop gone, stage moved on) has cleared.
+    for (const r of rules) if (!applicableRules.includes(r)) clearedPairs.push({ land_id: ctx.land_id, rule_id: r.rule_code });
 
     for (const rule of applicableRules) {
       const isEnvRule = isEnvIntelligenceRule(rule.conditions);
@@ -568,7 +657,20 @@ async function processOneTenant(
       } else {
         result = evaluateRule(rule, ctx);
       }
-      if (!result.fired) continue;
+      // A1: advice from the graph only; a rule marked graph.required is raised
+      // only where the graph has applicable advice for this crop/stage/region.
+      const link = readGraphLink(rule.conditions);
+      const advice: GraphAdvice | null = result.fired && link
+        ? selectGraphAdvice(graph, link, graphLandOf(ctx), cfg.graph_advice_max_rules)
+        : null;
+      if (result.fired && link?.required && (advice?.items.length ?? 0) === 0) {
+        console.log(`[GRAPH_REQUIRED] land=${ctx.land_id.slice(0, 8)} rule=${rule.rule_code} not raised: no applicable graph advice for crop=${ctx.crop_code} stage=${ctx.current_stage} das=${ctx.das} region=${ctx.region_code ?? 'unresolved'}`);
+        result = { ...result, fired: false };
+      }
+      if (!result.fired) {
+        if (!readsFastInputs(rule.conditions)) clearedPairs.push({ land_id: ctx.land_id, rule_id: rule.rule_code });
+        continue;
+      }
       totalRulesFired++;
 
       if (isEnvRule && rule.conditions?.metadata?.episode_driven === true) {
@@ -598,29 +700,29 @@ async function processOneTenant(
       });
 
       const templateVars = buildTemplateVars(ctx);
+      const category = mapAlertCategory(rule.alert_category);
       alertsToInsert.push({
         tenant_id: ctx.tenant_id,
         land_id: ctx.land_id,
         farmer_id: ctx.farmer_id,
         rule_id: rule.rule_code,
-        alert_category: mapAlertCategory(rule.alert_category),
+        alert_category: category,
         priority: mapRulePriority(rule.priority),
+        // Title and message describe what was observed (DB-authored templates).
         title_mr: fillTemplate(rule.title_mr, templateVars),
         title_hi: fillTemplate(rule.title_hi, templateVars),
         title_en: fillTemplate(rule.title_en, templateVars),
         message_mr: fillTemplate(rule.message_template_mr, templateVars),
         message_hi: fillTemplate(rule.message_template_hi, templateVars),
         message_en: fillTemplate(rule.message_template_en, templateVars),
-        action_text_mr: fillTemplate(rule.action_template_mr, templateVars),
-        action_text_hi: fillTemplate(rule.action_template_hi, templateVars),
-        action_text_en: fillTemplate(rule.action_template_en, templateVars),
+        // A1: what to do comes from trigger_data.graph_advice, never a template.
+        action_text_mr: null,
+        action_text_hi: null,
+        action_text_en: null,
         risk_score: result.riskScore,
         confidence: result.confidence,
         trigger_data: applyFarmerVisibilityGuard(
-          addSymbolicSolution(
-            enrichTriggerDataWithIrrigation(result.triggerData, mapAlertCategory(rule.alert_category), ctx, methods),
-            null, rule, ctx, decisionRules, methods,
-          ),
+          buildAlertEvidence(result.triggerData, category, ctx, methods, advice),
           farmerVisibility,
           'farmer',
         ),
@@ -635,7 +737,7 @@ async function processOneTenant(
     }
 
     // ---- decision_rules bridge ----
-    const applicableDecisionRules = decisionRules.filter(dr => {
+    const applicableDecisionRules = !ctx.crop_code ? [] : decisionRules.filter(dr => {
       const dc = dr.crop_code ? dr.crop_code.toUpperCase().trim() : null;
       if (dc && dc !== 'ALL' && dc !== ctx.crop_code) return false;
       const stages = (dr.stage_applicable || []).map((s: string) => String(s).toUpperCase().trim());
@@ -647,12 +749,17 @@ async function processOneTenant(
     });
     totalRulesEvaluated += applicableDecisionRules.length;
     applicableDecisionRules.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+    // A7: bridge alerts carry rule_id = condition_code (shared by several rows);
+    // a code clears on this land only when none of its rows fired this run.
+    const bridgeFired = new Set<string>();
+    const bridgeQuiet = new Set<string>(decisionRules.map((dr) => dr.condition_code));
 
     for (const dr of applicableDecisionRules) {
       const evalOut = evaluateDecisionRule(dr, ctx, cfg, harvestDasByCrop);
       if (evalOut.uncompilable) { uncompilableSkipped++; continue; }
       const result = evalOut.result;
       if (!result.fired) continue;
+      bridgeFired.add(dr.condition_code);
       totalRulesFired++;
 
       const dedupKey = `DR:${dr.condition_code}:${ctx.land_id}:${todayStr}`;
@@ -676,10 +783,17 @@ async function processOneTenant(
 
       const titleEn = `${dr.condition_code.replace(/_/g, ' ')} Alert`;
       const messageEn = dr.reason_text || result.reasoning;
-      const actionEn = dr.action_text || null;
-      const trilingualTitle = generateTrilingualTitle(dr.category, alertCategory, ctx);
-      const trilingualMsg = generateTrilingualMessage(dr.category, messageEn, ctx, methods);
-      const trilingualAction = generateTrilingualAction(dr.category, actionEn, ctx, methods);
+      // A5: the row is itself graph advice — but never a dose from an unconfirmed risk.
+      const dose = carriesDose(dr);
+      const actionEn = dose ? null : (dr.action_text || null);
+      const selfAdvice: GraphAdvice = {
+        items: dose || !dr.rule_id ? [] : [{
+          rule_id: dr.rule_id, hypothesis_id: '', cause_name_en: null, category: dr.category ?? null,
+          rule_intent: dr.rule_intent ?? null, action_text: dr.action_text ?? null,
+          knowledge_text: dr.knowledge_text ?? null, edge_priority: null,
+        }],
+        basis: { crop: ctx.crop_code?.toLowerCase() ?? null, stage: ctx.current_stage, das: ctx.das, region: ctx.region_code, hypotheses: [] },
+      };
 
       alertsToInsert.push({
         tenant_id: ctx.tenant_id,
@@ -689,19 +803,20 @@ async function processOneTenant(
         alert_category: alertCategory,
         priority: priority,
         title_en: titleEn,
-        title_mr: trilingualTitle.mr,
-        title_hi: trilingualTitle.hi,
+        title_mr: null,
+        title_hi: null,
         message_en: messageEn,
-        message_mr: trilingualMsg.mr,
-        message_hi: trilingualMsg.hi,
+        message_mr: null,
+        message_hi: null,
         action_text_en: actionEn,
-        action_text_mr: trilingualAction.mr,
-        action_text_hi: trilingualAction.hi,
+        action_text_mr: null,
+        action_text_hi: null,
         risk_score: result.riskScore,
         confidence: result.confidence,
-        trigger_data: addSymbolicSolution(
-          enrichTriggerDataWithIrrigation({ ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id }, alertCategory, ctx, methods),
-          dr, null, ctx, decisionRules, methods,
+        trigger_data: applyFarmerVisibilityGuard(
+          buildAlertEvidence({ ...result.triggerData, decision_rule_id: dr.id }, alertCategory, ctx, methods, selfAdvice),
+          farmerVisibility,
+          'farmer',
         ),
         decision_reasoning: result.reasoning,
         status: 'PENDING',
@@ -712,6 +827,7 @@ async function processOneTenant(
       farmerDailyCounts.set(ctx.farmer_id, dailyCount + 1);
       totalAlerts++;
     }
+    for (const code of bridgeQuiet) if (!bridgeFired.has(code)) clearedPairs.push({ land_id: ctx.land_id, rule_id: code });
   }
 
   // =========================================================
@@ -756,21 +872,74 @@ async function processOneTenant(
     if (evErr) console.error('[ProactiveEvaluator] Events insert error:', evErr.message);
   }
 
+  const supersededPairs: Array<{ land_id: string; rule_id: string }> = [];
   if (kept.length > 0) {
     const { data: insertedAlerts, error: alErr } = await supabase
       .from('proactive_alerts')
       .upsert(kept, { onConflict: 'dedup_key', ignoreDuplicates: true })
-      .select('id, farmer_id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr, title_hi, title_en, message_hi, action_text_mr, action_text_hi');
+      .select('id, land_id, rule_id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr, title_hi, title_en, message_hi, action_text_mr, action_text_hi');
     if (alErr) console.error('[ProactiveEvaluator] Alerts upsert error:', alErr.message);
+    for (const a of (insertedAlerts || [])) supersededPairs.push({ land_id: a.land_id, rule_id: a.rule_id });
 
-    if (insertedAlerts && insertedAlerts.length > 0) {
+    if (enrichmentAvailable() && insertedAlerts && insertedAlerts.length > 0) {
       enrichAndUpdateAlerts(supabase, insertedAlerts, cfg).catch(e =>
         console.warn('[NeuralEnrichment] Background enrichment failed:', e.message)
       );
     }
   }
 
-  return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated, suppressed: suppressedCount, uncompilable: uncompilableSkipped, stageGaps };
+  // A7: lifecycle. Rows are never deleted — they move to EXPIRED.
+  const expired = await expireAlerts(supabase, landIds, runStartIso, supersededPairs, clearedPairs);
+  console.log(`[ALERT_LIFECYCLE][${tenantId.slice(0, 8)}] expired=${expired.total} (past_expiry=${expired.pastExpiry} superseded=${expired.superseded} cleared=${expired.cleared})`);
+
+  return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated, suppressed: suppressedCount, uncompilable: uncompilableSkipped, stageGaps, expired: expired.total };
+}
+
+const LIVE_STATUSES = ['PENDING', 'DELIVERED', 'SEEN'];
+
+/** Set live alerts to EXPIRED: past expires_at; superseded by a row inserted this
+ *  run (same rule, same land); or cleared (rule evaluated this run and quiet). */
+async function expireAlerts(
+  supabase: any,
+  landIds: string[],
+  runStartIso: string,
+  superseded: Array<{ land_id: string; rule_id: string }>,
+  cleared: Array<{ land_id: string; rule_id: string }>,
+): Promise<{ total: number; pastExpiry: number; superseded: number; cleared: number }> {
+  const out = { total: 0, pastExpiry: 0, superseded: 0, cleared: 0 };
+  const now = new Date().toISOString();
+  const run = async (q: any): Promise<number> => {
+    const { data, error } = await q.select('id');
+    if (error) { console.warn(`[ALERT_LIFECYCLE] update failed: ${error.message}`); return 0; }
+    return (data || []).length;
+  };
+  for (let i = 0; i < landIds.length; i += 200) {
+    out.pastExpiry += await run(supabase.from('proactive_alerts')
+      .update({ status: 'EXPIRED', updated_at: now })
+      .in('land_id', landIds.slice(i, i + 200)).in('status', LIVE_STATUSES).lt('expires_at', now));
+  }
+  const byRule = (pairs: Array<{ land_id: string; rule_id: string }>) => {
+    const m = new Map<string, Set<string>>();
+    for (const p of pairs) {
+      if (!p.rule_id || !p.land_id) continue;
+      if (!m.has(p.rule_id)) m.set(p.rule_id, new Set());
+      m.get(p.rule_id)!.add(p.land_id);
+    }
+    return m;
+  };
+  for (const [kind, pairs] of [['superseded', superseded], ['cleared', cleared]] as const) {
+    for (const [ruleId, lands] of byRule(pairs)) {
+      const ids = Array.from(lands);
+      for (let i = 0; i < ids.length; i += 200) {
+        out[kind] += await run(supabase.from('proactive_alerts')
+          .update({ status: 'EXPIRED', updated_at: now })
+          .eq('rule_id', ruleId).in('land_id', ids.slice(i, i + 200))
+          .in('status', LIVE_STATUSES).lt('created_at', runStartIso));
+      }
+    }
+  }
+  out.total = out.pastExpiry + out.superseded + out.cleared;
+  return out;
 }
 
 // =====================================================
@@ -937,7 +1106,7 @@ function buildNdviMap(data: any[] | null): Map<string, any[]> {
 }
 
 // v125: STAGE SSOT = crop_stage_master. Keys are UPPERCASE crop codes so the
-// lookup with normalizeCropCode() output matches. stage_code is normalized by
+// lookup with the upper-cased crops.value (crop-resolver) matches. stage_code is normalized by
 // stripping the leading crop prefix and an optional lane token
 // (RICE_TP_BOOTING -> BOOTING, RICE_DSR_EARLY_VEGETATIVE -> EARLY_VEGETATIVE).
 function normalizeStageCode(stageCode: string | null, growthStage: string | null, cropKey: string): string {
@@ -1263,34 +1432,8 @@ function computeStageDynamic(
 }
 
 
-// =====================================================
-// CROP CODE NORMALIZATION
-// (Interim: dictionary retained pending migration to crop_synonyms table —
-// tracked as Phase-2 item; contains no thresholds, only name mapping.)
-// =====================================================
-
-function normalizeCropCode(crop: string | null): string | null {
-  if (!crop) return null;
-  const upper = crop.toUpperCase().trim();
-  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper.includes('गन्ना') || upper.includes('ईख') || upper === 'SC') return 'SUGARCANE';
-  if (upper.includes('WHEAT') || upper.includes('गहू') || upper.includes('गेहूं') || upper.includes('गेहूँ') || upper === 'WH') return 'WHEAT';
-  if (upper.includes('COTTON') || upper.includes('कापूस') || upper.includes('कपास') || upper.includes('रुई') || upper === 'CT') return 'COTTON';
-  if (upper.includes('RICE') || upper.includes('भात') || upper.includes('तांदूळ') || upper.includes('धान') || upper.includes('चावल') || upper === 'RC') return 'RICE';
-  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper.includes('सोयाबिन') || upper === 'SB') return 'SOYBEAN';
-  if (upper.includes('ONION') || upper.includes('कांदा') || upper.includes('प्याज') || upper === 'ON') return 'ONION';
-  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper.includes('हल्दी') || upper === 'TU') return 'TURMERIC';
-  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper.includes('अंगूर') || upper === 'GR') return 'GRAPE';
-  if (upper.includes('MAIZE') || upper.includes('CORN') || upper.includes('मका') || upper.includes('मक्का') || upper === 'MZ') return 'MAIZE';
-  if (upper.includes('GROUNDNUT') || upper.includes('PEANUT') || upper.includes('भुईमूग') || upper.includes('मूंगफली') || upper === 'GN') return 'GROUNDNUT';
-  if (upper.includes('BANANA') || upper.includes('केळी') || upper.includes('केला') || upper === 'BN') return 'BANANA';
-  if (upper.includes('POMEGRANATE') || upper.includes('डाळिंब') || upper.includes('अनार') || upper === 'PM') return 'POMEGRANATE';
-  if (upper.includes('CHILLI') || upper.includes('CHILI') || upper.includes('मिरची') || upper.includes('मिर्च') || upper === 'CH') return 'CHILLI';
-  if (upper.includes('TOMATO') || upper.includes('टोमॅटो') || upper.includes('टमाटर') || upper === 'TM') return 'TOMATO';
-  if (upper.includes('POTATO') || upper.includes('बटाटा') || upper.includes('आलू') || upper === 'PT') return 'POTATO';
-  if (upper.includes('MANGO') || upper.includes('आंबा') || upper.includes('आम') || upper === 'MG') return 'MANGO';
-  if (upper.includes('RAJMA') || upper.includes('राजमा') || upper.includes('KIDNEY BEAN')) return 'RAJMA';
-  return upper;
-}
+// CROP CODE: resolved from crops / crop_synonyms by _shared/crop-resolver.ts
+// (v128, A4). The hardcoded multilingual dictionary was removed.
 
 // =====================================================
 // SOIL TYPE NORMALIZATION
@@ -1630,8 +1773,10 @@ function evaluateDecisionRule(
       derived: ctx.derived,
       weather: { ...ctx.weather, rain_probability: ctx.forecast_rain_probability_72h, tmin_forecast_night: ctx.forecast_tmin_night },
       forecast: { tmax_mean_5d: ctx.forecast_tmax_mean_5d },
+      // v128: same evidence namespace as proactive rules, so the NDVI gate applies here too.
       ndvi: { value: ctx.ndvi, previous: ctx.ndvi_previous,
-              drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null },
+              drop: (ctx.ndvi != null && ctx.ndvi_previous != null) ? ctx.ndvi_previous - ctx.ndvi : null,
+              ...ctx.ndvi_evidence },
     });
     return {
       uncompilable: false,
@@ -1646,6 +1791,11 @@ function evaluateDecisionRule(
   }
 
   // ---- legacy numeric-extraction path
+  // A5: regex ranges + "fire at ≥ 50% of parsed fields" is not a governed
+  // predicate (it read wind "<10" as wind ≥ 10). Off unless the DB enables it.
+  if (cfg.decision_rule_legacy_bridge_enabled !== true) {
+    return { uncompilable: true, result: notFiredResult(triggerData) };
+  }
   const cj = dr.conditions_json || {};
   const parsed = parseDecisionRuleConditions(cj);
   let condMet = 0;
@@ -1779,124 +1929,83 @@ function notFiredResult(triggerData: Record<string, any>): RuleEvalResult {
 // F9: getEstimatedHarvestDas (hardcoded crop map) DELETED — see buildHarvestDasMap.
 
 // =====================================================
-// IRRIGATION-ENRICHED TRIGGER DATA
+// v128 ALERT EVIDENCE — what the farmer's card is built from
 // =====================================================
 
-function enrichTriggerDataWithIrrigation(triggerData: Record<string, any>, alertCategory: string, ctx: LandContext, methods: MethodParams): Record<string, any> {
-  const irrigationCategories = ['CROP_STRESS', 'IRRIGATION', 'WEATHER_WARNING', 'STAGE_ADVISORY'];
-  const hasNdviDrop = triggerData.drop != null || triggerData.ndvi != null;
+/** The land facts the graph's applicability gates read. */
+function graphLandOf(ctx: LandContext) {
+  return {
+    crop_code: ctx.crop_code,
+    stage: ctx.current_stage,
+    das: ctx.das > 0 ? ctx.das : null,
+    cultivation_method: ctx.cultivation_method,
+    region_code: ctx.region_code,
+  };
+}
 
-  if (irrigationCategories.includes(alertCategory) || hasNdviDrop) {
+/** true when a rule reads hourly weather or forecast paths (fast inputs that
+ *  swing within a day). Slow-input rules (derived / ndvi / das / episodes)
+ *  clear their live alerts when they stop firing; fast ones wait for expiry or
+ *  supersession, so a condition flickering at noon cannot hide a real alert. */
+function readsFastInputs(conditions: Record<string, any> | null): boolean {
+  const preds: any[] = Array.isArray(conditions?.all) ? conditions!.all : [];
+  return preds.some((p) => [p?.path, p?.field].some((x) =>
+    typeof x === 'string' && (x.startsWith('weather.') || x.startsWith('forecast.'))));
+}
+
+/**
+ * trigger_data for one alert. Values are copied from the governed sources the
+ * rule was judged on — nothing is computed here except the FAO-56 water plan
+ * (irrigation.ts), which is attached to IRRIGATION alerts only and only when
+ * the root-zone state is verified (A6).
+ */
+function buildAlertEvidence(
+  ruleTrigger: Record<string, any>,
+  alertCategory: string,
+  ctx: LandContext,
+  methods: MethodParams,
+  advice: GraphAdvice | null,
+): Record<string, any> {
+  const td: Record<string, any> = { ...ruleTrigger };
+  td.context = {
+    crop: ctx.crop_code ? ctx.crop_code.toLowerCase() : null,
+    stage: ctx.current_stage,
+    das: ctx.das > 0 ? ctx.das : null,
+    sowing_date: ctx.sowing_date,
+    cultivation_method: ctx.cultivation_method,
+    region: ctx.region_code,
+  };
+  td.weather_obs = {
+    temp: ctx.weather.temp, humidity: ctx.weather.humidity, rain_mm: ctx.weather.rain_mm,
+    wind: ctx.weather.wind_speed, source: ctx.weather.source,
+    distance_km: ctx.weather.distance_km, age_hours: ctx.weather.age_hours,
+    rain_probability_72h: ctx.forecast_rain_probability_72h,
+  };
+  td.ndvi_evidence = {
+    value: ctx.ndvi, previous: ctx.ndvi_previous,
+    date: ctx.ndvi_date, previous_date: ctx.ndvi_previous_date,
+    age_days: ctx.ndvi_evidence.age_days, is_fresh: ctx.ndvi_evidence.is_fresh,
+    evidence_rank: ctx.ndvi_evidence.evidence_rank, pass_gap_days: ctx.ndvi_evidence.pass_gap_days,
+    ndmi: ctx.ndvi_evidence.ndmi, ndre: ctx.ndvi_evidence.ndre,
+    cohort_z: ctx.ndvi_evidence.cohort_z,
+  };
+  // derived.* keys pass through the farmer-visibility guard (env_property_master).
+  td.derived = {
+    root_depletion: ctx.derived.root_depletion, raw_mm: ctx.derived.raw_mm, taw_mm: ctx.derived.taw_mm,
+    swsi: ctx.derived.swsi, rain_24h: ctx.derived.rain_24h, spray_score: ctx.derived.spray_score,
+    lwd_est: ctx.derived.lwd_est, et0: ctx.derived.et0,
+    water_state_verified: ctx.derived.water_state_verified, as_of: ctx.derived.as_of,
+  };
+  if (alertCategory === 'IRRIGATION' && ctx.derived.water_state_verified === true) {
     const irrigation = calculateIrrigationForLand(ctx, methods);
-    if (irrigation) {
-      triggerData.irrigation = irrigation;
-    }
+    if (irrigation) td.irrigation = irrigation;
   }
-
-  // F11: LandContext field is land_name (ctx.name never existed).
-  if (ctx.land_name) triggerData.land_name = ctx.land_name;
-  if (ctx.area_acres) triggerData.area_acres = ctx.area_acres;
-  if (ctx.soil_type) triggerData.soil_type = ctx.soil_type;
-  if (ctx.irrigation_type) triggerData.irrigation_method = ctx.irrigation_type;
-
-  return triggerData;
-}
-
-// =====================================================
-// TRILINGUAL TEMPLATE GENERATORS
-// (Display-label localization only — no agronomy. Migration of these
-// dictionaries to i18n tables is a tracked Phase-2 item.)
-// =====================================================
-
-const CATEGORY_TITLES: Record<string, { mr: string; hi: string }> = {
-  PEST_RISK: { mr: '🐛 कीड चेतावणी', hi: '🐛 कीट चेतावनी' },
-  DISEASE_RISK: { mr: '🦠 रोग धोका', hi: '🦠 रोग का खतरा' },
-  WEATHER_WARNING: { mr: '⛈️ हवामान इशारा', hi: '⛈️ मौसम चेतावनी' },
-  IRRIGATION: { mr: '💧 पाणी व्यवस्थापन', hi: '💧 पानी प्रबंधन' },
-  FERTILIZER_WINDOW: { mr: '🌿 खत व्यवस्थापन', hi: '🌿 उर्वरक प्रबंधन' },
-  SPRAY_WINDOW: { mr: '🔫 फवारणी वेळ', hi: '🔫 छिड़काव का समय' },
-  CROP_STRESS: { mr: '🌡️ पीक ताण', hi: '🌡️ फसल तनाव' },
-  STAGE_ADVISORY: { mr: '🌱 टप्पा सल्ला', hi: '🌱 चरण सलाह' },
-  HARVEST_TIMING: { mr: '🌾 कापणी वेळ', hi: '🌾 कटाई का समय' },
-  GENERAL: { mr: '📢 सूचना', hi: '📢 सूचना' },
-};
-
-const CATEGORY_ACTIONS: Record<string, { mr: string; hi: string }> = {
-  PEST_RISK: { mr: 'शेताची तपासणी करा', hi: 'खेत की जांच करें' },
-  DISEASE_RISK: { mr: 'शेताची तपासणी करा आणि प्रभावित भाग पहा', hi: 'खेत की जांच करें और प्रभावित हिस्से देखें' },
-  WEATHER_WARNING: { mr: 'पिकाला संरक्षण द्या', hi: 'फसल को सुरक्षा दें' },
-  IRRIGATION: { mr: 'पाणी नियोजन तपासा', hi: 'सिंचाई योजना जांचें' },
-  FERTILIZER_WINDOW: { mr: 'खत नियोजन तपासा', hi: 'खाद योजना जांचें' },
-  SPRAY_WINDOW: { mr: 'फवारणी नियोजन तपासा', hi: 'छिड़काव योजना जांचें' },
-  CROP_STRESS: { mr: 'पिकाची स्थिती तपासा', hi: 'फसल की स्थिति जांचें' },
-  STAGE_ADVISORY: { mr: 'या टप्प्यात विशेष काळजी घ्या', hi: 'इस चरण में विशेष देखभाल करें' },
-  HARVEST_TIMING: { mr: 'कापणी नियोजन करा', hi: 'कटाई की योजना बनाएं' },
-  GENERAL: { mr: 'तपासणी करा', hi: 'जांच करें' },
-};
-
-const IRRIGATION_METHOD_MR: Record<string, string> = {
-  DRIP: 'ठिबक सिंचन', SPRINKLER: 'तुषार सिंचन', FLOOD: 'पाट पाणी', FURROW: 'सरी सिंचन', SURFACE: 'पृष्ठभाग सिंचन',
-};
-const IRRIGATION_METHOD_HI: Record<string, string> = {
-  DRIP: 'ड्रिप सिंचाई', SPRINKLER: 'स्प्रिंकलर सिंचाई', FLOOD: 'बाढ़ सिंचाई', FURROW: 'नाली सिंचाई', SURFACE: 'सतही सिंचाई',
-};
-
-function generateTrilingualTitle(category: string, alertCategory: string, ctx: LandContext): { mr: string; hi: string } {
-  const templates = CATEGORY_TITLES[alertCategory] || CATEGORY_TITLES.GENERAL;
-  const landMr = ctx.land_name || 'शेत';
-  const landHi = ctx.land_name || 'खेत';
-  const areaSuffix = ctx.area_acres ? ` (${ctx.area_acres} एकर)` : '';
-  return {
-    mr: `${templates.mr} - ${landMr}${areaSuffix}`,
-    hi: `${templates.hi} - ${landHi}${areaSuffix}`,
-  };
-}
-
-function generateTrilingualMessage(category: string, messageEn: string, ctx: LandContext, methods: MethodParams): { mr: string; hi: string } {
-  const landMr = ctx.land_name || 'तुमच्या शेतात';
-  const landHi = ctx.land_name || 'आपके खेत में';
-  const areaMr = ctx.area_acres ? ` (${ctx.area_acres} एकर)` : '';
-  const areaHi = ctx.area_acres ? ` (${ctx.area_acres} एकर)` : '';
-
-  const irrigation = calculateIrrigationForLand(ctx, methods);
-  if (irrigation && (mapDecisionCategory(category) === 'IRRIGATION' || mapDecisionCategory(category) === 'CROP_STRESS')) {
-    const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
-    const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
-    const splitMr = irrigation.applications > 1 ? ` ${irrigation.applications} वेळा विभागून द्या (प्रत्येकी ≤${irrigation.per_application_mm} मिमी).` : '';
-    const splitHi = irrigation.applications > 1 ? ` ${irrigation.applications} बार में बांटकर दें (प्रत्येक ≤${irrigation.per_application_mm} मिमी).` : '';
-    const wxMr = weatherEvidenceLine(ctx, 'mr');
-    const wxHi = weatherEvidenceLine(ctx, 'hi');
-    return {
-      mr: `"${landMr}"${areaMr} शेतात ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास).${splitMr}${wxMr ? ' ' + wxMr : ''}`,
-      hi: `"${landHi}"${areaHi} खेत में ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे).${splitHi}${wxHi ? ' ' + wxHi : ''}`,
-    };
-  }
-
-  const catTitleMr = CATEGORY_TITLES[mapDecisionCategory(category)]?.mr || 'सूचना';
-  const catTitleHi = CATEGORY_TITLES[mapDecisionCategory(category)]?.hi || 'सूचना';
-  const wxMr2 = weatherEvidenceLine(ctx, 'mr');
-  const wxHi2 = weatherEvidenceLine(ctx, 'hi');
-  return {
-    mr: `"${landMr}"${areaMr} - ${catTitleMr}.${wxMr2 ? ' ' + wxMr2 : ''} शेताची तपासणी करा.`,
-    hi: `"${landHi}"${areaHi} - ${catTitleHi}.${wxHi2 ? ' ' + wxHi2 : ''} खेत की जांच करें.`,
-  };
-}
-
-function generateTrilingualAction(category: string, actionEn: string | null, ctx: LandContext, methods: MethodParams): { mr: string; hi: string } {
-  const alertCat = mapDecisionCategory(category);
-
-  const irrigation = calculateIrrigationForLand(ctx, methods);
-  if (irrigation && (alertCat === 'IRRIGATION' || alertCat === 'CROP_STRESS')) {
-    const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
-    const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
-    return {
-      mr: `${methodMr}ने ${irrigation.water_liters_per_acre.toLocaleString()} लिटर/एकर पाणी द्या (${irrigation.duration_hours} तास)`,
-      hi: `${methodHi} से ${irrigation.water_liters_per_acre.toLocaleString()} लीटर/एकड़ पानी दें (${irrigation.duration_hours} घंटे)`,
-    };
-  }
-
-  const templates = CATEGORY_ACTIONS[alertCat] || CATEGORY_ACTIONS.GENERAL;
-  return { mr: templates.mr, hi: templates.hi };
+  td.graph_advice = advice ?? null;
+  if (ctx.land_name) td.land_name = ctx.land_name;
+  if (ctx.area_acres) td.area_acres = ctx.area_acres;
+  if (ctx.soil_type) td.soil_type = ctx.soil_type;
+  if (ctx.irrigation_type) td.irrigation_method = ctx.irrigation_type;
+  return td;
 }
 
 // =====================================================
@@ -1985,381 +2094,6 @@ function mapDecisionEventType(category: string): string {
     'stage_problems': 'STAGE_TRANSITION',
   };
   return map[category] || 'SCHEDULED_CHECK';
-}
-
-// =====================================================
-// SYMBOLIC SOLUTION BUILDER — from decision_rules (SSOT)
-// =====================================================
-
-function addSymbolicSolution(
-  triggerData: Record<string, any>,
-  dr: DecisionRuleProactive | null,
-  rule: ProactiveRule | null,
-  ctx: LandContext,
-  allDecisionRules: DecisionRuleProactive[],
-  methods: MethodParams,
-): Record<string, any> {
-  if (triggerData.solution) return triggerData;
-
-  let sourceRule = dr;
-  if (!sourceRule && rule) {
-    sourceRule = findBestMatchingDecisionRule(rule, ctx, allDecisionRules);
-  }
-
-  const solution = buildSolutionFromSymbolicData(sourceRule, ctx, triggerData);
-  triggerData.solution = solution;
-  return triggerData;
-}
-
-function findBestMatchingDecisionRule(
-  rule: ProactiveRule,
-  ctx: LandContext,
-  decisionRules: DecisionRuleProactive[]
-): DecisionRuleProactive | null {
-  const candidates = decisionRules.filter(dr => {
-    const bc = dr.crop_code ? dr.crop_code.toUpperCase().trim() : null;
-    if (bc && bc !== 'ALL' && ctx.crop_code && bc !== ctx.crop_code) return false;
-    if (dr.stage_applicable?.length && ctx.current_stage) {
-      if (!dr.stage_applicable.includes(ctx.current_stage) && !dr.stage_applicable.includes('ALL')) return false;
-    }
-    const drAlertCat = mapDecisionCategory(dr.category);
-    if (rule.alert_category === drAlertCat) return true;
-    const cc = dr.condition_code.toUpperCase();
-    if (rule.condition_type === 'NDVI' && (cc.includes('STRESS') || cc.includes('NDVI') || cc.includes('WATER') || cc.includes('DROUGHT'))) return true;
-    if (rule.condition_type === 'WEATHER' && (cc.includes('WEATHER') || cc.includes('RAIN') || cc.includes('HEAT'))) return true;
-    if (rule.condition_type === 'DISEASE_RISK' && (cc.includes('DISEASE') || cc.includes('BLIGHT') || cc.includes('SMUT') || cc.includes('RUST'))) return true;
-    if (rule.condition_type === 'PEST_RISK' && (cc.includes('PEST') || cc.includes('BORER') || cc.includes('INSECT'))) return true;
-    if (rule.condition_type === 'SOIL' && (cc.includes('NUTRIENT') || cc.includes('NITROGEN') || cc.includes('PHOSPHORUS'))) return true;
-    return false;
-  });
-
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => (a.priority || 99) - (b.priority || 99));
-  return candidates[0];
-}
-
-// =====================================================
-// CROP NAME LOCALIZATION
-// =====================================================
-const CROP_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
-  SUGARCANE: { mr: 'ऊस', hi: 'गन्ना', en: 'sugarcane' },
-  RICE:      { mr: 'भात', hi: 'चावल', en: 'rice' },
-  WHEAT:     { mr: 'गहू', hi: 'गेहूं', en: 'wheat' },
-  COTTON:    { mr: 'कापूस', hi: 'कपास', en: 'cotton' },
-  MAIZE:     { mr: 'मका', hi: 'मक्का', en: 'maize' },
-  SOYBEAN:   { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'soybean' },
-  TOMATO:    { mr: 'टोमॅटो', hi: 'टमाटर', en: 'tomato' },
-  ONION:     { mr: 'कांदा', hi: 'प्याज', en: 'onion' },
-  POTATO:    { mr: 'बटाटा', hi: 'आलू', en: 'potato' },
-  GROUNDNUT: { mr: 'भुईमूग', hi: 'मूंगफली', en: 'groundnut' },
-  CHILLI:    { mr: 'मिरची', hi: 'मिर्च', en: 'chilli' },
-  TURMERIC:  { mr: 'हळद', hi: 'हल्दी', en: 'turmeric' },
-  BANANA:    { mr: 'केळी', hi: 'केला', en: 'banana' },
-  GRAPE:     { mr: 'द्राक्ष', hi: 'अंगूर', en: 'grape' },
-  PIGEONPEA: { mr: 'तूर', hi: 'अरहर', en: 'pigeonpea' },
-  RAJMA:     { mr: 'राजमा', hi: 'राजमा', en: 'rajma' },
-};
-
-function cropLabel(code: string | null | undefined, lang: 'mr' | 'hi' | 'en'): string {
-  if (!code) return lang === 'mr' ? 'पीक' : lang === 'hi' ? 'फसल' : 'crop';
-  const upper = code.toUpperCase().trim();
-  const entry = CROP_LABEL[upper];
-  if (entry) return entry[lang];
-  return code.charAt(0).toUpperCase() + code.slice(1).toLowerCase();
-}
-
-function weatherEvidenceLine(ctx: LandContext, lang: 'mr' | 'hi' | 'en'): string {
-  const w = ctx.weather;
-  if (w.source === 'unavailable' || w.temp == null) return '';
-  const temp = Math.round(w.temp);
-  const hum = w.humidity != null ? Math.round(w.humidity) : null;
-  const distTag = w.source === 'proximity' && w.distance_km != null && w.distance_km > 1
-    ? (lang === 'mr' ? ` (≈ ${w.distance_km} किमी जवळचे केंद्र)` : lang === 'hi' ? ` (≈ ${w.distance_km} किमी नजदीकी केंद्र)` : ` (≈ ${w.distance_km} km nearby station)`)
-    : '';
-  if (lang === 'mr') return hum != null ? `आजचे हवामान: ${temp}°C, आर्द्रता ${hum}%${distTag}.` : `आजचे हवामान: ${temp}°C${distTag}.`;
-  if (lang === 'hi') return hum != null ? `आज का मौसम: ${temp}°C, नमी ${hum}%${distTag}.` : `आज का मौसम: ${temp}°C${distTag}.`;
-  return hum != null ? `Today's weather: ${temp}°C, humidity ${hum}%${distTag}.` : `Today's weather: ${temp}°C${distTag}.`;
-}
-
-const AGRO_TERM_MR: Record<string, string> = {
-  'irrigate': 'पाणी द्या', 'irrigation': 'सिंचन', 'spray': 'फवारणी करा',
-  'apply': 'द्या', 'inspect': 'तपासणी करा', 'inspection': 'तपासणी',
-  'check': 'तपासा', 'monitor': 'निरीक्षण करा', 'field': 'शेत',
-  'soil': 'माती', 'moisture': 'ओलावा', 'fertilizer': 'खत',
-  'nitrogen': 'नायट्रोजन', 'urea': 'युरिया', 'pest': 'कीड',
-  'disease': 'रोग', 'shoot borer': 'खोडकिडा', 'stem borer': 'खोडकिडा',
-  'root grub': 'मूळ अळी', 'wilt': 'मर रोग', 'red rot': 'लाल कूज',
-  'smut': 'काणी', 'leaf': 'पान',
-  'within 24 hours': '२४ तासांत', 'within 48 hours': '४८ तासांत',
-  'within 7 days': '७ दिवसांत',
-};
-
-const AGRO_TERM_HI: Record<string, string> = {
-  'irrigate': 'पानी दें', 'irrigation': 'सिंचाई', 'spray': 'छिड़काव करें',
-  'apply': 'डालें', 'inspect': 'जांच करें', 'inspection': 'जांच',
-  'check': 'देखें', 'monitor': 'निगरानी करें', 'field': 'खेत',
-  'soil': 'मिट्टी', 'moisture': 'नमी', 'fertilizer': 'खाद',
-  'nitrogen': 'नाइट्रोजन', 'urea': 'यूरिया', 'pest': 'कीट',
-  'disease': 'रोग', 'shoot borer': 'तना छेदक', 'stem borer': 'तना छेदक',
-  'root grub': 'जड़ की सुंडी', 'wilt': 'उकठा', 'red rot': 'लाल सड़न',
-  'smut': 'कण्डुआ', 'leaf': 'पत्ती',
-  'within 24 hours': '24 घंटों में', 'within 48 hours': '48 घंटों में',
-  'within 7 days': '7 दिनों में',
-};
-
-const IRRIGATION_METHOD_EN: Record<string, string> = {
-  DRIP: 'drip irrigation', SPRINKLER: 'sprinkler irrigation', FLOOD: 'flood irrigation',
-  FURROW: 'furrow irrigation', SURFACE: 'surface irrigation',
-};
-
-function localizeStep(stepEn: string, lang: 'mr' | 'hi'): string {
-  const dict = lang === 'mr' ? AGRO_TERM_MR : AGRO_TERM_HI;
-  let s = stepEn.replace(/^\s*\d+[.)]\s*/, '').trim();
-  const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
-  for (const key of keys) {
-    s = s.replace(new RegExp(`\\b${key}\\b`, 'gi'), dict[key]);
-  }
-  for (const [code] of Object.entries(IRRIGATION_METHOD_EN)) {
-    const replace = lang === 'mr' ? IRRIGATION_METHOD_MR[code] : IRRIGATION_METHOD_HI[code];
-    if (replace) s = s.replace(new RegExp(`\\b${code}\\b`, 'g'), replace);
-  }
-  return s;
-}
-
-function buildSolutionFromSymbolicData(
-  dr: DecisionRuleProactive | null,
-  ctx: LandContext,
-  triggerData: Record<string, any>
-): Record<string, any> {
-  const areaStr = ctx.area_acres ? `${ctx.area_acres} acres` : '';
-  const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
-  const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
-  const cropEn = ctx.crop_code || 'crop';
-  const landName = ctx.land_name || 'your field';
-
-  if (!dr) {
-    return buildContextualSolution(ctx, triggerData);
-  }
-
-  const actionText = dr.action_text || '';
-  const steps = actionText
-    .split(/(?:\.\s+|\n|;)/)
-    .map((s: string) => s.trim())
-    .filter((s: string) => s.length > 10)
-    .slice(0, 5);
-
-  const areaSpecificSteps = steps.map((step: string) => {
-    if (ctx.area_acres && ctx.area_acres > 0) {
-      const perAcreMatch = step.match(/(\d+(?:\.\d+)?)\s*(ml|g|kg|l|liter|litre)\s*(?:per|\/)\s*acre/i);
-      if (perAcreMatch) {
-        const qty = parseFloat(perAcreMatch[1]);
-        const unit = perAcreMatch[2];
-        const total = Math.round(qty * ctx.area_acres * 10) / 10;
-        return `${step} (Total for ${ctx.area_acres} acres: ${total} ${unit})`;
-      }
-    }
-    return step;
-  });
-
-  if (dr.active_ingredient && dr.dosage_per_acre) {
-    const doseMatch = dr.dosage_per_acre.match(/(\d+(?:\.\d+)?)\s*(ml|g|kg|l|liter|litre)/i);
-    if (doseMatch && ctx.area_acres && ctx.area_acres > 0) {
-      const qtyPerAcre = parseFloat(doseMatch[1]);
-      const unit = doseMatch[2];
-      const total = Math.round(qtyPerAcre * ctx.area_acres * 10) / 10;
-      const waterVol = dr.water_volume_per_acre || '200 liters';
-      const method = dr.application_method || 'foliar spray';
-      const productStep = `Apply ${dr.active_ingredient}: ${qtyPerAcre} ${unit}/acre × ${ctx.area_acres} acres = ${total} ${unit} total, in ${waterVol} water via ${method}`;
-      if (!areaSpecificSteps.some(s => s.toLowerCase().includes(dr.active_ingredient!.toLowerCase()))) {
-        areaSpecificSteps.unshift(productStep);
-      }
-    }
-  }
-
-  const reasonText = dr.reason_text || '';
-  const knowledgeText = dr.knowledge_text || '';
-  const conditionName = dr.condition_code.replace(/_/g, ' ').toLowerCase();
-
-  const problemEn = reasonText.split('.')[0] || `${conditionName} detected on ${landName}`;
-  const causeEn = knowledgeText
-    ? knowledgeText.split('.').slice(0, 2).join('. ')
-    : (reasonText.split('.').slice(1, 3).join('. ') || `Environmental conditions favor ${conditionName}`);
-
-  let safetyEn = '';
-  if (dr.phi_days) {
-    safetyEn = `Pre-harvest interval: ${dr.phi_days} days. Do not harvest before this period after application.`;
-  }
-  if (dr.bee_toxicity && dr.bee_toxicity !== 'SAFE' && dr.bee_toxicity !== 'LOW') {
-    safetyEn += safetyEn ? ' ' : '';
-    safetyEn += `⚠️ Bee toxicity: ${dr.bee_toxicity}. Do not spray during flowering or when bees are active.`;
-  }
-  if (dr.farmer_safety_level && dr.farmer_safety_level !== 'SAFE') {
-    safetyEn += safetyEn ? ' ' : '';
-    safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
-  } else if (actionText.toLowerCase().includes('spray') || actionText.toLowerCase().includes('insecticide') || actionText.toLowerCase().includes('fungicide')) {
-    safetyEn += safetyEn ? ' ' : '';
-    safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
-  }
-
-  const organicAltEn = dr.organic_alternative || '';
-  const followupEn = `Check ${landName} after 5-7 days. Look for improvement in crop health indicators. If condition persists, consult local agricultural extension officer.`;
-
-  const catMr = CATEGORY_TITLES[mapDecisionCategory(dr.category)]?.mr || 'सूचना';
-  const catHi = CATEGORY_TITLES[mapDecisionCategory(dr.category)]?.hi || 'सूचना';
-
-  const irrigation = triggerData.irrigation;
-  let irrigationStepMr = '';
-  let irrigationStepHi = '';
-  let irrigationStepEn = '';
-  if (irrigation) {
-    const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
-    const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
-    const splitEn = irrigation.applications > 1 ? ` split into ${irrigation.applications} applications of ≤${irrigation.per_application_mm} mm` : '';
-    irrigationStepEn = `Irrigate with ${irrigation.water_liters_total.toLocaleString()} liters via ${irrigation.method} (${irrigation.duration_hours} hrs)${splitEn}`;
-    irrigationStepMr = `${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास)${irrigation.applications > 1 ? `, ${irrigation.applications} वेळा विभागून` : ''}`;
-    irrigationStepHi = `${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)${irrigation.applications > 1 ? `, ${irrigation.applications} बार में बांटकर` : ''}`;
-  }
-
-  const cropMr = cropLabel(ctx.crop_code, 'mr');
-  const cropHi = cropLabel(ctx.crop_code, 'hi');
-  const cropEnLabel = cropLabel(ctx.crop_code, 'en');
-  const wxMr = weatherEvidenceLine(ctx, 'mr');
-  const wxHi = weatherEvidenceLine(ctx, 'hi');
-  const wxEn = weatherEvidenceLine(ctx, 'en');
-
-  const baseCauseMr = knowledgeText
-    ? localizeStep(knowledgeText.split('.').slice(0, 2).join('. '), 'mr')
-    : (reasonText ? localizeStep(reasonText.split('.').slice(0, 2).join('. '), 'mr') : `${dr.condition_code.replace(/_/g, ' ').toLowerCase()} - ${cropMr} पिकाची तपासणी आवश्यक.`);
-  const baseCauseHi = knowledgeText
-    ? localizeStep(knowledgeText.split('.').slice(0, 2).join('. '), 'hi')
-    : (reasonText ? localizeStep(reasonText.split('.').slice(0, 2).join('. '), 'hi') : `${dr.condition_code.replace(/_/g, ' ').toLowerCase()} - ${cropHi} फसल की जांच आवश्यक.`);
-
-  const stepsEnFinal = irrigationStepEn ? [...areaSpecificSteps, irrigationStepEn] : [...areaSpecificSteps];
-  const stepsMrFinal = areaSpecificSteps.map((s: string) => localizeStep(s, 'mr'));
-  const stepsHiFinal = areaSpecificSteps.map((s: string) => localizeStep(s, 'hi'));
-  if (irrigationStepMr) stepsMrFinal.push(irrigationStepMr);
-  if (irrigationStepHi) stepsHiFinal.push(irrigationStepHi);
-
-  return {
-    problem_en: problemEn,
-    problem_mr: `${landName} ${areaMr} शेतात ${catMr} आढळले. ${cropMr} पिकावर परिणाम होत आहे.`,
-    problem_hi: `${landName} ${areaHi} खेत में ${catHi} पाया गया. ${cropHi} फसल पर असर हो रहा है.`,
-    cause_en: causeEn + (wxEn ? ` ${wxEn}` : ''),
-    cause_mr: baseCauseMr + (wxMr ? ` ${wxMr}` : ''),
-    cause_hi: baseCauseHi + (wxHi ? ` ${wxHi}` : ''),
-    steps_en: stepsEnFinal,
-    steps_mr: stepsMrFinal.length ? stepsMrFinal : [`${cropMr} पिकाची तपासणी करा`],
-    steps_hi: stepsHiFinal.length ? stepsHiFinal : [`${cropHi} फसल की जांच करें`],
-    safety_en: safetyEn || 'Wear protective equipment when applying any chemical treatment.',
-    safety_mr: 'फवारणी करताना हातमोजे, मास्क आणि पूर्ण बाह्यांचे कपडे घाला. फवारणी दरम्यान खाणे-पिणे टाळा.',
-    safety_hi: 'छिड़काव करते समय दस्ताने, मास्क और पूरी बाजू के कपड़े पहनें. छिड़काव के दौरान खाना-पीना न करें.',
-    organic_alt_en: organicAltEn,
-    organic_alt_mr: organicAltEn ? localizeStep(organicAltEn, 'mr') : '',
-    organic_alt_hi: organicAltEn ? localizeStep(organicAltEn, 'hi') : '',
-    expected_benefit_en: `Following these steps should help on your ${areaStr} ${cropEnLabel} field. Monitor after 5-7 days.`,
-    expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropMr} पिकाची स्थिती सुधारेल. ५-७ दिवसांनी तपासा.`,
-    expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropHi} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
-    followup_en: followupEn,
-    followup_mr: `${landName} शेत ५-७ दिवसांनी तपासा. सुधारणा न झाल्यास स्थानिक कृषी अधिकाऱ्यांशी संपर्क करा.`,
-    followup_hi: `${landName} खेत 5-7 दिन बाद जांचें. सुधार न हो तो स्थानीय कृषि अधिकारी से संपर्क करें.`,
-    weather_source: ctx.weather.source,
-    weather_distance_km: ctx.weather.distance_km,
-  };
-}
-
-function buildContextualSolution(
-  ctx: LandContext,
-  triggerData: Record<string, any>
-): Record<string, any> {
-  const landName = ctx.land_name || 'your field';
-  const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
-  const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
-  const cropMrL = cropLabel(ctx.crop_code, 'mr');
-  const cropHiL = cropLabel(ctx.crop_code, 'hi');
-  const cropEnL = cropLabel(ctx.crop_code, 'en');
-  const wxEn = weatherEvidenceLine(ctx, 'en');
-  const wxMr = weatherEvidenceLine(ctx, 'mr');
-  const wxHi = weatherEvidenceLine(ctx, 'hi');
-
-  const irrigation = triggerData.irrigation;
-
-  if (triggerData.ndvi != null || triggerData.drop != null) {
-    const ndviVal = triggerData.ndvi ?? '--';
-    const steps_en: string[] = [
-      'Inspect the field for visible stress signs: wilting, yellowing, or dry patches',
-      'Check soil moisture level by pressing soil between fingers — it should feel moist',
-    ];
-    const steps_mr: string[] = [
-      'शेतात जाऊन पिकाची स्थिती तपासा — पाने पिवळी, सुकलेली किंवा कोमेजलेली आहेत का पहा',
-      'जमिनीतील ओलावा तपासा — माती बोटांनी दाबून ओलसर आहे का पहा',
-    ];
-    const steps_hi: string[] = [
-      'खेत में जाकर फसल की स्थिति जांचें — पत्तियां पीली, सूखी या मुरझाई हुई हैं क्या देखें',
-      'मिट्टी की नमी जांचें — उंगलियों से दबाकर देखें गीली है या सूखी',
-    ];
-
-    if (irrigation) {
-      const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
-      const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
-      // NOTE: wording is deficit-based ("as per water deficit"), no "immediately" —
-      // urgency is a governed field carried separately in irrigation.urgency.
-      steps_en.push(`Irrigate as per computed deficit: ${irrigation.water_liters_total.toLocaleString()} liters via ${irrigation.method} (${irrigation.duration_hours} hours)`);
-      steps_mr.push(`${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास)`);
-      steps_hi.push(`${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)`);
-    }
-
-    steps_en.push('If stress persists after 5 days, take a photo and consult via AI Chat');
-    steps_mr.push('5 दिवसांनी सुधारणा नसल्यास फोटो काढून AI चॅटवर विचारा');
-    steps_hi.push('5 दिन बाद सुधार न हो तो फोटो लेकर AI चैट पर पूछें');
-
-    return {
-      problem_en: `Satellite data shows crop health decline (NDVI: ${ndviVal}) on ${landName}. This indicates possible water stress, nutrient deficiency, or pest/disease damage.`,
-      problem_mr: `${landName} ${areaMr} शेतातील पिकाचे उपग्रह आरोग्य (NDVI: ${ndviVal}) कमी झाले आहे. पाणी कमतरता, अन्नद्रव्य कमतरता किंवा कीड-रोगामुळे असू शकते.`,
-      problem_hi: `${landName} ${areaHi} खेत में उपग्रह फसल स्वास्थ्य (NDVI: ${ndviVal}) कम हुआ है. पानी की कमी, पोषक तत्वों की कमी या कीट-रोग के कारण हो सकता है.`,
-      cause_en: `Satellite shows the ${cropEnL} crop looks weak (NDVI ${ndviVal}). Soil: ${ctx.soil_type || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
-      cause_mr: `उपग्रहावरून ${cropMrL} पीक कमजोर दिसत आहे (NDVI ${ndviVal}). माती: ${ctx.soil_type || '—'}.${wxMr ? ' ' + wxMr : ''}`,
-      cause_hi: `उपग्रह से ${cropHiL} फसल कमजोर दिख रही है (NDVI ${ndviVal}). मिट्टी: ${ctx.soil_type || '—'}.${wxHi ? ' ' + wxHi : ''}`,
-      steps_en,
-      steps_mr,
-      steps_hi,
-      safety_en: 'If applying any chemical treatment, wear gloves and mask. Do not spray during windy conditions.',
-      safety_mr: 'कोणतीही रासायनिक फवारणी करताना हातमोजे आणि मास्क वापरा. वाऱ्यात फवारणी करू नका.',
-      safety_hi: 'कोई भी रासायनिक छिड़काव करते समय दस्ताने और मास्क पहनें. हवा में छिड़काव न करें.',
-      organic_alt_en: '',
-      organic_alt_mr: '',
-      organic_alt_hi: '',
-      expected_benefit_en: `With proper care, crop health on ${landName} should improve within 7-10 days. NDVI should show recovery in the next satellite pass.`,
-      expected_benefit_mr: `योग्य काळजीने ${landName} शेतातील पिकाचे आरोग्य 7-10 दिवसांत सुधारेल.`,
-      expected_benefit_hi: `उचित देखभाल से ${landName} खेत में फसल स्वास्थ्य 7-10 दिनों में सुधरेगा.`,
-      followup_en: `Re-check ${landName} after 5-7 days. Look for greener leaves and new growth. Next NDVI update will confirm recovery.`,
-      followup_mr: `5-7 दिवसांनी ${landName} शेत पुन्हा तपासा. हिरवी पाने आणि नवी वाढ दिसायला हवी.`,
-      followup_hi: `5-7 दिन बाद ${landName} खेत फिर जांचें. हरी पत्तियां और नई वृद्धि दिखनी चाहिए.`,
-    };
-  }
-
-  return {
-    problem_en: `Alert condition detected on ${landName}. Immediate field inspection recommended.`,
-    problem_mr: `${landName} ${areaMr} शेतात समस्या आढळली. शेताची तपासणी करा.`,
-    problem_hi: `${landName} ${areaHi} खेत में समस्या पाई गई. खेत की जांच करें.`,
-    cause_en: `Crop stage: ${ctx.current_stage || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
-    cause_mr: `पीक टप्पा: ${ctx.current_stage || '—'}.${wxMr ? ' ' + wxMr : ''}`,
-    cause_hi: `फसल चरण: ${ctx.current_stage || '—'}.${wxHi ? ' ' + wxHi : ''}`,
-    steps_en: ['Inspect the field thoroughly', 'Check for any visible damage or stress signs', 'Consult AI Chat with a photo for specific advice'],
-    steps_mr: ['शेताची संपूर्ण तपासणी करा', 'कोणतेही नुकसान किंवा ताण चिन्हे तपासा', 'फोटो काढून AI चॅटवर विचारा'],
-    steps_hi: ['खेत की पूरी जांच करें', 'किसी भी नुकसान या तनाव के संकेत देखें', 'फोटो लेकर AI चैट पर पूछें'],
-    safety_en: '',
-    safety_mr: '',
-    safety_hi: '',
-    organic_alt_en: '',
-    organic_alt_mr: '',
-    organic_alt_hi: '',
-    expected_benefit_en: '',
-    expected_benefit_mr: '',
-    expected_benefit_hi: '',
-    followup_en: `Check ${landName} again after 3-5 days.`,
-    followup_mr: `3-5 दिवसांनी ${landName} शेत पुन्हा तपासा.`,
-    followup_hi: `3-5 दिन बाद ${landName} खेत फिर जांचें.`,
-  };
 }
 
 // =====================================================
