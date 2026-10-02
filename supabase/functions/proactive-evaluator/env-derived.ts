@@ -18,14 +18,16 @@
 //     (ndvi.is_fresh = 1 from v_ndvi_decision_grade, ndvi.evidence_rank >= 1) —
 //     the gate the legacy NDVI branch already applied. PRO_NDVI_DROP fired
 //     CRITICAL every day on a 27-day-old pass without it.
-//   * A rule that reads derived.root_depletion needs a verified water state
-//     (derived.water_state_verified). The weather pipeline's own guard
+//   * derived.water_state_verified: the weather pipeline's own guard
 //     (isDepletionUnverifiedCeiling) marks a bucket that sat at the ceiling with
-//     no irrigation evidence; no app path records IRRIGATION_APPLIED, so every
-//     irrigated field ratchets there in a dry spell and the guard releases as
-//     soon as a light shower nudges depletion below 98% of TAW. The state stays
-//     unverified until the bucket is known again: an irrigation event, or the
-//     profile back at field capacity (depletion <= 0).
+//     no irrigation evidence. It is carried on the alert as evidence (the card
+//     shows "unverified"), exactly as the pipeline treats it — a confidence
+//     signal, never an override. 2026-10-02 (same day, field check): an earlier
+//     build of this file refused to raise irrigation rules on an unverified
+//     state; the agronomist confirmed on Kodoli Mala and Shinghan Mal that the
+//     bucket at ceiling after a month without rain WAS water stress, so that
+//     gate is removed. The state stays unverified until the bucket is known
+//     again: an irrigation event, or the profile back at field capacity.
 
 import { isDepletionUnverifiedCeiling, UNVERIFIED_LOOKBACK_DAYS } from '../weather/water-events.ts';
 
@@ -367,11 +369,6 @@ export function evaluateEnvRule(
       return notFired(`NDVI pass not fresh (age ${ctx.ndvi?.age_days ?? '?'} d)`, triggerData);
     }
     if ((ctx.ndvi?.evidence_rank ?? 0) < 1) return notFired('NDVI evidence insufficient', triggerData);
-  }
-  if (reads('derived.root_depletion') && ctx.derived.water_state_verified !== true) {
-    return notFired(ctx.derived.water_state_verified === false
-      ? 'root-zone water state unverified (bucket at ceiling with no irrigation evidence)'
-      : 'root-zone water state unknown', triggerData);
   }
 
   for (const p of preds) {
