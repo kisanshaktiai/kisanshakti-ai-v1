@@ -24004,6 +24004,106 @@ export type Database = {
         }
         Relationships: []
       }
+      ndvi_scene_evaluations: {
+        Row: {
+          acquisition_date: string | null
+          evaluated_at: string
+          geometry_fingerprint: string
+          land_id: string
+          outcome: string
+          pipeline_version: string
+          reason: string | null
+          scene_id: string
+          tenant_id: string
+        }
+        Insert: {
+          acquisition_date?: string | null
+          evaluated_at?: string
+          geometry_fingerprint: string
+          land_id: string
+          outcome: string
+          pipeline_version: string
+          reason?: string | null
+          scene_id: string
+          tenant_id: string
+        }
+        Update: {
+          acquisition_date?: string | null
+          evaluated_at?: string
+          geometry_fingerprint?: string
+          land_id?: string
+          outcome?: string
+          pipeline_version?: string
+          reason?: string | null
+          scene_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "ndvi_scene_evaluations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       ndvi_spatial_analytics: {
         Row: {
           anomaly_detection: Json | null
