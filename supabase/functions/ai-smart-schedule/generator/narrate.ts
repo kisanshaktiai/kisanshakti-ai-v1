@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
+//   request is issued, so a failure row names the model that actually failed with its own status; the
+//   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
+// 2026-09-27 — AI model SSOT: the provider/model chain comes from the AI model registry task
+//   schedule.compose (resolveAITaskChain) instead of getScheduleProviderChain() (secrets
+//   LOVABLE_/OPENAI_/GEMINI_SCHEDULE_MODEL + code defaults), and each request is built from the
+//   model's catalog contract (buildTaskRequest) with the same knobs buildAIRequest sent: 8000
+//   tokens, temperature 0 where allowed, reasoning "none" where accepted, JSON mode on
+//   gemini/lovable only. Retry, cooldown, chunking, headers and fact gates are unchanged. Every
+//   narrateChunk call is recorded once in ai_model_metrics (recordAITaskCall).
 // 2026-09-09 — A task returned UNCHANGED in English was being accepted as translated: with no target
 //   script, every Latin word counted as 'carried from the source', the ratio had nothing to judge and
 //   the short-string fallback returned true. Target script is now mandatory for a non-English target.
@@ -20,7 +30,10 @@
 // LLM request instead of several sequential/parallel chunk requests. This prevents the
 // Supabase Edge invocation from exhausting its request lifetime before persistence.
 // Farmer-language narration is a presentation step only. Agronomic selection stays DB/deterministic.
-import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
+// deno-lint-ignore no-explicit-any
+export interface NarrationAIContext { db: { from(table: string): any }; farmerId?: string | null }
+type NarrationRoute = { chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean };
 import { isTechnicalLine } from "./farmer-text.ts";
 export interface NarratableTask { task_name: string; task_description: string; instructions?: string[]; }
 const NUM_RE = /\d+(?:[.,]\d+)?/g; const CHUNK_SIZE = 4; const MAX_CONCURRENCY = 4; const NARRATION_BUDGET_MS = 90_000; const MAX_OUTPUT_TOKENS = 8_000; const RETRY_DELAYS_MS = [2_000, 5_000]; const MAX_RETRY_AFTER_MS = 8_000; let rateLimited = false;
@@ -78,7 +91,7 @@ function hasFarmerLanguageQuality(value: string, language: string, source?: stri
 }
 function containsExpectedScript(value: string, language: string, source?: string): boolean { return hasFarmerLanguageQuality(value, language, source); }
 
-async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
+async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: farmerInstructionSource(t.instructions) }));
   const prompt = [
     `You are a village agriculture officer explaining farm tasks to a smallholder farmer who left school early.`,
@@ -97,34 +110,42 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
     `Return STRICT JSON only: [{"i":0,"name":"...","desc":"...","instructions":["..."]}]`,
     `INPUT:`, JSON.stringify(payload)
   ].join("\n");
-  let lastError: unknown = new Error("MODEL_UNAVAILABLE"); const chain = getScheduleProviderChain().filter((p) => getAPIKey(p.provider));
+  let lastError: unknown = new Error("MODEL_UNAVAILABLE"); const chain = route.chain.filter((m) => getAPIKey(m.provider));
   const ordered = [...chain].sort((a, b) => Math.max(0, cooldownRemaining(a.provider)) - Math.max(0, cooldownRemaining(b.provider)));
-  for (const { provider, model } of ordered) { const apiKey = getAPIKey(provider); if (!apiKey) continue; try {
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
+  for (const m of ordered) { const provider = m.provider; const model = m.api_model_id; const apiKey = getAPIKey(provider); if (!apiKey) continue; lastModel = m; lastStatus = null; try {
     await waitForCooldown(provider, signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
-    const body = buildAIRequest(provider, model, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], { maxTokens: MAX_OUTPUT_TOKENS, temperature: 0, useJsonMode: true });
+    const body = buildTaskRequest(m, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], mergeAIRouteParams(route.params, { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }));
     const authHeaders: Record<string, string> = provider === "lovable"
       ? { "Content-Type": "application/json", "Lovable-API-Key": apiKey }
       : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
-    const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: authHeaders, body: JSON.stringify(body), signal });
-    if (!res.ok) { if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
+    const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: authHeaders, body: JSON.stringify(body), signal }); lastStatus = res.status;
+    if (!res.ok) { attempts.push({ model_key: m.model_key, outcome: `http_${res.status}`, http_status: res.status }); if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
     const responseJson = await res.json(); const raw = parseModelJson(responseJson?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray((raw as any)?.tasks) ? (raw as any).tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
-    if (parsed.length < chunk.length) throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null);
+    if (parsed.length < chunk.length) { attempts.push({ model_key: m.model_key, outcome: "incomplete", http_status: res.status }); throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null); }
+    attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status });
+    await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: route.chain[0], ok: true, httpStatus: res.status, latencyMs: Date.now() - callStarted, usage: readAIUsage(responseJson), farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts } });
     return { items: parsed.map((p) => ({ ...p, i: offset + Number(p.i) })), provider, model };
-  } catch (error) { lastError = error; console.error(`[narrate] ${provider}/${model} failed: ${(error as Error)?.message}`); } }
+  } catch (error) { lastError = error; if (!attempts.length || attempts[attempts.length - 1].model_key !== m.model_key) attempts.push({ model_key: m.model_key, outcome: (error as Error)?.name === "AbortError" ? "timeout" : "error" }); console.error(`[narrate] ${provider}/${model} failed: ${(error as Error)?.message}`); } }
+  if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : signal.aborted ? "timeout" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts, detail: (lastError as Error)?.message ?? null } });
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal) {
+async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext) {
   let lastError: unknown = new Error("MODEL_UNAVAILABLE");
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) { const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null ? lastError.retryAfterMs : RETRY_DELAYS_MS[attempt - 1]; await sleep(wait, signal); if (signal.aborted) break; }
-    try { return await narrateChunk(chunk, offset, language, signal); } catch (error) { lastError = error; if (signal.aborted || !(error instanceof RetryableError)) break; }
+    try { return await narrateChunk(chunk, offset, language, signal, route, ai); } catch (error) { lastError = error; if (signal.aborted || !(error instanceof RetryableError)) break; }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs?: number): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; timedOut: boolean; reason?: string; provider?: string; model?: string }> {
+export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs: number | undefined, ai: NarrationAIContext): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; timedOut: boolean; reason?: string; provider?: string; model?: string }> {
   const totalCount = tasks.length; if (budgetMs !== undefined && budgetMs <= 2_000) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: true, reason: "narration_skipped_time_budget" };
   if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_tasks" };
-  let configured: Array<{ provider: AIProvider; model: string }>; try { configured = getScheduleProviderChain(); } catch { return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" }; }
+  // Model chain from the registry (task schedule.compose); "configured" keeps its old meaning: route steps whose provider key is set.
+  const resolved = await resolveAITaskChain(ai.db, "schedule.compose");
+  if (!resolved.ok) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: `model_route_unavailable:${resolved.errorClass}` };
+  const route: NarrationRoute = { chain: resolved.chain, params: resolved.params, emergency: resolved.emergency };
+  const configured = route.chain.filter((m) => getAPIKey(m.provider));
   if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" };
   let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil.clear();
   // Narrate each distinct text once (recurring cards share name/desc/steps); fan the result out.
@@ -135,7 +156,7 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
   const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), Math.max(0, Math.min(NARRATION_BUDGET_MS, budgetMs ?? NARRATION_BUDGET_MS))); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = []; let i = 0;
-    while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal)))); i += MAX_CONCURRENCY; }
+    while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal, route, ai)))); i += MAX_CONCURRENCY; }
     for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const unique = uniqueTasks[item.i]; if (!unique) continue;
       const source = farmerInstructionSource(unique.instructions);
       const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language, unique.task_name);

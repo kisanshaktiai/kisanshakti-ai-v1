@@ -1,6 +1,28 @@
+// CHANGE LOG (newest first)
+// 2026-10-02 — Rebased on the 2026-10-02 branch version (commit eece5418), which added the
+//   degrade-to-original-text behaviour: a provider failure returns HTTP 200 with the untranslated
+//   text and `degraded: true, reason: <status>` so the Community screen never breaks, and each text
+//   in a batch fails on its own. That behaviour is kept. What changes: the model again comes from
+//   the AI model registry (task 'farmer.translate') through callAITask instead of the hardcoded
+//   'openai/gpt-6-astra' on the Lovable gateway with a hardcoded 'gpt-4o-mini' fallback. Status
+//   mapping kept from that version: exhausted credits ⇒ reason 402, rate limit ⇒ 429, other provider
+//   HTTP status passed through, no response (timeout/network/no key/no route) ⇒ 500.
+// 2026-09-27 — AI model SSOT: translateSingle calls callAITask task 'farmer.translate'; the
+//   model comes from ai_task_route_step. A module-level service-role client reads the
+//   registry. Request knobs unchanged: max 2000 output tokens, no temperature, no JSON mode,
+//   no reasoning effort. The call has the router's 55 s budget; every call writes one
+//   ai_model_metrics row.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { rateGuard } from '../_shared/rateGuard.ts';
+import { callAITask } from '../_shared/aiConfig.ts';
+
+// Service-role client for the AI model registry (callAITask reads the route and writes the ledger).
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+);
 
 
 // Language code mapping
@@ -97,33 +119,12 @@ serve(async (req) => {
   }
 });
 
-async function callProvider(
-  url: string, apiKey: string, model: string, prompt: string,
-): Promise<string> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }] }),
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Provider ${model} error:`, response.status, errorText.slice(0, 300));
-    // OpenAI reports exhausted credits as 429 insufficient_quota — treat as billing (402).
-    const isQuota = /insufficient_quota|credit_balance_exhausted/.test(errorText);
-    throw new APIError(`Translation API error: ${response.status}`, isQuota ? 402 : response.status);
-  }
-  const data = await response.json();
-  const out = data.choices?.[0]?.message?.content?.trim();
-  if (!out) throw new APIError('No translation received', 500);
-  return out;
-}
-
 async function translateSingle(
   text: string,
   sourceLang: string,
   targetLang: string,
 ): Promise<string> {
-  const prompt = `You are a professional translator specializing in Indian agricultural terminology. Translate the following text from ${sourceLang} to ${targetLang}. 
+  const prompt = `You are a professional translator specializing in Indian agricultural terminology. Translate the following text from ${sourceLang} to ${targetLang}.
 
 IMPORTANT RULES:
 1. Preserve agricultural and farming terminology accurately
@@ -135,19 +136,42 @@ IMPORTANT RULES:
 Text to translate:
 ${text}`;
 
-  const lovableKey = Deno.env.get('LOVABLE_API_KEY');
-  const openaiKey = Deno.env.get('OPENAI_API_KEY');
-  let lastErr: APIError = new APIError('No translation provider configured', 500);
+  // AI model SSOT: model chain from registry task farmer.translate (the router tries each step in
+  // order and skips a provider that is cooling down after a 429 / exhausted credits).
+  // Same request as before: max 2000 output tokens, no temperature.
+  const r = await callAITask({
+    db: supabase,
+    task: 'farmer.translate',
+    functionName: 'translate-text',
+    messages: [
+      { role: 'user', content: prompt }
+    ],
+    farmerId: null,
+    maxOutputTokens: 2000,
+    metadata: { caller: 'translate-text' },
+  });
 
-  if (lovableKey) {
-    try {
-      return await callProvider('https://ai.gateway.lovable.dev/v1/chat/completions', lovableKey, 'openai/gpt-6-astra', prompt);
-    } catch (e) { lastErr = e as APIError; }
+  if (r.ok) {
+    const out = r.content.trim();
+    if (!out) throw new APIError('No translation received', 500);
+    return out;
   }
-  if (openaiKey) {
-    try {
-      return await callProvider('https://api.openai.com/v1/chat/completions', openaiKey, 'gpt-4o-mini', prompt);
-    } catch (e) { lastErr = e as APIError; }
+
+  console.error('Provider error:', r.httpStatus ?? '-', r.errorClass, (r.detail || '').slice(0, 300));
+  // Exhausted credits are reported by OpenAI as 429 insufficient_quota — treat as billing (402).
+  if (r.errorClass === 'quota_exhausted') {
+    throw new APIError(`Translation API error: ${r.httpStatus ?? 429}`, 402);
   }
-  throw lastErr;
+  if (r.errorClass === 'rate_limited'
+    || (r.errorClass === 'no_provider_available' && r.attempts.some((a) => a.outcome === 'skipped_cooldown'))) {
+    throw new APIError('Rate limit exceeded. Please try again later.', 429);
+  }
+  if (r.errorClass === 'empty_output') {
+    throw new APIError('No translation received', 500);
+  }
+  if (r.httpStatus) {
+    throw new APIError(`Translation API error: ${r.httpStatus}`, r.httpStatus);
+  }
+  // No HTTP response (timeout, network, no key, no route): 500, as a fetch exception was.
+  throw new APIError(r.detail || r.errorClass, 500);
 }

@@ -214,9 +214,13 @@ export function getProviderFromModel(model: string): AIProvider {
 //      HTTP 400 ("'temperature' does not support 0.3 with this model").
 // Legacy chat models (gpt-4o, gpt-4, gpt-3.5) keep `max_tokens` + free temperature.
 // Matches on the model string so new model IDs in the same families need no code change.
+// 2026-09-27 — gpt-6 and later belong to the same family (developers.openai.com model page
+// for gpt-6-luna: max_completion_tokens, reasoning none…max). The old pattern stopped at
+// gpt-5, so a gpt-6 name would have been sent max_tokens + a custom temperature. Only the
+// legacy name-based paths use this; registry calls take the contract from ai_model_catalog.
 export function isNextGenOpenAIModel(model: string): boolean {
   const m = (model || "").toLowerCase();
-  return /(^|[/_-])(gpt-5|o1|o3|o4)/.test(m);
+  return /(^|[/_-])(gpt-([5-9]|[1-9][0-9])|o1|o3|o4)/.test(m);
 }
 export function requiresMaxCompletionTokens(model: string): boolean {
   return isNextGenOpenAIModel(model);
@@ -421,7 +425,7 @@ export interface AICatalogModel {
   input_modalities: string[];
   api_contract: AIModelContract;
 }
-interface AIRouteParams { max_output_tokens?: number; temperature?: number; reasoning_effort?: string; json_mode?: boolean }
+export interface AIRouteParams { max_output_tokens?: number; temperature?: number; reasoning_effort?: string; json_mode?: boolean }
 interface AITaskRoute { task_key: string; is_active: boolean; params: AIRouteParams; steps: string[] }
 interface AIPriceRow {
   id: string;
@@ -459,16 +463,36 @@ export interface AITaskCall {
   /** Optional cap for a single step, so one slow model cannot use the whole budget and starve the fallbacks. */
   attemptTimeoutMs?: number;
   metadata?: Record<string, unknown>;
+  // ── 2026-09-27 — options that existing call sites already send, so they can move onto the
+  // registry without changing their requests. None of them names a model.
+  /** JSON mode for these providers only — reproduces buildAIRequest(useJsonMode), which set response_format json_object for gemini/lovable and never for openai. `jsonMode: true` (or route params.json_mode) applies to every provider and wins. */
+  jsonModeProviders?: AIProvider[];
+  /** Explicit response_format (e.g. json_schema). Wins over jsonMode / jsonModeProviders. */
+  // deno-lint-ignore no-explicit-any
+  responseFormat?: Record<string, any>;
+  /** Function calling, passed through unchanged (OpenAI-compatible shape). */
+  // deno-lint-ignore no-explicit-any
+  tools?: any[];
+  // deno-lint-ignore no-explicit-any
+  toolChoice?: any;
+  /** 2026-10-02 — an answer shorter than this many characters counts as empty_output and the chain moves
+   *  on (ai-agriculture-chat forceTranslate kept its "longer than 30 characters" rule this way). */
+  minContentChars?: number;
 }
 export interface AICallUsage { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number }
 interface AIAttempt { model_key: string; outcome: "ok" | AICallErrorClass | "skipped_no_key" | "skipped_cooldown"; http_status?: number; ms?: number }
 export type AITaskResult =
-  | { ok: true; content: string; modelKey: string; provider: AIProvider; fallbackUsed: boolean; usage: AICallUsage; costUsd: number | null; attempts: AIAttempt[] }
-  | { ok: false; errorClass: AICallErrorClass | "route_missing" | "route_inactive" | "no_provider_available"; detail: string; attempts: AIAttempt[] };
+  // apiModelId / toolCalls added 2026-09-27: callers record the model string they already stored (e.g. ai_chat_messages.ai_model) and read tool calls.
+  // deno-lint-ignore no-explicit-any
+  | { ok: true; content: string; modelKey: string; apiModelId: string; provider: AIProvider; fallbackUsed: boolean; usage: AICallUsage; costUsd: number | null; priceId: string | null; attempts: AIAttempt[]; toolCalls: any[] }
+  | { ok: false; errorClass: AICallErrorClass | "route_missing" | "route_inactive" | "no_provider_available"; detail: string; attempts: AIAttempt[]; httpStatus?: number | null };
 
 const AI_REGISTRY_TTL_MS = 10 * 60 * 1000;       // same TTL as system-config-cache.ts
 const AI_PROVIDER_COOLDOWN_DEFAULT_MS = 5_000;   // narrate.ts default when no Retry-After
 const AI_PROVIDER_COOLDOWN_MAX_MS = 8_000;       // narrate.ts MAX_RETRY_AFTER_MS
+// 2026-10-02 — exhausted credits ("insufficient_quota" / "no credits remaining") do not clear in seconds:
+// cool the provider for 5 minutes so every call does not pay a failed round trip before its fallback.
+const AI_PROVIDER_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
 const AI_MIN_ATTEMPT_MS = 1_000;
 
 let aiRegistry: AIRegistrySnapshot | null = null;
@@ -525,25 +549,55 @@ export async function loadAIRegistry(db: RegistryDb, opts: { force?: boolean } =
   return aiRegistryLoading;
 }
 
+/** Request options for one call: ai_task_route.params (database) override the caller's defaults. One rule for callAITask and for resolveAITaskChain users. */
+export function mergeAIRouteParams(
+  params: AIRouteParams,
+  call: Pick<AITaskCall, "maxOutputTokens" | "temperature" | "reasoningEffort" | "jsonMode" | "jsonModeProviders" | "responseFormat" | "tools" | "toolChoice">,
+) {
+  return {
+    maxOutputTokens: params.max_output_tokens ?? call.maxOutputTokens,
+    temperature: params.temperature ?? call.temperature,
+    reasoningEffort: params.reasoning_effort ?? call.reasoningEffort,
+    jsonMode: params.json_mode ?? call.jsonMode,
+    jsonModeProviders: call.jsonModeProviders,
+    responseFormat: call.responseFormat,
+    tools: call.tools,
+    toolChoice: call.toolChoice,
+  };
+}
+
 /** Builds a Chat Completions body from the model's contract row. */
 export function buildTaskRequest(
   model: AICatalogModel,
   // deno-lint-ignore no-explicit-any
   messages: Array<{ role: string; content: any }>,
-  opts: { maxOutputTokens?: number; temperature?: number; reasoningEffort?: string; jsonMode?: boolean } = {},
+  opts: {
+    maxOutputTokens?: number; temperature?: number; reasoningEffort?: string; jsonMode?: boolean;
+    // deno-lint-ignore no-explicit-any
+    jsonModeProviders?: AIProvider[]; responseFormat?: Record<string, any>; tools?: any[]; toolChoice?: any;
+  } = {},
 ): Record<string, unknown> {
   const c = model.api_contract;
   const body: Record<string, unknown> = { model: model.api_model_id, messages };
   if (opts.maxOutputTokens !== undefined) body[c.token_param] = opts.maxOutputTokens;
   if (opts.temperature !== undefined && c.temperature === "allowed") body.temperature = opts.temperature;
   if (opts.reasoningEffort !== undefined && c.reasoning_efforts.includes(opts.reasoningEffort)) body.reasoning_effort = opts.reasoningEffort;
-  if (opts.jsonMode === true) body.response_format = { type: "json_object" };
+  if (opts.responseFormat) body.response_format = opts.responseFormat;
+  else if (opts.jsonMode === true || (opts.jsonMode === undefined && opts.jsonModeProviders?.includes(model.provider))) body.response_format = { type: "json_object" };
+  if (opts.tools && opts.tools.length) {
+    body.tools = opts.tools;
+    if (opts.toolChoice !== undefined) body.tool_choice = opts.toolChoice;
+  }
   return body;
 }
 
 export function classifyAIFailure(httpStatus: number, bodyText: string): AICallErrorClass {
   const b = (bodyText || "").toLowerCase();
-  if (httpStatus === 429) return b.includes("insufficient_quota") || b.includes("exceeded your current quota") ? "quota_exhausted" : "rate_limited";
+  if (httpStatus === 429) {
+    // 2026-10-02 — OpenAI's current wording for a drained balance is "You have no credits remaining" (seen live 2026-10-01).
+    return b.includes("insufficient_quota") || b.includes("exceeded your current quota")
+      || b.includes("no credits remaining") || b.includes("credit_balance_exhausted") ? "quota_exhausted" : "rate_limited";
+  }
   if (httpStatus === 404 || b.includes("model_not_found") || b.includes("no longer available") || b.includes("does not exist")) return "model_retired";
   if (httpStatus === 400 || httpStatus === 422) return "contract_rejected";
   if (httpStatus >= 500) return "server_error";
@@ -591,6 +645,18 @@ async function writeAILedger(db: RegistryDb, row: Record<string, unknown>): Prom
   }
 }
 
+// 2026-10-02 — the ledger insert is taken off the request path: on the Supabase Edge Runtime the
+// write is handed to EdgeRuntime.waitUntil (it completes after the response); anywhere else it is
+// awaited as before. A chat turn makes up to five routed calls, so this removes up to five
+// sequential inserts from the farmer's wait. writeAILedger never throws.
+function queueAILedger(db: RegistryDb, row: Record<string, unknown>): Promise<void> {
+  const p = writeAILedger(db, row);
+  // deno-lint-ignore no-explicit-any
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === "function") { rt.waitUntil(p); return Promise.resolve(); }
+  return p;
+}
+
 /** Runs one AI call for a task through its registry chain and records it in the usage ledger. Never throws for provider failures. */
 export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
   const started = Date.now();
@@ -611,12 +677,7 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
     chain = route.steps.map((k) => snap.models.get(k)).filter((m): m is AICatalogModel => !!m);
   }
 
-  const opts = {
-    maxOutputTokens: params.max_output_tokens ?? call.maxOutputTokens,
-    temperature: params.temperature ?? call.temperature,
-    reasoningEffort: params.reasoning_effort ?? call.reasoningEffort,
-    jsonMode: params.json_mode ?? call.jsonMode,
-  };
+  const opts = mergeAIRouteParams(params, call);
 
   const attempts: AIAttempt[] = [];
   let last: { model: AICatalogModel; errorClass: AICallErrorClass; status: number | null; detail: string } | null = null;
@@ -644,7 +705,8 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
         const cls = classifyAIFailure(res.status, text);
         if (res.status === 429) {
           const h = res.headers.get("Retry-After");
-          const retryMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, AI_PROVIDER_COOLDOWN_MAX_MS) : AI_PROVIDER_COOLDOWN_DEFAULT_MS;
+          const retryMs = cls === "quota_exhausted" ? AI_PROVIDER_QUOTA_COOLDOWN_MS
+            : h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, AI_PROVIDER_COOLDOWN_MAX_MS) : AI_PROVIDER_COOLDOWN_DEFAULT_MS;
           aiProviderCooldownUntil.set(model.provider, Date.now() + retryMs);
         }
         attempts.push({ model_key: model.model_key, outcome: cls, http_status: res.status, ms: Date.now() - t0 });
@@ -656,7 +718,11 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
       let json: any = null;
       try { json = JSON.parse(text); } catch { /* handled as empty below */ }
       const content = json?.choices?.[0]?.message?.content;
-      if (typeof content !== "string" || !content.trim()) {
+      const toolCalls = Array.isArray(json?.choices?.[0]?.message?.tool_calls) ? json.choices[0].message.tool_calls : [];
+      // A function-calling request is answered by tool_calls, usually with null content.
+      const minChars = Math.max(1, call.minContentChars ?? 1);
+      const answered = (typeof content === "string" && content.trim().length >= minChars) || (!!call.tools?.length && toolCalls.length > 0);
+      if (!answered) {
         attempts.push({ model_key: model.model_key, outcome: "empty_output", http_status: res.status, ms: Date.now() - t0 });
         last = { model, errorClass: "empty_output", status: res.status, detail: "empty model content" };
         continue;
@@ -667,14 +733,17 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
       const priced = emergency ? { costUsd: null, priceId: null } : priceAICall(snap!.prices.get(model.model_key), usage, callDate);
       const fallbackUsed = model.model_key !== chain[0].model_key;
       if (!emergency) {
-        await writeAILedger(call.db, {
+        await queueAILedger(call.db, {
           model_name: model.model_key, model_requested: chain[0].model_key, task_key: call.task, function_name: call.functionName,
           farmer_id: call.farmerId ?? null, fallback_used: fallbackUsed, error_class: "ok", http_status: res.status,
           query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 0, resource_usage: usage,
           cost_usd: priced.costUsd, price_id: priced.priceId, metadata: { ...(call.metadata ?? {}), attempts },
         });
       }
-      return { ok: true, content, modelKey: model.model_key, provider: model.provider, fallbackUsed, usage, costUsd: priced.costUsd, attempts };
+      return {
+        ok: true, content: typeof content === "string" ? content : "", modelKey: model.model_key, apiModelId: model.api_model_id,
+        provider: model.provider, fallbackUsed, usage, costUsd: priced.costUsd, priceId: priced.priceId, attempts, toolCalls,
+      };
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === "AbortError";
       const cls: AICallErrorClass = aborted ? "timeout" : "network";
@@ -690,14 +759,73 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
     return { ok: false, errorClass: "no_provider_available", detail: "every step was skipped (no API key or provider cooling down)", attempts };
   }
   if (!emergency) {
-    await writeAILedger(call.db, {
+    await queueAILedger(call.db, {
       model_name: last.model.model_key, model_requested: chain[0].model_key, task_key: call.task, function_name: call.functionName,
       farmer_id: call.farmerId ?? null, fallback_used: last.model.model_key !== chain[0].model_key, error_class: last.errorClass,
       http_status: last.status, query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 1,
       resource_usage: {}, cost_usd: null, price_id: null, metadata: { ...(call.metadata ?? {}), attempts, detail: last.detail },
     });
   }
-  return { ok: false, errorClass: last.errorClass, detail: last.detail, attempts };
+  return { ok: false, errorClass: last.errorClass, detail: last.detail, attempts, httpStatus: last.status };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2026-09-27 — REGISTRY LOOKUP + LEDGER FOR CALL SITES WITH THEIR OWN RETRY LOOPS
+// ───────────────────────────────────────────────────────────────────────────
+// ai-smart-schedule runs its own provider loops (per-chunk retries, Retry-After
+// cooldowns, shared deadlines). Rewriting those loops onto callAITask would change
+// behaviour the schedule relies on, so those sites only swap WHERE the model list
+// comes from: resolveAITaskChain() returns the same registry chain callAITask uses
+// (same cache, same route checks, same cold-start emergency default), and
+// recordAITaskCall() writes the same ledger row callAITask writes.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type AITaskChainResult =
+  | { ok: true; chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean }
+  | { ok: false; errorClass: "route_missing" | "route_inactive"; detail: string };
+
+/** The ordered model chain for a task, straight from the registry (no model name in code). */
+export async function resolveAITaskChain(db: RegistryDb, task: string): Promise<AITaskChainResult> {
+  const snap = await loadAIRegistry(db);
+  if (snap === null) {
+    console.error(`[AIRegistry] EMERGENCY_DEFAULT task=${task}: registry unavailable on cold start, using ${AI_MODELS.openai.default}`);
+    return { ok: true, chain: [emergencyModel()], params: {}, emergency: true };
+  }
+  const route = snap.routes.get(task);
+  if (!route) return { ok: false, errorClass: "route_missing", detail: `no ai_task_route row for ${task}` };
+  if (!route.is_active) return { ok: false, errorClass: "route_inactive", detail: `ai_task_route ${task} is inactive` };
+  const chain = route.steps.map((k) => snap.models.get(k)).filter((m): m is AICatalogModel => !!m);
+  return { ok: true, chain, params: route.params, emergency: false };
+}
+
+/** Usage block of an OpenAI-compatible response, in ledger shape. */
+// deno-lint-ignore no-explicit-any
+export function readAIUsage(json: any): AICallUsage {
+  return readUsage(json);
+}
+
+/** Writes one usage-ledger row for a call made outside callAITask. Never throws. */
+export async function recordAITaskCall(db: RegistryDb, row: {
+  task: string; functionName: string; model: AICatalogModel; modelRequested: AICatalogModel;
+  ok: boolean; errorClass?: AICallErrorClass; httpStatus?: number | null; latencyMs: number;
+  usage?: AICallUsage; farmerId?: string | null; emergency?: boolean;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  if (row.emergency) return; // same rule as callAITask: no ledger row for the cold-start emergency default
+  try {
+    const snap = await loadAIRegistry(db);
+    const usage = row.usage ?? { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0 };
+    const priced = row.ok && snap ? priceAICall(snap.prices.get(row.model.model_key), usage, new Date().toISOString().slice(0, 10)) : { costUsd: null, priceId: null };
+    await queueAILedger(db, {
+      model_name: row.model.model_key, model_requested: row.modelRequested.model_key, task_key: row.task, function_name: row.functionName,
+      farmer_id: row.farmerId ?? null, fallback_used: row.model.model_key !== row.modelRequested.model_key,
+      error_class: row.ok ? "ok" : (row.errorClass ?? "other"), http_status: row.httpStatus ?? null, query_count: 1,
+      avg_response_time_ms: row.latencyMs, error_rate: row.ok ? 0 : 1, resource_usage: row.ok ? usage : {},
+      cost_usd: priced.costUsd, price_id: priced.priceId, metadata: row.metadata ?? {},
+    });
+  } catch (e) {
+    console.error(`[AIRegistry] ledger record threw: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /** Test/debug only: clears the registry cache and provider cooldowns. */

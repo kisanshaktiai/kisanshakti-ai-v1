@@ -19,25 +19,23 @@
 //   removed). New lock: no live file may name a Gemini 2.5 model again, and
 //   the three native Gemini/Lovable calls that hardcoded a temperature must
 //   pass it through rejectsCustomTemperature() like their OpenAI neighbours.
+// 2026-09-27 — AI model SSOT, all call sites: every chat-completions call in
+//   supabase/functions now reaches a model through the registry (callAITask, or
+//   resolveAITaskChain for ai-smart-schedule's own retry loops). Allowances for
+//   the migrated files removed (photo-analyzer.ts and ai-smart-schedule
+//   harness/llm.ts were dead code and are deleted). The temperature-gate lock is
+//   replaced by a stronger one: outside _shared/aiConfig.ts no live file may call
+//   a chat-completions endpoint directly. Audio (text-to-speech, transcribe-voice)
+//   and Cohere embedding/rerank are NOT chat-completions tasks and stay listed:
+//   the catalog cannot represent them yet (provider CHECK: openai|gemini|lovable;
+//   the router speaks /chat/completions only).
 
 import { assert } from "../../decision-brain/assert.ts";
 
 const ALLOWED: Record<string, number> = {
-  "_shared/aiConfig.ts": 24,
-  "ai-agriculture-chat/agents/nlu-agent.ts": 1,
-  "ai-agriculture-chat/index.ts": 1,
-  "ai-agriculture-chat/photo/photo-analyzer.ts": 2,
-  "ai-crop-scan/index.ts": 9,
-  "ai-marketing-insights/index.ts": 2,
-  "community-caption-suggest/index.ts": 1,
-  "community-moderate/index.ts": 1,
-  "market-price-intelligence/index.ts": 1,
-  "proactive-evaluator/config.ts": 1,
-  "proactive-question-seed/index.ts": 1,
-  "text-to-speech/index.ts": 2,
-  "transcribe-voice/index.ts": 1,
-  "translate-text/index.ts": 1,
-  "voice-navigation-agent/index.ts": 1,
+  "_shared/aiConfig.ts": 24,          // AI_MODELS: cold-start emergency default only
+  "text-to-speech/index.ts": 2,       // audio speech endpoint — not a chat-completions task
+  "transcribe-voice/index.ts": 1,     // audio transcription endpoint — not a chat-completions task
 };
 
 const ROOT = "supabase/functions";
@@ -95,20 +93,26 @@ Deno.test("no live code names a retired Gemini 2.5 model", async () => {
   assert(hits.length === 0, "\n" + hits.join("\n"));
 });
 
-Deno.test("native Gemini and Lovable calls pass temperature through rejectsCustomTemperature()", async () => {
-  const idx = await Deno.readTextFile(`${ROOT}/ai-agriculture-chat/index.ts`);
-  const tier2 = idx.slice(idx.indexOf("// TIER 2 — Gemini direct"), idx.indexOf("// TIER 3 — OpenAI direct"));
-  assert(tier2.length > 0, "forceTranslate TIER 2 block not found");
-  assert(tier2.includes("rejectsCustomTemperature('gemini', AI_MODELS.gemini.default)"), "translation Gemini tier must gate temperature");
-  assert(!/^\s*generationConfig:\s*\{\s*temperature:/m.test(tier2), "translation Gemini tier hardcodes temperature");
+// Chat-completions endpoints. Only the registry router in _shared/aiConfig.ts may call them.
+const CHAT_ENDPOINT = /https:\/\/(?:api\.openai\.com\/v1\/chat\/completions|generativelanguage\.googleapis\.com\/v1beta\/(?:openai\/chat\/completions|models\/[^"'`\s]*:generateContent)|ai\.gateway\.lovable\.dev\/v1\/chat\/completions)/g;
+// Model pickers that bypass the registry. aiConfig.ts still defines them for the emergency default.
+const LEGACY_PICKER = /\b(?:getBestAvailableProvider|getBestScheduleProvider|getScheduleProviderChain|buildAIRequest)\s*\(|\bAI_MODELS\s*\./g;
 
-  const fmt = await Deno.readTextFile(`${ROOT}/ai-agriculture-chat/agents/llm-response-formatter.ts`);
-  for (const [fn, provider] of [["callGeminiWithTimeout", "gemini"], ["callLovableAIWithTimeout", "lovable"]] as const) {
-    const start = fmt.indexOf(`async function ${fn}(`);
-    assert(start >= 0, `${fn} not found`);
-    const next = fmt.indexOf("\nasync function ", start + 10);
-    const body = fmt.slice(start, next === -1 ? undefined : next);
-    assert(body.includes(`rejectsCustomTemperature('${provider}'`), `${fn} must gate temperature`);
-    assert(!/^\s*temperature:\s*[0-9.]+,/m.test(body), `${fn} hardcodes temperature`);
+Deno.test("no live file calls a chat-completions endpoint or a legacy model picker outside the registry router", async () => {
+  const hits: string[] = [];
+  async function walk(dir: string) {
+    for await (const e of Deno.readDir(dir)) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory) await walk(p);
+      else if (p.endsWith(".ts") && !p.endsWith("_test.ts") && !p.endsWith(".test.ts")) {
+        const rel = p.slice(ROOT.length + 1);
+        if (rel === "_shared/aiConfig.ts") continue;
+        const src = stripComments(await Deno.readTextFile(p));
+        const m = [...(src.match(CHAT_ENDPOINT) || []), ...(src.match(LEGACY_PICKER) || [])];
+        if (m.length) hits.push(`${rel}: ${[...new Set(m)].join(", ")}`);
+      }
+    }
   }
+  await walk(ROOT);
+  assert(hits.length === 0, "\n" + hits.join("\n"));
 });

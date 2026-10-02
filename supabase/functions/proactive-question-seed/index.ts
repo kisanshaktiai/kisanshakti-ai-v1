@@ -1,5 +1,16 @@
 // Proactive Alert → AI-Generated, Multilingual, Farmer-Friendly Question
 // ----------------------------------------------------------------------
+// CHANGE LOG (newest first)
+// 2026-09-27 — AI model SSOT: the narration model now comes from the AI model registry (task
+//   question.seed, via callAITask with the service-role client and the verified farmer id) instead of
+//   the literal 'google/gemini-3-flash-preview' sent to the Lovable gateway. Same messages, no other
+//   request knobs. The LOVABLE_API_KEY gate is gone: a step without a key is skipped by the router
+//   (no_provider_available) and the deterministic fallback is returned exactly as before. Unavoidable
+//   differences: the call now has the router's default 55 s timeout (previously none); a missing or
+//   inactive route logs an error and uses the fallback; after a 429 the router cools the provider for
+//   5-8 s (calls inside that window use the fallback without reaching the provider). Each call is
+//   recorded in ai_model_metrics.
+//
 // Decision-Brain-FIRST. The LLM only NARRATES (translates + simplifies).
 // All agronomic facts come from the `proactive_alerts` row already produced
 // by the symbolic engine. The LLM never invents agronomy.
@@ -17,6 +28,7 @@
 //   → 4xx { error }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { callAITask } from "../_shared/aiConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -294,11 +306,6 @@ Deno.serve(async (req: Request) => {
     console.log(`[proactive-question-seed] alert=${alertId} category=${alert.alert_category} condition=${triggerData.condition_code || "n/a"} primary_action=${primary} lang=${lang}`);
 
     // ─── LLM narration (translation + simplification ONLY) ─────────────────
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableKey) {
-      return json({ question: fallback, language: lang, source: "fallback", primary_action: primary });
-    }
-
     // Build authoritative facts WITHOUT numeric anchors that bias the LLM
     const ctx = {
       land_name: landName,
@@ -352,24 +359,20 @@ Deno.serve(async (req: Request) => {
     let source: "llm" | "fallback" = "fallback";
 
     try {
-      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: sys },
-            { role: "user", content: usr },
-          ],
-        }),
+      const r = await callAITask({
+        db: admin,
+        task: "question.seed",
+        functionName: "proactive-question-seed",
+        farmerId: farmer.id,
+        metadata: { caller: "question-seed", alert_id: alertId, land_id: alert.land_id ?? null },
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: usr },
+        ],
       });
 
-      if (aiResp.ok) {
-        const aiJson = await aiResp.json();
-        const raw = aiJson?.choices?.[0]?.message?.content?.toString().trim() || "";
+      if (r.ok) {
+        const raw = r.content.toString().trim() || "";
         const cleaned = raw
           .replace(/^["'`]+|["'`]+$/g, "")
           .split("\n")[0]
@@ -390,8 +393,10 @@ Deno.serve(async (req: Request) => {
         } else if (violatesDiagnostic) {
           console.warn(`[proactive-question-seed] LLM violated DIAGNOSTIC rule, using fallback. Got: ${cleaned}`);
         }
-      } else if (aiResp.status === 429 || aiResp.status === 402) {
-        console.warn(`[proactive-question-seed] AI gateway ${aiResp.status} — using fallback`);
+      } else if (r.httpStatus === 429 || r.httpStatus === 402) {
+        console.warn(`[proactive-question-seed] AI gateway ${r.httpStatus} (${r.errorClass}) — using fallback`);
+      } else if (r.errorClass === "timeout" || r.errorClass === "network" || r.errorClass === "route_missing" || r.errorClass === "route_inactive") {
+        console.error("[proactive-question-seed] LLM call failed", r.errorClass, r.detail);
       }
     } catch (e) {
       console.error("[proactive-question-seed] LLM call failed", e);

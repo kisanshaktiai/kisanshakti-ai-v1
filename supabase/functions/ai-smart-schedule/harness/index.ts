@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-09-27 — AI model SSOT: applyScheduleHarness passes its optional `ai` context (service-role client,
+//   farmer) to requestPlan, whose model chain now comes from the AI model registry (schedule.compose).
 // 2026-09-08 — ONE CARD PER STAGE for water and harvest: DB rule cards of the same type and stage as a
 //   baseline card fold into it as instructions (foldSameStageRuleCards), so a stage shows one
 //   irrigation card and one harvest card, each carrying the DB rule's practice text.
@@ -40,7 +42,7 @@ import {
   type ScheduleHarnessContext,
 } from "./types.ts";
 import { buildCandidateGraph, canonicalSequence } from "./candidate-graph.ts";
-import { requestPlan } from "./llm-v3.ts";
+import { requestPlan, type PlannerAIContext } from "./llm-v3.ts";
 import { validatePlanIntent } from "./validator.ts";
 
 const MAX_ATTEMPTS = 2;
@@ -249,13 +251,15 @@ interface LegacyHarnessInput {
   evidencePack?: AgronomicEvidencePack;
   /** Wall-clock budget for the planner. index.ts derives it from its global deadline. */
   budgetMs?: number;
+  /** 2026-09-27 — AI model registry + usage ledger context for the planner call (service-role client, farmer). */
+  ai?: PlannerAIContext;
 }
 
 const emptyLandContext: LandContext = { soil: null, weather: null, coordinates: null, agroClimaticZone: null, ndvi: null, gaps: [] };
 
 export async function applyScheduleHarness(
   tasks: BaselineTask[],
-  input: LegacyHarnessInput | (ScheduleHarnessContext & { budgetMs?: number }),
+  input: LegacyHarnessInput | (ScheduleHarnessContext & { budgetMs?: number; ai?: PlannerAIContext }),
 ): Promise<HarnessExecution> {
   const startedAt = Date.now();
   const deadlineAt = startedAt + Math.max(0, input.budgetMs ?? DEFAULT_BUDGET_MS);
@@ -268,7 +272,7 @@ export async function applyScheduleHarness(
     let errors: string[] = [];
     for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining() >= MIN_ATTEMPT_MS; attempt++) {
       try {
-        const r = await requestPlan(context, errors, { deadlineAt });
+        const r = await requestPlan(context, errors, { deadlineAt, ai: input.ai });
         const validationErrors = validatePlanIntent(r.plan, graph);
         if (!validationErrors.length && r.plan.status === "READY") {
           const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, r.plan, "llm_evidence_pack"), context.evidencePack));
@@ -363,7 +367,7 @@ export async function applyScheduleHarness(
   let model: string | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining() >= MIN_ATTEMPT_MS; attempt++) {
     try {
-      const r = await requestPlan(context, errors, { deadlineAt });
+      const r = await requestPlan(context, errors, { deadlineAt, ai: input.ai });
       provider = r.provider;
       model = r.model;
       const validationErrors = validatePlanIntent(r.plan, graph);

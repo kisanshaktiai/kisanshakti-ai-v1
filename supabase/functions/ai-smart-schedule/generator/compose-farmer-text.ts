@@ -1,4 +1,12 @@
 // CHANGE LOG
+// 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
+//   request is issued, so a failure row names the model that actually failed with its own status; the
+//   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
+// 2026-09-27 — AI model SSOT: provider/model chain from the AI model registry task schedule.compose
+//   (resolveAITaskChain) instead of getScheduleProviderChain(); request from the model's catalog
+//   contract (buildTaskRequest) with the same knobs buildAIRequest sent (8000 tokens, temperature 0
+//   where allowed, reasoning "none" where accepted, JSON mode on gemini/lovable only). Retry rules,
+//   chunking and the fact boundary unchanged. Each composeChunk call → one ai_model_metrics row.
 // 2026-09-09 — v1.0.0 SINGLE-PASS FARMER-LANGUAGE COMPOSITION. Replaces the assemble-in-English-
 //   then-translate cycle for schedule generation.
 //
@@ -26,7 +34,10 @@
 //   the instruction tells the model to write as a village extension officer speaking that language.
 //   No language-specific vocabulary, no crop-specific wording, lives in this file.
 
-import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
+// deno-lint-ignore no-explicit-any
+export interface ComposeAIContext { db: { from(table: string): any }; farmerId?: string | null }
+type ComposeRoute = { chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean };
 
 export const COMPOSER_VERSION = "farmer-language-composer@1.0.0";
 
@@ -200,32 +211,39 @@ function prompt(chunk: TaskFacts[], language: string): string {
   });
 }
 
-async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortSignal): Promise<{ items: Array<{ i: number; task_name?: string; task_description?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
-  const providers = getScheduleProviderChain().filter((p) => getAPIKey(p.provider));
+async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortSignal, route: ComposeRoute, ai: ComposeAIContext): Promise<{ items: Array<{ i: number; task_name?: string; task_description?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
+  const providers = route.chain.filter((m) => getAPIKey(m.provider));
   let lastError: Error = new Error("MODEL_UNAVAILABLE");
-  for (const { provider, model } of providers) {
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
+  const ledgerFail = async () => { if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : lastError.message === "COMPOSE_TIMEOUT" ? "timeout" : lastError.message === "MODEL_EMPTY_RESPONSE" ? "empty_output" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "composeChunk", attempts, detail: lastError.message } }); };
+  for (const m of providers) {
+    const provider = m.provider; const model = m.api_model_id; lastModel = m; lastStatus = null;
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       try {
-        const body = buildAIRequest(provider, model, [
+        const body = buildTaskRequest(m, [
           { role: "system", content: "You are a village agriculture extension officer writing a farmer's crop schedule in his own language. The agronomic reference material you are given is stored in English by design; rendering its meaning into the farmer's language is your job. Return only valid JSON. Preserve the supplied agricultural fact boundary exactly: never change, add or drop a number, dose, product or date." },
           { role: "user", content: prompt(chunk, language) },
-        ], { maxTokens: MAX_OUTPUT_TOKENS, temperature: 0, useJsonMode: true });
-        const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAPIKey(provider)}` }, body: JSON.stringify(body), signal });
-        if (res.status === 429 || res.status >= 500) { lastError = new Error(`MODEL_HTTP_${res.status}`); break; }
-        if (!res.ok) { lastError = new Error(`MODEL_HTTP_${res.status}`); break; }
+        ], mergeAIRouteParams(route.params, { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }));
+        const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAPIKey(provider)}` }, body: JSON.stringify(body), signal }); lastStatus = res.status;
+        if (res.status === 429 || res.status >= 500) { lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status }); break; }
+        if (!res.ok) { lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status }); break; }
         const data = await res.json();
         const content = data?.choices?.[0]?.message?.content;
-        if (typeof content !== "string" || !content.trim()) { lastError = new Error("MODEL_EMPTY_RESPONSE"); break; }
+        if (typeof content !== "string" || !content.trim()) { lastError = new Error("MODEL_EMPTY_RESPONSE"); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status }); break; }
         const parsed = JSON.parse(content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim());
         const items = Array.isArray(parsed?.tasks) ? parsed.tasks : Array.isArray(parsed) ? parsed : [];
+        attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status });
+        await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: route.chain[0], ok: true, httpStatus: res.status, latencyMs: Date.now() - callStarted, usage: readAIUsage(data), farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "composeChunk", attempts } });
         return { items, provider, model };
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
-        if (signal.aborted || lastError.name === "AbortError") throw new Error("COMPOSE_TIMEOUT");
+        attempts.push({ model_key: m.model_key, outcome: lastError.name === "AbortError" ? "timeout" : "error" });
+        if (signal.aborted || lastError.name === "AbortError") { lastError = new Error("COMPOSE_TIMEOUT"); await ledgerFail(); throw lastError; }
         if (attempt < RETRY_DELAYS_MS.length) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
       }
     }
   }
+  await ledgerFail();
   throw lastError;
 }
 
@@ -234,7 +252,7 @@ async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortS
  * Tasks whose composition fails the fact boundary keep their deterministic text and are reported as
  * not composed, so the caller persists them with needs_translation and the sweep finishes them.
  */
-export async function composeFarmerText(facts: TaskFacts[], language: string, budgetMs?: number): Promise<ComposeResult> {
+export async function composeFarmerText(facts: TaskFacts[], language: string, budgetMs: number | undefined, ai: ComposeAIContext): Promise<ComposeResult> {
   const out: ComposedTask[] = facts.map((f) => ({ task_name: f.fallback_name, task_description: f.fallback_description, instructions: [...f.fallback_instructions] }));
   const totalCount = facts.length;
   if (!totalCount) return { tasks: out, composedIndices: [], composed: true, composedCount: 0, totalCount: 0 };
@@ -242,6 +260,10 @@ export async function composeFarmerText(facts: TaskFacts[], language: string, bu
   const controller = new AbortController();
   const budget = Math.max(0, Math.min(budgetMs ?? COMPOSE_BUDGET_MS, COMPOSE_BUDGET_MS));
   if (budget < 5_000) return { tasks: out, composedIndices: [], composed: false, composedCount: 0, totalCount, reason: "compose_budget_too_small" };
+  // Model chain from the registry (task schedule.compose), read once for this schedule.
+  const resolved = await resolveAITaskChain(ai.db, "schedule.compose");
+  if (!resolved.ok) return { tasks: out, composedIndices: [], composed: false, composedCount: 0, totalCount, reason: `model_route_unavailable:${resolved.errorClass}` };
+  const route: ComposeRoute = { chain: resolved.chain, params: resolved.params, emergency: resolved.emergency };
   const timer = setTimeout(() => controller.abort(), budget);
 
   // Identical text is composed once and reused (recurring irrigation / scouting cards).
@@ -259,7 +281,7 @@ export async function composeFarmerText(facts: TaskFacts[], language: string, bu
   try {
     for (let c = 0; c < chunks.length; c += MAX_CONCURRENCY) {
       if (controller.signal.aborted) { timedOut = true; break; }
-      const results = await Promise.allSettled(chunks.slice(c, c + MAX_CONCURRENCY).map((ch) => composeChunk(ch, language, controller.signal)));
+      const results = await Promise.allSettled(chunks.slice(c, c + MAX_CONCURRENCY).map((ch) => composeChunk(ch, language, controller.signal, route, ai)));
       for (const r of results) {
         if (r.status !== "fulfilled") { const m = (r.reason as Error)?.message || "unknown"; failures.push(m); if (m === "COMPOSE_TIMEOUT") timedOut = true; continue; }
         provider = r.value.provider; model = r.value.model;

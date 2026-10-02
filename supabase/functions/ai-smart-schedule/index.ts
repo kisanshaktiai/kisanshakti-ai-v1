@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-09-27 — AI model SSOT: composeFarmerText, applyScheduleHarness and narrateScheduleTasks now receive the
+//   service-role client + farmer so every model call (task schedule.compose) takes its chain from the AI model
+//   registry and is recorded in ai_model_metrics. The LOVABLE_/OPENAI_/GEMINI_SCHEDULE_MODEL secrets are no
+//   longer read. Agronomy, deadlines and persistence unchanged.
 // 2026-09-07 — CALENDAR SHAPE (learned from a real rice crop calendar): (1) every task carries
 //   resources.window {from_das,to_das,clock} — an activity is due in a range, not on a point; the
 //   card can say "between 24 and 31 Jan" and the reconciler defers inside that range; (2) the
@@ -225,7 +229,7 @@ serve(async (req) => {
         const harnessBudgetMs = Math.max(0, Math.min(HARNESS_MAX_MS, remainingMs() - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
         timePlan.harness_budget_ms = harnessBudgetMs;
         for (const g of evidencePack.gaps) if (!baseline.gaps.includes(g)) baseline.gaps.push(g);
-        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs });
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId } });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;
@@ -371,7 +375,7 @@ serve(async (req) => {
     };
     const composeBudgetMs = Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS);
     timePlan.compose_budget_ms = composeBudgetMs;
-    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs);
+    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId });
     const narrated = composition.tasks.map((c) => ({ task_name: c.task_name, task_description: c.task_description, instructions: c.instructions }));
     // Kept under the existing field names so persistence, the response contract, the app follow-up
     // and the sweep continue to work unchanged.
@@ -447,9 +451,9 @@ serve(async (req) => {
     let narrationState: { status: string; narratedCount: number; totalCount: number; pendingCount: number } = { status: narrationComplete ? "COMPLETE" : "PENDING", narratedCount: narration.narratedCount, totalCount: narration.totalCount, pendingCount: language === "en" ? 0 : narration.totalCount - narration.narratedCount };
     if (narrationState.status === "PENDING" && HARD_DEADLINE_MS - (Date.now() - startTime) > 25_000) {
       try {
-        const { data: schedRow } = await supabase.from("crop_schedules").select("id, generation_language, generation_params").eq("id", savedSchedule.id).maybeSingle();
+        const { data: schedRow } = await supabase.from("crop_schedules").select("id, generation_language, generation_params, farmer_id").eq("id", savedSchedule.id).maybeSingle();
         if (schedRow) {
-          const cont = await narrateScheduleTasks(supabase, schedRow as { id: string; generation_language: string | null; generation_params: Record<string, unknown> | null }, startTime + HARD_DEADLINE_MS - 4_000);
+          const cont = await narrateScheduleTasks(supabase, schedRow as { id: string; generation_language: string | null; generation_params: Record<string, unknown> | null; farmer_id: string | null }, startTime + HARD_DEADLINE_MS - 4_000);
           narrationState = { status: cont.still_pending === 0 ? "COMPLETE" : "PENDING", narratedCount: cont.total - cont.still_pending, totalCount: cont.total, pendingCount: cont.still_pending };
         }
       } catch (contErr) { console.warn("[ai-smart-schedule] in-process narration continuation failed (non-fatal):", contErr); }

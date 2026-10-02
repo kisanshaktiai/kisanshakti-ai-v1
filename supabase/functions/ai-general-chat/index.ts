@@ -10,6 +10,14 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-09-27 — AI MODEL SSOT: callLLM calls callAITask task 'rag.answer'; the model chain
+ *   comes from ai_task_route_step (was getBestAvailableProvider(): OpenAI default model if
+ *   OPENAI_API_KEY is set, else Gemini). Request knobs unchanged: MAX_TOKENS_CHAT, the
+ *   caller's temperature (sent only where the model's contract allows it), reasoning_effort
+ *   "none" (where accepted), no JSON mode, REQUEST_TIMEOUT. ai_model keeps the
+ *   "provider/model" format. The query normaliser now receives { db, farmerId } so it can
+ *   reach the registry too. Differences: the registry's next model is tried when the first
+ *   one fails; every call writes one ai_model_metrics row.
  * 2026-09-21 — RAG PHASE 0 (design v2 S1, S4):
  *   S1  A retrieval failure is a NO_EVIDENCE outcome, never an ungated answer.
  *       The catch around the retrieval block used to set ragResult = null, which
@@ -85,9 +93,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import {
-  getBestAvailableProvider,
-  buildAIRequest,
-  getAPIEndpoint,
+  callAITask,
   AI_CONFIG,
 } from '../_shared/aiConfig.ts';
 import {
@@ -430,34 +436,33 @@ async function callLLM(
   chatMessages: Array<{ role: string; content: string }>,
   temperature: number,
   traceId: string,
+  db: any,
+  farmerId: string,
 ): Promise<{ answer: string; usedModel: string }> {
-  const { provider, model, apiKey } = getBestAvailableProvider();
-  const usedModel = `${provider}/${model}`;
-  const payload = buildAIRequest(provider, model, chatMessages, {
-    maxTokens: AI_CONFIG.MAX_TOKENS_CHAT,
+  // 2026-09-27 — AI model SSOT: model chain from registry task rag.answer (was
+  // getBestAvailableProvider()). Same knobs buildAIRequest sent: MAX_TOKENS_CHAT, the
+  // caller's temperature only where the model's contract allows it, reasoning_effort
+  // "none" where accepted, no JSON mode (useJsonMode:false), REQUEST_TIMEOUT budget.
+  const r = await callAITask({
+    db,
+    task: 'rag.answer',
+    functionName: 'ai-general-chat',
+    messages: chatMessages,
+    farmerId,
+    maxOutputTokens: AI_CONFIG.MAX_TOKENS_CHAT,
     temperature,
-    useJsonMode: false,
+    reasoningEffort: 'none',
+    timeoutMs: AI_CONFIG.REQUEST_TIMEOUT,
+    metadata: { caller: 'ai-general-chat', trace_id: traceId },
   });
-  const endpoint = getAPIEndpoint(provider);
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), AI_CONFIG.REQUEST_TIMEOUT);
-  try {
-    const llmRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    if (!llmRes.ok) {
-      const errTxt = await llmRes.text().catch(() => '');
-      console.error(`[${traceId}] LLM ${llmRes.status}:`, errTxt.slice(0, 300));
-      throw new Error(`LLM_HTTP_${llmRes.status}`);
-    }
-    const json = await llmRes.json();
-    return { answer: (json?.choices?.[0]?.message?.content || '').toString().trim(), usedModel };
-  } finally {
-    clearTimeout(t);
+  if (!r.ok) {
+    // An empty model reply was returned as '' before (not an error); keep that path.
+    if (r.errorClass === 'empty_output') return { answer: '', usedModel: 'unknown' };
+    console.error(`[${traceId}] LLM ${r.httpStatus ?? '-'} ${r.errorClass}:`, (r.detail || '').slice(0, 300));
+    throw new Error(r.httpStatus ? `LLM_HTTP_${r.httpStatus}` : `LLM_${r.errorClass}`);
   }
+  const usedModel = `${r.provider}/${r.apiModelId}`;
+  return { answer: (r.content || '').toString().trim(), usedModel };
 }
 
 serve(async (req: Request) => {
@@ -624,7 +629,7 @@ serve(async (req: Request) => {
         const priorFarmerTurns = (messages as Array<{ role?: string; content?: string }>)
           .slice(0, -1).filter((m) => m && m.role === 'user' && typeof m.content === 'string')
           .map((m) => m.content as string).slice(-2);
-        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops, priorFarmerTurns, topics);
+        normalized = await normalizeQueryForRetrieval(userText, language, traceId, corpusCrops, priorFarmerTurns, topics, { db: supabase, farmerId, functionName: 'ai-general-chat' });
         highRisk = highRisk || HIGH_RISK_QUERY.test(normalized.query);
         // (6) Filters from SSOT tables: state (body → profile → land region) and crop.
         // FIX F4 (audit 2026-09-04): p_states was NULL on 100 % of logged retrievals —
@@ -746,7 +751,7 @@ serve(async (req: Request) => {
     let fidelity: { attempts: number; unsupported: string[]; degraded: boolean; filtered?: boolean } | null = null;
     let noEvidenceMode = ragResult !== null && ragEvidence.length === 0;
     try {
-      const first = await callLLM(withSystem(systemPrompt), ragResult ? 0.3 : 0.6, traceId);
+      const first = await callLLM(withSystem(systemPrompt), ragResult ? 0.3 : 0.6, traceId, supabase, farmerId);
       answer = first.answer;
       usedModel = first.usedModel;
 
@@ -769,7 +774,7 @@ serve(async (req: Request) => {
 
         if (bad.length && ragEvidence.length) {
           const strictPrompt = buildSystemPrompt(language, landContext, addressing, { ...ragPromptCtx!, strict: true }, farmerLocation);
-          const retry = await callLLM(withSystem(strictPrompt), 0.1, traceId);
+          const retry = await callLLM(withSystem(strictPrompt), 0.1, traceId, supabase, farmerId);
           let badRetry = unsupportedNumbers(retry.answer, ragEvidence, userText);
           let candidate = retry.answer;
           if (badRetry.length) {
@@ -785,7 +790,7 @@ serve(async (req: Request) => {
           // Final fallback: number-free informational answer; any sentence still
           // carrying a number is removed rather than masked.
           const safePrompt = buildSystemPrompt(language, landContext, addressing, { evidenceBlock: null, highRisk }, farmerLocation);
-          const safe = await callLLM(withSystem(safePrompt), 0.1, traceId);
+          const safe = await callLLM(withSystem(safePrompt), 0.1, traceId, supabase, farmerId);
           const cleaned = dropUnsupportedSentences(safe.answer, [], userText);
           answer = cleaned || safe.answer.replace(/[^\n]*[\d०-९][^\n]*\n?/g, '').trim() || safe.answer;
           noEvidenceMode = true;

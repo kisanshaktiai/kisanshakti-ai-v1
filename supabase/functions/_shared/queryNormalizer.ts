@@ -14,6 +14,16 @@
  *    the numeric fidelity gate still treats them as farmer-supplied.
  *
  * CHANGE LOG
+ * 2026-09-27 — AI MODEL SSOT: the interpreter call goes through callAITask task
+ *   'rag.normalize'; the model chain comes from ai_task_route_step (was
+ *   getBestAvailableProvider(): OpenAI default model if OPENAI_API_KEY is set, else Gemini).
+ *   New trailing optional parameter `ai: { db, farmerId }` (the registry needs a service-role
+ *   client); without it the result is the same original-text fallback as any other failure.
+ *   Request knobs unchanged: 300 tokens, temperature 0 (only where the model's contract
+ *   allows it), reasoning_effort "none" (where accepted), response_format json_object for
+ *   every provider, 8 s limit. Differences: the registry's next model is tried inside the
+ *   same 8 s when the first one fails fast; every call writes one ai_model_metrics row
+ *   (function_name = the calling edge function, passed in `ai.functionName`).
  * 2026-09-21 — RAG PHASE 0 (design v2 S4 + identifier pass):
  *   (1) Topic taxonomy comes from the rag_topics table, not from a list in this
  *       file. The old `topic` field used its own 14 labels (nutrition, pest, …)
@@ -31,7 +41,7 @@
  *       prompt now states the rule only, in keeping with the rest of this file.
  */
 
-import { getBestAvailableProvider, buildAIRequest, getAPIEndpoint } from './aiConfig.ts';
+import { callAITask } from './aiConfig.ts';
 
 export interface NormalizedQuery {
   /** English retrieval query (falls back to original text) */
@@ -151,6 +161,7 @@ export async function normalizeQueryForRetrieval(
   corpusCrops?: string[] | null,
   priorFarmerTurns?: string[] | null,
   topics?: TopicTaxonomyEntry[] | null,
+  ai?: { db: any; farmerId?: string | null; functionName?: string },
 ): Promise<NormalizedQuery> {
   const t0 = Date.now();
   const original = userText.trim();
@@ -192,33 +203,31 @@ export async function normalizeQueryForRetrieval(
     : '';
 
   try {
-    const { provider, model, apiKey } = getBestAvailableProvider();
-    const payload = buildAIRequest(
-      provider, model,
-      [
+    // No registry client ⇒ the same original-text fallback as any other failure.
+    if (!ai?.db) throw new Error('NORMALIZER_NO_DB');
+    // 2026-09-27 — AI model SSOT: model chain from registry task rag.normalize. Same knobs
+    // buildAIRequest + the forced openai response_format sent: 300 tokens, temperature 0
+    // where the contract allows it, reasoning_effort "none" where accepted, JSON mode on
+    // every provider, 8 s limit.
+    const r = await callAITask({
+      db: ai.db,
+      task: 'rag.normalize',
+      functionName: ai.functionName ?? 'queryNormalizer',
+      messages: [
         { role: 'system', content: SYSTEM },
         { role: 'user', content: `UI language: ${uiLanguage}${cropHintLine}${topicLine}${contextLine}\nFarmer message: ${original}` },
       ],
-      { maxTokens: 300, temperature: 0, useJsonMode: true },
-    );
-    if (provider === 'openai') payload.response_format = { type: 'json_object' };
-
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    let raw = '';
-    try {
-      const res = await fetch(getAPIEndpoint(provider), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(`NORMALIZER_HTTP_${res.status}`);
-      const json = await res.json();
-      raw = (json?.choices?.[0]?.message?.content || '').toString();
-    } finally {
-      clearTimeout(t);
-    }
+      farmerId: ai.farmerId ?? null,
+      maxOutputTokens: 300,
+      temperature: 0,
+      reasoningEffort: 'none',
+      jsonMode: true,
+      timeoutMs: TIMEOUT_MS,
+      attemptTimeoutMs: TIMEOUT_MS,
+      metadata: { caller: 'queryNormalizer', trace_id: traceId },
+    });
+    if (!r.ok) throw new Error(`NORMALIZER_HTTP_${r.httpStatus ?? '-'} ${r.errorClass}`);
+    const raw = (r.content || '').toString();
 
     const obj = extractJson(raw);
     if (!obj) throw new Error('NORMALIZER_BAD_JSON');

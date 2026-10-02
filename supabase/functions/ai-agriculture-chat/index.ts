@@ -1,4 +1,10 @@
 // CHANGE LOG (newest first)
+// 2026-09-27 — AI model SSOT: the two model calls left in this file now go through the registry
+//   (_shared/aiConfig.ts callAITask) instead of naming models in code:
+//     * proactive-alert narration → task brain.alert_narrate (was Lovable google/gemini-3-flash-preview);
+//     * forceTranslateResponse    → task brain.translate (was Lovable → native Gemini → OpenAI from AI_MODELS),
+//       now takes { db, farmerId, traceId } so every call lands in ai_model_metrics.
+//   The formatter input also carries farmer_id for brain.format ledger attribution.
 // 2026-09-26 20:00 UTC — Type-only fixes: getConfigNumber call signature, any-casts for PrimaryDecision/warnings/metadata/rulesAppliedArray/communication/dataAudit to satisfy deno check.
 //   2026-09-26 15:35 UTC — Type-only fixes: narrow casts for loosely-typed
 //     runtime objects (orchestratorResponse.metadata/decision_output/
@@ -64,7 +70,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
-import { AI_MODELS, AI_ENDPOINTS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../_shared/aiConfig.ts';
+import { callAITask, type AITaskCall } from '../_shared/aiConfig.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 // Organic-preference flow (FIX 1/2): i18n chrome strings + preference vocabulary
@@ -1054,10 +1060,12 @@ serve(async (req) => {
           expected_benefit: pickSol('expected_benefit'),
         };
 
-        const lovableKey = Deno.env.get('LOVABLE_API_KEY');
         let narratedResponse = facts.authoritative_action_text || facts.message || facts.title;
 
-        if (lovableKey && facts.authoritative_action_text) {
+        // 2026-09-27 — AI model SSOT: model and provider come from registry task brain.alert_narrate
+        // (was a hardcoded Lovable gateway call to google/gemini-3-flash-preview, gated on LOVABLE_API_KEY;
+        // the router now skips any step whose provider key is missing, with the same raw-text fallback).
+        if (facts.authoritative_action_text) {
           const sys = [
             'You are a NARRATOR for an agronomic advisory system. You DO NOT invent agronomy.',
             'A symbolic Decision-Brain has already produced the authoritative answer below.',
@@ -1078,23 +1086,22 @@ serve(async (req) => {
           const usr = `Authoritative Decision-Brain facts (do not contradict, do not omit):\n${JSON.stringify(facts, null, 2)}\n\nFarmer's question: ${userMessageContent}\n\nNarrate the authoritative answer now.`;
 
           try {
-            const aiResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'google/gemini-3-flash-preview',
-                messages: [
-                  { role: 'system', content: sys },
-                  { role: 'user', content: usr },
-                ],
-              }),
+            const aiResp = await callAITask({
+              db: supabase,
+              task: 'brain.alert_narrate',
+              functionName: 'ai-agriculture-chat',
+              farmerId: finalFarmerId,
+              messages: [
+                { role: 'system', content: sys },
+                { role: 'user', content: usr },
+              ],
+              metadata: { caller: 'proactive_alert_narration', trace_id: traceId, alert_id: proactiveAlert.id ?? null },
             });
             if (aiResp.ok) {
-              const j = await aiResp.json();
-              const txt = j?.choices?.[0]?.message?.content?.toString().trim();
+              const txt = aiResp.content.toString().trim();
               if (txt && txt.length > 30) narratedResponse = txt;
             } else {
-              console.warn(`[${traceId}] PROACTIVE_NARRATION: gateway ${aiResp.status} — using raw action_text`);
+              console.warn(`[${traceId}] PROACTIVE_NARRATION: brain.alert_narrate ${aiResp.errorClass} — using raw action_text`);
             }
           } catch (e) {
             console.error(`[${traceId}] PROACTIVE_NARRATION LLM error`, e);
@@ -2368,6 +2375,7 @@ serve(async (req) => {
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId,
             supabase_client: supabase,
+            farmer_id: finalFarmerId, // 2026-09-27 — usage-ledger attribution for brain.format
             market_product_memo: marketProductMemo,
             farming_preference: farmingPreference,
             farmer_addressing: farmerAddressing,
@@ -2444,13 +2452,13 @@ serve(async (req) => {
               if (!letters) return 0;
               return (s.match(/[A-Za-z]/g) || []).length / letters;
             };
-            let _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage);
+            let _fbTranslated = await forceTranslateResponse(_fbPre, detectedLanguage, { db: supabase, farmerId: finalFarmerId, traceId });
             // FIX B: a "translation" that is still mostly ASCII means the LLM
             // echoed English — retry once on the core action/reason sections.
             if (NON_LATIN.has(detectedLanguage) && asciiRatio(_fbTranslated) > 0.30) {
               console.warn(`[FALLBACK_TRANSLATED] ascii_ratio=${asciiRatio(_fbTranslated).toFixed(2)} — retrying once`);
               const _core = _fbPre.split('\n').filter((l) => /Action|Reason|🧾|🔍|📋/.test(l)).join('\n') || _fbPre;
-              const _retry = await forceTranslateResponse(_core, detectedLanguage);
+              const _retry = await forceTranslateResponse(_core, detectedLanguage, { db: supabase, farmerId: finalFarmerId, traceId });
               if (asciiRatio(_retry) <= asciiRatio(_fbTranslated)) _fbTranslated = _retry;
             }
             const _fidelityOk = verifyTranslationFidelity(_fbPre, _fbTranslated, actions_returned);
@@ -2564,7 +2572,7 @@ serve(async (req) => {
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
       console.log(`   🔄 Response not in target language, applying translation`);
       const _preTranslate = responseContent;
-      const _translated = await forceTranslateResponse(responseContent, detectedLanguage);
+      const _translated = await forceTranslateResponse(responseContent, detectedLanguage, { db: supabase, farmerId: finalFarmerId, traceId });
       // Deterministic safety gate: never ship a rewrite that altered/dropped a
       // dosage number or symbolic product name.
       responseContent = verifyTranslationFidelity(_preTranslate, _translated, actions_returned)
@@ -3530,7 +3538,11 @@ function verifyTranslationFidelity(
 
 // Force translate response to target language.
 // Force-translate response to target language using LLM.
-async function forceTranslateResponse(content: string, targetLang: string): Promise<string> {
+async function forceTranslateResponse(
+  content: string,
+  targetLang: string,
+  ai: { db: AITaskCall['db']; farmerId?: string | null; traceId?: string | null },
+): Promise<string> {
   if (targetLang === 'en') return content;
 
   // Check if content is already in target language (Devanagari check for mr/hi)
@@ -3556,10 +3568,6 @@ async function forceTranslateResponse(content: string, targetLang: string): Prom
   
   console.log(`🌐 [forceTranslate] Translating to ${langName} via LLM`);
   
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-
   const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
 Speak like you are in the farmer's field explaining advice face-to-face.
 Use local farming vocabulary, not textbook language.
@@ -3579,105 +3587,37 @@ ${content}`;
     `as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. ` +
     `Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.`;
 
-  // 2026-09-17 — TRANSLATION WIRING FIX. The previous implementation used
-  //   if (OPENAI_API_KEY) {...} else if (GEMINI_API_KEY) {...}
-  // so whenever OPENAI_API_KEY existed the other providers were UNREACHABLE.
-  // Live: the OpenAI key returns 429 insufficient_quota and direct
-  // gemini-2.0-flash is retired (404), so every farmer response silently fell
-  // back to untranslated English. Providers are now tried IN SEQUENCE, managed
-  // Lovable AI Gateway first (the only consistently reachable provider), and a
-  // failure of one provider never blocks the next.
-  const attempt = async (
-    label: string,
-    fn: () => Promise<string>,
-  ): Promise<string | null> => {
-    try {
-      const text = (await fn())?.trim() ?? '';
-      if (text.length > 30) {
-        console.log(`✅ [forceTranslate] ${label} translation successful (${text.length} chars)`);
-        return text;
-      }
-      console.warn(`⚠️ [forceTranslate] ${label} returned empty/short output — trying next provider`);
-    } catch (e) {
-      console.warn(`⚠️ [forceTranslate] ${label} failed: ${e instanceof Error ? e.message : 'unknown'}`);
+  // 2026-09-17 — TRANSLATION WIRING FIX: providers are tried in sequence, never one exclusive branch.
+  // 2026-09-27 — AI model SSOT: that sequence (Lovable gateway → Gemini → OpenAI) and its models now
+  // come from registry task brain.translate; a missing key skips a step, a failure moves to the next.
+  // Same 8 s per model; 4000-token cap (was 2000 on the Gemini/OpenAI tiers and none on Lovable).
+  const r = await callAITask({
+    db: ai.db,
+    task: 'brain.translate',
+    functionName: 'ai-agriculture-chat',
+    farmerId: ai.farmerId ?? null,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: translationPrompt },
+    ],
+    maxOutputTokens: 4000,
+    temperature: 0.3, // sent only to models whose catalog contract allows a temperature (unchanged rule)
+    attemptTimeoutMs: 8000,
+    timeoutMs: 24000,
+    // 2026-10-02 — the old attempt() treated a reply of 30 characters or fewer as a failure and moved to
+    // the next provider; the router now does the same (minContentChars) instead of ending the chain.
+    minContentChars: 31,
+    metadata: { caller: 'forceTranslateResponse', trace_id: ai.traceId ?? null, target_lang: targetLang },
+  });
+  if (r.ok) {
+    const text = r.content.trim();
+    if (text.length > 30) {
+      console.log(`✅ [forceTranslate] ${r.modelKey} translation successful (${text.length} chars)${r.fallbackUsed ? ' (fallback)' : ''}`);
+      return text;
     }
-    return null;
-  };
-
-  const postJson = async (url: string, headers: Record<string, string>, body: unknown): Promise<any> => {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 8000);
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        signal: controller.signal,
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
-      }
-      return await resp.json();
-    } finally {
-      clearTimeout(tid);
-    }
-  };
-
-  const chatMessages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: translationPrompt },
-  ];
-
-  // TIER 1 — managed Lovable AI Gateway
-  if (LOVABLE_API_KEY) {
-    const out = await attempt('Lovable AI Gateway', async () => {
-      const data = await postJson(
-        AI_ENDPOINTS.lovable,
-        { Authorization: `Bearer ${LOVABLE_API_KEY}` },
-        { model: AI_MODELS.lovable.default, messages: chatMessages },
-      );
-      return data.choices?.[0]?.message?.content || '';
-    });
-    if (out) return out;
-  }
-
-  // TIER 2 — Gemini direct
-  if (GEMINI_API_KEY) {
-    const out = await attempt('Gemini', async () => {
-      const data = await postJson(
-        `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.default}:generateContent?key=${GEMINI_API_KEY}`,
-        {},
-        {
-          contents: [{ parts: [{ text: translationPrompt }] }],
-          generationConfig: {
-            ...(rejectsCustomTemperature('gemini', AI_MODELS.gemini.default) ? {} : { temperature: 0.3 }),
-            maxOutputTokens: 2000,
-          },
-        },
-      );
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    });
-    if (out) return out;
-  }
-
-  // TIER 3 — OpenAI direct
-  if (OPENAI_API_KEY) {
-    const out = await attempt('OpenAI', async () => {
-      const data = await postJson(
-        AI_ENDPOINTS.openai,
-        { Authorization: `Bearer ${OPENAI_API_KEY}` },
-        {
-          model: AI_MODELS.openai.default,
-          messages: chatMessages,
-          ...(requiresMaxCompletionTokens(AI_MODELS.openai.default)
-            ? { max_completion_tokens: 2000 }
-            : { max_tokens: 2000 }),
-          ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.3 }),
-        },
-      );
-      return data.choices?.[0]?.message?.content || '';
-    });
-    if (out) return out;
+    console.warn(`⚠️ [forceTranslate] ${r.modelKey} returned empty/short output`);
+  } else {
+    console.warn(`⚠️ [forceTranslate] brain.translate ${r.errorClass}: ${r.detail}`);
   }
 
   console.error(`🚨 [forceTranslate] no provider produced a ${langName} rewrite — returning untranslated content`);

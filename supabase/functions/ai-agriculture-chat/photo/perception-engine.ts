@@ -6,6 +6,14 @@
  * PATH: supabase/functions/ai-agriculture-chat/photo/perception-engine.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-09-27 — AI model SSOT: the vision model chain now comes from the AI model
+ *   registry task vision.diagnose (ai_task_route / ai_task_route_step, via
+ *   callAITask) instead of vision_diagnosis_policy.primary_model/fallback_model,
+ *   and the cost from ai_model_pricing instead of the policy's price_usd_per_1m.
+ *   The policy keeps what is not a model choice: enabled, image_detail,
+ *   max_output_tokens, timeout_ms (per model), prompt_version. Still fails
+ *   closed: policy disabled/incomplete OR route inactive/without steps →
+ *   VISION_POLICY_INCOMPLETE. Every call also lands in ai_model_metrics.
  * 2026-09-23 — NEW. Replaces photo-analyzer.ts + photo-observation-mapper.ts
  *   and the ai-crop-scan vision prompts. The vision model PERCEIVES only
  *   (usable?, crop check, plant part, visible stage, canonical observation
@@ -15,9 +23,10 @@
  * Contract: ./diagnosis-contract.ts. Storage: evidence store v2
  * (crop_growth_uploads, crop_photo_diagnosis, crop_photo_diagnosis_photo,
  * crop_photo_annotation, land_observation, observation_vocabulary_gaps).
- * Model, fallback, detail level and prices come from
+ * Model chain and prices come from the AI model registry (task vision.diagnose,
+ * ai_model_pricing); detail level, limits and prompt version from
  * system_config.vision_diagnosis_policy — never from code. The engine fails
- * closed when that policy is disabled or incomplete.
+ * closed when either is disabled or incomplete.
  *
  * Crop-agnostic and language-agnostic: every vocabulary (crops, stages,
  * observations, plant parts, hypotheses) is read from the database for the
@@ -27,7 +36,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { AI_ENDPOINTS, buildAIRequest, getAPIKey } from '../../_shared/aiConfig.ts';
+import { callAITask, resolveAITaskChain } from '../../_shared/aiConfig.ts';
 import {
   DIAGNOSIS_ENGINE_VERSION,
   PERCEPTION_JSON_SCHEMA,
@@ -46,14 +55,13 @@ import {
 // deno-lint-ignore no-explicit-any
 type Db = any;
 
+// primary_model / fallback_model / price_usd_per_1m may still be present in the stored JSON;
+// since 2026-09-27 they are ignored (model chain + prices come from the AI model registry).
 interface VisionPolicy {
   enabled: boolean;
-  primary_model: string | null;
-  fallback_model: string | null;
   image_detail: 'low' | 'high' | 'auto' | null;
   max_output_tokens: number | null;
   timeout_ms: number | null;
-  price_usd_per_1m: Record<string, { input?: number; cached_input?: number; output?: number }>;
   prompt_version: string | null;
 }
 
@@ -79,9 +87,8 @@ async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; phot
   };
 }
 
-function visionPolicyUsable(p: VisionPolicy | null): p is VisionPolicy & { primary_model: string } {
-  return !!p && p.enabled === true && typeof p.primary_model === 'string' && p.primary_model.length > 0
-    && typeof p.max_output_tokens === 'number' && typeof p.timeout_ms === 'number';
+function visionPolicyUsable(p: VisionPolicy | null): p is VisionPolicy & { max_output_tokens: number; timeout_ms: number } {
+  return !!p && p.enabled === true && typeof p.max_output_tokens === 'number' && typeof p.timeout_ms === 'number';
 }
 
 // ── Vocabulary for the land's crop, all from the database ──────────────────
@@ -186,46 +193,6 @@ function buildMessages(ctx: PerceptionContext, imageUrls: string[], detail: stri
   ];
 }
 
-async function callVision(
-  model: string,
-  messages: any[],
-  policy: VisionPolicy & { primary_model: string },
-): Promise<{ ok: true; content: string; usage: any } | { ok: false; status: number; detail: string }> {
-  const payload = buildAIRequest('openai', model, messages as any, { maxTokens: policy.max_output_tokens as number });
-  payload.response_format = { type: 'json_schema', json_schema: PERCEPTION_JSON_SCHEMA };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), policy.timeout_ms as number);
-  try {
-    const res = await fetch(AI_ENDPOINTS.openai, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${getAPIKey('openai')}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const text = await res.text();
-    if (!res.ok) return { ok: false, status: res.status, detail: text.slice(0, 500) };
-    const json = JSON.parse(text);
-    const content = json?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string' || !content.trim()) return { ok: false, status: 502, detail: 'empty model content' };
-    return { ok: true, content, usage: json?.usage ?? null };
-  } catch (e) {
-    return { ok: false, status: 0, detail: e instanceof Error ? e.message : String(e) };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function costUsd(model: string, usage: any, prices: VisionPolicy['price_usd_per_1m']): { cost: number | null; snapshot: any } {
-  const p = prices?.[model];
-  if (!p || typeof p.input !== 'number' || typeof p.output !== 'number' || !usage) return { cost: null, snapshot: p ?? null };
-  const cached = Number(usage?.prompt_tokens_details?.cached_tokens ?? 0);
-  const input = Number(usage?.prompt_tokens ?? 0) - cached;
-  const output = Number(usage?.completion_tokens ?? 0);
-  const cachedPrice = typeof p.cached_input === 'number' ? p.cached_input : p.input;
-  const cost = (input * p.input + cached * cachedPrice + output * p.output) / 1_000_000;
-  return { cost: Math.round(cost * 1e6) / 1e6, snapshot: p };
-}
-
 // ── Public: run one diagnosis ───────────────────────────────────────────────
 
 export interface RunPhotoDiagnosisArgs {
@@ -262,6 +229,12 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
     }
   }
 
+  // 2026-09-27 — the requested (first) model comes from the registry route, read before the record is written.
+  const route = await resolveAITaskChain(sb, 'vision.diagnose');
+  // 2026-10-02 — review fix: the cold-start emergency default is a text-only model; treat it as an
+  // unusable policy (fail closed, as a missing route is) instead of sending images to it.
+  const modelRequested: string | null = route.ok && !route.emergency && route.chain.length > 0 ? route.chain[0].api_model_id : null;
+
   // Engine-run record first, so every attempt (including failures) is auditable.
   const { data: diag, error: diagErr } = await sb.from('crop_photo_diagnosis').insert({
     land_id: args.landId,
@@ -273,7 +246,7 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
     status: 'processing',
     engine_version: DIAGNOSIS_ENGINE_VERSION,
     prompt_version: vision?.prompt_version ?? null,
-    model_requested: vision?.primary_model ?? null,
+    model_requested: modelRequested,
   }).select('id').single();
   if (diagErr || !diag) return { diagnosis_id: null, status: 'failed', error_code: 'DIAGNOSIS_INSERT_FAILED' };
   const diagnosisId: string = diag.id;
@@ -294,7 +267,7 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
   if (!cropValue) {
     return finish({ status: 'crop_unresolved' }, { diagnosis_id: diagnosisId, status: 'crop_unresolved' });
   }
-  if (!visionPolicyUsable(vision)) {
+  if (!visionPolicyUsable(vision) || !modelRequested) {
     return finish({ status: 'failed', error_code: 'VISION_POLICY_INCOMPLETE' },
       { diagnosis_id: diagnosisId, status: 'failed', error_code: 'VISION_POLICY_INCOMPLETE' });
   }
@@ -315,34 +288,45 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
   const ctx = await buildPerceptionContext(sb, cropValue, args.photos.map((p) => p.shot_role), photo);
   const messages = buildMessages(ctx, imageUrls, vision.image_detail ?? 'auto', args.farmerText ?? null);
 
+  // 2026-09-27 — one registry call: vision.diagnose steps in order (was primary_model, then fallback_model).
+  // Request as before: max_output_tokens from the policy, json_schema output, reasoning "none" and the
+  // old default temperature 0.7 wherever the model's catalog contract accepts them, timeout_ms per model.
   const started = Date.now();
-  let modelUsed = vision.primary_model;
-  let fallbackUsed = false;
-  let call = await callVision(modelUsed, messages, vision);
-  if (!call.ok && vision.fallback_model) {
-    console.warn(`[PHOTO_ENGINE] primary model failed (${call.status}) — trying fallback`);
-    modelUsed = vision.fallback_model;
-    fallbackUsed = true;
-    call = await callVision(modelUsed, messages, vision);
-  }
+  const call = await callAITask({
+    db: sb,
+    task: 'vision.diagnose',
+    functionName: 'ai-agriculture-chat',
+    farmerId: args.farmerId,
+    messages,
+    maxOutputTokens: vision.max_output_tokens,
+    temperature: 0.7,
+    reasoningEffort: 'none',
+    responseFormat: { type: 'json_schema', json_schema: PERCEPTION_JSON_SCHEMA },
+    attemptTimeoutMs: vision.timeout_ms,
+    timeoutMs: vision.timeout_ms * 2,
+    metadata: { caller: 'runPhotoDiagnosis', diagnosis_id: diagnosisId, prompt_version: vision.prompt_version ?? null },
+  });
   const latency = Date.now() - started;
   if (!call.ok) {
     // A model outage is reported as a failure — never disguised as "retake photo".
-    return finish({ status: 'failed', error_code: 'VISION_CALL_FAILED', error_detail: `${call.status} ${call.detail}`,
-      model_used: modelUsed, fallback_used: fallbackUsed, latency_ms: latency },
+    const lastModel = [...call.attempts].reverse().find((a) => a.outcome !== 'skipped_no_key' && a.outcome !== 'skipped_cooldown')?.model_key ?? null;
+    return finish({ status: 'failed', error_code: 'VISION_CALL_FAILED', error_detail: `${call.errorClass} ${call.detail}`,
+      model_used: lastModel ? lastModel.slice(lastModel.indexOf(':') + 1) : null,
+      // 2026-10-02 — review fix: skipped steps (no key / cooling down) are not fallbacks; only a second real attempt is.
+      fallback_used: call.attempts.filter((a) => a.outcome !== 'skipped_no_key' && a.outcome !== 'skipped_cooldown').length > 1, latency_ms: latency },
       { diagnosis_id: diagnosisId, status: 'failed', error_code: 'VISION_CALL_FAILED' });
   }
+  const modelUsed = call.apiModelId;
 
-  const priced = costUsd(modelUsed, call.usage, vision.price_usd_per_1m ?? {});
   const usage: PerceptionUsage = {
-    model_requested: vision.primary_model,
+    model_requested: modelRequested,
     model_used: modelUsed,
-    fallback_used: fallbackUsed,
-    input_tokens: call.usage?.prompt_tokens ?? null,
-    cached_input_tokens: call.usage?.prompt_tokens_details?.cached_tokens ?? null,
-    output_tokens: call.usage?.completion_tokens ?? null,
-    cost_usd: priced.cost,
-    price_snapshot: priced.snapshot,
+    fallback_used: call.fallbackUsed,
+    input_tokens: call.usage.input_tokens,
+    cached_input_tokens: call.usage.cached_input_tokens,
+    output_tokens: call.usage.output_tokens,
+    cost_usd: call.costUsd,
+    price_snapshot: call.priceId ? { source: 'ai_model_pricing', price_id: call.priceId, model_key: call.modelKey } : null,
     latency_ms: latency,
   };
   const usageFields = {

@@ -1,4 +1,12 @@
 // CHANGE LOG
+// 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
+//   request is issued, so a failure row names the model that actually failed with its own status; the
+//   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
+// 2026-09-27 — AI model SSOT: callModel's provider/model chain comes from the AI model registry task
+//   schedule.compose (resolveAITaskChain) instead of getScheduleProviderChain(); request from the
+//   model's catalog contract (buildTaskRequest) with the knobs buildAIRequest sent (caller's token
+//   budget, temperature 0 where allowed, reasoning "none" where accepted, JSON mode on gemini/lovable
+//   only). Deadline and next-provider rules unchanged. Each callModel call → one ai_model_metrics row.
 // 2026-09-09 — v1.6.0 FARMER-LANGUAGE OUTPUT. The proposal's farmer-facing words (title, purpose,
 //   action_steps, harvest indicator, tools/labour, precautions) are now written directly in the
 //   farmer's selected language — they used to be produced in English and translated afterwards,
@@ -72,7 +80,7 @@
 //   No crop, product, dose or threshold is written in this file.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
-import { buildAIRequest, getAPIEndpoint, getAPIKey, getScheduleProviderChain, type AIProvider } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider } from "../../_shared/aiConfig.ts";
 import { ragRetrieve } from "../../_shared/ragRetrieval.ts";
 import { toDas, computeTransplantOffset, type BaselineTask } from "../generator/baseline-generator.ts";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
@@ -182,19 +190,31 @@ function existingCoverage(tasks: BaselineTask[], pack: AgronomicEvidencePack) {
   return Object.fromEntries(Object.entries(byStage).map(([k, v]) => [k, [...v]]));
 }
 
-async function callModel(messages: Array<{ role: string; content: string }>, timeoutMs: number, deadlineAt: number, maxTokens: number): Promise<{ content: string; provider: AIProvider; model: string } | null> {
-  const providers = getScheduleProviderChain().filter((p) => getAPIKey(p.provider));
-  for (const { provider, model } of providers) {
+// 2026-09-27 — registry + ledger context (service-role client from proposeAndVerifyCandidates, farmer from ctx).
+interface EnrichmentAIContext { db: SupabaseClient; farmerId: string | null; caller: string }
+
+async function callModel(messages: Array<{ role: string; content: string }>, timeoutMs: number, deadlineAt: number, maxTokens: number, registry: EnrichmentAIContext): Promise<{ content: string; provider: AIProvider; model: string } | null> {
+  const resolved = await resolveAITaskChain(registry.db, "schedule.compose");
+  if (!resolved.ok) return null;
+  const providers = resolved.chain.filter((m) => getAPIKey(m.provider));
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
+  const ledger = (m: AICatalogModel, ok: boolean, usage?: ReturnType<typeof readAIUsage>) => recordAITaskCall(registry.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: resolved.chain[0], ok, errorClass: ok ? undefined : (lastStatus ? classifyAIFailure(lastStatus, "") : attempts.some((a) => a.outcome === "timeout") ? "timeout" : "other"), httpStatus: lastStatus, latencyMs: Date.now() - callStarted, usage, farmerId: registry.farmerId, emergency: resolved.emergency, metadata: { caller: registry.caller, attempts } });
+  for (const m of providers) {
+    const provider = m.provider; const model = m.api_model_id;
     const budget = Math.min(timeoutMs, deadlineAt - Date.now());
-    if (budget < 5_000) return null;
+    if (budget < 5_000) { if (lastModel) await ledger(lastModel, false); return null; }
+    lastModel = m; lastStatus = null;
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), budget);
     try {
-      const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAPIKey(provider)}` }, body: JSON.stringify(buildAIRequest(provider, model, messages, { maxTokens, temperature: 0, useJsonMode: true })), signal: controller.signal });
-      if (!res.ok) continue;
+      const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAPIKey(provider)}` }, body: JSON.stringify(buildTaskRequest(m, messages, mergeAIRouteParams(resolved.params, { maxOutputTokens: maxTokens, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }))), signal: controller.signal });
+      lastStatus = res.status;
+      if (!res.ok) { attempts.push({ model_key: m.model_key, outcome: `http_${res.status}`, http_status: res.status }); continue; }
       const data = await res.json(); const content = data?.choices?.[0]?.message?.content;
-      if (typeof content === "string" && content.trim()) return { content, provider, model };
-    } catch { /* next provider */ } finally { clearTimeout(timer); }
+      if (typeof content === "string" && content.trim()) { attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status }); await ledger(m, true, readAIUsage(data)); return { content, provider, model }; }
+      attempts.push({ model_key: m.model_key, outcome: "empty_output", http_status: res.status });
+    } catch (e) { attempts.push({ model_key: m.model_key, outcome: e instanceof Error && e.name === "AbortError" ? "timeout" : "error" }); /* next provider */ } finally { clearTimeout(timer); }
   }
+  if (lastModel) await ledger(lastModel, false);
   return null;
 }
 
@@ -291,14 +311,14 @@ async function corroborate(supabase: SupabaseClient, p: LlmProposal, inputs: Res
   } catch { return []; }
 }
 
-async function secondOpinion(chemicals: Array<{ id: number; p: LlmProposal }>, inputs: ResolvedInputs, deadlineAt: number): Promise<Map<number, { ok: boolean; note: string }>> {
+async function secondOpinion(chemicals: Array<{ id: number; p: LlmProposal }>, inputs: ResolvedInputs, deadlineAt: number, registry: EnrichmentAIContext): Promise<Map<number, { ok: boolean; note: string }>> {
   const out = new Map<number, { ok: boolean; note: string }>();
   if (!chemicals.length) return out;
   const msg = JSON.stringify({ crop: inputs.cropLabel || inputs.cropCode, jurisdiction: { state: inputs.state, region_code: inputs.regionCode, country: inputs.regionCode?.includes("-") ? inputs.regionCode.split("-")[0] : null }, chemical_kinds: CHEMICAL_KINDS_LIST, items: chemicals.map((c) => ({ id: c.id, stage: c.p.stage_key, inputs: c.p.inputs.filter(isChemical).map((i) => ({ active_ingredient: i.active_ingredient, formulation: i.formulation, dose_value: i.dose_value, dose_unit: i.dose_unit, per: "acre" })), phi_days: c.p.phi_days, condition: c.p.condition })) });
   const res = await callModel([
     { role: "system", content: `You are an independent pesticide-registration reviewer for the jurisdiction given in the request (state and country of the farmer's field). For each item, answer ONLY whether every listed active ingredient is registered for use on this crop there and whether the dose per acre is within its label-recommended range. Do not suggest alternatives. Return JSON: {"reviews":[{"id":0,"registered":true,"dose_in_range":true,"note":"..."}]}` },
     { role: "user", content: msg },
-  ], VERIFY_TIMEOUT_MS, deadlineAt, 2_000);
+  ], VERIFY_TIMEOUT_MS, deadlineAt, 2_000, registry);
   if (!res) return out;
   try {
     const raw = JSON.parse(res.content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim());
@@ -396,7 +416,7 @@ export async function proposeAndVerifyCandidates(
     db_plan_notes: dbPlanNotes,
     schema: { proposals: [{ domain: "one of domains_requested", application_method_group: "soil_application|seed_or_sett_treatment|drenching|foliar_spray|fertigation|broadcast|mechanical|manual|other", water_volume_basis_l: null, mix_recipe: ["optional ordered preparation steps"], irrigation_system: "any|drip|sprinkler|flood|furrow|surface|manual", phase: "PRE_SEASON|NURSERY|ESTABLISHMENT|VEGETATIVE|REPRODUCTIVE|MATURITY|HARVEST|POST_HARVEST", stage_key: "from stage_graph", window: { from_days: 0, to_days: 0, clock: "sowing|transplant|nursery|harvest" }, tools_or_labour: "optional", harvest_indicator: "optional, MATURITY/HARVEST only", title: "2-6 words", purpose: "one sentence", timing: { anchor: "stage_start|stage_mid|stage_end", offset_days: 0, repeat_every_days: null }, action_steps: ["..."], method: "e.g. broadcast / foliar spray / soil drench / drip", inputs: [{ name: "", kind: "fertilizer|micronutrient|organic|biological|herbicide|insecticide|fungicide|pgr|other", grade: "as printed on the bag, optional", active_ingredient: "", formulation: "", dose_value: 0, dose_unit: "kg|g|l|ml per acre", water_volume_l_per_acre: null, organic: false }], condition: { type: "none|observation|weather|soil_test", text: "", etl: "" }, phi_days: null, precautions: ["..."], source_kind: "state_pop|icar|label_claim|general_practice", confidence: 0.0 }] },
   };
-  const res = await callModel([{ role: "system", content: systemPrompt(inputs.language || "en") }, { role: "user", content: JSON.stringify(context) }], PROPOSE_TIMEOUT_MS, ctx.deadlineAt, MAX_OUTPUT_TOKENS);
+  const res = await callModel([{ role: "system", content: systemPrompt(inputs.language || "en") }, { role: "user", content: JSON.stringify(context) }], PROPOSE_TIMEOUT_MS, ctx.deadlineAt, MAX_OUTPUT_TOKENS, { db: supabase, farmerId: ctx.farmerId ?? null, caller: "proposeCandidates" });
   if (!res) return { ...empty, gaps: ["enrichment_model_unavailable"], trace: { ...empty.trace, skipped: "model_unavailable", targets, elapsed_ms: Date.now() - startedAt } };
   const proposals = parseProposals(res.content).filter((p) => targets.includes(p.domain));
   const restricted = await loadRestrictedIngredients(supabase);
@@ -415,7 +435,7 @@ export async function proposeAndVerifyCandidates(
     if (flagged.length) rec.verification = { ...rec.verification, regulatory_restricted: flagged };
   }
   const chemIdx = records.map((r, i) => ({ r, i })).filter(({ r }) => !r.reasons.length && (r.proposal.inputs.some(isChemical) || (r.verification as Record<string, unknown>).regulatory_restricted));
-  const opinions = await secondOpinion(chemIdx.map(({ r, i }) => ({ id: i, p: r.proposal })), inputs, ctx.deadlineAt);
+  const opinions = await secondOpinion(chemIdx.map(({ r, i }) => ({ id: i, p: r.proposal })), inputs, ctx.deadlineAt, { db: supabase, farmerId: ctx.farmerId ?? null, caller: "secondOpinion" });
   for (const { r, i } of chemIdx) {
     const op = opinions.get(i);
     r.verification = { ...r.verification, second_opinion: op ? (op.ok ? "passed" : "failed") : "unavailable", second_opinion_note: op?.note ?? null };

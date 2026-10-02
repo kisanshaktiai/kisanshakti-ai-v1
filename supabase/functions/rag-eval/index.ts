@@ -2,6 +2,11 @@
 // PATH: supabase/functions/rag-eval/index.ts
 //
 // CHANGE LOG
+// 2026-09-27 — AI model SSOT: the query normaliser now takes its model from registry task
+//   'rag.normalize' (was getBestAvailableProvider() inside _shared/queryNormalizer.ts), so
+//   this function passes it the service-role client ({ db: supabase, farmerId: null }).
+//   Request knobs unchanged (set in queryNormalizer.ts). Difference: each normaliser call now
+//   writes one ai_model_metrics row.
 // 2026-09-21 — RAG PHASE 0 (design v2 §3.6 "measurable", §4.1, §5): nightly
 //   retrieval metrics over the golden set. Runs the SAME path General chat runs
 //   (query normaliser → filters → ragRetrieve with identifiers, topics and the
@@ -100,7 +105,7 @@ async function loadCorpusCrops(supabase: SupabaseClient): Promise<string[]> {
 async function retrieveLikeGeneralChat(
   supabase: SupabaseClient, q: GoldenQuestion, corpusCrops: string[], topics: Awaited<ReturnType<typeof loadTopicTaxonomy>>, runId: string,
 ): Promise<{ result: RagResult; queryEn: string }> {
-  const normalized = await normalizeQueryForRetrieval(q.question_text, q.language, runId.slice(0, 8), corpusCrops, null, topics);
+  const normalized = await normalizeQueryForRetrieval(q.question_text, q.language, runId.slice(0, 8), corpusCrops, null, topics, { db: supabase, farmerId: null, functionName: 'rag-eval' });
   const resolvedCrop = await resolveCropCode(supabase, normalized.cropHint);
   const cropCodes = resolvedCrop ? [resolvedCrop] : (q.crop_codes?.length ? q.crop_codes : null);
   const stateCodes = q.state_codes?.length ? q.state_codes : null;
