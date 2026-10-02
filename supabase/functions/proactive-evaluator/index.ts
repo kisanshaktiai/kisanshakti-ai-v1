@@ -19,7 +19,7 @@ import {
   type SuppressionRow,
 } from './config.ts';
 import { calculateIrrigationForLand } from './irrigation.ts';
-import { enrichAndUpdateAlerts, enrichmentAvailable } from './enrichment.ts';
+import { enrichAndUpdateAlerts } from './enrichment.ts';
 import { buildGerminationQuestionAlerts } from './germination-question.ts';
 import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
 import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
@@ -61,6 +61,11 @@ import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
 // =====================================================
 
 // =====================================================
+// 2026-09-27 — AI model SSOT: enrichment's model comes from the AI model
+//   registry (task alert.enrich, see enrichment.ts); the enrichmentAvailable()
+//   OPENAI_API_KEY gate before enrichAndUpdateAlerts is removed (the router
+//   skips steps without a key). F13's 'enrichment_model' config key no longer
+//   exists.
 // v124 — DATABASE-DRIVEN REBUILD (forensic-audit remediation)
 // CHANGE LOG vs v123 (every change maps to an audit finding):
 //  F1  Stage lookup case bug fixed: buildStageMap keys UPPERCASE; the dead
@@ -877,11 +882,11 @@ async function processOneTenant(
     const { data: insertedAlerts, error: alErr } = await supabase
       .from('proactive_alerts')
       .upsert(kept, { onConflict: 'dedup_key', ignoreDuplicates: true })
-      .select('id, land_id, rule_id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr, title_hi, title_en, message_hi, action_text_mr, action_text_hi');
+      .select('id, farmer_id, land_id, rule_id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr, title_hi, title_en, message_hi, action_text_mr, action_text_hi');
     if (alErr) console.error('[ProactiveEvaluator] Alerts upsert error:', alErr.message);
     for (const a of (insertedAlerts || [])) supersededPairs.push({ land_id: a.land_id, rule_id: a.rule_id });
 
-    if (enrichmentAvailable() && insertedAlerts && insertedAlerts.length > 0) {
+    if (insertedAlerts && insertedAlerts.length > 0) {
       enrichAndUpdateAlerts(supabase, insertedAlerts, cfg).catch(e =>
         console.warn('[NeuralEnrichment] Background enrichment failed:', e.message)
       );
