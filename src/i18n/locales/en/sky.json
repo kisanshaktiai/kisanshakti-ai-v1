@@ -22,7 +22,7 @@
       "something_wrong": "Something looks off in {{land}}. Worth a walk through the field.",
       "unclear": "Clouds have hidden {{land}} for a while. We will look again on the next clear day.",
       "no_data": "The satellite has not had a clear look at {{land}} yet.",
-      "radar_note": "Radar can see through cloud: the crop is still standing.",
+      "radar_note": "Radar can see through cloud. It last saw this field on {{date}}.",
       "need_sowing": "Tell us when you sowed, and we can compare with how the crop should look now.",
       "stage_line": "Day {{das}} · {{stage}}"
     },
@@ -33,7 +33,7 @@
       "radar": "Clouds — radar view only",
       "none": "No clear view yet",
       "seen": "{{pct}}% of the field seen clearly",
-      "radar_line": "Radar on {{date}}: crop is standing.",
+      "radar_line": "Radar saw the field on {{date}}.",
       "evidence_high": "strong reading",
       "evidence_medium": "fair reading",
       "evidence_low": "weak reading — small field",
@@ -173,7 +173,10 @@
       "das": "Days after sowing",
       "ndmi": "Moisture signal (NDMI)",
       "ndre": "Leaf nitrogen signal (NDRE)",
-      "rain": "Recent rain (mm)"
+      "rain": "Recent rain (mm)",
+      "radar_date": "Radar date",
+      "radar": "Radar reading (RVI)",
+      "radar_prev": "Previous radar reading"
     }
   }
 }

@@ -25,6 +25,9 @@ export function DetailsCard({ sky }: { sky: FieldSky }) {
     { label: t('sky.details.ndmi', 'Moisture signal (NDMI)'), value: fmt(sky.water.ndmi) },
     { label: t('sky.details.ndre', 'Leaf nitrogen signal (NDRE)'), value: fmt(sky.greenness.ndre) },
     { label: t('sky.details.rain', 'Recent rain (mm)'), value: fmt(sky.water.rainMm, 1) },
+    { label: t('sky.details.radar_date', 'Radar date'), value: sky.radar?.date ?? na },
+    { label: t('sky.details.radar', 'Radar reading (RVI)'), value: fmt(sky.radar?.rvi ?? null) },
+    { label: t('sky.details.radar_prev', 'Previous radar reading'), value: fmt(sky.radar?.prevRvi ?? null) },
   ];
 
   return (

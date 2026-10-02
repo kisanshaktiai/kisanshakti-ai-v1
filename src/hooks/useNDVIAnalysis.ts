@@ -11,6 +11,7 @@ export interface NDVIProcessingThumbnail { url:string; date:string; geotiffUrl?:
 export interface NDVIPrediction { days7:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; days14:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; risk_level:'low'|'medium'|'high'|'critical'; recommended_action_keys:string[]; is_indicative:true; }
 export interface NDVIAnalysisResult { current:NDVIDataComplete|null; history:NDVIDataComplete[]; latestRaw:NDVIDataComplete|null; latestProcessingLog:NDVIProcessingLog|null; processingThumbnail:NDVIProcessingThumbnail|null; prediction:NDVIPrediction|null; isLoading:boolean; error:Error|null; refetch:()=>void; }
 const SIX_HOURS=6*60*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
+const DECISION_COLUMNS='land_id,tenant_id,acquisition_date,acquisition_time,scene_id,ndvi_value,savi_value,ndre_value,ndmi_value,uniformity_cv,quality_score,confidence_level,cloud_cover,observation_source,effective_pixel_count,coverage_weighted_purity,boundary_contamination_fraction,ndvi_spatial_se,evidence_confidence,measurement_status,spatial_stat_method,age_days,is_fresh';
 export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
   const {tenant}=useTenant(); const {session}=useAuthStore(); const tenantId=session?.tenantId??tenant?.id; const farmerId=session?.farmerId; const sessionToken=session?.token;
   const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v2',landId,tenantId,sessionToken],queryFn:async()=>{
@@ -19,10 +20,15 @@ export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
     // usable observations inside 45 days, which made the trend permanently unavailable.
     const client=supabaseWithAuth(farmerId,tenantId); const cutoffDate=new Date(Date.now()-90*86400000); const cutoffDay=cutoffDate.toISOString().slice(0,10);
     const [decisionResult,logResult]=await Promise.all([
-      client.from(DECISION_VIEW).select('land_id,tenant_id,acquisition_date,acquisition_time,scene_id,ndvi_value,savi_value,ndre_value,ndmi_value,uniformity_cv,quality_score,confidence_level,cloud_cover,observation_source,effective_pixel_count,coverage_weighted_purity,boundary_contamination_fraction,ndvi_spatial_se,evidence_confidence,measurement_status,spatial_stat_method,age_days,is_fresh').eq('land_id',landId).eq('tenant_id',tenantId).gte('acquisition_date',cutoffDay).order('acquisition_date',{ascending:false}).limit(60),
+      client.from(DECISION_VIEW).select(DECISION_COLUMNS).eq('land_id',landId).eq('tenant_id',tenantId).gte('acquisition_date',cutoffDay).order('acquisition_date',{ascending:false}).limit(60),
       client.from('ndvi_processing_logs').select('id,land_id,processing_step,step_status,completed_at,created_at,error_message,metadata').eq('land_id',landId).eq('tenant_id',tenantId).gte('created_at',cutoffDate.toISOString()).order('created_at',{ascending:false}).limit(30)
     ]); if(decisionResult.error)throw decisionResult.error;
-    const decisionRows=(decisionResult.data||[]) as any[]; const sceneIds=decisionRows.map(r=>r.scene_id).filter(Boolean); let assetRows:any[]=[];
+    let decisionRows=(decisionResult.data||[]) as any[];
+    // The 90-day window feeds the trend. When it holds nothing, the land can still have an older
+    // decision-grade pass in the view: read that one row so `current` is the real last measurement
+    // (shown with its age) instead of the screen saying the satellite has never seen the field.
+    if(!decisionRows.length){const olderResult=await client.from(DECISION_VIEW).select(DECISION_COLUMNS).eq('land_id',landId).eq('tenant_id',tenantId).order('acquisition_date',{ascending:false}).limit(1);if(olderResult.error)throw olderResult.error;decisionRows=olderResult.data||[];}
+    const sceneIds=decisionRows.map(r=>r.scene_id).filter(Boolean); let assetRows:any[]=[];
     if(sceneIds.length){const assetResult=await client.from('ndvi_data').select('land_id,tenant_id,date,scene_id,image_url,metadata,evi_value,ndwi_value,min_ndvi,max_ndvi,mean_ndvi,median_ndvi,ndvi_std,ndvi_spatial_min,ndvi_spatial_max,ndvi_spatial_median,ndvi_spatial_std,ndvi_p10,ndvi_p90,valid_pixels,total_pixels,satellite_source,collection_id,processing_level,spatial_resolution,tile_id,created_at,updated_at,computed_at,soil_moisture').eq('land_id',landId).eq('tenant_id',tenantId).in('scene_id',sceneIds);if(assetResult.error)throw assetResult.error;assetRows=assetResult.data||[];}
     const assetsByScene=new Map<string,any>(); for(const row of assetRows){if(row.scene_id&&!assetsByScene.has(row.scene_id))assetsByScene.set(row.scene_id,row);}
     const parsed=decisionRows.map((d:any,index:number)=>{const a=assetsByScene.get(d.scene_id)||{};const metadata=a.metadata?(typeof a.metadata==='string'?JSON.parse(a.metadata):a.metadata):null;return{...a,...d,id:`${d.land_id}:${d.scene_id||d.acquisition_date}:${index}`,date:d.acquisition_date,cloud_coverage:d.cloud_cover??null,coverage_percentage:null,metadata} as NDVIDataComplete;});

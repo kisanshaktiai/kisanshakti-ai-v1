@@ -8,7 +8,7 @@
  *   - ndvi_intelligence                    parcel-vs-surroundings robust z, forecast band
  *   - crop_stage_master                    expected NDVI band for the crop at this DAS (DB-governed)
  *   - land_weather_state                   FAO-56 water balance (root depletion vs RAW, rain)
- *   - lands                                crop and sowing/transplant date
+ *   - lands (via the lands-api edge function)  crop and sowing/transplant date
  *
  * The words it produces ("behind", "with", "ahead") are statistical descriptors
  * of a robust z-score, and the stage position is the row's own expected band.
@@ -19,6 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
+import { landsApi } from '@/services/landsApi';
 import { useNDVIAnalysis, type NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
 import { useLandWeatherState, type LandWeatherState } from '@/hooks/useLandWeatherState';
 import { useSatelliteWaterLayers } from '@/hooks/useSatelliteWaterLayers';
@@ -51,8 +52,8 @@ export interface FieldSky {
   latest: NDVIDataComplete | null;
   previous: NDVIDataComplete | null;
   history: Array<{ date: string; ndvi: number; quality?: number | null }>;
-  /** newest radar pass, for cloudy days */
-  radar: { date: string; rvi: number | null; cross_ratio_db: number | null } | null;
+  /** newest radar pass, for cloudy days, and the radar pass before it */
+  radar: { date: string; rvi: number | null; cross_ratio_db: number | null; prevDate: string | null; prevRvi: number | null } | null;
   sky: { state: SkyState; ageDays: number | null; cloudPct: number | null; fieldSeenPct: number | null; evidence: string | null; epc: number | null; purity: number | null };
   /** "where to check" quarters from the pipeline (ndvi_data.metadata.zones): growth and, independently, moisture */
   zone: { level: 'none' | 'watch' | 'check'; quarter: Quarter | null; pattern: string | null; reason: string | null;
@@ -76,27 +77,26 @@ const daysBetween = (a?: string | null, b?: string | null): number | null => {
   return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
 };
 
-export function useFieldSky(landId: string | null): FieldSky {
+export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
   const { session } = useAuthStore();
   const { tenant } = useTenant();
   const tenantId = session?.tenantId ?? tenant?.id;
 
   const ndvi = useNDVIAnalysis(landId);
   const weather = useLandWeatherState(landId);
-  const canopy = useSatelliteWaterLayers(landId || undefined, 'canopy_moisture_signal');
-  const surface = useSatelliteWaterLayers(landId || undefined, 'surface_water_trace');
+  const canopy = useSatelliteWaterLayers(landId || undefined, 'canopy_moisture_signal', reloadKey);
+  const surface = useSatelliteWaterLayers(landId || undefined, 'surface_water_trace', reloadKey);
 
-  const landQ = useQuery({
-    queryKey: ['field-sky-land', landId, tenantId],
-    enabled: !!landId && !!tenantId,
-    staleTime: 10 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('lands')
-        .select('id, current_crop, current_crop_id, last_sowing_date, planting_date, transplant_date, das, crop_cycle')
-        .eq('id', landId!).eq('tenant_id', tenantId!).maybeSingle();
-      if (error) throw error; return data as LandCtxRow | null;
-    },
+  // The lands table is not readable from the farmer's session directly (its row rules are
+  // auth.uid()-based, so a direct read returns nothing, silently). The lands-api edge function
+  // is the app's land source; this is the same query (same key) the page already runs, so it
+  // is answered from the shared cache.
+  const landsQ = useQuery({
+    queryKey: ['lands', session?.farmerId, tenantId],
+    enabled: !!session?.farmerId && !!tenantId,
+    queryFn: async () => ((await landsApi.fetchLands()) || []) as unknown as LandCtxRow[],
   });
+  const landRow: LandCtxRow | null = useMemo(() => (landsQ.data || []).find((l) => l.id === landId) ?? null, [landsQ.data, landId]);
 
   const intelQ = useQuery({
     queryKey: ['field-sky-intel', landId, tenantId],
@@ -120,8 +120,8 @@ export function useFieldSky(landId: string | null): FieldSky {
         .select('acquisition_date, rvi_value, cross_ratio_db')
         .eq('land_id', landId!).eq('tenant_id', tenantId!).eq('observation_source', 'sentinel-1')
         .not('rvi_value', 'is', null)
-        .order('acquisition_date', { ascending: false }).limit(1).maybeSingle();
-      if (error) throw error; return data as RadarRow | null;
+        .order('acquisition_date', { ascending: false }).limit(2);
+      if (error) throw error; return (data || []) as RadarRow[];
     },
   });
 
@@ -140,11 +140,11 @@ export function useFieldSky(landId: string | null): FieldSky {
     },
   });
   const scheduleSowing: string | null = scheduleQ.data?.sowing_date ?? scheduleQ.data?.transplant_date ?? null;
-  const landSowing: string | null = landQ.data?.last_sowing_date ?? landQ.data?.planting_date ?? landQ.data?.transplant_date ?? null;
+  const landSowing: string | null = landRow?.last_sowing_date ?? landRow?.planting_date ?? landRow?.transplant_date ?? null;
   const sowingDate: string | null = scheduleSowing ?? landSowing;
   const sowingSource: 'schedule' | 'land' | null = scheduleSowing ? 'schedule' : landSowing ? 'land' : null;
-  const cropCode: string | null = (landQ.data?.current_crop ?? scheduleQ.data?.crop_name) ? String(landQ.data?.current_crop ?? scheduleQ.data?.crop_name).toUpperCase().trim() : null;
-  const das = sowingDate ? daysBetween(new Date().toISOString().slice(0, 10), sowingDate) : (n(landQ.data?.das));
+  const cropCode: string | null = (landRow?.current_crop ?? scheduleQ.data?.crop_name) ? String(landRow?.current_crop ?? scheduleQ.data?.crop_name).toUpperCase().trim() : null;
+  const das = sowingDate ? daysBetween(new Date().toISOString().slice(0, 10), sowingDate) : (n(landRow?.das));
 
   const stageQ = useQuery({
     queryKey: ['field-sky-stage-ladder', cropCode],
@@ -175,7 +175,8 @@ export function useFieldSky(landId: string | null): FieldSky {
     const vp = n(latest?.valid_pixels), tp = n(latest?.total_pixels);
     const fieldSeen = vp != null && tp ? Math.round((vp / tp) * 100) : n(latest?.coverage_percentage);
     const fresh = latest ? latest.is_fresh === true || (ageDays != null && ageDays <= 14) : false;
-    const radar = radarQ.data ? { date: radarQ.data.acquisition_date, rvi: n(radarQ.data.rvi_value), cross_ratio_db: n(radarQ.data.cross_ratio_db) } : null;
+    const radarRow = radarQ.data?.[0] ?? null, radarPrev = radarQ.data?.[1] ?? null;
+    const radar = radarRow ? { date: radarRow.acquisition_date, rvi: n(radarRow.rvi_value), cross_ratio_db: n(radarRow.cross_ratio_db), prevDate: radarPrev?.acquisition_date ?? null, prevRvi: n(radarPrev?.rvi_value) } : null;
 
     let skyState: SkyState = 'none';
     if (latest && fresh) skyState = (cloudPct ?? 0) > 10 ? 'hazy' : 'clear';
@@ -210,7 +211,8 @@ export function useFieldSky(landId: string | null): FieldSky {
     let cohort: CohortState = 'unknown';
     if (z != null) cohort = z <= -2 ? 'well_behind' : z <= -1 ? 'behind' : z >= 1 ? 'ahead' : 'with';
 
-    const pred = (intelQ.data || []).find((r) => r.observed_or_predicted === 'predicted') ?? null;
+    // a forecast is only a forecast while its target date is still ahead; older predicted rows stay in the table
+    const pred = (intelQ.data || []).find((r) => r.observed_or_predicted === 'predicted' && r.acquisition_date > new Date().toISOString().slice(0, 10)) ?? null;
     const forecast = pred ? { low: n(pred.estimated_ndvi_low), high: n(pred.estimated_ndvi_high), targetDate: pred.acquisition_date, daysAhead: daysBetween(pred.acquisition_date, new Date().toISOString().slice(0, 10)) } : null;
 
     // water: satellite moisture + FAO-56 balance
@@ -236,7 +238,7 @@ export function useFieldSky(landId: string | null): FieldSky {
     else state = 'as_expected';
 
     return {
-      landId, loading: ndviLoading || landQ.isLoading || intelQ.isLoading || scheduleQ.isLoading, error: ndviError ?? landQ.error ?? intelQ.error ?? null,
+      landId, loading: ndviLoading || landsQ.isLoading || intelQ.isLoading || scheduleQ.isLoading, error: ndviError ?? landsQ.error ?? intelQ.error ?? null,
       latest, previous: prevRow,
       history: (history || []).filter((h) => h.ndvi_value != null).map((h) => ({ date: h.date, ndvi: Number(h.ndvi_value), quality: h.quality_score ?? null })),
       radar,
@@ -274,5 +276,5 @@ export function useFieldSky(landId: string | null): FieldSky {
       greenness: { ndre, ndrePrev, ndreDrop: ndre != null && ndrePrev != null ? ndrePrev - ndre : null },
       state,
     };
-  }, [landId, latestRaw, current, history, ndviLoading, ndviError, landQ.isLoading, landQ.error, scheduleQ.data, scheduleQ.isLoading, sowingSource, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
+  }, [landId, latestRaw, current, history, ndviLoading, ndviError, landsQ.isLoading, landsQ.error, scheduleQ.data, scheduleQ.isLoading, sowingSource, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
 }

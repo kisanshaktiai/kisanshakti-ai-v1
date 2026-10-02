@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Satellite, Sun, Map as MapIcon, LineChart, CloudOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils';
 
 interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; boundary_polygon_old?: { coordinates?: number[][][] } | null; center_point_old?: { coordinates?: number[] } | null; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
 const CROP_EMOJI: Record<string, string> = { sugarcane: '🎋', maize: '🌽', corn: '🌽', wheat: '🌾', rice: '🌾', cotton: '🪻' };
+// Every satellite query the screen is built from (see useFieldSky); the refresh button reloads all of them.
+const SKY_QUERY_KEYS = ['ndvi-analysis', 'field-sky-intel', 'field-sky-radar', 'field-sky-schedule', 'land-weather-state'];
 function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toLowerCase(); for (const key of Object.keys(CROP_EMOJI)) if (k.includes(key)) return CROP_EMOJI[key]; return '🌱'; }
 
 /**
@@ -37,9 +39,10 @@ function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toL
  */
 export default function NDVIAnalysis() {
   const { t } = useTranslation(); const navigate = useNavigate(); const { id: urlLandId } = useParams<{ id?: string }>();
-  const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech();
+  const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech(); const queryClient = useQueryClient();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tab, setTab] = useState<'today' | 'map' | 'season'>('today');
   // Cost: a Google map is billed when it is CREATED. Create it only when the farmer first opens
   // the Map tab; after that keep it mounted (forceMount + hidden) so switching tabs never re-bills.
@@ -54,9 +57,9 @@ export default function NDVIAnalysis() {
   useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId((landsWithData[0] ?? lands[0]).id); }, [lands, landsWithData, selectedLandId]);
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
 
-  const sky = useFieldSky(selectedLandId);
+  const sky = useFieldSky(selectedLandId, reloadKey);
 
-  const onRefresh = async () => { setIsRefreshing(true); await refetchLands(); toast({ title: t('ndvi.refresh.data_refreshed', 'Data refreshed') }); setIsRefreshing(false); };
+  const onRefresh = async () => { setIsRefreshing(true); setReloadKey(k => k + 1); await Promise.all([refetchLands(), ...SKY_QUERY_KEYS.map(key => queryClient.invalidateQueries({ queryKey: [key] }))]); toast({ title: t('ndvi.refresh.data_refreshed', 'Data refreshed') }); setIsRefreshing(false); };
   const onSpeak = (text: string) => { if (isSpeaking) return stop(); speak(text); };
 
   const boundary = useMemo(() => { const coords = selectedLand?.boundary_polygon_old?.coordinates?.[0]; return coords ? coords.map((c: number[]) => ({ lat: c[1], lng: c[0] })) : []; }, [selectedLand]);

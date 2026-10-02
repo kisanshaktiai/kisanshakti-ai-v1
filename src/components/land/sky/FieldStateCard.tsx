@@ -26,7 +26,7 @@ export function FieldStateCard({ sky, landName, onSpeak, isSpeaking }: { sky: Fi
   })();
 
   const detail = (() => {
-    if (sky.state === 'unclear' && sky.radar) return t('sky.state.radar_note', 'Radar can see through cloud: the crop is still standing.');
+    if (sky.state === 'unclear' && sky.radar) return t('sky.state.radar_note', 'Radar can see through cloud. It last saw this field on {{date}}.', { date: sky.radar.date });
     if (sky.stage.state === 'no_sowing_date') return t('sky.state.need_sowing', 'Tell us when you sowed and we can compare with what the crop should look like now.');
     if (sky.stage.stageName) return t('sky.state.stage_line', 'Day {{das}} · {{stage}}', { das: sky.stage.das ?? '–', stage: sky.stage.stageName });
     return null;

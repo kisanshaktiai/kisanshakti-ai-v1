@@ -16,6 +16,8 @@ export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
 export function useSatelliteWaterLayers(
   landId: string | undefined,
   selectedCode: SatelliteWaterLayerCode = 'surface_water_trace',
+  /** Change this value to load the layer again (the screen's refresh button). */
+  reloadKey = 0,
 ) {
   const { tenant } = useTenant();
   const { session } = useAuthStore();
@@ -97,7 +99,7 @@ export function useSatelliteWaterLayers(
     return () => {
       cancelled = true;
     };
-  }, [landId, tenantId, farmerId, sessionToken, selectedCode]);
+  }, [landId, tenantId, farmerId, sessionToken, selectedCode, reloadKey]);
 
   return { layers, loading, error };
 }

@@ -26,7 +26,7 @@ export function SkyCard({ sky }: { sky: FieldSky }) {
   const seen = s.fieldSeenPct != null ? t('sky.sky.seen', '{{pct}}% of the field seen clearly', { pct: s.fieldSeenPct }) : null;
   const support = s.evidence ? t(`sky.sky.evidence_${s.evidence}`, EVIDENCE_TEXT[s.evidence] ?? s.evidence) : null;
   const radarLine = sky.radar && (s.state === 'radar_only' || s.state === 'cloudy')
-    ? t('sky.sky.radar_line', 'Radar on {{date}}: crop is standing.', { date: sky.radar.date }) : null;
+    ? t('sky.sky.radar_line', 'Radar saw the field on {{date}}.', { date: sky.radar.date }) : null;
 
   return (
     <Card className="rounded-3xl border-border/40">
