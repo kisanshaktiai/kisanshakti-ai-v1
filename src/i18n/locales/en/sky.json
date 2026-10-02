@@ -24,7 +24,8 @@
       "no_data": "The satellite has not had a clear look at {{land}} yet.",
       "radar_note": "Radar can see through cloud. It last saw this field on {{date}}.",
       "need_sowing": "Tell us when you sowed, and we can compare with how the crop should look now.",
-      "stage_line": "Day {{das}} · {{stage}}"
+      "stage_line": "Day {{das}} · {{stage}}",
+      "open_map": "Open this picture on the map"
     },
     "sky": {
       "clear": "Clear view {{days}} days ago",
@@ -37,7 +38,10 @@
       "evidence_high": "strong reading",
       "evidence_medium": "fair reading",
       "evidence_low": "weak reading — small field",
-      "evidence_insufficient": "too small to read well"
+      "evidence_insufficient": "too small to read well",
+      "visits": "Satellite visits",
+      "visit_clear": "clear view",
+      "visit_radar": "radar"
     },
     "nb": {
       "title": "Compared to nearby crop",
@@ -62,7 +66,8 @@
       "chip_sat": "satellite moisture",
       "chip_soil": "soil water",
       "chip_rain": "no recent rain",
-      "chip_standing": "standing water seen"
+      "chip_standing": "standing water seen",
+      "chip_no_standing": "no standing water seen"
     },
     "ask": {
       "title": "What to check",
@@ -124,7 +129,14 @@
       "no_image": "No picture for this layer yet.",
       "exit_fullscreen": "Exit full screen",
       "recenter": "My field",
-      "google_error": "The map could not load. Check your connection and try again."
+      "google_error": "The map could not load. Check your connection and try again.",
+      "picture_from": "Picture from {{date}}",
+      "days_ago": "{{days}} days ago",
+      "play": "Play the days",
+      "stop": "Stop",
+      "image_loading": "Opening the picture…",
+      "image_error": "This picture could not be opened. Tap refresh and try again.",
+      "no_bounds": "This picture has no position on the map yet."
     },
     "stage": {
       "germination": "Germination",

@@ -154,8 +154,10 @@ export default function Home() {
   const avgNdvi = useMemo(() => {
     if (lands.length === 0) return 0;
     const ndviValues = lands
-      .map((l: any) => l.latest_ndvi ?? l.ndvi_value)
-      .filter((v: any) => typeof v === 'number' && v > 0);
+      // lands.last_ndvi_value is the field the pipeline keeps current for each land (the lands
+      // payload has no `latest_ndvi` / `ndvi_value`, so those always read as "no data")
+      .map((l: any) => (l.last_ndvi_value == null ? null : Number(l.last_ndvi_value)))
+      .filter((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0);
     return ndviValues.length > 0
       ? Math.round((ndviValues.reduce((s: number, v: number) => s + v, 0) / ndviValues.length) * 100) / 100
       : 0;

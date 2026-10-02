@@ -38,7 +38,7 @@ export function DetailsCard({ sky }: { sky: FieldSky }) {
             <AccordionTrigger className="px-2 py-3 hover:no-underline">
               <span className="flex items-center gap-2">
                 <Info className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('sky.details.title', 'The numbers behind this')}</span>
+                <span className="text-[13px] font-semibold text-muted-foreground">{t('sky.details.title', 'The numbers behind this')}</span>
               </span>
             </AccordionTrigger>
             <AccordionContent className="px-2 pb-2">

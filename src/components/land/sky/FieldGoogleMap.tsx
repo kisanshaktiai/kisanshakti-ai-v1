@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import * as turf from '@turf/turf';
-import { Maximize2, Minimize2, LocateFixed } from 'lucide-react';
+import { Maximize2, Minimize2, LocateFixed, Loader2, ImageOff } from 'lucide-react';
 import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { useSignedSatelliteImage } from '@/hooks/useSignedSatelliteImage';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -16,11 +16,18 @@ import { cn } from '@/lib/utils';
  * zoom buttons, and a full-screen mode that fills the phone.
  *
  * Every image is signed on read through the private bucket (tenant/land
- * ownership enforced by RLS); the path must be {tenant}/{land}/... or it is
- * refused before signing — same guard as NDVIMapView.
+ * ownership enforced by RLS) — see useSignedSatelliteImage.
+ *
+ * The legend is handed in already built from the picture's own colours (zone
+ * classes, or the layer's colour ramp), so it always describes what is drawn.
  */
 export type FieldMapBounds = { west: number; south: number; east: number; north: number };
 export type Quarter = 'NE' | 'NW' | 'SE' | 'SW';
+
+/** Either the picture's classes (colour, words, share of the field) or its continuous colour ramp with its two ends named. */
+export type MapLegend =
+  | { kind: 'classes'; items: Array<{ color: string; label: string; sharePct: number | null }> }
+  | { kind: 'ramp'; css: string | null; low: string; high: string };
 
 export interface FieldGoogleMapProps {
   landId: string; farmerId?: string; tenantId?: string;
@@ -29,34 +36,21 @@ export interface FieldGoogleMapProps {
   imagePath: string | null;           // storage path of the layer PNG
   imageBounds: FieldMapBounds | null; // bounds_wgs84 written by the pipeline
   highlightQuarter: Quarter | null;
-  legend: [string, string, string];
+  legend: MapLegend;
   legendTitle: string;
   fullscreen: boolean; onToggleFullscreen: () => void;
+  /** shown on the map just above the legend (the day strip, when the map fills the screen) */
+  footer?: ReactNode;
 }
 
-const BUCKET = 'ndvi-thumbnails';
-const SIGNED_TTL = 3600;
+const OVERLAY_OPACITY = 0.85;
+const OVERLAY_FADE_MS = 350;
 
-function isTenantScopedPath(path: string, tenantId: string | undefined, landId: string) {
-  const p = path.split('/').filter(Boolean);
-  return !!tenantId && p.length >= 3 && p[0] === tenantId && p[1] === landId;
-}
-
-function useSignedLayerUrl(path: string | null, farmerId?: string, tenantId?: string, landId?: string) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    setUrl(null);
-    if (!path || !farmerId || !tenantId || !landId) return;
-    if (/^https?:\/\//i.test(path)) { setUrl(path); return; }
-    const clean = path.replace(/^\/+/, '');
-    if (!isTenantScopedPath(clean, tenantId, landId)) { console.error('[FieldGoogleMap] path failed tenant/land scope', { landId, tenantId, path }); return; }
-    supabaseWithAuth(farmerId, tenantId).storage.from(BUCKET).createSignedUrl(clean, SIGNED_TTL)
-      .then(({ data, error }) => { if (cancelled) return; if (error || !data?.signedUrl) { console.error('[FieldGoogleMap] sign failed', error?.message); return; } setUrl(data.signedUrl); })
-      .catch((e) => console.error('[FieldGoogleMap] sign exception', e));
-    return () => { cancelled = true; };
-  }, [path, farmerId, tenantId, landId]);
-  return url;
+/** A theme token ("38 95% 58%") as a colour string the Maps API accepts. */
+function tokenColour(name: string): string | null {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const m = raw.match(/^([\d.]+)\s+([\d.]+)%\s+([\d.]+)%$/);
+  return m ? `hsl(${m[1]}, ${m[2]}%, ${m[3]}%)` : null;
 }
 
 function quarterPath(boundary: Array<{ lat: number; lng: number }>, q: Quarter): Array<{ lat: number; lng: number }> | null {
@@ -118,7 +112,8 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
   const overlayRef = useRef<google.maps.GroundOverlay | null>(null);
   const fieldPolyRef = useRef<google.maps.Polygon | null>(null);
   const quarterPolyRef = useRef<google.maps.Polygon | null>(null);
-  const signedUrl = useSignedLayerUrl(p.imagePath, p.farmerId, p.tenantId, p.landId);
+  const image = useSignedSatelliteImage(p.imagePath, p.farmerId, p.tenantId, p.landId);
+  const signedUrl = image.url;
 
   const fitToField = useCallback(() => {
     const map = mapRef.current; if (!map || !p.boundary.length) return;
@@ -167,6 +162,7 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
     const map = mapRef.current; if (!map || !isLoaded) return;
     fieldPolyRef.current?.setMap(null);
     if (p.boundary.length < 3) return;
+    // White on purpose: the outline has to stand out against satellite imagery, whatever the tenant theme is.
     fieldPolyRef.current = new google.maps.Polygon({ paths: p.boundary, fillOpacity: 0, strokeColor: '#FFFFFF', strokeOpacity: 0.95, strokeWeight: 3, clickable: false, zIndex: 2, map });
     return () => { fieldPolyRef.current?.setMap(null); };
   }, [p.boundary, isLoaded]);
@@ -178,9 +174,22 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
     if (!signedUrl || !p.imageBounds) return;
     const b = p.imageBounds;
     const bounds = new google.maps.LatLngBounds({ lat: b.south, lng: b.west }, { lat: b.north, lng: b.east });
-    const ov = new google.maps.GroundOverlay(signedUrl, bounds, { clickable: false, opacity: 0.85 });
+    // fade the picture in, so changing the day reads as one picture replacing another
+    const ov = new google.maps.GroundOverlay(signedUrl, bounds, { clickable: false, opacity: 0 });
     ov.setMap(map); overlayRef.current = ov;
-    return () => { ov.setMap(null); };
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+    if (reduce) ov.setOpacity(OVERLAY_OPACITY);
+    else {
+      const t0 = performance.now();
+      const step = (now: number) => {
+        const k = Math.min(1, (now - t0) / OVERLAY_FADE_MS);
+        ov.setOpacity(OVERLAY_OPACITY * k);
+        if (k < 1) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    }
+    return () => { cancelAnimationFrame(raf); ov.setMap(null); };
   }, [signedUrl, p.imageBounds, isLoaded]);
 
   // where-to-check quarter
@@ -189,7 +198,9 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
     quarterPolyRef.current?.setMap(null); quarterPolyRef.current = null;
     const path = p.highlightQuarter ? quarterPath(p.boundary, p.highlightQuarter) : null;
     if (!path) return;
-    quarterPolyRef.current = new google.maps.Polygon({ paths: path, fillColor: '#F59E0B', fillOpacity: 0.22, strokeColor: '#F59E0B', strokeOpacity: 1, strokeWeight: 3, clickable: false, zIndex: 3, map });
+    const mark = tokenColour('--warning');
+    if (!mark) return;
+    quarterPolyRef.current = new google.maps.Polygon({ paths: path, fillColor: mark, fillOpacity: 0.22, strokeColor: mark, strokeOpacity: 1, strokeWeight: 3, clickable: false, zIndex: 3, map });
     return () => { quarterPolyRef.current?.setMap(null); };
   }, [p.boundary, p.highlightQuarter, isLoaded]);
 
@@ -202,14 +213,13 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
 
       {/* direction words — the map is locked north-up */}
       <div className="pointer-events-none absolute inset-0 z-[3]" aria-hidden>
-        <span className="absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow">{t('sky.map.north', 'north')} ↑</span>
-        <span className="absolute left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow" style={{ bottom: 132 }}>{t('sky.map.south', 'south')}</span>
+        <span className={cn('absolute left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow', p.fullscreen ? 'top-[72px]' : 'top-3')}>{t('sky.map.north', 'north')} ↑</span>
         <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow">{t('sky.map.west', 'west')}</span>
         <span className="absolute right-14 top-1/2 -translate-y-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow">{t('sky.map.east', 'east')}</span>
       </div>
 
-      {/* controls: full screen + re-centre */}
-      <div className="absolute top-2 right-2 z-[4] flex flex-col gap-2">
+      {/* controls: full screen + re-centre. In full screen they sit below the layer buttons, which take the top row. */}
+      <div className={cn('absolute right-2 z-[4] flex flex-col gap-2', p.fullscreen ? 'top-[68px]' : 'top-2')}>
         <Button type="button" size="sm" variant="secondary" onClick={p.onToggleFullscreen} className="min-h-11 min-w-11 rounded-xl shadow bg-background text-foreground gap-1.5" aria-label={p.fullscreen ? t('sky.map.exit_fullscreen', 'Exit full screen') : t('sky.map.fill_screen', 'Fill screen')}>
           {p.fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           <span className="text-xs font-semibold">{p.fullscreen ? t('sky.map.exit_fullscreen', 'Exit full screen') : t('sky.map.fill_screen', 'Fill screen')}</span>
@@ -219,15 +229,39 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
         </Button>
       </div>
 
-      {/* legend on the map */}
-      <div className="pointer-events-none absolute left-3 z-[4] rounded-2xl bg-background/95 shadow px-3 py-2" style={{ bottom: 12 }}>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{p.legendTitle}</p>
-        <div className="flex items-center gap-3 text-[13px] font-medium">
-          <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-warning" />{p.legend[0]}</span>
-          <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-success/60" />{p.legend[1]}</span>
-          <span className="inline-flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm bg-success" />{p.legend[2]}</span>
+      {/* what is happening with the picture, when it is not simply on the map */}
+      {p.imagePath && (image.status === 'loading' || image.status === 'error' || (image.status === 'ready' && !p.imageBounds)) && (
+        <div className="pointer-events-none absolute left-1/2 top-28 z-[4] -translate-x-1/2 w-max max-w-[80%] rounded-full bg-background/95 shadow px-3 py-1.5 flex items-center gap-2 text-[13px] font-medium" role="status">
+          {image.status === 'loading'
+            ? <><Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />{t('sky.map.image_loading', 'Opening the picture…')}</>
+            : <><ImageOff className="h-4 w-4 text-destructive shrink-0" />{image.status === 'error' ? t('sky.map.image_error', 'This picture could not be opened. Tap refresh and try again.') : t('sky.map.no_bounds', 'This picture has no position on the map yet.')}</>}
         </div>
-        <p className="text-[12px] text-muted-foreground mt-1">{t('sky.map.north_hint', 'Top of the map is north. Your field is outlined.')}</p>
+      )}
+
+      {/* bottom of the map, stacked so nothing overlaps whatever the legend's height: south, the day strip (full screen), the legend */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[4] px-3 flex flex-col gap-2">
+        <span className="self-center rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow" aria-hidden>{t('sky.map.south', 'south')}</span>
+        {p.footer && <div className="pointer-events-auto">{p.footer}</div>}
+      {/* legend: the picture's own colours */}
+      <div className="self-start w-full max-w-xs rounded-2xl bg-background/95 shadow px-3 py-2">
+        <p className="text-[12px] font-semibold text-muted-foreground mb-1.5">{p.legendTitle}</p>
+        {p.legend.kind === 'classes' ? (
+          <ul className="space-y-1">
+            {p.legend.items.map((it) => (
+              <li key={it.label} className="flex items-center gap-2 text-[13px] font-medium">
+                <i className="h-3.5 w-3.5 rounded-sm shrink-0 border border-border/40" style={{ backgroundColor: it.color }} />
+                <span className="flex-1 min-w-0 truncate">{it.label}</span>
+                {it.sharePct != null && <span className="tabular-nums text-muted-foreground">{it.sharePct}%</span>}
+              </li>))}
+          </ul>
+        ) : (
+          <div>
+            {p.legend.css && <div className="h-3 w-full rounded-full border border-border/40" style={{ backgroundImage: p.legend.css }} />}
+            <div className="flex justify-between text-[13px] font-medium mt-1"><span>{p.legend.low}</span><span>{p.legend.high}</span></div>
+          </div>
+        )}
+        <p className="text-[12px] text-muted-foreground mt-1.5">{t('sky.map.north_hint', 'Top of the map is north. Your field is outlined.')}</p>
+      </div>
       </div>
     </div>
   );

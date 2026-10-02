@@ -23,18 +23,46 @@ export interface NDVIHealthStatus {
   strokeColor: string;
 }
 
-/** Pure display palette. Values are presentation anchors, not agronomic bands. */
+/**
+ * Pure display palette. Values are presentation anchors, not agronomic bands.
+ *
+ * These are the colours the NDVI pipeline paints into the field picture
+ * (raster_io.NDVI_STOPS, declared there as a verbatim copy of this list). A
+ * legend drawn from any other colours does not describe the picture, so this
+ * list must stay identical to the pipeline's. They are picture colours, not
+ * theme colours: a tenant theme must not change them.
+ */
 export const NDVI_COLOR_STOPS: Array<{ value: number; hex: string }> = [
-  { value: -1, hex: '#6B7280' },
-  { value: -0.5, hex: '#9CA3AF' },
-  { value: 0, hex: '#D1D5DB' },
-  { value: 0.5, hex: '#86EFAC' },
-  { value: 1, hex: '#166534' },
+  { value: -0.2, hex: '#7C3F1C' },
+  { value: 0, hex: '#B25C2C' },
+  { value: 0.1, hex: '#D9B26E' },
+  { value: 0.2, hex: '#E8C170' },
+  { value: 0.35, hex: '#FFD166' },
+  { value: 0.5, hex: '#C7E27A' },
+  { value: 0.65, hex: '#5DBB63' },
+  { value: 0.8, hex: '#2E8B3D' },
+  { value: 1, hex: '#1B5E20' },
 ];
 
-export const NDVI_GRADIENT_CSS = `linear-gradient(to top, ${NDVI_COLOR_STOPS
-  .map((s) => `${s.hex} ${((s.value + 1) / 2) * 100}%`)
-  .join(', ')})`;
+/**
+ * The three classes of the zone picture, exactly as the pipeline paints them
+ * (raster_io.ZONE_COLOURS: lower / normal / higher than this field's own median).
+ */
+export const ZONE_CLASS_COLOURS = {
+  lower: 'rgb(192, 57, 43)',
+  normal: 'rgb(244, 208, 63)',
+  higher: 'rgb(39, 174, 96)',
+} as const;
+
+/** A left-to-right CSS gradient across a list of colour stops, spaced by their values. */
+export function colourRampCss(stops: Array<{ value: number; hex: string }>): string | null {
+  if (!stops || stops.length < 2) return null;
+  const lo = stops[0].value, hi = stops[stops.length - 1].value;
+  if (!(hi > lo)) return null;
+  return `linear-gradient(to right, ${stops.map((s) => `${s.hex} ${(((s.value - lo) / (hi - lo)) * 100).toFixed(1)}%`).join(', ')})`;
+}
+
+export const NDVI_GRADIENT_CSS = colourRampCss(NDVI_COLOR_STOPS) ?? '';
 
 function lerpHex(a: string, b: string, t: number): string {
   const pa = a.replace('#', '');
@@ -52,7 +80,7 @@ function lerpHex(a: string, b: string, t: number): string {
 }
 
 export function ndviToColor(ndvi: number): string {
-  const v = Math.max(-1, Math.min(1, Number.isFinite(ndvi) ? ndvi : 0));
+  const v = Math.max(NDVI_COLOR_STOPS[0].value, Math.min(1, Number.isFinite(ndvi) ? ndvi : 0));
   for (let i = 0; i < NDVI_COLOR_STOPS.length - 1; i++) {
     const a = NDVI_COLOR_STOPS[i];
     const b = NDVI_COLOR_STOPS[i + 1];

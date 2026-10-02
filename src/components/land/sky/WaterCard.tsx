@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Droplets } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { FieldSky } from '@/hooks/useFieldSky';
+import { formatSkyDay, type FieldSky } from '@/hooks/useFieldSky';
 
 /**
  * "Water in the field." Not an index: a sentence built from the FAO-56 water
@@ -12,7 +12,7 @@ import type { FieldSky } from '@/hooks/useFieldSky';
  * The sentence strengthens only as independent sources agree.
  */
 export function WaterCard({ sky }: { sky: FieldSky }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const w = sky.water;
   const level: 'ok' | 'watch' | 'warn' = w.agreeing >= 3 ? 'warn' : w.agreeing >= 1 ? 'watch' : 'ok';
 
@@ -32,7 +32,7 @@ export function WaterCard({ sky }: { sky: FieldSky }) {
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-2">
           <Droplets className={cn('h-4 w-4', level === 'warn' ? 'text-warning' : 'text-info')} />
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('sky.water.title', 'Water in the field')}</p>
+          <p className="text-[13px] font-semibold text-muted-foreground">{t('sky.water.title', 'Water in the field')}</p>
         </div>
         <p className="text-sm font-medium leading-snug">{sentence}</p>
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -40,8 +40,9 @@ export function WaterCard({ sky }: { sky: FieldSky }) {
           <Chip on={w.irrigationNeeded === true} label={t('sky.water.chip_soil', 'soil water')} />
           <Chip on={w.rainMm != null && w.rainMm < 1} label={t('sky.water.chip_rain', 'no recent rain')} />
           {w.surfaceEvidencePx != null && w.surfaceEvidencePx > 0 && <Chip on label={t('sky.water.chip_standing', 'standing water seen')} />}
+          {w.surfaceEvidencePx === 0 && <Chip on={false} label={t('sky.water.chip_no_standing', 'no standing water seen')} />}
         </div>
-        {w.asOf && <p className="text-[11px] text-muted-foreground mt-2">{t('sky.water.as_of', 'Weather balance as of {{date}}', { date: w.asOf.slice(0, 10) })}</p>}
+        {w.asOf && <p className="text-[11px] text-muted-foreground mt-2">{t('sky.water.as_of', 'Weather balance as of {{date}}', { date: formatSkyDay(w.asOf.slice(0, 10), i18n.language) })}</p>}
       </CardContent>
     </Card>
   );

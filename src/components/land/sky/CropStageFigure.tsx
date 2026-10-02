@@ -53,7 +53,7 @@ export function CropStageFigure({ sky, compact = false }: { sky: FieldSky; compa
 
   return (
     <div className={cn('rounded-3xl border border-border/40 bg-card p-4', compact && 'p-3')}>
-      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t('sky.season.figure_title', 'Your crop today')}</p>
+      <p className="text-[13px] font-semibold text-muted-foreground mb-1">{t('sky.season.figure_title', 'Your crop today')}</p>
       <div className="flex items-center gap-4">
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={stageLabel ?? ''} className="shrink-0">
           <defs>
