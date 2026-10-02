@@ -199,3 +199,7 @@ export function isDepletionUnverifiedCeiling(
 
 /** Cap applied to the WATER confidence component when the ceiling guard fires. */
 export const DEPLETION_UNVERIFIED_CONFIDENCE_CAP = 0.3;
+
+/** Look-back window (days) for irrigation evidence behind the ceiling guard.
+ *  Shared so the proactive evaluator judges the same window the pipeline does. */
+export const UNVERIFIED_LOOKBACK_DAYS = 21;

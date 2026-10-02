@@ -1,7 +1,13 @@
 // =====================================================
 // config.ts — DATABASE-DRIVEN RUNTIME CONFIGURATION
+// CHANGE LOG (newest first)
+// 2026-09-27 — AI model SSOT: 'enrichment_model' removed (code default
+//   'gpt-5-mini'). The enrichment model now comes from the AI model registry
+//   (task alert.enrich); a proactive_evaluator_config row with that key is
+//   ignored like any other unknown key. Every other key is unchanged.
 // The code defines NOTHING agronomic. Every cap, window, threshold source,
-// kill switch, and model name is read from the database:
+// and kill switch is read from the database (the enrichment model from the
+// AI model registry, see enrichment.ts):
 //   * proactive_evaluator_config  — behaviour (tenant row overrides global)
 //   * sci_method_registry         — governed scientific parameters (approved only)
 //   * alert_suppression_matrix    — safety-block suppression semantics
@@ -17,9 +23,6 @@ export interface EvaluatorConfig {
   enrichment_batch_max: number;
   category_fallback_enabled: boolean;
   neural_invention_allowed: boolean;
-  /** OpenAI model for narration rephrasing. DB-overridable via config key
-   *  'enrichment_model'; default gpt-5-mini (cheap JSON-mode rephrasing). */
-  enrichment_model: string;
   /** 2026-10-02: the decision_rules regex/≥50%-match bridge path. OFF unless
    *  the DB turns it on; compiled predicates are unaffected. */
   decision_rule_legacy_bridge_enabled: boolean;
@@ -43,7 +46,6 @@ export async function loadEvaluatorConfig(supabase: any, tenantId: string): Prom
     enrichment_batch_max: 8,
     category_fallback_enabled: false,
     neural_invention_allowed: false,
-    enrichment_model: 'gpt-5-mini',
     decision_rule_legacy_bridge_enabled: false,
     derived_max_age_days: 2,
     graph_advice_max_rules: 3,

@@ -19,7 +19,7 @@ import {
   type SuppressionRow,
 } from './config.ts';
 import { calculateIrrigationForLand } from './irrigation.ts';
-import { enrichAndUpdateAlerts, enrichmentAvailable } from './enrichment.ts';
+import { enrichAndUpdateAlerts } from './enrichment.ts';
 import { buildGerminationQuestionAlerts } from './germination-question.ts';
 import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
 import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
@@ -35,11 +35,12 @@ import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
 //      hardcoded Marathi/Hindi dictionaries that only they used. Rule action
 //      templates are no longer copied into action_text: an action is a
 //      suggestion, and suggestions come from the graph.
-//  A2  NDVI and water-state evidence gates for env rules (env-derived.ts).
-//      38 of 60 NDVI alerts were raised on passes older than 10 days (max 106);
-//      219 of 271 irrigation alerts were raised while the weather pipeline had
-//      itself capped the water state as unverified (no app path records
-//      irrigation, so the bucket ratchets to TAW on every irrigated field).
+//  A2  NDVI evidence gate for env rules (env-derived.ts): 38 of 60 NDVI alerts
+//      were raised on passes older than 10 days (max 106). The water-state
+//      flag (derived.water_state_verified) travels on the alert as evidence
+//      only — a same-day field check confirmed the "unverified" irrigation
+//      alerts on Kodoli Mala and Shinghan Mal were real water stress after a
+//      month without rain, so they are not suppressed.
 //  A3  Derived weather state older than config derived_max_age_days is not used.
 //  A4  Crop identity from the DB SSOT (_shared/crop-resolver), replacing the
 //      hardcoded multilingual substring table; a land with no resolvable crop
@@ -50,17 +51,23 @@ import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
 //      days and SC_DISEASE_RUST_ORANGE_001 ("Spray Propiconazole …") on
 //      weather alone. Compiled predicates (F10) still run. A bridge alert never
 //      carries a dose-bearing action_text.
-//  A6  Water quantity (litres) is attached to IRRIGATION alerts only, and only
-//      on a verified water state.
-//  A7  Alert lifecycle: rows past expires_at, rows superseded by a newer alert
-//      of the same rule on the same land, and rows of a slow-input rule that
-//      no longer fires are set to EXPIRED (never deleted).
+//  A6  Water quantity (litres) is attached to IRRIGATION alerts only.
+//  A7  Alert lifecycle: rows past expires_at and rows superseded by a newer
+//      alert of the same rule on the same land are set to EXPIRED (never
+//      deleted). An alert whose condition merely stops holding stays visible
+//      until its own expiry — the farmer wants the recent history on screen
+//      (field decision, 2026-10-02).
 //  A8  Legacy proactive_rules that never reached the env engine (lower-case
 //      condition_type vs the UPPER-case switch) are skipped explicitly with one
 //      log line; they are not activated (their templates carry doses).
 // =====================================================
 
 // =====================================================
+// 2026-09-27 — AI model SSOT: enrichment's model comes from the AI model
+//   registry (task alert.enrich, see enrichment.ts); the enrichmentAvailable()
+//   OPENAI_API_KEY gate before enrichAndUpdateAlerts is removed (the router
+//   skips steps without a key). F13's 'enrichment_model' config key no longer
+//   exists.
 // v124 — DATABASE-DRIVEN REBUILD (forensic-audit remediation)
 // CHANGE LOG vs v123 (every change maps to an audit finding):
 //  F1  Stage lookup case bug fixed: buildStageMap keys UPPERCASE; the dead
@@ -330,7 +337,7 @@ Deno.serve(async (req) => {
         uncompilable_rules_skipped: totalUncompilable,
         stage_coverage_gaps: totalStageGaps,
         alerts_expired: totalExpired,
-        engine_version: 'v128-graph-advice',
+        engine_version: 'v129-field-check',
       },
     }).then(() => {});
 
@@ -605,8 +612,6 @@ async function processOneTenant(
   );
   const noCropLands = landContexts.filter((c) => !c.crop_code).length;
   if (noCropLands > 0) console.log(`[CROP_GATE] ${noCropLands} land(s) without a resolvable crop get no crop alerts`);
-  // A7: rule × land pairs evaluated this run whose condition did not hold.
-  const clearedPairs: Array<{ land_id: string; rule_id: string }> = [];
 
   // =========================================================
   // Evaluate rules
@@ -633,8 +638,6 @@ async function processOneTenant(
       return true;
     });
     totalRulesEvaluated += applicableRules.length;
-    // A7: a rule that no longer applies to this land (crop gone, stage moved on) has cleared.
-    for (const r of rules) if (!applicableRules.includes(r)) clearedPairs.push({ land_id: ctx.land_id, rule_id: r.rule_code });
 
     for (const rule of applicableRules) {
       const isEnvRule = isEnvIntelligenceRule(rule.conditions);
@@ -667,10 +670,7 @@ async function processOneTenant(
         console.log(`[GRAPH_REQUIRED] land=${ctx.land_id.slice(0, 8)} rule=${rule.rule_code} not raised: no applicable graph advice for crop=${ctx.crop_code} stage=${ctx.current_stage} das=${ctx.das} region=${ctx.region_code ?? 'unresolved'}`);
         result = { ...result, fired: false };
       }
-      if (!result.fired) {
-        if (!readsFastInputs(rule.conditions)) clearedPairs.push({ land_id: ctx.land_id, rule_id: rule.rule_code });
-        continue;
-      }
+      if (!result.fired) continue;
       totalRulesFired++;
 
       if (isEnvRule && rule.conditions?.metadata?.episode_driven === true) {
@@ -749,17 +749,12 @@ async function processOneTenant(
     });
     totalRulesEvaluated += applicableDecisionRules.length;
     applicableDecisionRules.sort((a, b) => (a.priority || 99) - (b.priority || 99));
-    // A7: bridge alerts carry rule_id = condition_code (shared by several rows);
-    // a code clears on this land only when none of its rows fired this run.
-    const bridgeFired = new Set<string>();
-    const bridgeQuiet = new Set<string>(decisionRules.map((dr) => dr.condition_code));
 
     for (const dr of applicableDecisionRules) {
       const evalOut = evaluateDecisionRule(dr, ctx, cfg, harvestDasByCrop);
       if (evalOut.uncompilable) { uncompilableSkipped++; continue; }
       const result = evalOut.result;
       if (!result.fired) continue;
-      bridgeFired.add(dr.condition_code);
       totalRulesFired++;
 
       const dedupKey = `DR:${dr.condition_code}:${ctx.land_id}:${todayStr}`;
@@ -827,7 +822,6 @@ async function processOneTenant(
       farmerDailyCounts.set(ctx.farmer_id, dailyCount + 1);
       totalAlerts++;
     }
-    for (const code of bridgeQuiet) if (!bridgeFired.has(code)) clearedPairs.push({ land_id: ctx.land_id, rule_id: code });
   }
 
   // =========================================================
@@ -877,11 +871,11 @@ async function processOneTenant(
     const { data: insertedAlerts, error: alErr } = await supabase
       .from('proactive_alerts')
       .upsert(kept, { onConflict: 'dedup_key', ignoreDuplicates: true })
-      .select('id, land_id, rule_id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr, title_hi, title_en, message_hi, action_text_mr, action_text_hi');
+      .select('id, farmer_id, land_id, rule_id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr, title_hi, title_en, message_hi, action_text_mr, action_text_hi');
     if (alErr) console.error('[ProactiveEvaluator] Alerts upsert error:', alErr.message);
     for (const a of (insertedAlerts || [])) supersededPairs.push({ land_id: a.land_id, rule_id: a.rule_id });
 
-    if (enrichmentAvailable() && insertedAlerts && insertedAlerts.length > 0) {
+    if (insertedAlerts && insertedAlerts.length > 0) {
       enrichAndUpdateAlerts(supabase, insertedAlerts, cfg).catch(e =>
         console.warn('[NeuralEnrichment] Background enrichment failed:', e.message)
       );
@@ -889,24 +883,23 @@ async function processOneTenant(
   }
 
   // A7: lifecycle. Rows are never deleted — they move to EXPIRED.
-  const expired = await expireAlerts(supabase, landIds, runStartIso, supersededPairs, clearedPairs);
-  console.log(`[ALERT_LIFECYCLE][${tenantId.slice(0, 8)}] expired=${expired.total} (past_expiry=${expired.pastExpiry} superseded=${expired.superseded} cleared=${expired.cleared})`);
+  const expired = await expireAlerts(supabase, landIds, runStartIso, supersededPairs);
+  console.log(`[ALERT_LIFECYCLE][${tenantId.slice(0, 8)}] expired=${expired.total} (past_expiry=${expired.pastExpiry} superseded=${expired.superseded})`);
 
   return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated, suppressed: suppressedCount, uncompilable: uncompilableSkipped, stageGaps, expired: expired.total };
 }
 
 const LIVE_STATUSES = ['PENDING', 'DELIVERED', 'SEEN'];
 
-/** Set live alerts to EXPIRED: past expires_at; superseded by a row inserted this
- *  run (same rule, same land); or cleared (rule evaluated this run and quiet). */
+/** Set live alerts to EXPIRED: past expires_at, or superseded by a row inserted
+ *  this run (same rule, same land). A quiet rule does not clear its alert. */
 async function expireAlerts(
   supabase: any,
   landIds: string[],
   runStartIso: string,
   superseded: Array<{ land_id: string; rule_id: string }>,
-  cleared: Array<{ land_id: string; rule_id: string }>,
-): Promise<{ total: number; pastExpiry: number; superseded: number; cleared: number }> {
-  const out = { total: 0, pastExpiry: 0, superseded: 0, cleared: 0 };
+): Promise<{ total: number; pastExpiry: number; superseded: number }> {
+  const out = { total: 0, pastExpiry: 0, superseded: 0 };
   const now = new Date().toISOString();
   const run = async (q: any): Promise<number> => {
     const { data, error } = await q.select('id');
@@ -927,18 +920,16 @@ async function expireAlerts(
     }
     return m;
   };
-  for (const [kind, pairs] of [['superseded', superseded], ['cleared', cleared]] as const) {
-    for (const [ruleId, lands] of byRule(pairs)) {
-      const ids = Array.from(lands);
-      for (let i = 0; i < ids.length; i += 200) {
-        out[kind] += await run(supabase.from('proactive_alerts')
-          .update({ status: 'EXPIRED', updated_at: now })
-          .eq('rule_id', ruleId).in('land_id', ids.slice(i, i + 200))
-          .in('status', LIVE_STATUSES).lt('created_at', runStartIso));
-      }
+  for (const [ruleId, lands] of byRule(superseded)) {
+    const ids = Array.from(lands);
+    for (let i = 0; i < ids.length; i += 200) {
+      out.superseded += await run(supabase.from('proactive_alerts')
+        .update({ status: 'EXPIRED', updated_at: now })
+        .eq('rule_id', ruleId).in('land_id', ids.slice(i, i + 200))
+        .in('status', LIVE_STATUSES).lt('created_at', runStartIso));
     }
   }
-  out.total = out.pastExpiry + out.superseded + out.cleared;
+  out.total = out.pastExpiry + out.superseded;
   return out;
 }
 
@@ -1943,21 +1934,11 @@ function graphLandOf(ctx: LandContext) {
   };
 }
 
-/** true when a rule reads hourly weather or forecast paths (fast inputs that
- *  swing within a day). Slow-input rules (derived / ndvi / das / episodes)
- *  clear their live alerts when they stop firing; fast ones wait for expiry or
- *  supersession, so a condition flickering at noon cannot hide a real alert. */
-function readsFastInputs(conditions: Record<string, any> | null): boolean {
-  const preds: any[] = Array.isArray(conditions?.all) ? conditions!.all : [];
-  return preds.some((p) => [p?.path, p?.field].some((x) =>
-    typeof x === 'string' && (x.startsWith('weather.') || x.startsWith('forecast.'))));
-}
-
 /**
  * trigger_data for one alert. Values are copied from the governed sources the
  * rule was judged on — nothing is computed here except the FAO-56 water plan
- * (irrigation.ts), which is attached to IRRIGATION alerts only and only when
- * the root-zone state is verified (A6).
+ * (irrigation.ts), which is attached to IRRIGATION alerts only (A6). The
+ * water-state flag rides along in td.derived so the card can say "unverified".
  */
 function buildAlertEvidence(
   ruleTrigger: Record<string, any>,
@@ -1996,7 +1977,7 @@ function buildAlertEvidence(
     lwd_est: ctx.derived.lwd_est, et0: ctx.derived.et0,
     water_state_verified: ctx.derived.water_state_verified, as_of: ctx.derived.as_of,
   };
-  if (alertCategory === 'IRRIGATION' && ctx.derived.water_state_verified === true) {
+  if (alertCategory === 'IRRIGATION') {
     const irrigation = calculateIrrigationForLand(ctx, methods);
     if (irrigation) td.irrigation = irrigation;
   }

@@ -66,12 +66,15 @@ const baseCtx = (): EnvEvalContext & { ndvi: NonNullable<EnvEvalContext["ndvi"]>
   ndvi: { value: 0.474, previous: 0.698, drop: 0.224 },
 });
 
-Deno.test("irrigation rule does not fire on an unverified water state", () => {
+// 2026-10-02 field check: Kodoli Mala's bucket at ceiling after a month without
+// rain WAS water stress (agronomist on the land). The unverified flag is
+// evidence on the card, never a reason to stay silent.
+Deno.test("irrigation rule fires on an unverified water state past RAW", () => {
   const ctx = baseCtx();
   ctx.derived = { ...emptyDerived(), root_depletion: 49.64, raw_mm: 25.53, water_state_verified: false };
   const r = evaluateEnvRule("IRRIGATION_TRIGGER_FAO56", IRRIGATION_TRIGGER_FAO56, ctx);
-  assertEquals(r.fired, false);
-  assert(r.reasoning.includes("unverified"));
+  assertEquals(r.fired, true);
+  assert(!r.reasoning.includes("unverified"));
 });
 
 Deno.test("irrigation rule fires on a verified water state past RAW", () => {
