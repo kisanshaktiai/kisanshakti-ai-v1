@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Satellite, Sun, Map as MapIcon, LineChart, CloudOff } from 'lucide-react';
@@ -29,6 +30,9 @@ interface LandRow { id: string; name: string; area_acres: number; current_crop?:
 const CROP_EMOJI: Record<string, string> = { sugarcane: '🎋', maize: '🌽', corn: '🌽', wheat: '🌾', rice: '🌾', cotton: '🪻' };
 // Every satellite query the screen is built from (see useFieldSky); the refresh button reloads all of them.
 const SKY_QUERY_KEYS = ['ndvi-analysis', 'field-sky-intel', 'field-sky-radar', 'field-sky-schedule', 'land-weather-state'];
+// One short sequence when a field's cards arrive (and again when the farmer picks another field).
+const CARD_SEQUENCE = { hidden: {}, shown: { transition: { staggerChildren: 0.06 } } };
+const CARD_ITEM = { hidden: { opacity: 0, y: 10 }, shown: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } } };
 function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toLowerCase(); for (const key of Object.keys(CROP_EMOJI)) if (k.includes(key)) return CROP_EMOJI[key]; return '🌱'; }
 
 /**
@@ -39,7 +43,7 @@ function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toL
  */
 export default function NDVIAnalysis() {
   const { t } = useTranslation(); const navigate = useNavigate(); const { id: urlLandId } = useParams<{ id?: string }>();
-  const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech(); const queryClient = useQueryClient();
+  const { session } = useAuthStore(); const { tenant } = useTenant(); const { toast } = useToast(); const { speak, isSpeaking, stop } = useTextToSpeech(); const queryClient = useQueryClient(); const reduceMotion = useReducedMotion();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -92,18 +96,18 @@ export default function NDVIAnalysis() {
         <TabsTrigger value="season" className="rounded-xl text-xs gap-1"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
       </TabsList></div>
 
-      <TabsContent value="today" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">
+      <TabsContent value="today" className="flex-1 px-3 pt-3 pb-24 flex flex-col gap-3 mt-0 data-[state=inactive]:hidden">
         {sky.loading ? <><Skeleton className="h-24 rounded-3xl" /><Skeleton className="h-32 rounded-3xl" /><Skeleton className="h-24 rounded-3xl" /></>
         : sky.error ? <Card className="rounded-3xl border-destructive/40"><CardContent className="py-8 text-center space-y-2"><CloudOff className="h-5 w-5 mx-auto text-destructive" /><p className="text-sm text-destructive">{t('ndvi.error.load_failed', 'Could not load satellite data. Please try again.')}</p><Button variant="outline" size="sm" onClick={onRefresh} className="rounded-lg">{t('ndvi.error.retry', 'Retry')}</Button></CardContent></Card>
-        : <>
-          <FieldStateCard sky={sky} landName={landName} onSpeak={onSpeak} isSpeaking={isSpeaking} />
-          <SkyCard sky={sky} />
-          {selectedLandId && session?.farmerId && tenantId && <AttentionCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} onShowOnMap={() => setTab('map')} />}
-          <NeighbourCard sky={sky} />
-          <WaterCard sky={sky} />
-          {selectedLandId && session?.farmerId && tenantId && <AskCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} />}
-          <DetailsCard sky={sky} />
-        </>}
+        : <motion.div key={selectedLandId ?? 'none'} variants={CARD_SEQUENCE} initial={reduceMotion ? false : 'hidden'} animate="shown" className="flex flex-col gap-3">
+          <motion.div variants={CARD_ITEM}><FieldStateCard sky={sky} landName={landName} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} onSpeak={onSpeak} isSpeaking={isSpeaking} onOpenMap={() => setTab('map')} /></motion.div>
+          <motion.div variants={CARD_ITEM}><SkyCard sky={sky} /></motion.div>
+          {selectedLandId && session?.farmerId && tenantId && <motion.div variants={CARD_ITEM} className="empty:hidden"><AttentionCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} onShowOnMap={() => setTab('map')} /></motion.div>}
+          <motion.div variants={CARD_ITEM}><NeighbourCard sky={sky} /></motion.div>
+          <motion.div variants={CARD_ITEM}><WaterCard sky={sky} /></motion.div>
+          {selectedLandId && session?.farmerId && tenantId && <motion.div variants={CARD_ITEM}><AskCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} /></motion.div>}
+          <motion.div variants={CARD_ITEM}><DetailsCard sky={sky} /></motion.div>
+        </motion.div>}
       </TabsContent>
 
       {/* forceMount: Radix unmounts inactive tabs, and every remount of the Google map is a billable load. Keep it alive, hide it. */}

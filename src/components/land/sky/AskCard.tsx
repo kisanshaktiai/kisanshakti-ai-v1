@@ -25,7 +25,7 @@ export function AskCard({ sky, landId, cropName, farmerId, tenantId }: { sky: Fi
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-2">
           <Footprints className="h-4 w-4 text-primary" />
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('sky.ask.title', 'What to check')}</p>
+          <p className="text-[13px] font-semibold text-muted-foreground">{t('sky.ask.title', 'What to check')}</p>
         </div>
         <p className="text-sm font-medium leading-snug">{prompt}</p>
         <Button onClick={() => setOpen(true)} className="w-full mt-3 h-12 rounded-2xl text-base font-semibold">

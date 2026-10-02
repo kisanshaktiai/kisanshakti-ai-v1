@@ -386,6 +386,8 @@ serve(async (req) => {
             .from('ndvi_data')
             .select('ndvi_value, mean_ndvi, date, evi_value, ndwi_value')
             .eq('land_id', landId)
+            // radar (Sentinel-1) rows carry no NDVI; left in, they become "the latest NDVI" and a false trend
+            .not('ndvi_value', 'is', null)
             .order('date', { ascending: false })
             .limit(3);
           
@@ -499,6 +501,8 @@ serve(async (req) => {
             .from('ndvi_data')
             .select('land_id, ndvi_value, mean_ndvi, date')
             .in('land_id', landIds)
+            // radar (Sentinel-1) rows carry no NDVI; left in, they become "the latest NDVI" and a false trend
+            .not('ndvi_value', 'is', null)
             .order('date', { ascending: false });
           
           // Group by land_id (take latest for each land)

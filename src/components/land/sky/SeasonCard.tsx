@@ -51,7 +51,7 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
     {figure}
     <Card className="rounded-3xl border-border/40">
       <CardContent className="p-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{t('sky.season.title', 'Season so far')}</p>
+        <p className="text-[13px] font-semibold text-muted-foreground mb-2">{t('sky.season.title', 'Season so far')}</p>
         <div className="h-44">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

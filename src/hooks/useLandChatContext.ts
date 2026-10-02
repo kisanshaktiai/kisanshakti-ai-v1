@@ -13,7 +13,7 @@
  *                               sowing_date, expected_harvest_date, status.
  *     • soil_health           → latest test/estimate for pH, NPK, texture,
  *                               moisture, agro-climatic zone.
- *     • ndvi_data             → latest ndvi row within 45d for the field.
+ *     • v_ndvi_decision_grade → newest decision-grade optical NDVI pass for the field.
  *     • weather_current       → latest live weather bound to the land.
  *     • land_weather_state    → latest per-land derived agronomy
  *                               (daily GDD, ET0, VPD, water balance, risk).
@@ -182,12 +182,14 @@ async function fetchLandChatContext(
       .order('test_date', { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle(),
+    // Newest decision-grade optical pass. Raw ndvi_data ordered by date puts a radar row
+    // (ndvi_value NULL) first whenever radar is the newest visit, which blanked this reading.
     client
-      .from('ndvi_data')
-      .select('date, ndvi_value, mean_ndvi, coverage_percentage, cloud_coverage, quality_score, image_url')
+      .from('v_ndvi_decision_grade')
+      .select('acquisition_date, ndvi_value, quality_score, cloud_cover')
       .eq('land_id', landId)
       .eq('tenant_id', tenantId)
-      .order('date', { ascending: false })
+      .order('acquisition_date', { ascending: false })
       .limit(1)
       .maybeSingle(),
     client
@@ -221,7 +223,17 @@ async function fetchLandChatContext(
     activeCrop: (cropRes.data as any) ?? null,
     phenology: (phenRow as any) ?? null,
     soil: (soilRes.data as any) ?? null,
-    ndvi: (ndviRes.data as any) ?? null,
+    ndvi: ndviRes.data
+      ? {
+          date: ndviRes.data.acquisition_date ?? null,
+          ndvi_value: ndviRes.data.ndvi_value ?? null,
+          mean_ndvi: null,
+          coverage_percentage: null,
+          cloud_coverage: ndviRes.data.cloud_cover ?? null,
+          quality_score: ndviRes.data.quality_score ?? null,
+          image_url: null,
+        }
+      : null,
     weather: (wxRes.data as any) ?? null,
     weatherMetrics: (wxMetricRes.data as any) ?? null,
   };

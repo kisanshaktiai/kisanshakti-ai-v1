@@ -5,7 +5,8 @@
  * agronomic thresholds:
  *   - v_ndvi_decision_grade / ndvi_data   (via useNDVIAnalysis)   observed optical passes
  *   - ndvi_data radar rows                                          cloud-proof structure (RVI)
- *   - ndvi_intelligence                    parcel-vs-surroundings robust z, forecast band
+ *   - ndvi_intelligence                    parcel-vs-surroundings robust z, the field's and its surroundings' NDVI on that pass, forecast band
+ *   - satellite_water_layers               canopy-moisture pictures per pass; standing-water evidence pixels
  *   - crop_stage_master                    expected NDVI band for the crop at this DAS (DB-governed)
  *   - land_weather_state                   FAO-56 water balance (root depletion vs RAW, rain)
  *   - lands (via the lands-api edge function)  crop and sowing/transplant date
@@ -29,12 +30,12 @@ export type CohortState = 'well_behind' | 'behind' | 'with' | 'ahead' | 'unknown
 export type StageState = 'below' | 'within' | 'above' | 'no_sowing_date' | 'no_band';
 export type SkyState = 'clear' | 'hazy' | 'cloudy' | 'radar_only' | 'none';
 
-interface IntelRow { acquisition_date: string; observed_or_predicted: string | null; parcel_context_robust_z: number | null; parcel_context_delta: number | null; evidence_json: Record<string, unknown> | null; estimated_ndvi_low: number | null; estimated_ndvi_high: number | null; intelligence_status: string | null; }
+interface IntelRow { acquisition_date: string; observed_or_predicted: string | null; observed_ndvi: number | null; context_ndvi_median: number | null; parcel_context_robust_z: number | null; parcel_context_delta: number | null; evidence_json: Record<string, unknown> | null; estimated_ndvi_low: number | null; estimated_ndvi_high: number | null; intelligence_status: string | null; }
 interface RadarRow { acquisition_date: string; rvi_value: number | null; cross_ratio_db: number | null; }
 interface StageRow { stage_code: string; growth_stage: string | null; das_min: number | null; das_max: number | null; expected_ndvi_min: number | null; expected_ndvi_max: number | null; cultivation_method: string | null; phenology_index: number | null; expected_height_cm_min: number | null; expected_height_cm_max: number | null; expected_leaf_count_min: number | null; expected_leaf_count_max: number | null; stage_node_type: string | null; }
 interface ScheduleRow { sowing_date: string | null; transplant_date: string | null; cultivation_method: string | null; crop_name: string | null; }
 interface LandCtxRow { id: string; current_crop: string | null; current_crop_id: string | null; last_sowing_date: string | null; planting_date: string | null; transplant_date: string | null; das: number | null; crop_cycle: string | null; }
-interface WaterRowLite { image_path?: string | null; image_metadata?: Record<string, unknown> }
+interface WaterRowLite { acquisition_date?: string; image_path?: string | null; image_metadata?: Record<string, unknown>; evidence_json?: Record<string, unknown> }
 
 export interface LayerFrame { date: string; path: string; bounds: { west: number; south: number; east: number; north: number } | null; kind: 'zones' | 'gradient'; shares: { lower: number; normal: number; higher: number } | null }
 export type Quarter = 'NE' | 'NW' | 'SE' | 'SW';
@@ -54,6 +55,8 @@ export interface FieldSky {
   history: Array<{ date: string; ndvi: number; quality?: number | null }>;
   /** newest radar pass, for cloudy days, and the radar pass before it */
   radar: { date: string; rvi: number | null; cross_ratio_db: number | null; prevDate: string | null; prevRvi: number | null } | null;
+  /** the satellite's recent visits to this field, newest first: clear optical passes and radar passes */
+  visits: Array<{ date: string; kind: 'clear' | 'radar' }>;
   sky: { state: SkyState; ageDays: number | null; cloudPct: number | null; fieldSeenPct: number | null; evidence: string | null; epc: number | null; purity: number | null };
   /** "where to check" quarters from the pipeline (ndvi_data.metadata.zones): growth and, independently, moisture */
   zone: { level: 'none' | 'watch' | 'check'; quarter: Quarter | null; pattern: string | null; reason: string | null;
@@ -63,15 +66,24 @@ export interface FieldSky {
   stage: { state: StageState; das: number | null; stageCode: string | null; stageName: string | null; expectedMin: number | null; expectedMax: number | null; sowingDate: string | null; cropCode: string | null;
            /** ordered ladder of this crop's stages (crop_stage_master) and where the field sits on it — drives the crop figure */
            ladder: Array<{ code: string; name: string | null; dasMin: number | null; dasMax: number | null; heightCm: number | null; leaves: number | null }>; index: number | null; heightCm: number | null; leaves: number | null; sowingSource: 'schedule' | 'land' | null };
-  neighbours: { state: CohortState; z: number | null; delta: number | null; contextPresent: boolean; asOf: string | null };
+  /** `mine` and `around` are the field's NDVI and the median of the crop around it ON THE SAME PASS (asOf), as the pipeline stored them */
+  neighbours: { state: CohortState; z: number | null; delta: number | null; mine: number | null; around: number | null; contextPresent: boolean; asOf: string | null };
   forecast: { low: number | null; high: number | null; targetDate: string | null; daysAhead: number | null } | null;
   /** weather side comes from the `weather` edge function (useLandWeatherState): governed FAO-56 balance flags, not raw table columns */
-  water: { ndmi: number | null; ndmiPrev: number | null; ndmiDrop: number | null; passGapDays: number | null; waterDeficitMm: number | null; irrigationNeeded: boolean | null; balanceStatus: string | null; rainMm: number | null; urgency: string | null; asOf: string | null; agreeing: number; canopyImagePath: string | null; surfaceImagePath: string | null; surfaceEvidencePx: number | null };
+  water: { ndmi: number | null; ndmiPrev: number | null; ndmiDrop: number | null; passGapDays: number | null; waterDeficitMm: number | null; irrigationNeeded: boolean | null; balanceStatus: string | null; rainMm: number | null; urgency: string | null; asOf: string | null; agreeing: number; canopyImagePath: string | null; surfaceImagePath: string | null;
+           /** standing-water evidence pixels the pipeline counted on the newest pass (0 = looked and found none), and that pass's date */
+           surfaceEvidencePx: number | null; surfaceAsOf: string | null };
   greenness: { ndre: number | null; ndrePrev: number | null; ndreDrop: number | null };
   state: FieldState;
 }
 
 const n = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+/** Day and short month in the app language, for pass dates ("12 Sep"). Digits stay 0-9, like every other number on the screen. */
+export function formatSkyDay(iso: string | null | undefined, lang?: string): string {
+  if (!iso) return '';
+  try { return new Intl.DateTimeFormat(lang || undefined, { day: 'numeric', month: 'short', numberingSystem: 'latn' }).format(new Date(iso)); } catch { return String(iso); }
+}
+const VISITS_SHOWN = 8;
 const daysBetween = (a?: string | null, b?: string | null): number | null => {
   if (!a || !b) return null; const ms = new Date(a).getTime() - new Date(b).getTime();
   return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
@@ -104,7 +116,7 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
     staleTime: 10 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase.from('ndvi_intelligence')
-        .select('acquisition_date, observed_or_predicted, parcel_context_robust_z, parcel_context_delta, evidence_json, estimated_ndvi_low, estimated_ndvi_high, intelligence_status')
+        .select('acquisition_date, observed_or_predicted, observed_ndvi, context_ndvi_median, parcel_context_robust_z, parcel_context_delta, evidence_json, estimated_ndvi_low, estimated_ndvi_high, intelligence_status')
         .eq('land_id', landId!).eq('tenant_id', tenantId!)
         .order('acquisition_date', { ascending: false }).limit(40);
       if (error) throw error; return (data || []) as IntelRow[];
@@ -120,7 +132,7 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
         .select('acquisition_date, rvi_value, cross_ratio_db')
         .eq('land_id', landId!).eq('tenant_id', tenantId!).eq('observation_source', 'sentinel-1')
         .not('rvi_value', 'is', null)
-        .order('acquisition_date', { ascending: false }).limit(2);
+        .order('acquisition_date', { ascending: false }).limit(VISITS_SHOWN);
       if (error) throw error; return (data || []) as RadarRow[];
     },
   });
@@ -224,6 +236,9 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
     const rainMm = n(st?.effective_rainfall_mm ?? st?.total_rainfall_mm);
     const canopyRow = (canopy.layers?.[0] ?? null) as WaterRowLite | null;
     const surfaceRow = (surface.layers?.[0] ?? null) as WaterRowLite | null;
+    // The pipeline counts standing-water evidence pixels in evidence_json on every pass; the picture
+    // metadata carries a count only when a picture was drawn, so it cannot tell "none seen" from "not looked".
+    const surfacePx = n(surfaceRow?.evidence_json?.spatial_evidence_pixels) ?? n(surfaceRow?.image_metadata?.drawn_pixels);
     // independent signs of drying: satellite moisture fell; governed water balance says irrigate;
     // no effective rain on the balance date; balance status names a deficit
     const agreeing = [ndmiDrop != null && ndmiDrop >= 0.05, irrigationNeeded === true, rainMm != null && rainMm < 1, /deficit|dry|stress/i.test(String(st?.water_balance_status ?? ''))].filter(Boolean).length;
@@ -242,6 +257,10 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
       latest, previous: prevRow,
       history: (history || []).filter((h) => h.ndvi_value != null).map((h) => ({ date: h.date, ndvi: Number(h.ndvi_value), quality: h.quality_score ?? null })),
       radar,
+      visits: [
+        ...(history || []).map((h) => ({ date: h.date, kind: 'clear' as const })),
+        ...(radarQ.data || []).map((r) => ({ date: r.acquisition_date, kind: 'radar' as const })),
+      ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, VISITS_SHOWN),
       zone: (() => {
         const z = ((latest as { metadata?: { zones?: Record<string, unknown> } } | null)?.metadata?.zones ?? null) as Record<string, unknown> | null;
         const lv = z?.level === 'watch' || z?.level === 'check' ? (z.level as 'watch' | 'check') : 'none';
@@ -269,10 +288,10 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
       sky: { state: skyState, ageDays, cloudPct, fieldSeenPct: fieldSeen ?? null, evidence: latest?.evidence_confidence ?? null, epc: n(latest?.effective_pixel_count), purity: n(latest?.coverage_weighted_purity) },
       stage: { state: stageState, das, stageCode: band?.stage_code ?? null, stageName: band?.growth_stage ?? null, expectedMin: n(band?.expected_ndvi_min), expectedMax: n(band?.expected_ndvi_max), sowingDate, cropCode,
                ladder, index: stageIndex, heightCm: band ? mid(band.expected_height_cm_min, band.expected_height_cm_max) : null, leaves: band ? mid(band.expected_leaf_count_min, band.expected_leaf_count_max) : null, sowingSource },
-      neighbours: { state: cohort, z, delta: n(obs?.parcel_context_delta), contextPresent: obs ? ctxPresent(obs) : false, asOf: obs?.acquisition_date ?? null },
+      neighbours: { state: cohort, z, delta: n(obs?.parcel_context_delta), mine: n(obs?.observed_ndvi), around: n(obs?.context_ndvi_median), contextPresent: obs ? ctxPresent(obs) : false, asOf: obs?.acquisition_date ?? null },
       forecast,
       water: { ndmi, ndmiPrev, ndmiDrop, passGapDays: daysBetween(passDate(latest), passDate(prevRow)), waterDeficitMm: waterDeficit, irrigationNeeded, balanceStatus: st?.water_balance_status ?? null, rainMm, urgency: st?.irrigation_urgency ?? null, asOf: st?.metric_date ?? null, agreeing,
-               canopyImagePath: canopyRow?.image_path ?? null, surfaceImagePath: surfaceRow?.image_path ?? null, surfaceEvidencePx: n(surfaceRow?.image_metadata?.drawn_pixels) },
+               canopyImagePath: canopyRow?.image_path ?? null, surfaceImagePath: surfaceRow?.image_path ?? null, surfaceEvidencePx: surfacePx, surfaceAsOf: surfaceRow?.acquisition_date ?? null },
       greenness: { ndre, ndrePrev, ndreDrop: ndre != null && ndrePrev != null ? ndrePrev - ndre : null },
       state,
     };

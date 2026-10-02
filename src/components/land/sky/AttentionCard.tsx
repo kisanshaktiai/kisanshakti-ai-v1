@@ -32,7 +32,7 @@ export function AttentionCard({ sky, landId, cropName, farmerId, tenantId, onSho
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-2">
           <AlertTriangle className={cn('h-4 w-4', severe ? 'text-destructive' : 'text-warning')} />
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('sky.attention.title', 'Needs your attention')}</p>
+          <p className="text-[13px] font-semibold text-muted-foreground">{t('sky.attention.title', 'Needs your attention')}</p>
         </div>
         <p className="text-sm font-medium leading-snug">{sentence}</p>
         <div className="flex gap-2 mt-3">

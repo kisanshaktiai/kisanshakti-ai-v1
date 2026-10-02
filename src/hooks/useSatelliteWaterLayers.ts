@@ -10,8 +10,9 @@ export interface SatelliteWaterLayerView extends SatelliteWaterLayer {
 
 /**
  * Loads one evidence layer at a time for the active land and tenant.
- * Only the latest observed image is signed; historical rows remain available
- * for temporal analysis without an N+1 signed-URL storm.
+ * Every observed row is returned, newest first. Only the latest image is
+ * signed here; the older rows keep their storage path so a screen can sign
+ * one on demand (the map's date chips) without an N+1 signed-URL storm.
  */
 export function useSatelliteWaterLayers(
   landId: string | undefined,
@@ -84,7 +85,7 @@ export function useSatelliteWaterLayers(
           }
         }
 
-        if (!cancelled) setLayers([{ ...latest, signedImageUrl }]);
+        if (!cancelled) setLayers([{ ...latest, signedImageUrl }, ...rows.slice(1)]);
       })
       .catch((err) => {
         if (!cancelled) {
