@@ -1,5 +1,15 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-10-02 — review fix: brain.format answer budget 4000 tokens (the old Gemini tier's value, the largest
+ *   of the three tiers) instead of 2800, so no step truncates a Devanagari answer earlier than before.
+ * 2026-09-27 — AI model SSOT: formatRecommendationsWithLLM's three hardcoded tiers
+ *   (OpenAI AI_MODELS.openai.default 8s → native Gemini AI_MODELS.gemini.default 6s →
+ *   Lovable AI_MODELS.lovable.default 5s) replaced by one callAITask('brain.format').
+ *   Chain and models come from ai_task_route_step; same 14s budget, 8s per model,
+ *   2800 tokens, same ai_model label format; every call lands in ai_model_metrics.
+ *   callOpenAIWithTimeout / callGeminiWithTimeout / callLovableAIWithTimeout removed
+ *   (no other caller). Gemini is now reached through its OpenAI-compatible endpoint
+ *   with a real system message instead of system+user concatenated into one part.
  * 2026-09-26 12:00 UTC — TYPE FIX: added local RuntimePrimaryDecision/
  *   RuntimeApplicationDetails/RuntimeDecisionOutput extension interfaces to
  *   cover runtime-only decision_output fields not present on the shared
@@ -60,7 +70,7 @@ import { getUiString } from '../i18n/ui-strings.ts';
 // 2026-09-11 — MODEL SSOT. The formatter had `model: 'gpt-4o-mini'` + legacy `max_tokens`/`temperature` while the
 // project standard (_shared/aiConfig.ts) is gpt-5.6-luna with `max_completion_tokens` and no custom temperature.
 // The 5.x API rejects the legacy body, so every OpenAI call here failed and the chain fell to Gemini.
-import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature, callAITask, type AITaskCall } from '../../_shared/aiConfig.ts';
+import { callAITask, type AITaskCall } from '../../_shared/aiConfig.ts';
 import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
@@ -141,7 +151,8 @@ export interface LLMFormatterInput {
   };
   data_audit?: DataAudit;
   trace_id?: string;
-  supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
+  supabase_client?: any;  // v2.1: For DB-driven translation of technical terms; 2026-09-27 also the AI model registry + usage ledger
+  farmer_id?: string | null; // 2026-09-27 — usage-ledger attribution for the brain.format call (ai_model_metrics.farmer_id)
   market_product_memo?: MarketProductMemo;
   // Farmer's persisted farming preference (farmers.farming_preference).
   farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
@@ -609,50 +620,36 @@ export async function formatRecommendationsWithLLM(
   // LATENCY BATCH L1 (2026-07-29): narration budget capped.
   const NARRATION_BUDGET_MS = 14_000;
   const narrationStart = Date.now();
-  const remaining = () => NARRATION_BUDGET_MS - (Date.now() - narrationStart);
 
   try {
-    // TIER 1: OpenAI (primary) — 8s cap
-    if (OPENAI_API_KEY && remaining() > 1500) {
-      console.log(`   🔄 Trying OpenAI (primary, ${Math.min(8000, remaining())}ms cap)...`);
-      const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, Math.min(8000, remaining()));
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = AI_MODELS.openai.default;
-        tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ OpenAI formatting successful (${AI_MODELS.openai.default}) in ${Date.now() - narrationStart}ms`);
-      } else if (result.error === 'RATE_LIMIT') {
-        console.warn(`   ⚠️ OpenAI rate limited — failing over immediately (no sleep)`);
-      }
-    }
-
-    // TIER 2: Gemini — 6s cap, only if budget remains
-    if (!formattedResponse && GEMINI_API_KEY && remaining() > 1500) {
-      console.log(`   🔄 Trying Gemini (fallback, ${Math.min(6000, remaining())}ms cap)...`);
-      const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, Math.min(6000, remaining()));
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = AI_MODELS.gemini.default;
-        tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ Gemini formatting successful in ${Date.now() - narrationStart}ms`);
-      } else if (result.error === 'RATE_LIMIT') {
-        console.warn(`   ⚠️ Gemini rate limited (429) — failing over immediately (no sleep)`);
-      }
-    }
-
-    // TIER 3: Lovable AI — 5s cap, only if budget remains
-    if (!formattedResponse && LOVABLE_API_KEY && remaining() > 1500) {
-      console.log(`   🔄 Trying Lovable AI (tertiary, ${Math.min(5000, remaining())}ms cap)...`);
-      const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, Math.min(5000, remaining()));
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = `lovable/${AI_MODELS.lovable.default}`;
-        console.log(`   ✅ Lovable AI formatting successful in ${Date.now() - narrationStart}ms`);
-      }
-    }
-
-    if (!formattedResponse) {
-      console.warn(`   ⏱️ [NARRATION_BUDGET_EXHAUSTED] no tier produced text in ${Date.now() - narrationStart}ms (budget ${NARRATION_BUDGET_MS}ms)`);
+    // 2026-09-27 — AI model SSOT: the tier order (OpenAI → Gemini → Lovable) and the models now come
+    // from the registry task `brain.format` (ai_task_route / ai_task_route_step), not from AI_MODELS.
+    // Same 14 s budget, same 8 s cap per model. Answer budget 4000 tokens = the largest of the old tiers
+    // (OpenAI 2800 / Gemini 4000 "for complete Devanagari responses" / Lovable 800): the route has one
+    // budget for every step, and 4000 is the only value that truncates no step earlier than before.
+    const r = await callAITask({
+      db: input.supabase_client,
+      task: 'brain.format',
+      functionName: 'ai-agriculture-chat',
+      farmerId: input.farmer_id ?? null,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      maxOutputTokens: 4000,
+      temperature: 0.5, // sent only to models whose catalog contract allows a temperature (unchanged rule)
+      attemptTimeoutMs: 8000,
+      timeoutMs: NARRATION_BUDGET_MS,
+      metadata: { caller: 'formatRecommendationsWithLLM', trace_id: input.trace_id ?? null },
+    });
+    if (r.ok) {
+      formattedResponse = r.content;
+      // Same label format as before (ai_chat_messages.ai_model): bare model id, "lovable/<id>" for the gateway.
+      aiModelUsed = r.provider === 'lovable' ? `lovable/${r.apiModelId}` : r.apiModelId;
+      tokensUsed = r.usage.input_tokens + r.usage.output_tokens;
+      console.log(`   ✅ ${r.modelKey} formatting successful${r.fallbackUsed ? ' (fallback)' : ''} in ${Date.now() - narrationStart}ms`);
+    } else {
+      console.warn(`   ⏱️ [NARRATION_BUDGET_EXHAUSTED] brain.format ${r.errorClass} in ${Date.now() - narrationStart}ms (budget ${NARRATION_BUDGET_MS}ms) attempts=${JSON.stringify(r.attempts)}`);
     }
   } catch (error) {
     console.error(`   ❌ LLM formatting error:`, error);
@@ -1870,62 +1867,6 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
 
 // LLM API CALLS WITH TIMEOUT
 
-async function callGeminiWithTimeout(
-  systemPrompt: string, 
-  userPrompt: string, 
-  apiKey: string, 
-  timeoutMs: number
-): Promise<{ success: boolean; text: string; error?: string; tokens_used?: number }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.default}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
-          }],
-          generationConfig: {
-            ...(rejectsCustomTemperature('gemini', AI_MODELS.gemini.default) ? {} : { temperature: 0.5 }),    // LOWER: More consistent for safety (Gemini 3+: API default, see aiConfig)
-            maxOutputTokens: 4000  // CRITICAL FIX: Increased from 3000 to 4000 for complete Devanagari responses (Marathi/Hindi use ~2.5x more tokens)
-          }
-        })
-      }
-    );
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const statusCode = response.status;
-      console.warn(`Gemini API error: ${statusCode}`);
-      if (statusCode === 429) {
-        return { success: false, text: '', error: 'RATE_LIMIT' };
-      }
-      return { success: false, text: '', error: `HTTP_${statusCode}` };
-    }
-    
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const tokens_used = data.usageMetadata?.totalTokenCount || 0;
-    
-    // Log token usage for monitoring
-    console.log(`   📊 [Gemini] Tokens used: ${tokens_used} (prompt: ${data.usageMetadata?.promptTokenCount || 0}, candidates: ${data.usageMetadata?.candidatesTokenCount || 0})`);
-    
-    return { success: !!text, text, tokens_used };
-    
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const isAbort = error instanceof Error && error.name === 'AbortError';
-    console.warn(`Gemini call failed:`, isAbort ? 'TIMEOUT' : error);
-    return { success: false, text: '', error: isAbort ? 'TIMEOUT' : 'NETWORK' };
-  }
-}
-
 /**
  * 2026-09-09 — LLM callback for the EXPLAINER (agents/explainer.ts). Returns raw text so the explainer
  * can parse and verify it. No agronomy passes through here.
@@ -1965,115 +1906,6 @@ export async function explainerLLM(
   console.warn(`[EXPLAINER_LLM] brain.explain ${r.errorClass}: ${r.detail} attempts=${JSON.stringify(r.attempts)}`);
   throw new Error('no LLM provider produced text for the explainer');
 }
-
-async function callOpenAIWithTimeout(
-  systemPrompt: string, 
-  userPrompt: string, 
-  apiKey: string, 
-  timeoutMs: number
-): Promise<{ success: boolean; text: string; error?: string; tokens_used?: number }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: AI_MODELS.openai.default,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        // 2800 tokens: Devanagari uses ~2.5× the tokens of English. Parameter NAME follows the model family (aiConfig).
-        ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 2800 } : { max_tokens: 2800 }),
-        ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.5 })
-      })
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const statusCode = response.status;
-      let _body = ''; try { _body = (await response.text()).slice(0, 400); } catch { /* consumed */ }
-      console.warn(`OpenAI API error: ${statusCode} model=${AI_MODELS.openai.default} body=${_body}`);
-      if (statusCode === 429) {
-        return { success: false, text: '', error: 'RATE_LIMIT' };
-      }
-      return { success: false, text: '', error: `HTTP_${statusCode}` };
-    }
-    
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
-    const tokens_used = data.usage?.total_tokens || 0;
-    
-    // Log token usage for monitoring
-    console.log(`   📊 [OpenAI] Tokens used: ${tokens_used} (prompt: ${data.usage?.prompt_tokens || 0}, completion: ${data.usage?.completion_tokens || 0})`);
-    
-    return { success: !!text, text, tokens_used };
-    
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const isAbort = error instanceof Error && error.name === 'AbortError';
-    console.warn(`OpenAI call failed:`, isAbort ? 'TIMEOUT' : error);
-    return { success: false, text: '', error: isAbort ? 'TIMEOUT' : 'NETWORK' };
-  }
-}
-
-async function callLovableAIWithTimeout(
-  systemPrompt: string,
-  userPrompt: string,
-  apiKey: string,
-  timeoutMs: number
-): Promise<{ success: boolean; text: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: AI_MODELS.lovable.default,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 800,
-        ...(rejectsCustomTemperature('lovable', AI_MODELS.lovable.default) ? {} : { temperature: 0.7 }),
-      }),
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn(`Lovable AI error: ${response.status}`);
-      return { success: false, text: '' };
-    }
-
-    const data: any = await response.json();
-    const text = data?.choices?.[0]?.message?.content ?? '';
-
-    return {
-      success: typeof text === 'string' && text.length > 0,
-      text: typeof text === 'string' ? text : '',
-    };
-  } catch (error) {
-    clearTimeout(timeoutId);
-    console.warn('Lovable AI call failed:', error);
-    return { success: false, text: '' };
-  }
-}
-
-// TEMPLATE FALLBACK (when LLM unavailable) - MODE-DRIVEN
 
 async function buildTemplateFallback(input: LLMFormatterInput, startTime: number): Promise<LLMFormatterOutput> {
   const lang = input.language || 'mr';

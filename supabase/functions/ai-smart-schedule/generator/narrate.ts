@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-10-03 — key pool (AI control plane Phase 2a): the API key for each request comes from
+//   pickAIKey() (ai_key_slot — several keys per provider, free-pool-first, one key cooled per 429)
+//   instead of getAPIKey(); "configured" means hasAIProviderKey(). The ledger row records which key
+//   slot and pool the call used. Retry, provider cooldown, chunking, headers and fact gates unchanged.
 // 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
 //   request is issued, so a failure row names the model that actually failed with its own status; the
 //   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
@@ -30,7 +34,7 @@
 // LLM request instead of several sequential/parallel chunk requests. This prevents the
 // Supabase Edge invocation from exhausting its request lifetime before persistence.
 // Farmer-language narration is a presentation step only. Agronomic selection stays DB/deterministic.
-import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
 // deno-lint-ignore no-explicit-any
 export interface NarrationAIContext { db: { from(table: string): any }; farmerId?: string | null }
 type NarrationRoute = { chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean };
@@ -110,24 +114,24 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
     `Return STRICT JSON only: [{"i":0,"name":"...","desc":"...","instructions":["..."]}]`,
     `INPUT:`, JSON.stringify(payload)
   ].join("\n");
-  let lastError: unknown = new Error("MODEL_UNAVAILABLE"); const chain = route.chain.filter((m) => getAPIKey(m.provider));
+  let lastError: unknown = new Error("MODEL_UNAVAILABLE"); const chain = route.chain.filter((m) => hasAIProviderKey(m.provider));
   const ordered = [...chain].sort((a, b) => Math.max(0, cooldownRemaining(a.provider)) - Math.max(0, cooldownRemaining(b.provider)));
-  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
-  for (const m of ordered) { const provider = m.provider; const model = m.api_model_id; const apiKey = getAPIKey(provider); if (!apiKey) continue; lastModel = m; lastStatus = null; try {
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number; key_slot?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null; let lastKey: AIKeyPick | null = null;
+  for (const m of ordered) { const provider = m.provider; const model = m.api_model_id; const pick = await pickAIKey(ai.db, m); if (pick.slot === null) continue; const apiKey = pick.apiKey; lastModel = m; lastStatus = null; lastKey = pick; try {
     await waitForCooldown(provider, signal); if (signal.aborted) throw new Error("narration_budget_exhausted");
     const body = buildTaskRequest(m, [{ role: "system", content: "Return only valid JSON. Preserve the supplied agricultural fact boundary exactly. Write for a low-literacy farmer in the requested language." }, { role: "user", content: prompt }], mergeAIRouteParams(route.params, { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }));
     const authHeaders: Record<string, string> = provider === "lovable"
       ? { "Content-Type": "application/json", "Lovable-API-Key": apiKey }
       : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
     const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: authHeaders, body: JSON.stringify(body), signal }); lastStatus = res.status;
-    if (!res.ok) { attempts.push({ model_key: m.model_key, outcome: `http_${res.status}`, http_status: res.status }); if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) noteRateLimit(provider, retryAfterMs); throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
+    if (!res.ok) { attempts.push({ model_key: m.model_key, outcome: `http_${res.status}`, http_status: res.status, key_slot: pick.slot }); if (res.status === 429 || res.status >= 500) { const h = res.headers.get("Retry-After"); const retryAfterMs = h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, MAX_RETRY_AFTER_MS) : null; if (res.status === 429) { noteRateLimit(provider, retryAfterMs); noteAIKeyResponse(provider, pick.slot, res.status, await res.text().catch(() => ""), h); } throw new RetryableError(`llm_http_${res.status}`, retryAfterMs); } throw new Error(`llm_http_${res.status}`); }
     const responseJson = await res.json(); const raw = parseModelJson(responseJson?.choices?.[0]?.message?.content ?? "[]"); const parsed = (Array.isArray(raw) ? raw : Array.isArray((raw as any)?.tasks) ? (raw as any).tasks : []) as Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>;
     if (parsed.length < chunk.length) { attempts.push({ model_key: m.model_key, outcome: "incomplete", http_status: res.status }); throw new RetryableError(`llm_incomplete_${parsed.length}/${chunk.length}`, null); }
-    attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status });
-    await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: route.chain[0], ok: true, httpStatus: res.status, latencyMs: Date.now() - callStarted, usage: readAIUsage(responseJson), farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts } });
+    attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status, key_slot: pick.slot });
+    await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: route.chain[0], ok: true, httpStatus: res.status, latencyMs: Date.now() - callStarted, usage: readAIUsage(responseJson), farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts }, key: { slot: pick.slot, pool: pick.pool, group: pick.group } });
     return { items: parsed.map((p) => ({ ...p, i: offset + Number(p.i) })), provider, model };
   } catch (error) { lastError = error; if (!attempts.length || attempts[attempts.length - 1].model_key !== m.model_key) attempts.push({ model_key: m.model_key, outcome: (error as Error)?.name === "AbortError" ? "timeout" : "error" }); console.error(`[narrate] ${provider}/${model} failed: ${(error as Error)?.message}`); } }
-  if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : signal.aborted ? "timeout" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts, detail: (lastError as Error)?.message ?? null } });
+  if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : signal.aborted ? "timeout" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts, detail: (lastError as Error)?.message ?? null }, key: lastKey && lastKey.slot !== null ? { slot: lastKey.slot, pool: lastKey.pool, group: lastKey.group } : null });
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext) {
@@ -145,7 +149,7 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
   const resolved = await resolveAITaskChain(ai.db, "schedule.compose");
   if (!resolved.ok) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: `model_route_unavailable:${resolved.errorClass}` };
   const route: NarrationRoute = { chain: resolved.chain, params: resolved.params, emergency: resolved.emergency };
-  const configured = route.chain.filter((m) => getAPIKey(m.provider));
+  const configured = route.chain.filter((m) => hasAIProviderKey(m.provider));
   if (!configured.length) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_llm_key" };
   let provider: AIProvider | undefined; let model: string | undefined; rateLimited = false; cooldownUntil.clear();
   // Narrate each distinct text once (recurring cards share name/desc/steps); fan the result out.

@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-10-03 — key pool (AI control plane Phase 2a): callModel's API key for each request comes from
+//   pickAIKey() (ai_key_slot — several keys per provider, free-pool-first, one key cooled per 429)
+//   instead of getAPIKey(); "configured" means hasAIProviderKey(). The ledger row records which key
+//   slot and pool the call used. Deadline and next-provider rules unchanged.
 // 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
 //   request is issued, so a failure row names the model that actually failed with its own status; the
 //   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
@@ -80,7 +84,7 @@
 //   No crop, product, dose or threshold is written in this file.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
-import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider } from "../../_shared/aiConfig.ts";
 import { ragRetrieve } from "../../_shared/ragRetrieval.ts";
 import { toDas, computeTransplantOffset, type BaselineTask } from "../generator/baseline-generator.ts";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
@@ -196,21 +200,22 @@ interface EnrichmentAIContext { db: SupabaseClient; farmerId: string | null; cal
 async function callModel(messages: Array<{ role: string; content: string }>, timeoutMs: number, deadlineAt: number, maxTokens: number, registry: EnrichmentAIContext): Promise<{ content: string; provider: AIProvider; model: string } | null> {
   const resolved = await resolveAITaskChain(registry.db, "schedule.compose");
   if (!resolved.ok) return null;
-  const providers = resolved.chain.filter((m) => getAPIKey(m.provider));
-  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
-  const ledger = (m: AICatalogModel, ok: boolean, usage?: ReturnType<typeof readAIUsage>) => recordAITaskCall(registry.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: resolved.chain[0], ok, errorClass: ok ? undefined : (lastStatus ? classifyAIFailure(lastStatus, "") : attempts.some((a) => a.outcome === "timeout") ? "timeout" : "other"), httpStatus: lastStatus, latencyMs: Date.now() - callStarted, usage, farmerId: registry.farmerId, emergency: resolved.emergency, metadata: { caller: registry.caller, attempts } });
+  const providers = resolved.chain.filter((m) => hasAIProviderKey(m.provider));
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number; key_slot?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null; let lastKey: AIKeyPick | null = null;
+  const ledger = (m: AICatalogModel, ok: boolean, usage?: ReturnType<typeof readAIUsage>) => recordAITaskCall(registry.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: resolved.chain[0], ok, errorClass: ok ? undefined : (lastStatus ? classifyAIFailure(lastStatus, "") : attempts.some((a) => a.outcome === "timeout") ? "timeout" : "other"), httpStatus: lastStatus, latencyMs: Date.now() - callStarted, usage, farmerId: registry.farmerId, emergency: resolved.emergency, metadata: { caller: registry.caller, attempts }, key: lastKey && lastKey.slot !== null ? { slot: lastKey.slot, pool: lastKey.pool, group: lastKey.group } : null });
   for (const m of providers) {
     const provider = m.provider; const model = m.api_model_id;
     const budget = Math.min(timeoutMs, deadlineAt - Date.now());
     if (budget < 5_000) { if (lastModel) await ledger(lastModel, false); return null; }
-    lastModel = m; lastStatus = null;
+    const pick = await pickAIKey(registry.db, m); if (pick.slot === null) continue;
+    lastModel = m; lastStatus = null; lastKey = pick;
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), budget);
     try {
-      const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAPIKey(provider)}` }, body: JSON.stringify(buildTaskRequest(m, messages, mergeAIRouteParams(resolved.params, { maxOutputTokens: maxTokens, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }))), signal: controller.signal });
+      const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${pick.apiKey}` }, body: JSON.stringify(buildTaskRequest(m, messages, mergeAIRouteParams(resolved.params, { maxOutputTokens: maxTokens, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }))), signal: controller.signal });
       lastStatus = res.status;
-      if (!res.ok) { attempts.push({ model_key: m.model_key, outcome: `http_${res.status}`, http_status: res.status }); continue; }
+      if (!res.ok) { if (res.status === 429) noteAIKeyResponse(provider, pick.slot, res.status, await res.text().catch(() => ""), res.headers.get("Retry-After")); attempts.push({ model_key: m.model_key, outcome: `http_${res.status}`, http_status: res.status, key_slot: pick.slot }); continue; }
       const data = await res.json(); const content = data?.choices?.[0]?.message?.content;
-      if (typeof content === "string" && content.trim()) { attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status }); await ledger(m, true, readAIUsage(data)); return { content, provider, model }; }
+      if (typeof content === "string" && content.trim()) { attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status, key_slot: pick.slot }); await ledger(m, true, readAIUsage(data)); return { content, provider, model }; }
       attempts.push({ model_key: m.model_key, outcome: "empty_output", http_status: res.status });
     } catch (e) { attempts.push({ model_key: m.model_key, outcome: e instanceof Error && e.name === "AbortError" ? "timeout" : "error" }); /* next provider */ } finally { clearTimeout(timer); }
   }

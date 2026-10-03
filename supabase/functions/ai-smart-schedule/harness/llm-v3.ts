@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-10-03 — key pool (AI control plane Phase 2a): the API key for each request comes from
+//   pickAIKey() (ai_key_slot — several keys per provider, free-pool-first, one key cooled per 429)
+//   instead of getAPIKey(). The ledger row records which key slot and pool the call used. Deadline
+//   and next-provider rules unchanged.
 // 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
 //   request is issued, so a failure row names the model that actually failed with its own status; the
 //   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
@@ -16,7 +20,7 @@
 //   Output schema is unchanged (schedule_plan_intent_v3) so validator.ts needs no change.
 //   No crop-, language- or region-specific wording is introduced here.
 
-import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider } from "../../_shared/aiConfig.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { PlanIntent, ScheduleHarnessContext } from "./types.ts";
 
@@ -72,15 +76,16 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
   const providers = resolved.chain;
   const remaining = () => options.deadlineAt ? options.deadlineAt - Date.now() : DEFAULT_TIMEOUT_MS;
   let lastError: unknown = new Error("MODEL_UNAVAILABLE");
-  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
-  const ledger = (m: AICatalogModel, ok: boolean, usage?: ReturnType<typeof readAIUsage>) => recordAITaskCall(db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: resolved.chain[0], ok, errorClass: ok ? undefined : (lastStatus ? classifyAIFailure(lastStatus, "") : (lastError as Error)?.message === "MODEL_TIMEOUT" ? "timeout" : (lastError as Error)?.message === "MODEL_EMPTY_RESPONSE" ? "empty_output" : "other"), httpStatus: lastStatus, latencyMs: Date.now() - callStarted, usage, farmerId: options.ai?.farmerId ?? null, emergency: resolved.emergency, metadata: { caller: "requestPlan", attempts, detail: ok ? null : ((lastError as Error)?.message ?? null) } });
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number; key_slot?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null; let lastKey: AIKeyPick | null = null;
+  const ledger = (m: AICatalogModel, ok: boolean, usage?: ReturnType<typeof readAIUsage>) => recordAITaskCall(db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: resolved.chain[0], ok, errorClass: ok ? undefined : (lastStatus ? classifyAIFailure(lastStatus, "") : (lastError as Error)?.message === "MODEL_TIMEOUT" ? "timeout" : (lastError as Error)?.message === "MODEL_EMPTY_RESPONSE" ? "empty_output" : "other"), httpStatus: lastStatus, latencyMs: Date.now() - callStarted, usage, farmerId: options.ai?.farmerId ?? null, emergency: resolved.emergency, metadata: { caller: "requestPlan", attempts, detail: ok ? null : ((lastError as Error)?.message ?? null) }, key: lastKey && lastKey.slot !== null ? { slot: lastKey.slot, pool: lastKey.pool, group: lastKey.group } : null });
   for (const m of providers) {
     const provider = m.provider; const model = m.api_model_id;
-    const key = getAPIKey(provider);
-    if (!key) continue;
+    const pick = await pickAIKey(db, m);
+    if (pick.slot === null) continue;
+    const key = pick.apiKey;
     const budget = Math.min(DEFAULT_TIMEOUT_MS, remaining());
     if (budget < MIN_USEFUL_MS) { lastError = new Error("MODEL_TIMEOUT"); break; }
-    lastModel = m; lastStatus = null;
+    lastModel = m; lastStatus = null; lastKey = pick;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), budget);
     try {
@@ -89,15 +94,17 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
       lastStatus = response.status;
       if (!response.ok) {
         // 429 / 5xx: the next provider is the retry. Sleeping here only burns the request deadline.
+        // (the key is cooled with the default wait — this planner never reads a retry header or sleeps)
+        if (response.status === 429) noteAIKeyResponse(provider, pick.slot, response.status, await response.text().catch(() => ""));
         lastError = new Error(`MODEL_HTTP_${response.status}`);
-        attempts.push({ model_key: m.model_key, outcome: `http_${response.status}`, http_status: response.status });
+        attempts.push({ model_key: m.model_key, outcome: `http_${response.status}`, http_status: response.status, key_slot: pick.slot });
         continue;
       }
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content;
       if (typeof content !== "string" || !content.trim()) { lastError = new Error("MODEL_EMPTY_RESPONSE"); attempts.push({ model_key: m.model_key, outcome: "empty_output", http_status: response.status }); continue; }
       const parsed = JSON.parse(content);
-      attempts.push({ model_key: m.model_key, outcome: "ok", http_status: response.status });
+      attempts.push({ model_key: m.model_key, outcome: "ok", http_status: response.status, key_slot: pick.slot });
       await ledger(m, true, readAIUsage(data));
       return { plan: {
         schema_version: parsed.schema_version, status: parsed.status,

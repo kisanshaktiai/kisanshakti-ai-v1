@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-10-03 — key pool (AI control plane Phase 2a): the API key for each request comes from
+//   pickAIKey() (ai_key_slot — several keys per provider, free-pool-first, one key cooled per 429)
+//   instead of getAPIKey(); "configured" means hasAIProviderKey(). The ledger row records which key
+//   slot and pool the call used. Retry rules, chunking and the fact boundary unchanged.
 // 2026-10-02 — review fix (ledger accuracy): lastStatus is reset per model and lastModel is set only once a
 //   request is issued, so a failure row names the model that actually failed with its own status; the
 //   error class comes from classifyAIFailure (404 ⇒ model_retired, not contract_rejected).
@@ -34,7 +38,7 @@
 //   the instruction tells the model to write as a village extension officer speaking that language.
 //   No language-specific vocabulary, no crop-specific wording, lives in this file.
 
-import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, getAPIKey, mergeAIRouteParams, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
+import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
 // deno-lint-ignore no-explicit-any
 export interface ComposeAIContext { db: { from(table: string): any }; farmerId?: string | null }
 type ComposeRoute = { chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean };
@@ -212,28 +216,30 @@ function prompt(chunk: TaskFacts[], language: string): string {
 }
 
 async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortSignal, route: ComposeRoute, ai: ComposeAIContext): Promise<{ items: Array<{ i: number; task_name?: string; task_description?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
-  const providers = route.chain.filter((m) => getAPIKey(m.provider));
+  const providers = route.chain.filter((m) => hasAIProviderKey(m.provider));
   let lastError: Error = new Error("MODEL_UNAVAILABLE");
-  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null;
-  const ledgerFail = async () => { if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : lastError.message === "COMPOSE_TIMEOUT" ? "timeout" : lastError.message === "MODEL_EMPTY_RESPONSE" ? "empty_output" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "composeChunk", attempts, detail: lastError.message } }); };
+  const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number; key_slot?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null; let lastKey: AIKeyPick | null = null;
+  const ledgerFail = async () => { if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : lastError.message === "COMPOSE_TIMEOUT" ? "timeout" : lastError.message === "MODEL_EMPTY_RESPONSE" ? "empty_output" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "composeChunk", attempts, detail: lastError.message }, key: lastKey && lastKey.slot !== null ? { slot: lastKey.slot, pool: lastKey.pool, group: lastKey.group } : null }); };
   for (const m of providers) {
     const provider = m.provider; const model = m.api_model_id; lastModel = m; lastStatus = null;
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      // A key cooled down by an earlier 429 is skipped here, so a retry lands on the next key.
+      const pick = await pickAIKey(ai.db, m); if (pick.slot === null) break; lastKey = pick;
       try {
         const body = buildTaskRequest(m, [
           { role: "system", content: "You are a village agriculture extension officer writing a farmer's crop schedule in his own language. The agronomic reference material you are given is stored in English by design; rendering its meaning into the farmer's language is your job. Return only valid JSON. Preserve the supplied agricultural fact boundary exactly: never change, add or drop a number, dose, product or date." },
           { role: "user", content: prompt(chunk, language) },
         ], mergeAIRouteParams(route.params, { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }));
-        const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAPIKey(provider)}` }, body: JSON.stringify(body), signal }); lastStatus = res.status;
-        if (res.status === 429 || res.status >= 500) { lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status }); break; }
-        if (!res.ok) { lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status }); break; }
+        const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${pick.apiKey}` }, body: JSON.stringify(body), signal }); lastStatus = res.status;
+        if (res.status === 429 || res.status >= 500) { if (res.status === 429) noteAIKeyResponse(provider, pick.slot, res.status, await res.text().catch(() => ""), res.headers.get("Retry-After")); lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status, key_slot: pick.slot }); break; }
+        if (!res.ok) { lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status, key_slot: pick.slot }); break; }
         const data = await res.json();
         const content = data?.choices?.[0]?.message?.content;
         if (typeof content !== "string" || !content.trim()) { lastError = new Error("MODEL_EMPTY_RESPONSE"); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status }); break; }
         const parsed = JSON.parse(content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim());
         const items = Array.isArray(parsed?.tasks) ? parsed.tasks : Array.isArray(parsed) ? parsed : [];
-        attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status });
-        await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: route.chain[0], ok: true, httpStatus: res.status, latencyMs: Date.now() - callStarted, usage: readAIUsage(data), farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "composeChunk", attempts } });
+        attempts.push({ model_key: m.model_key, outcome: "ok", http_status: res.status, key_slot: pick.slot });
+        await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: route.chain[0], ok: true, httpStatus: res.status, latencyMs: Date.now() - callStarted, usage: readAIUsage(data), farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "composeChunk", attempts }, key: { slot: pick.slot, pool: pick.pool, group: pick.group } });
         return { items, provider, model };
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));

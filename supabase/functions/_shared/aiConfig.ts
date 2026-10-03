@@ -406,11 +406,27 @@ export function buildAIRequest(
 // Values a call site passes (maxOutputTokens, temperature, reasoningEffort,
 // jsonMode) are defaults; ai_task_route.params, when set, overrides them.
 // Nothing above this section is changed.
+//
+// 2026-10-03 — KEY POOL (Phase 2a, migration 20261003100000_ai_key_pool.sql):
+//   * a provider may have several API keys (ai_key_slot: secret NAME per slot, never
+//     the key; enabled flag; daily complimentary-token pool per model group;
+//     reserve). The router picks the key per call with pickAIKey(): the first
+//     enabled slot that still has free-pool room for the model's group (today's
+//     UTC tokens from the ledger via ai_key_pool_usage_today(), cached 60 s, plus
+//     what this isolate used since), else the lowest enabled slot for PAID traffic.
+//     OpenAI sends no signal when a free pool is spent — it just bills — so the
+//     count is ours, and the keys must be used by this router only.
+//   * a 429 on one key cools down THAT key (provider#slot), not the provider, and
+//     the same model is retried at once on the next eligible key.
+//   * ledger rows carry metadata.key_slot, metadata.pool (free | paid | none) and
+//     metadata.pool_group; attempts carry key_slot.
+//   * no ai_key_slot rows for a provider (e.g. before the migration) ⇒ exactly the
+//     previous behaviour: the provider's single secret (getAPIKey), treated as slot 1.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Service-role Supabase client (only .from() is used). */
+/** Service-role Supabase client (.from() always; .rpc() when the client has it — the key-pool usage read). */
 // deno-lint-ignore no-explicit-any
-type RegistryDb = { from(table: string): any };
+type RegistryDb = { from(table: string): any; rpc?(fn: string, args?: Record<string, unknown>): any };
 
 export interface AIModelContract {
   token_param: "max_tokens" | "max_completion_tokens";
@@ -435,11 +451,24 @@ interface AIPriceRow {
   output_cost_per_1k: number;
   effective_from: string;
 }
+/** One API key of a provider (ai_key_slot). The key itself lives in the secret named env_var. */
+export interface AIKeySlot {
+  provider: AIProvider;
+  slot_no: number;
+  env_var: string;
+  is_enabled: boolean;
+  daily_pool: Record<string, number>; // group_key → tokens per UTC day
+  reserve_tokens: number;
+}
+/** Models that share one daily complimentary-token pool (ai_model_group); ids without date suffix. */
+export interface AIModelGroup { group_key: string; provider: AIProvider; api_model_ids: string[] }
 interface AIRegistrySnapshot {
   loadedAt: number;
   models: Map<string, AICatalogModel>;
   routes: Map<string, AITaskRoute>;
   prices: Map<string, AIPriceRow[]>; // newest effective_from first
+  keySlots: Map<AIProvider, AIKeySlot[]>; // enabled slots only, slot_no ascending; absent ⇒ legacy single key
+  groups: AIModelGroup[];
 }
 
 /** Failure classes — identical to the ai_model_metrics.error_class CHECK list. */
@@ -480,7 +509,12 @@ export interface AITaskCall {
   minContentChars?: number;
 }
 export interface AICallUsage { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number }
-interface AIAttempt { model_key: string; outcome: "ok" | AICallErrorClass | "skipped_no_key" | "skipped_cooldown"; http_status?: number; ms?: number }
+interface AIAttempt { model_key: string; outcome: "ok" | AICallErrorClass | "skipped_no_key" | "skipped_cooldown"; http_status?: number; ms?: number; key_slot?: number; pool?: AIKeyPool }
+/** Which pool a call was charged to: a key's complimentary pool, the organisation's paid balance, or a provider with no pool at all. */
+export type AIKeyPool = "free" | "paid" | "none";
+export type AIKeyPick =
+  | { apiKey: string; slot: number; pool: AIKeyPool; group: string | null }
+  | { apiKey: ""; slot: null; reason: "no_key" | "cooldown" };
 export type AITaskResult =
   // apiModelId / toolCalls added 2026-09-27: callers record the model string they already stored (e.g. ai_chat_messages.ai_model) and read tool calls.
   // deno-lint-ignore no-explicit-any
@@ -494,13 +528,26 @@ const AI_PROVIDER_COOLDOWN_MAX_MS = 8_000;       // narrate.ts MAX_RETRY_AFTER_M
 // cool the provider for 5 minutes so every call does not pay a failed round trip before its fallback.
 const AI_PROVIDER_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
 const AI_MIN_ATTEMPT_MS = 1_000;
+const AI_KEY_POOL_TTL_MS = 60_000;               // today's pool usage is re-read from the ledger at most once a minute
 
 let aiRegistry: AIRegistrySnapshot | null = null;
 let aiRegistryLoading: Promise<AIRegistrySnapshot | null> | null = null;
-const aiProviderCooldownUntil = new Map<AIProvider, number>();
+// 2026-10-03 — cooldown per KEY ("provider#slot"), not per provider: a 429 on one organisation's key
+// says nothing about the other keys. Legacy single-key providers use slot 1.
+const aiKeyCooldownUntil = new Map<string, number>();
+const keyId = (provider: AIProvider, slot: number) => `${provider}#${slot}`;
+
+// Today's complimentary-pool use per "provider#slot#group": the ledger's count (UTC day) plus what this
+// isolate has used since that read (the ledger write is queued, so it would otherwise be invisible).
+interface AIKeyPoolUsage { day: string; loadedAt: number; ok: boolean; used: Map<string, number> }
+let aiKeyPoolUsage: AIKeyPoolUsage | null = null;
+let aiKeyPoolLoading: Promise<AIKeyPoolUsage> | null = null;
+const aiKeyPoolLocal = new Map<string, number>();
+const poolId = (provider: AIProvider, slot: number, group: string) => `${provider}#${slot}#${group}`;
+const utcDay = () => new Date().toISOString().slice(0, 10);
 
 async function fetchAIRegistry(db: RegistryDb): Promise<AIRegistrySnapshot> {
-  const [cat, routes, steps, prices] = await Promise.all([
+  const [cat, routes, steps, prices, slots, groups] = await Promise.all([
     db.from("ai_model_catalog").select("model_key,provider,api_model_id,status,input_modalities,api_contract"),
     db.from("ai_task_route").select("task_key,is_active,params"),
     db.from("ai_task_route_step").select("task_key,step_no,model_key").order("step_no", { ascending: true }),
@@ -508,9 +555,34 @@ async function fetchAIRegistry(db: RegistryDb): Promise<AIRegistrySnapshot> {
       .select("id,model_name,input_cost_per_1k,cached_input_cost_per_1k,output_cost_per_1k,effective_from,currency")
       .eq("is_active", true)
       .order("effective_from", { ascending: false }),
+    // Key pool (2026-10-03). These two reads are TOLERANT: before migration 20261003100000 the tables do
+    // not exist, and the router must keep working exactly as before (one key per provider).
+    db.from("ai_key_slot").select("provider,slot_no,env_var,is_enabled,daily_pool,reserve_tokens").eq("is_enabled", true).order("slot_no", { ascending: true }),
+    db.from("ai_model_group").select("group_key,provider,api_model_ids").eq("is_active", true),
   ]);
   for (const [name, r] of [["ai_model_catalog", cat], ["ai_task_route", routes], ["ai_task_route_step", steps], ["ai_model_pricing", prices]] as const) {
     if (r?.error || !Array.isArray(r?.data)) throw new Error(`${name}: ${r?.error?.message ?? "no data"}`);
+  }
+  const keySlots = new Map<AIProvider, AIKeySlot[]>();
+  if (slots?.error || !Array.isArray(slots?.data)) {
+    console.warn(`[AIRegistry] ai_key_slot unavailable (${slots?.error?.message ?? "no data"}) — single key per provider`);
+  } else {
+    for (const s of slots.data) {
+      const row: AIKeySlot = {
+        provider: s.provider, slot_no: Number(s.slot_no), env_var: String(s.env_var), is_enabled: s.is_enabled === true,
+        daily_pool: s.daily_pool && typeof s.daily_pool === "object" ? s.daily_pool : {}, reserve_tokens: Number(s.reserve_tokens ?? 0),
+      };
+      const list = keySlots.get(row.provider) ?? [];
+      list.push(row);
+      keySlots.set(row.provider, list);
+    }
+    for (const list of keySlots.values()) list.sort((a, b) => a.slot_no - b.slot_no);
+  }
+  const groupList: AIModelGroup[] = [];
+  if (groups?.error || !Array.isArray(groups?.data)) {
+    console.warn(`[AIRegistry] ai_model_group unavailable (${groups?.error?.message ?? "no data"}) — no complimentary pools`);
+  } else {
+    for (const g of groups.data) groupList.push({ group_key: String(g.group_key), provider: g.provider, api_model_ids: Array.isArray(g.api_model_ids) ? g.api_model_ids.map(String) : [] });
   }
   const models = new Map<string, AICatalogModel>();
   for (const m of cat.data) models.set(m.model_key, m as AICatalogModel);
@@ -532,7 +604,7 @@ async function fetchAIRegistry(db: RegistryDb): Promise<AIRegistrySnapshot> {
     list.push(row);
     priceMap.set(row.model_name, list);
   }
-  return { loadedAt: Date.now(), models, routes: routeMap, prices: priceMap };
+  return { loadedAt: Date.now(), models, routes: routeMap, prices: priceMap, keySlots, groups: groupList };
 }
 
 /** Loads (or returns the cached) registry. Returns the previous snapshot if a refresh fails; null only on a cold start with the database unreachable. */
@@ -657,6 +729,135 @@ function queueAILedger(db: RegistryDb, row: Record<string, unknown>): Promise<vo
   return p;
 }
 
+// ── Key pool (2026-10-03) ─────────────────────────────────────────────────────────────────────
+
+/** Complimentary-pool group of a model (ai_model_group, matched without the -YYYY-MM-DD snapshot suffix), or null. */
+export function aiModelGroupKey(snap: { groups: AIModelGroup[] } | null, model: Pick<AICatalogModel, "provider" | "api_model_id">): string | null {
+  if (!snap) return null;
+  const id = model.api_model_id.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  const g = snap.groups.find((x) => x.provider === model.provider && x.api_model_ids.includes(id));
+  return g ? g.group_key : null;
+}
+
+function readSlotKey(slot: AIKeySlot): string {
+  const v = Deno.env.get(slot.env_var);
+  return v && v.trim() !== "" ? v : "";
+}
+
+/** True when the provider has at least one usable key: an enabled slot whose secret is set, or (no slot rows) its legacy secret. Sync — uses the loaded snapshot. */
+export function hasAIProviderKey(provider: AIProvider): boolean {
+  const slots = aiRegistry?.keySlots.get(provider);
+  if (!slots || slots.length === 0) return !!getAPIKey(provider);
+  return slots.some((s) => s.is_enabled && readSlotKey(s) !== "");
+}
+
+async function fetchAIKeyPoolUsage(db: RegistryDb): Promise<AIKeyPoolUsage> {
+  const day = utcDay();
+  const used = new Map<string, number>();
+  if (typeof db.rpc !== "function") return { day, loadedAt: Date.now(), ok: false, used };
+  try {
+    const r = await db.rpc("ai_key_pool_usage_today");
+    if (r?.error || !Array.isArray(r?.data)) {
+      console.warn(`[AIRegistry] ai_key_pool_usage_today unavailable (${r?.error?.message ?? "no data"}) — pools treated as spent`);
+      return { day, loadedAt: Date.now(), ok: false, used };
+    }
+    for (const row of r.data) {
+      if (!row.group_key) continue;
+      used.set(poolId(row.provider, Number(row.key_slot), String(row.group_key)), Number(row.tokens ?? 0));
+    }
+    return { day, loadedAt: Date.now(), ok: true, used };
+  } catch (e) {
+    console.warn(`[AIRegistry] ai_key_pool_usage_today threw: ${e instanceof Error ? e.message : String(e)} — pools treated as spent`);
+    return { day, loadedAt: Date.now(), ok: false, used };
+  }
+}
+
+/** Today's pool usage (60 s cache, single-flight, re-read at the UTC day change). A failed read counts as "unknown" ⇒ paid. */
+async function loadAIKeyPoolUsage(db: RegistryDb): Promise<AIKeyPoolUsage> {
+  const fresh = aiKeyPoolUsage && aiKeyPoolUsage.day === utcDay() && Date.now() - aiKeyPoolUsage.loadedAt < AI_KEY_POOL_TTL_MS;
+  if (fresh) return aiKeyPoolUsage!;
+  if (aiKeyPoolLoading) return aiKeyPoolLoading;
+  aiKeyPoolLoading = fetchAIKeyPoolUsage(db)
+    .then((u) => {
+      // The ledger now holds (or will shortly hold) what this isolate added since the previous read.
+      if (u.ok) aiKeyPoolLocal.clear();
+      aiKeyPoolUsage = u;
+      return u;
+    })
+    .finally(() => { aiKeyPoolLoading = null; });
+  return aiKeyPoolLoading;
+}
+
+function poolUsed(usage: AIKeyPoolUsage, provider: AIProvider, slot: number, group: string): number {
+  const id = poolId(provider, slot, group);
+  return (usage.used.get(id) ?? 0) + (aiKeyPoolLocal.get(id) ?? 0);
+}
+
+/** Records a finished call against its key's pool so the next pick sees it before the ledger does. */
+export function noteAIKeyUsage(provider: AIProvider, slot: number, group: string | null, usage: AICallUsage): void {
+  if (!group) return;
+  const id = poolId(provider, slot, group);
+  aiKeyPoolLocal.set(id, (aiKeyPoolLocal.get(id) ?? 0) + usage.input_tokens + usage.output_tokens);
+}
+
+/** Cools down ONE key after a 429 (Retry-After capped at 8 s; a drained balance for 5 min). Other statuses: no-op. */
+export function noteAIKeyResponse(provider: AIProvider, slot: number, httpStatus: number, bodyText: string, retryAfter?: string | null): void {
+  if (httpStatus !== 429) return;
+  const cls = classifyAIFailure(httpStatus, bodyText);
+  const h = retryAfter ?? null;
+  const retryMs = cls === "quota_exhausted" ? AI_PROVIDER_QUOTA_COOLDOWN_MS
+    : h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, AI_PROVIDER_COOLDOWN_MAX_MS) : AI_PROVIDER_COOLDOWN_DEFAULT_MS;
+  aiKeyCooldownUntil.set(keyId(provider, slot), Date.now() + retryMs);
+}
+
+export function aiKeyCooldownRemaining(provider: AIProvider, slot: number): number {
+  return Math.max(0, (aiKeyCooldownUntil.get(keyId(provider, slot)) ?? 0) - Date.now());
+}
+
+/**
+ * The key to use for one call of `model`: the first enabled slot (slot_no order, `exclude`d and
+ * cooling-down slots skipped) whose complimentary pool for the model's group still has room
+ * (used + reserve < pool); when no slot has room, the lowest eligible slot, charged as "paid".
+ * A model outside every group goes to the lowest eligible slot as "none". No ai_key_slot rows for the
+ * provider ⇒ the legacy secret as slot 1 ("none"). Never throws.
+ */
+export async function pickAIKey(db: RegistryDb, model: AICatalogModel, opts: { exclude?: number[] } = {}): Promise<AIKeyPick> {
+  const snap = await loadAIRegistry(db);
+  const exclude = new Set(opts.exclude ?? []);
+  const slots = snap?.keySlots.get(model.provider) ?? [];
+  if (slots.length === 0) {
+    const apiKey = getAPIKey(model.provider);
+    if (!apiKey) return { apiKey: "", slot: null, reason: "no_key" };
+    if (exclude.has(1) || aiKeyCooldownRemaining(model.provider, 1) > 0) return { apiKey: "", slot: null, reason: "cooldown" };
+    return { apiKey, slot: 1, pool: "none", group: null };
+  }
+  let cooling = false;
+  const eligible: Array<{ slot: AIKeySlot; apiKey: string }> = [];
+  for (const s of slots) {
+    if (!s.is_enabled || exclude.has(s.slot_no)) { if (exclude.has(s.slot_no)) cooling = true; continue; }
+    const apiKey = readSlotKey(s);
+    if (!apiKey) continue;
+    if (aiKeyCooldownRemaining(model.provider, s.slot_no) > 0) { cooling = true; continue; }
+    eligible.push({ slot: s, apiKey });
+  }
+  if (eligible.length === 0) return { apiKey: "", slot: null, reason: cooling ? "cooldown" : "no_key" };
+  const group = aiModelGroupKey(snap, model);
+  if (!group) return { apiKey: eligible[0].apiKey, slot: eligible[0].slot.slot_no, pool: "none", group: null };
+  const hasPool = eligible.some((e) => (e.slot.daily_pool[group] ?? 0) > 0);
+  if (hasPool) {
+    const usage = await loadAIKeyPoolUsage(db);
+    if (usage.ok) {
+      for (const e of eligible) {
+        const pool = e.slot.daily_pool[group] ?? 0;
+        if (pool > 0 && poolUsed(usage, model.provider, e.slot.slot_no, group) + e.slot.reserve_tokens < pool) {
+          return { apiKey: e.apiKey, slot: e.slot.slot_no, pool: "free", group };
+        }
+      }
+    }
+  }
+  return { apiKey: eligible[0].apiKey, slot: eligible[0].slot.slot_no, pool: "paid", group };
+}
+
 /** Runs one AI call for a task through its registry chain and records it in the usage ledger. Never throws for provider failures. */
 export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
   const started = Date.now();
@@ -680,90 +881,100 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
   const opts = mergeAIRouteParams(params, call);
 
   const attempts: AIAttempt[] = [];
-  let last: { model: AICatalogModel; errorClass: AICallErrorClass; status: number | null; detail: string } | null = null;
+  let last: { model: AICatalogModel; errorClass: AICallErrorClass; status: number | null; detail: string; keySlot: number | null; pool: AIKeyPool | null } | null = null;
 
   for (let i = 0; i < chain.length; i++) {
     const model = chain[i];
-    const apiKey = getAPIKey(model.provider);
-    if (!apiKey) { attempts.push({ model_key: model.model_key, outcome: "skipped_no_key" }); continue; }
-    if ((aiProviderCooldownUntil.get(model.provider) ?? 0) > Date.now()) { attempts.push({ model_key: model.model_key, outcome: "skipped_cooldown" }); continue; }
-    const remaining = budget - (Date.now() - started);
-    if (remaining < AI_MIN_ATTEMPT_MS) { last = { model, errorClass: "timeout", status: null, detail: "call budget exhausted" }; break; }
+    // 2026-10-03 — key pool: one model may be tried on several keys. A 429 on a key cools that key and
+    // the same model goes straight to the next eligible key; any other failure moves to the next model.
+    const triedSlots: number[] = [];
+    let pick = await pickAIKey(call.db, model);
+    if (pick.slot === null) { attempts.push({ model_key: model.model_key, outcome: pick.reason === "cooldown" ? "skipped_cooldown" : "skipped_no_key" }); continue; }
+    while (pick.slot !== null) {
+      const { apiKey, slot, pool, group } = pick;
+      const remaining = budget - (Date.now() - started);
+      if (remaining < AI_MIN_ATTEMPT_MS) { last = { model, errorClass: "timeout", status: null, detail: "call budget exhausted", keySlot: slot, pool }; break; }
 
-    const t0 = Date.now();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), call.attemptTimeoutMs ? Math.min(remaining, call.attemptTimeoutMs) : remaining);
-    try {
-      const res = await fetch(getAPIEndpoint(model.provider), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(buildTaskRequest(model, call.messages, opts)),
-        signal: controller.signal,
-      });
-      const text = await res.text();
-      if (!res.ok) {
-        const cls = classifyAIFailure(res.status, text);
-        if (res.status === 429) {
-          const h = res.headers.get("Retry-After");
-          const retryMs = cls === "quota_exhausted" ? AI_PROVIDER_QUOTA_COOLDOWN_MS
-            : h && !isNaN(Number(h)) ? Math.min(Number(h) * 1000, AI_PROVIDER_COOLDOWN_MAX_MS) : AI_PROVIDER_COOLDOWN_DEFAULT_MS;
-          aiProviderCooldownUntil.set(model.provider, Date.now() + retryMs);
-        }
-        attempts.push({ model_key: model.model_key, outcome: cls, http_status: res.status, ms: Date.now() - t0 });
-        last = { model, errorClass: cls, status: res.status, detail: text.slice(0, 300) };
-        console.warn(`[AIRegistry] task=${call.task} ${model.model_key} ${res.status} ${cls}`);
-        continue;
-      }
-      // deno-lint-ignore no-explicit-any
-      let json: any = null;
-      try { json = JSON.parse(text); } catch { /* handled as empty below */ }
-      const content = json?.choices?.[0]?.message?.content;
-      const toolCalls = Array.isArray(json?.choices?.[0]?.message?.tool_calls) ? json.choices[0].message.tool_calls : [];
-      // A function-calling request is answered by tool_calls, usually with null content.
-      const minChars = Math.max(1, call.minContentChars ?? 1);
-      const answered = (typeof content === "string" && content.trim().length >= minChars) || (!!call.tools?.length && toolCalls.length > 0);
-      if (!answered) {
-        attempts.push({ model_key: model.model_key, outcome: "empty_output", http_status: res.status, ms: Date.now() - t0 });
-        last = { model, errorClass: "empty_output", status: res.status, detail: "empty model content" };
-        continue;
-      }
-      attempts.push({ model_key: model.model_key, outcome: "ok", http_status: res.status, ms: Date.now() - t0 });
-      const usage = readUsage(json);
-      const callDate = new Date().toISOString().slice(0, 10);
-      const priced = emergency ? { costUsd: null, priceId: null } : priceAICall(snap!.prices.get(model.model_key), usage, callDate);
-      const fallbackUsed = model.model_key !== chain[0].model_key;
-      if (!emergency) {
-        await queueAILedger(call.db, {
-          model_name: model.model_key, model_requested: chain[0].model_key, task_key: call.task, function_name: call.functionName,
-          farmer_id: call.farmerId ?? null, fallback_used: fallbackUsed, error_class: "ok", http_status: res.status,
-          query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 0, resource_usage: usage,
-          cost_usd: priced.costUsd, price_id: priced.priceId, metadata: { ...(call.metadata ?? {}), attempts },
+      const t0 = Date.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), call.attemptTimeoutMs ? Math.min(remaining, call.attemptTimeoutMs) : remaining);
+      try {
+        const res = await fetch(getAPIEndpoint(model.provider), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(buildTaskRequest(model, call.messages, opts)),
+          signal: controller.signal,
         });
+        const text = await res.text();
+        if (!res.ok) {
+          const cls = classifyAIFailure(res.status, text);
+          noteAIKeyResponse(model.provider, slot, res.status, text, res.headers.get("Retry-After"));
+          attempts.push({ model_key: model.model_key, outcome: cls, http_status: res.status, ms: Date.now() - t0, key_slot: slot, pool });
+          last = { model, errorClass: cls, status: res.status, detail: text.slice(0, 300), keySlot: slot, pool };
+          console.warn(`[AIRegistry] task=${call.task} ${model.model_key} key#${slot} ${res.status} ${cls}`);
+          if (res.status === 429) {
+            triedSlots.push(slot);
+            pick = await pickAIKey(call.db, model, { exclude: triedSlots });
+            continue; // same model, next key (or the loop ends when no key is left)
+          }
+          break;
+        }
+        // deno-lint-ignore no-explicit-any
+        let json: any = null;
+        try { json = JSON.parse(text); } catch { /* handled as empty below */ }
+        const content = json?.choices?.[0]?.message?.content;
+        const toolCalls = Array.isArray(json?.choices?.[0]?.message?.tool_calls) ? json.choices[0].message.tool_calls : [];
+        // A function-calling request is answered by tool_calls, usually with null content.
+        const minChars = Math.max(1, call.minContentChars ?? 1);
+        const answered = (typeof content === "string" && content.trim().length >= minChars) || (!!call.tools?.length && toolCalls.length > 0);
+        const usage = readUsage(json);
+        noteAIKeyUsage(model.provider, slot, group, usage); // tokens were spent on this key either way
+        if (!answered) {
+          attempts.push({ model_key: model.model_key, outcome: "empty_output", http_status: res.status, ms: Date.now() - t0, key_slot: slot, pool });
+          last = { model, errorClass: "empty_output", status: res.status, detail: "empty model content", keySlot: slot, pool };
+          break;
+        }
+        attempts.push({ model_key: model.model_key, outcome: "ok", http_status: res.status, ms: Date.now() - t0, key_slot: slot, pool });
+        const callDate = new Date().toISOString().slice(0, 10);
+        const priced = emergency ? { costUsd: null, priceId: null } : priceAICall(snap!.prices.get(model.model_key), usage, callDate);
+        const fallbackUsed = model.model_key !== chain[0].model_key;
+        if (!emergency) {
+          await queueAILedger(call.db, {
+            model_name: model.model_key, model_requested: chain[0].model_key, task_key: call.task, function_name: call.functionName,
+            farmer_id: call.farmerId ?? null, fallback_used: fallbackUsed, error_class: "ok", http_status: res.status,
+            query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 0, resource_usage: usage,
+            cost_usd: priced.costUsd, price_id: priced.priceId,
+            metadata: { ...(call.metadata ?? {}), attempts, key_slot: slot, pool, pool_group: group },
+          });
+        }
+        return {
+          ok: true, content: typeof content === "string" ? content : "", modelKey: model.model_key, apiModelId: model.api_model_id,
+          provider: model.provider, fallbackUsed, usage, costUsd: priced.costUsd, priceId: priced.priceId, attempts, toolCalls,
+        };
+      } catch (e) {
+        const aborted = e instanceof DOMException && e.name === "AbortError";
+        const cls: AICallErrorClass = aborted ? "timeout" : "network";
+        attempts.push({ model_key: model.model_key, outcome: cls, ms: Date.now() - t0, key_slot: slot, pool });
+        last = { model, errorClass: cls, status: null, detail: e instanceof Error ? e.message : String(e), keySlot: slot, pool };
+        console.warn(`[AIRegistry] task=${call.task} ${model.model_key} key#${slot} ${cls}`);
+        break;
+      } finally {
+        clearTimeout(timer);
       }
-      return {
-        ok: true, content: typeof content === "string" ? content : "", modelKey: model.model_key, apiModelId: model.api_model_id,
-        provider: model.provider, fallbackUsed, usage, costUsd: priced.costUsd, priceId: priced.priceId, attempts, toolCalls,
-      };
-    } catch (e) {
-      const aborted = e instanceof DOMException && e.name === "AbortError";
-      const cls: AICallErrorClass = aborted ? "timeout" : "network";
-      attempts.push({ model_key: model.model_key, outcome: cls, ms: Date.now() - t0 });
-      last = { model, errorClass: cls, status: null, detail: e instanceof Error ? e.message : String(e) };
-      console.warn(`[AIRegistry] task=${call.task} ${model.model_key} ${cls}`);
-    } finally {
-      clearTimeout(timer);
     }
+    if (last?.errorClass === "timeout" && last.detail === "call budget exhausted") break;
   }
 
   if (!last) {
-    return { ok: false, errorClass: "no_provider_available", detail: "every step was skipped (no API key or provider cooling down)", attempts };
+    return { ok: false, errorClass: "no_provider_available", detail: "every step was skipped (no API key or key cooling down)", attempts };
   }
   if (!emergency) {
     await queueAILedger(call.db, {
       model_name: last.model.model_key, model_requested: chain[0].model_key, task_key: call.task, function_name: call.functionName,
       farmer_id: call.farmerId ?? null, fallback_used: last.model.model_key !== chain[0].model_key, error_class: last.errorClass,
       http_status: last.status, query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 1,
-      resource_usage: {}, cost_usd: null, price_id: null, metadata: { ...(call.metadata ?? {}), attempts, detail: last.detail },
+      resource_usage: {}, cost_usd: null, price_id: null,
+      metadata: { ...(call.metadata ?? {}), attempts, detail: last.detail, key_slot: last.keySlot, pool: last.pool },
     });
   }
   return { ok: false, errorClass: last.errorClass, detail: last.detail, attempts, httpStatus: last.status };
@@ -810,27 +1021,34 @@ export async function recordAITaskCall(db: RegistryDb, row: {
   ok: boolean; errorClass?: AICallErrorClass; httpStatus?: number | null; latencyMs: number;
   usage?: AICallUsage; farmerId?: string | null; emergency?: boolean;
   metadata?: Record<string, unknown>;
+  /** 2026-10-03 — the key the call went out on (from pickAIKey); recorded in metadata and counted against its pool. */
+  key?: { slot: number; pool: AIKeyPool; group: string | null } | null;
 }): Promise<void> {
   if (row.emergency) return; // same rule as callAITask: no ledger row for the cold-start emergency default
   try {
     const snap = await loadAIRegistry(db);
     const usage = row.usage ?? { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0, reasoning_tokens: 0 };
+    if (row.ok && row.key) noteAIKeyUsage(row.model.provider, row.key.slot, row.key.group, usage);
     const priced = row.ok && snap ? priceAICall(snap.prices.get(row.model.model_key), usage, new Date().toISOString().slice(0, 10)) : { costUsd: null, priceId: null };
     await queueAILedger(db, {
       model_name: row.model.model_key, model_requested: row.modelRequested.model_key, task_key: row.task, function_name: row.functionName,
       farmer_id: row.farmerId ?? null, fallback_used: row.model.model_key !== row.modelRequested.model_key,
       error_class: row.ok ? "ok" : (row.errorClass ?? "other"), http_status: row.httpStatus ?? null, query_count: 1,
       avg_response_time_ms: row.latencyMs, error_rate: row.ok ? 0 : 1, resource_usage: row.ok ? usage : {},
-      cost_usd: priced.costUsd, price_id: priced.priceId, metadata: row.metadata ?? {},
+      cost_usd: priced.costUsd, price_id: priced.priceId,
+      metadata: row.key ? { ...(row.metadata ?? {}), key_slot: row.key.slot, pool: row.key.pool, pool_group: row.key.group } : (row.metadata ?? {}),
     });
   } catch (e) {
     console.error(`[AIRegistry] ledger record threw: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
-/** Test/debug only: clears the registry cache and provider cooldowns. */
+/** Test/debug only: clears the registry cache, key cooldowns and the pool-usage cache. */
 export function _resetAIRegistryForTests(): void {
   aiRegistry = null;
   aiRegistryLoading = null;
-  aiProviderCooldownUntil.clear();
+  aiKeyCooldownUntil.clear();
+  aiKeyPoolUsage = null;
+  aiKeyPoolLoading = null;
+  aiKeyPoolLocal.clear();
 }

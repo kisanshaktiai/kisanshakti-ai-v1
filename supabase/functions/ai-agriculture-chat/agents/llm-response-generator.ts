@@ -1,8 +1,13 @@
 // CHANGE LOG (newest first)
+//   2026-09-27 — AI model SSOT: generateNarratedResponse calls callAITask('brain.explain') instead of
+//     getBestAvailableProvider() + a hand-picked endpoint (its Gemini branch sent an OpenAI-shaped body to
+//     the native generateContent URL). Request knobs unchanged. Path is currently unreachable
+//     (generateLLMResponse always passes NO_MATCH → fallback_text).
 //   2026-09-26 15:35 UTC — Fixed TS2484 duplicate export conflict: SymbolicNarrationInput and NarrationOutput are already exported at their interface declarations, so removed them from the redundant `export type {...}` re-export line (kept ValidationResult since it's not exported elsewhere).
 // LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
 
-import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
+import { AI_CONFIG, callAITask } from '../../_shared/aiConfig.ts';
+import { aiRegistryClient } from '../utils/db-ssot/ai-registry-client.ts';
 import { getAllCropNames, getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';
 import { getLanguageName } from '../utils/language-utils.ts';
 import { getSafeAskMoreInfoMessage } from './language-quality-validator.ts';
@@ -489,10 +494,13 @@ export async function generateNarratedResponse(
   // GATE 3: Build narration prompt and call LLM
   
   try {
-    const { provider, model, apiKey } = getBestAvailableProvider();
-    
-    if (!apiKey) {
-      console.warn('⚠️ NarrationLayer: No API key available, using fallback');
+    // 2026-09-27 — AI model SSOT: provider and model come from registry task brain.explain (whose
+    // route description names this file), not getBestAvailableProvider() / AI_MODELS. Request knobs as
+    // buildAIRequest sent them: AI_CONFIG.MAX_TOKENS, temperature 0.3 where allowed, reasoning "none"
+    // where the model accepts it, JSON mode only on gemini/lovable, 15 s limit.
+    const db = aiRegistryClient();
+    if (!db) {
+      console.warn('⚠️ NarrationLayer: No Supabase credentials for the AI model registry, using fallback');
       return {
         response_text: input.symbolic_decision.fallback_text,
         source: 'FALLBACK_USED',
@@ -507,41 +515,21 @@ export async function generateNarratedResponse(
       { role: 'user', content: narrationPrompt }
     ];
     
-    const requestBody = buildAIRequest(provider, model, messages, {
-      maxTokens: AI_CONFIG.MAX_TOKENS,
-      temperature: 0.3 // Low temperature for consistent narration
+    const r = await callAITask({
+      db,
+      task: 'brain.explain',
+      functionName: 'ai-agriculture-chat',
+      messages,
+      maxOutputTokens: AI_CONFIG.MAX_TOKENS,
+      temperature: 0.3, // Low temperature for consistent narration
+      reasoningEffort: 'none',
+      jsonModeProviders: ['gemini', 'lovable'],
+      timeoutMs: 15000,
+      metadata: { caller: 'generateNarratedResponse' },
     });
     
-    console.log(`🎙️ NarrationLayer: Calling ${provider}/${model} for narration...`);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    let endpoint: string;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    
-    if (provider === 'openai') {
-      endpoint = 'https://api.openai.com/v1/chat/completions';
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    } else if (provider === 'gemini' || provider === 'google') {
-      endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    } else {
-      // Lovable AI fallback
-      endpoint = 'https://ai.gateway.lovable.dev/v1/chat/completions';
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-    
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      signal: controller.signal,
-      body: JSON.stringify(requestBody)
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      console.warn(`⚠️ NarrationLayer: API error ${response.status}, using fallback`);
+    if (!r.ok) {
+      console.warn(`⚠️ NarrationLayer: brain.explain ${r.errorClass}, using fallback`);
       return {
         response_text: input.symbolic_decision.fallback_text,
         source: 'FALLBACK_USED',
@@ -549,15 +537,8 @@ export async function generateNarratedResponse(
       };
     }
     
-    const data = await response.json();
-    
-    // Extract response based on provider
-    let llmOutput = '';
-    if (provider === 'gemini' || provider === 'google') {
-      llmOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else {
-      llmOutput = data.choices?.[0]?.message?.content || '';
-    }
+    console.log(`🎙️ NarrationLayer: narrated by ${r.modelKey}`);
+    const llmOutput = r.content;
     
     if (!llmOutput) {
       console.warn('⚠️ NarrationLayer: Empty LLM response, using fallback');
