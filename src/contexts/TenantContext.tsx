@@ -274,48 +274,6 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
-  const buildConfigFromWhiteLabelPayload = useCallback((payload: any, domain: string): TenantConfig | null => {
-    const tenantData = payload?.tenant;
-    if (!tenantData?.id) return null;
-
-    const whiteLabelConfig = payload?.whiteLabelConfig || {};
-    const brandIdentity = whiteLabelConfig.brand_identity || {};
-    const tenantSettings = tenantData.settings || {};
-
-    return {
-      id: tenantData.id,
-      name: tenantData.name || brandIdentity.company_name || brandIdentity.app_name || 'Tenant',
-      slug: tenantData.slug || undefined,
-      domain,
-      subdomain: tenantData.subdomain || undefined,
-      custom_domain: tenantData.custom_domain || undefined,
-      status: tenantData.status || 'active',
-      branding: {
-        company_name: brandIdentity.company_name || brandIdentity.app_name || tenantData.name,
-        tagline: brandIdentity.tagline,
-        logo_url: brandIdentity.logo_url,
-        favicon_url: brandIdentity.favicon_url,
-        primary_color: brandIdentity.primary_color,
-        secondary_color: brandIdentity.secondary_color,
-        accent_color: brandIdentity.accent_color,
-        background_color: brandIdentity.background_color,
-        text_color: brandIdentity.text_color,
-        font_family: brandIdentity.font_family,
-        description: brandIdentity.description,
-      },
-      theme: mergeThemeGroups(whiteLabelConfig.theme_colors as any, whiteLabelConfig.mobile_theme as any),
-      pwa: whiteLabelConfig.pwa_config as PWAConfig,
-      splashScreens: whiteLabelConfig.splash_screens as SplashScreenConfig,
-      features: payload?.features || tenantSettings.features || [],
-      settings: {
-        languages: payload?.languages || tenantSettings.languages || ['en', 'hi'],
-        defaultLanguage: tenantSettings.defaultLanguage || 'hi',
-        timezone: tenantSettings.timezone || 'Asia/Kolkata',
-        currency: tenantSettings.currency || 'INR',
-      },
-    };
-  }, []);
-
   // Track which CSS variables we've set, so we can clear them when switching tenants.
   const appliedVarsRef = useRef<Set<string>>(new Set());
 
@@ -819,55 +777,6 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.error('❌ [TenantProvider] API Error message:', (apiError as Error)?.message);
       }
 
-      // OPTION 1B: Public white-label endpoint fallback. This avoids direct `tenants`
-      // table reads from the mobile app, which are intentionally blocked by RLS.
-      try {
-        const params = new URLSearchParams({ domain, t: Date.now().toString() });
-        const response = await fetch(`${getSupabaseFunctionUrl('get-white-label-config')}?${params.toString()}`, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-        });
-
-        if (response.ok) {
-          const payload = await response.json();
-          const config = buildConfigFromWhiteLabelPayload(payload, domain);
-          if (config) {
-            const newLda = payload?.metadata?.last_deployed_at || payload?.whiteLabelConfig?.last_deployed_at || null;
-            const newEtag = payload?.metadata?.etag || response.headers.get('etag') || null;
-
-            console.log('✅ [TenantProvider] Theme refresh from white-label endpoint', {
-              tenant_name: config.name,
-              last_deployed_at: newLda,
-            });
-
-            setTenant(config);
-            tenantIsolationService.setTenantContext(config.id, domain);
-            applyThemeToDOM(config.branding, config.theme);
-            setLastUpdated(new Date());
-
-            window.__TENANT_LOADED__ = true;
-            window.__TENANT_BRANDING__ = config.branding;
-
-            await localDB.saveTenantConfig(config.id, payload.whiteLabelConfig, {
-              id: config.id,
-              name: config.name,
-              domain,
-            });
-
-            localStorage.setItem('tenant_config_cache', JSON.stringify({
-              data: config,
-              timestamp: Date.now(),
-              etag: newEtag,
-              last_deployed_at: newLda,
-            }));
-
-            return;
-          }
-        }
-      } catch (whiteLabelError) {
-        console.error('❌ [TenantProvider] White-label endpoint fallback failed:', whiteLabelError);
-      }
-
       // OPTION 2: Fallback to direct database access (for development/testing)
       // Development mode: Use environment variable, stored tenant, or default
       if (env.isDevelopment) {
@@ -1171,7 +1080,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setIsLoading(false);
     }
-  }, [getCurrentDomain, applyThemeToDOM, buildConfigFromWhiteLabelPayload, loadOfflineConfig]);
+  }, [getCurrentDomain, applyThemeToDOM, loadOfflineConfig]);
 
   // Clear cache and refetch (for theme updates)
   const clearCache = useCallback(() => {
@@ -1180,7 +1089,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     fetchTenantConfig();
   }, [fetchTenantConfig]);
 
-  // Listen for theme update events from WhiteLabelService and PWA silent updates
+  // Listen for theme update events from PWA silent updates
   useEffect(() => {
     const handleThemeUpdate = () => {
       console.log('[TenantProvider] 🎨 Theme update event received');
