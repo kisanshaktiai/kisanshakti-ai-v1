@@ -29,7 +29,7 @@
 //     gate is removed. The state stays unverified until the bucket is known
 //     again: an irrigation event, or the profile back at field capacity.
 
-import { isDepletionUnverifiedCeiling, UNVERIFIED_LOOKBACK_DAYS } from '../weather/water-events.ts';
+import { isDepletionUnverifiedCeiling, UNVERIFIED_LOOKBACK_DAYS } from './weather/water-events.ts';
 
 export interface DerivedEpisode {
   risk_code: string;
