@@ -2,6 +2,15 @@
 // PATH: tests/edge/ai-registry/key_pool_test.ts
 //
 // CHANGE LOG
+// 2026-10-04 — FREE TIER FIRST: locks the chain-ordering rules added to aiConfig.ts
+//   (orderChainByFreePool, used by callAITask and resolveAITaskChain):
+//     * a route whose step 1 would be billed and whose later step has complimentary-pool room is
+//       reordered so the free step is tried first; the ledger records free_first + route_step1;
+//     * the reorder is stable and two-tier, so the admin's step_no order is kept inside each tier;
+//     * prefer_free_pool = false, a single-step chain, an unreadable usage read, or a chain whose
+//       steps are all in the same tier all leave the order exactly as the admin set it;
+//     * a failed usage read is now reported as pool "unknown", not "paid" (it was indistinguishable
+//       in the ledger from a deliberate paid call).
 // 2026-10-03 — AI control plane Phase 2a (key pool): locks the key-rotation rules of
 //   supabase/functions/_shared/aiConfig.ts (pickAIKey / callAITask / recordAITaskCall):
 //     * no ai_key_slot rows (before migration 20261003100000) ⇒ the provider's single secret, slot 1;
@@ -190,13 +199,13 @@ Deno.test("a disabled slot is never used; no enabled slot with a secret ⇒ no_k
   assert(hasAIProviderKey("gemini"));
 });
 
-Deno.test("usage read failing (function missing / db error) ⇒ pools treated as spent: paid on the lowest key, no throw", async () => {
+Deno.test("usage read failing (function missing / db error) ⇒ lowest key, pool reported as unknown, no throw", async () => {
   keys();
   const { db } = mockDb(poolFixture(), { usage: "error" });
-  assertEquals(await pickAIKey(db, model("openai:gpt-5.6-luna")), { apiKey: "t-OPENAI_API_KEY", slot: 1, pool: "paid", group: "openai_mini" });
+  assertEquals(await pickAIKey(db, model("openai:gpt-5.6-luna")), { apiKey: "t-OPENAI_API_KEY", slot: 1, pool: "unknown", group: "openai_mini" });
   keys();
   const noRpc = mockDb(poolFixture(), { usage: "no_rpc" });
-  assertEquals(await pickAIKey(noRpc.db, model("openai:gpt-5.6-luna")), { apiKey: "t-OPENAI_API_KEY", slot: 1, pool: "paid", group: "openai_mini" });
+  assertEquals(await pickAIKey(noRpc.db, model("openai:gpt-5.6-luna")), { apiKey: "t-OPENAI_API_KEY", slot: 1, pool: "unknown", group: "openai_mini" });
 });
 
 Deno.test("tokens used by this isolate count against the pool before the ledger is re-read (60 s cache, one rpc read)", async () => {
@@ -262,4 +271,114 @@ Deno.test("recordAITaskCall with key ⇒ metadata.key_slot / pool / pool_group; 
   await recordAITaskCall(db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: m, modelRequested: resolved.chain[0], ok: false, errorClass: "timeout", latencyMs: 5, metadata: { caller: "test" } });
   assertEquals(ledger[0].metadata, { caller: "test", key_slot: 1, pool: "free", pool_group: "openai_mini" });
   assertEquals(ledger[1].metadata, { caller: "test" });
+});
+
+// ── 2026-10-04 FREE TIER FIRST: the chain is reordered so free-pool steps go before billed ones ──
+// Helper: the pool fixture with prefer_free_pool set on one route (the live fixture predates the column).
+function freeFirstFixture(task: string, prefer: boolean, enabled: number[] = [1, 2, 3]) {
+  const f = poolFixture(enabled);
+  // deno-lint-ignore no-explicit-any
+  for (const r of f.ai_task_route as any[]) if (r.task_key === task) r.prefer_free_pool = prefer;
+  return f;
+}
+
+Deno.test("free tier first: a lovable-first chain is reordered so the openai step with pool room is tried first", async () => {
+  keys();
+  // brain.translate in the live fixture is lovable -> gemini -> openai. Only the openai model is in a
+  // complimentary group, so it must be promoted to the front; lovable and gemini keep their order.
+  const { db, ledger } = mockDb(freeFirstFixture("brain.translate", true));
+  scriptFetch({ "gpt-5.6-luna": [OK()] });
+  const r = await callAITask({ db, task: "brain.translate", functionName: "t", messages: MSG });
+  assert(r.ok);
+  assertEquals(sent.map((x) => x.body.model), ["gpt-5.6-luna"], "the free step answered on the first attempt");
+  assertEquals(slotOf(sent[0].auth), 1);
+  assertEquals(r.modelKey, "openai:gpt-5.6-luna");
+  assertEquals(ledger[0].metadata.pool, "free");
+  assertEquals(ledger[0].metadata.free_first, true);
+  assertEquals(ledger[0].metadata.route_step1, "lovable:google/gemini-3.8-flash", "the admin's own step 1 is kept in the audit");
+  assertEquals(ledger[0].model_requested, "openai:gpt-5.6-luna", "model_requested is what was tried first");
+  assertEquals(ledger[0].fallback_used, false);
+});
+
+Deno.test("free tier first: the promoted step keeps the admin's order among the billed steps behind it", async () => {
+  keys();
+  const { db } = mockDb(freeFirstFixture("brain.translate", true));
+  const resolved = await resolveAITaskChain(db, "brain.translate");
+  assert(resolved.ok);
+  assertEquals(resolved.chain.map((m) => m.model_key), [
+    "openai:gpt-5.6-luna",
+    "lovable:google/gemini-3.8-flash",
+    "gemini:gemini-3.5-flash-lite",
+  ], "two-tier stable sort: free step to the front, the two billed steps keep step_no order");
+});
+
+Deno.test("free tier first: prefer_free_pool = false leaves the admin's order exactly as set", async () => {
+  keys();
+  const { db } = mockDb(freeFirstFixture("brain.translate", false));
+  const resolved = await resolveAITaskChain(db, "brain.translate");
+  assert(resolved.ok);
+  assertEquals(resolved.chain.map((m) => m.model_key), [
+    "lovable:google/gemini-3.8-flash",
+    "gemini:gemini-3.5-flash-lite",
+    "openai:gpt-5.6-luna",
+  ]);
+});
+
+Deno.test("free tier first: a spent pool is not promoted — the chain stays as the admin set it", async () => {
+  keys();
+  // Slot 1 has 2,490,000 of 2,500,000 used and the reserve is 20,000, so no slot-1 room; slots 2 and 3
+  // are enabled with fresh pools here, so the openai step IS still free and must be promoted.
+  const spent = mockDb(freeFirstFixture("brain.translate", true, [1]), {
+    usage: [{ provider: "openai", key_slot: 1, group_key: "openai_mini", tokens: 2_490_000, calls: 1 }],
+  });
+  const resolved = await resolveAITaskChain(spent.db, "brain.translate");
+  assert(resolved.ok);
+  assertEquals(resolved.chain.map((m) => m.model_key), [
+    "lovable:google/gemini-3.8-flash",
+    "gemini:gemini-3.5-flash-lite",
+    "openai:gpt-5.6-luna",
+  ], "only slot 1 is enabled and its pool is spent ⇒ nothing is free ⇒ order untouched");
+});
+
+Deno.test("free tier first: an unreadable usage read never changes which model answers", async () => {
+  keys();
+  const { db } = mockDb(freeFirstFixture("brain.translate", true), { usage: "error" });
+  const resolved = await resolveAITaskChain(db, "brain.translate");
+  assert(resolved.ok);
+  assertEquals(resolved.chain.map((m) => m.model_key), [
+    "lovable:google/gemini-3.8-flash",
+    "gemini:gemini-3.5-flash-lite",
+    "openai:gpt-5.6-luna",
+  ], "pool state unknown ⇒ the admin's order stands");
+});
+
+Deno.test("free tier first: an all-free chain and a single-step chain are both left untouched, and no free_first is logged", async () => {
+  keys();
+  // brain.classify is openai -> gemini: the openai step is already first, so the order cannot change.
+  const a = mockDb(freeFirstFixture("brain.classify", true));
+  const ra = await resolveAITaskChain(a.db, "brain.classify");
+  assert(ra.ok);
+  assertEquals(ra.chain.map((m) => m.model_key), ["openai:gpt-5.6-luna", "gemini:gemini-3.5-flash-lite"]);
+  // brain.nlu is a single step: nothing to reorder, and the ledger carries no free_first key.
+  keys();
+  const b = mockDb(freeFirstFixture("brain.nlu", true));
+  scriptFetch({ "gpt-5.6-luna": [OK()] });
+  const r = await callAITask({ db: b.db, task: "brain.nlu", functionName: "t", messages: MSG });
+  assert(r.ok);
+  assertEquals(b.ledger[0].metadata.free_first, undefined, "no reorder ⇒ no free_first in the ledger row");
+  assertEquals(b.ledger[0].metadata.route_step1, undefined);
+});
+
+Deno.test("free tier first: a key whose secret is missing does not make its model look free", async () => {
+  // Every openai slot is enabled in the fixture but no OPENAI_* secret is set, so the openai step has no
+  // usable key and must not be promoted ahead of the lovable step that does have one.
+  keys(["GEMINI_API_KEY", "LOVABLE_API_KEY"]);
+  const { db } = mockDb(freeFirstFixture("brain.translate", true));
+  const resolved = await resolveAITaskChain(db, "brain.translate");
+  assert(resolved.ok);
+  assertEquals(resolved.chain.map((m) => m.model_key), [
+    "lovable:google/gemini-3.8-flash",
+    "gemini:gemini-3.5-flash-lite",
+    "openai:gpt-5.6-luna",
+  ], "no openai secret ⇒ no free room ⇒ order untouched");
 });

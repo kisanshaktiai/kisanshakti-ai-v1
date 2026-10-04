@@ -442,7 +442,7 @@ export interface AICatalogModel {
   api_contract: AIModelContract;
 }
 export interface AIRouteParams { max_output_tokens?: number; temperature?: number; reasoning_effort?: string; json_mode?: boolean }
-interface AITaskRoute { task_key: string; is_active: boolean; params: AIRouteParams; steps: string[] }
+interface AITaskRoute { task_key: string; is_active: boolean; params: AIRouteParams; steps: string[]; prefer_free_pool: boolean }
 interface AIPriceRow {
   id: string;
   model_name: string;
@@ -510,8 +510,8 @@ export interface AITaskCall {
 }
 export interface AICallUsage { input_tokens: number; cached_input_tokens: number; output_tokens: number; reasoning_tokens: number }
 interface AIAttempt { model_key: string; outcome: "ok" | AICallErrorClass | "skipped_no_key" | "skipped_cooldown"; http_status?: number; ms?: number; key_slot?: number; pool?: AIKeyPool }
-/** Which pool a call was charged to: a key's complimentary pool, the organisation's paid balance, or a provider with no pool at all. */
-export type AIKeyPool = "free" | "paid" | "none";
+/** Which pool a call was charged to: a key's complimentary pool, the organisation's paid balance, a provider with no pool at all, or (2026-10-04) a pool whose use could not be read. */
+export type AIKeyPool = "free" | "paid" | "none" | "unknown";
 export type AIKeyPick =
   | { apiKey: string; slot: number; pool: AIKeyPool; group: string | null }
   | { apiKey: ""; slot: null; reason: "no_key" | "cooldown" };
@@ -549,7 +549,7 @@ const utcDay = () => new Date().toISOString().slice(0, 10);
 async function fetchAIRegistry(db: RegistryDb): Promise<AIRegistrySnapshot> {
   const [cat, routes, steps, prices, slots, groups] = await Promise.all([
     db.from("ai_model_catalog").select("model_key,provider,api_model_id,status,input_modalities,api_contract"),
-    db.from("ai_task_route").select("task_key,is_active,params"),
+    db.from("ai_task_route").select("task_key,is_active,params,prefer_free_pool"),
     db.from("ai_task_route_step").select("task_key,step_no,model_key").order("step_no", { ascending: true }),
     db.from("ai_model_pricing")
       .select("id,model_name,input_cost_per_1k,cached_input_cost_per_1k,output_cost_per_1k,effective_from,currency")
@@ -587,7 +587,7 @@ async function fetchAIRegistry(db: RegistryDb): Promise<AIRegistrySnapshot> {
   const models = new Map<string, AICatalogModel>();
   for (const m of cat.data) models.set(m.model_key, m as AICatalogModel);
   const routeMap = new Map<string, AITaskRoute>();
-  for (const r of routes.data) routeMap.set(r.task_key, { task_key: r.task_key, is_active: r.is_active === true, params: r.params ?? {}, steps: [] });
+  for (const r of routes.data) routeMap.set(r.task_key, { task_key: r.task_key, is_active: r.is_active === true, params: r.params ?? {}, steps: [], prefer_free_pool: r.prefer_free_pool !== false });
   for (const s of steps.data) routeMap.get(s.task_key)?.steps.push(s.model_key);
   const priceMap = new Map<string, AIPriceRow[]>();
   for (const p of prices.data) {
@@ -844,6 +844,10 @@ export async function pickAIKey(db: RegistryDb, model: AICatalogModel, opts: { e
   const group = aiModelGroupKey(snap, model);
   if (!group) return { apiKey: eligible[0].apiKey, slot: eligible[0].slot.slot_no, pool: "none", group: null };
   const hasPool = eligible.some((e) => (e.slot.daily_pool[group] ?? 0) > 0);
+  // 2026-10-04 — a failed pool-usage read used to return pool: "paid", which is indistinguishable in the
+  // ledger from a deliberate paid call. It is now reported as "unknown" and warned about, so the one case
+  // where the router cannot tell free from paid is visible on the API Keys screen.
+  let poolState: AIKeyPool = "paid";
   if (hasPool) {
     const usage = await loadAIKeyPoolUsage(db);
     if (usage.ok) {
@@ -853,9 +857,49 @@ export async function pickAIKey(db: RegistryDb, model: AICatalogModel, opts: { e
           return { apiKey: e.apiKey, slot: e.slot.slot_no, pool: "free", group };
         }
       }
+    } else {
+      poolState = "unknown";
+      console.warn(`[AIRegistry] pool usage unreadable for ${model.model_key} (group ${group}) — using key#${eligible[0].slot.slot_no}, billing state undetermined`);
     }
   }
-  return { apiKey: eligible[0].apiKey, slot: eligible[0].slot.slot_no, pool: "paid", group };
+  return { apiKey: eligible[0].apiKey, slot: eligible[0].slot.slot_no, pool: poolState, group };
+}
+
+/**
+ * 2026-10-04 — FREE TIER FIRST.
+ * Reorders a route's chain so every step that can still be served from a key's complimentary pool is
+ * tried before any step that would be billed. The sort has exactly two tiers and is stable, so it can
+ * only move a free step ahead of a billed one: two free steps keep the admin's step_no order between
+ * them, and so do two billed steps.
+ * A step counts as free when its model belongs to a complimentary-token group (ai_model_group) AND at
+ * least one enabled key of its provider has its secret set and still has room in that group
+ * (used + reserve < pool) — the same test pickAIKey applies when it chooses the key.
+ * The chain is returned UNCHANGED when the route has prefer_free_pool = false, when there is only one
+ * step, when the pool-usage read is unavailable, or when every step sits in the same tier. An unknown
+ * pool state therefore never changes which model answers.
+ */
+async function orderChainByFreePool(
+  db: RegistryDb,
+  snap: AIRegistrySnapshot,
+  chain: AICatalogModel[],
+): Promise<{ chain: AICatalogModel[]; reordered: boolean }> {
+  if (chain.length < 2) return { chain, reordered: false };
+  const usage = await loadAIKeyPoolUsage(db);
+  if (!usage.ok) return { chain, reordered: false };
+  const hasFreeRoom = (model: AICatalogModel): boolean => {
+    const group = aiModelGroupKey(snap, model);
+    if (!group) return false;
+    const slots = snap.keySlots.get(model.provider) ?? [];
+    return slots.some((s) => {
+      const pool = s.daily_pool[group] ?? 0;
+      return s.is_enabled && pool > 0 && readSlotKey(s) !== ""
+        && poolUsed(usage, model.provider, s.slot_no, group) + s.reserve_tokens < pool;
+    });
+  };
+  const tiered = chain.map((model, index) => ({ model, index, tier: hasFreeRoom(model) ? 0 : 1 }));
+  if (tiered.every((t) => t.tier === tiered[0].tier)) return { chain, reordered: false };
+  tiered.sort((a, b) => a.tier - b.tier || a.index - b.index);
+  return { chain: tiered.map((t) => t.model), reordered: true };
 }
 
 /** Runs one AI call for a task through its registry chain and records it in the usage ledger. Never throws for provider failures. */
@@ -866,6 +910,10 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
 
   let chain: AICatalogModel[];
   let params: AIRouteParams = {};
+  // 2026-10-04 — free tier first: what the route's own step 1 was, and whether the chain was reordered.
+  // Both go into the ledger row so the audit shows the admin's order next to the order actually tried.
+  let routeStep1: string | null = null;
+  let freeFirst = false;
   const emergency = snap === null;
   if (emergency) {
     console.error(`[AIRegistry] EMERGENCY_DEFAULT task=${call.task}: registry unavailable on cold start, using ${AI_MODELS.openai.default}`);
@@ -876,6 +924,13 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
     if (!route.is_active) return { ok: false, errorClass: "route_inactive", detail: `ai_task_route ${call.task} is inactive`, attempts: [] };
     params = route.params;
     chain = route.steps.map((k) => snap.models.get(k)).filter((m): m is AICatalogModel => !!m);
+    if (route.prefer_free_pool && chain.length > 1) {
+      routeStep1 = chain[0].model_key;
+      const ordered = await orderChainByFreePool(call.db, snap, chain);
+      chain = ordered.chain;
+      freeFirst = ordered.reordered;
+      if (freeFirst) console.log(`[AIRegistry] FREE_FIRST task=${call.task}: ${routeStep1} -> ${chain[0].model_key}`);
+    }
   }
 
   const opts = mergeAIRouteParams(params, call);
@@ -944,7 +999,7 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
             farmer_id: call.farmerId ?? null, fallback_used: fallbackUsed, error_class: "ok", http_status: res.status,
             query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 0, resource_usage: usage,
             cost_usd: priced.costUsd, price_id: priced.priceId,
-            metadata: { ...(call.metadata ?? {}), attempts, key_slot: slot, pool, pool_group: group },
+            metadata: { ...(call.metadata ?? {}), attempts, key_slot: slot, pool, pool_group: group, ...(freeFirst ? { free_first: true, route_step1: routeStep1 } : {}) },
           });
         }
         return {
@@ -974,7 +1029,7 @@ export async function callAITask(call: AITaskCall): Promise<AITaskResult> {
       farmer_id: call.farmerId ?? null, fallback_used: last.model.model_key !== chain[0].model_key, error_class: last.errorClass,
       http_status: last.status, query_count: 1, avg_response_time_ms: Date.now() - started, error_rate: 1,
       resource_usage: {}, cost_usd: null, price_id: null,
-      metadata: { ...(call.metadata ?? {}), attempts, detail: last.detail, key_slot: last.keySlot, pool: last.pool },
+      metadata: { ...(call.metadata ?? {}), attempts, detail: last.detail, key_slot: last.keySlot, pool: last.pool, ...(freeFirst ? { free_first: true, route_step1: routeStep1 } : {}) },
     });
   }
   return { ok: false, errorClass: last.errorClass, detail: last.detail, attempts, httpStatus: last.status };
@@ -1005,7 +1060,16 @@ export async function resolveAITaskChain(db: RegistryDb, task: string): Promise<
   const route = snap.routes.get(task);
   if (!route) return { ok: false, errorClass: "route_missing", detail: `no ai_task_route row for ${task}` };
   if (!route.is_active) return { ok: false, errorClass: "route_inactive", detail: `ai_task_route ${task} is inactive` };
-  const chain = route.steps.map((k) => snap.models.get(k)).filter((m): m is AICatalogModel => !!m);
+  let chain = route.steps.map((k) => snap.models.get(k)).filter((m): m is AICatalogModel => !!m);
+  // 2026-10-04 — free tier first, the same rule callAITask applies, so the call sites that run their own
+  // retry loops (ai-smart-schedule) also try the complimentary-pool steps before the billed ones.
+  if (route.prefer_free_pool && chain.length > 1) {
+    const ordered = await orderChainByFreePool(db, snap, chain);
+    if (ordered.reordered) {
+      console.log(`[AIRegistry] FREE_FIRST task=${task}: ${chain[0].model_key} -> ${ordered.chain[0].model_key}`);
+      chain = ordered.chain;
+    }
+  }
   return { ok: true, chain, params: route.params, emergency: false };
 }
 
