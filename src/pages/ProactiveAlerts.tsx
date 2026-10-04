@@ -23,7 +23,7 @@ import { toast } from '@/hooks/use-toast';
 import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
 import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
-import { formatNdviValue } from '@/lib/ndviColor';
+import { formatNdviValue, ndviRatio, ndviTone, type NdviTone } from '@/lib/ndviColor';
 import { alertSourceText, useTranslatedTexts, type AlertTextField } from '@/hooks/useAlertText';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
@@ -67,6 +67,15 @@ const PRIORITY_DOT: Record<string, string> = {
   LOW:      'bg-success',
 };
 
+/** Satellite crop-health colour for a land: only a fresh, quality-passed reading
+ *  (v_ndvi_decision_grade.is_fresh) colours a card; an old picture stays neutral.
+ *  Colours come from ndviTone(), which mixes the theme tokens only. */
+const healthTone = (reading?: LandNdviReading): NdviTone | null =>
+  reading?.isFresh ? ndviTone(reading.ndvi) : null;
+
+/** Motion timings shared by the cards (ms → s): reveal 420, wash 720. */
+const MOTION = { reveal: 0.42, wash: 0.72, ease: [0.22, 1, 0.36, 1] as const };
+
 /** Alerts built by evaluator v128+ carry trigger_data.graph_advice; only their
  *  action text is decision-graph output, so older rows' action text is not shown. */
 const hasGraphAdvice = (a: ProactiveAlert) => !!a.trigger_data && 'graph_advice' in a.trigger_data;
@@ -104,7 +113,7 @@ export default function ProactiveAlerts() {
     [clarifications],
   );
 
-  // Satellite crop health per land → drives the green→yellow→red card colour.
+  // Satellite crop health per land → colours the card (green when NDVI is high, amber/red when low).
   const alertLandIds = useMemo(
     () => alerts.map(a => a.land_id).filter(Boolean) as string[],
     [alerts],
@@ -234,7 +243,10 @@ export default function ProactiveAlerts() {
     };
   }, [alerts]);
 
+  // Newest first, like the home card and the offline cache; priority only breaks a tie.
+  // (Priority-first put a 3-day-old CRITICAL above an alert raised minutes ago.)
   const sortedAlerts = useMemo(() => {
+    const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
     return [...alerts]
       .filter(a => {
         if (!selectedLandId) return true;
@@ -242,11 +254,9 @@ export default function ProactiveAlerts() {
         return a.land_id === selectedLandId;
       })
       .sort((a, b) => {
-        const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
-        const pA = order[a.priority] ?? 2;
-        const pB = order[b.priority] ?? 2;
-        if (pA !== pB) return pA - pB;
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        const byTime = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        if (byTime !== 0) return byTime;
+        return (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
       });
   }, [alerts, selectedLandId]);
 
@@ -380,34 +390,48 @@ export default function ProactiveAlerts() {
               const isHistorical = !['PENDING', 'DELIVERED', 'SEEN'].includes(alert.status);
               const isCritical = alert.priority === 'CRITICAL';
               const reading: LandNdviReading | undefined = alert.land_id ? ndviByLand.get(alert.land_id) : undefined;
-              // Rail and badge follow priority; the icon keeps the category's colour.
+              // Rail and badge follow priority (how urgent); the card wash follows the land's
+              // satellite crop health (how the crop looks); the icon keeps the category's colour.
               const railTone: Tone = PRIORITY_TONE[alert.priority] ?? 'muted';
+              const health = healthTone(reading);
 
               return (
                 <motion.div
                   key={alert.id}
                   layout={!reduceMotion}
-                  initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.22, delay: reduceMotion ? 0 : Math.min(index, 6) * 0.04 }}
+                  transition={{ duration: MOTION.reveal, ease: MOTION.ease, delay: reduceMotion ? 0 : Math.min(index, 6) * 0.05 }}
                 >
                   <Card
                     onClick={() => isUnread && markSeen(alert.id)}
+                    style={health ? { backgroundColor: health.surface, borderColor: health.border } : undefined}
                     className={cn(
-                      'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all',
+                      'relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-colors duration-500',
                       isHistorical && 'opacity-70',
                       isCritical && !isHistorical && 'ring-1 ring-destructive/40',
                     )}
                   >
-                    {/* Left rail: the alert's own priority/category, never a crop-agnostic NDVI colour */}
+                    {/* Crop-health wash: grows in once from the top corner; finished state when motion is reduced */}
+                    {health && (
+                      <motion.span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-0"
+                        style={{ background: `radial-gradient(130% 90% at 100% 0%, ${health.softSurface}, transparent 65%)` }}
+                        initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: MOTION.wash, ease: MOTION.ease, delay: reduceMotion ? 0 : Math.min(index, 6) * 0.05 }}
+                      />
+                    )}
+                    {/* Left rail: the alert's own priority */}
                     <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-1.5', toneRail[railTone])} />
                     {isUnread && !reduceMotion && (
                       <motion.span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-1.5', toneRail[railTone])}
                         animate={{ opacity: [1, 0.35, 1] }} transition={{ duration: 2.4, repeat: 2 }} />
                     )}
 
-                    <CardContent className="p-3 pl-4">
+                    <CardContent className="relative p-3 pl-4">
                       <div className="flex items-start gap-3">
                         <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', toneBg[cat.tone])}>
                           <Icon className="h-5 w-5" />
@@ -451,7 +475,7 @@ export default function ProactiveAlerts() {
                               </Badge>
                             )}
                           </div>
-                          {alert.land_id && <NdviChip reading={reading} lang={lang} />}
+                          {alert.land_id && <NdviChip reading={reading} lang={lang} tone={health} reduceMotion={!!reduceMotion} />}
                         </div>
                       </div>
 
@@ -533,19 +557,44 @@ export default function ProactiveAlerts() {
 /*  Sub-components                                                            */
 /* -------------------------------------------------------------------------- */
 
-/** The land's newest quality-passed satellite reading, with its date; marked old when the DB says it is not fresh. */
-function NdviChip({ reading, lang }: { reading: LandNdviReading | undefined; lang: string }) {
+/** The land's newest quality-passed satellite reading, with its date and a crop-health meter;
+ *  marked old (and left uncoloured) when the DB says it is not fresh. */
+function NdviChip({ reading, lang, tone, reduceMotion }: {
+  reading: LandNdviReading | undefined; lang: string; tone: NdviTone | null; reduceMotion: boolean;
+}) {
   const { t } = useTranslation();
   if (!reading) {
     return <p className="mt-1 text-[11px] text-muted-foreground">🛰️ {t('alerts.ndvi_none', 'No recent satellite picture')}</p>;
   }
   const date = new Date(`${reading.date}T00:00:00`).toLocaleDateString(lang === 'en' ? 'en-IN' : lang, { day: 'numeric', month: 'short' });
+  const label = t('alerts.ndvi_chip', { value: formatNdviValue(reading.ndvi), date, defaultValue: 'Satellite {{value}} · {{date}}' });
   return (
-    <p className="mt-1 inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-      <Satellite className="h-3 w-3" />
-      <span className="font-semibold text-foreground">{t('alerts.ndvi_chip', { value: formatNdviValue(reading.ndvi), date, defaultValue: 'Satellite {{value}} · {{date}}' })}</span>
-      {!reading.isFresh && <span className="rounded-full bg-muted px-1.5 py-0.5">{t('alerts.ndvi_old', 'old picture')}</span>}
-    </p>
+    <div className="mt-1.5 space-y-1">
+      <p className="inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+        <Satellite className="h-3 w-3" style={tone ? { color: tone.color } : undefined} />
+        <span className="font-semibold text-foreground">{label}</span>
+        {!reading.isFresh && <span className="rounded-full bg-muted px-1.5 py-0.5">{t('alerts.ndvi_old', 'old picture')}</span>}
+      </p>
+      <NdviMeter ndvi={reading.ndvi} tone={tone} reduceMotion={reduceMotion} label={label} />
+    </div>
+  );
+}
+
+/** Slim crop-health bar on the same red→amber→green scale as the card wash. */
+function NdviMeter({ ndvi, tone, reduceMotion, label, className }: {
+  ndvi: number; tone: NdviTone | null; reduceMotion: boolean; label: string; className?: string;
+}) {
+  const pct = Math.max(6, Math.round(ndviRatio(ndvi) * 100));
+  return (
+    <div role="img" aria-label={label} className={cn('h-1.5 w-full max-w-[160px] rounded-full bg-muted overflow-hidden', className)}>
+      <motion.div
+        className={cn('h-full rounded-full', !tone && 'bg-muted-foreground/40')}
+        style={tone ? { backgroundColor: tone.color } : undefined}
+        initial={reduceMotion ? false : { width: '0%' }}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: MOTION.wash, ease: MOTION.ease, delay: reduceMotion ? 0 : 0.15 }}
+      />
+    </div>
   );
 }
 
@@ -644,19 +693,23 @@ function LandCard({
   topPriority?: string;
   ndvi?: LandNdviReading;
 }) {
+  const reduceMotion = useReducedMotion();
   const crop = String(land?.current_crop ?? '').toLowerCase();
   const displayEmoji = emoji ?? land?.crop_emoji ?? CROP_EMOJI.find(([k]) => crop.includes(k))?.[1] ?? '🌾';
+  const health = healthTone(ndvi);
 
   const dotSegs = (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const)
     .map(k => ({ k, v: counts[k] }))
     .filter(s => s.v > 0);
 
   return (
-    <button
+    <motion.button
       onClick={onClick}
+      whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+      style={health && !active ? { backgroundColor: health.surface, borderColor: health.border } : undefined}
       className={cn(
-        'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-all flex flex-col gap-1.5 min-h-11',
-        active ? 'ring-1 ring-primary/40 shadow-sm bg-primary/10 border-primary' : 'bg-card border-border hover:bg-accent/30',
+        'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-colors duration-500 flex flex-col gap-1.5 min-h-11',
+        active ? 'ring-2 ring-primary/50 shadow-sm bg-primary/10 border-primary' : 'bg-card border-border hover:bg-accent/30',
       )}
     >
       <div className="flex items-center justify-between gap-1.5">
@@ -686,12 +739,15 @@ function LandCard({
         </div>
       )}
       {ndvi && (
-        <div className="flex items-center gap-1 text-[9px] leading-none text-muted-foreground">
-          <Satellite className="h-2.5 w-2.5" />
-          <span className={cn('font-semibold', ndvi.isFresh ? 'text-foreground' : 'text-muted-foreground')}>NDVI {formatNdviValue(ndvi.ndvi)}</span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1 text-[9px] leading-none text-muted-foreground">
+            <Satellite className="h-2.5 w-2.5" style={health ? { color: health.color } : undefined} />
+            <span className={cn('font-semibold', ndvi.isFresh ? 'text-foreground' : 'text-muted-foreground')}>NDVI {formatNdviValue(ndvi.ndvi)}</span>
+          </div>
+          <NdviMeter ndvi={ndvi.ndvi} tone={health} reduceMotion={!!reduceMotion} label={`NDVI ${formatNdviValue(ndvi.ndvi)}`} className="h-1" />
         </div>
       )}
-    </button>
+    </motion.button>
   );
 }
 
