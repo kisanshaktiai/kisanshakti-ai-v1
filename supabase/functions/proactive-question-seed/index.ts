@@ -1,6 +1,11 @@
 // Proactive Alert → AI-Generated, Multilingual, Farmer-Friendly Question
 // ----------------------------------------------------------------------
 // CHANGE LOG (newest first)
+// 2026-10-04 — action "irrigation_answer": the farmer's "I watered this field"
+//   tap on an IRRIGATION alert. Written by the DB RPC `record_irrigation`
+//   (the only writer of IRRIGATION_APPLIED lifecycle events); the alert is
+//   marked ACTED. The daily derive reads the event into the soil-water bucket,
+//   which until now had no irrigation input at all (0 events in the table).
 // 2026-09-27 — AI model SSOT: the narration model now comes from the AI model registry (task
 //   question.seed, via callAITask with the service-role client and the verified farmer id) instead of
 //   the literal 'google/gemini-3-flash-preview' sent to the Lovable gateway. Same messages, no other
@@ -241,6 +246,17 @@ Deno.serve(async (req: Request) => {
         alertId: String(body.alertId || "").trim() || null,
         confirmed: body.confirmed === true,
         lang: answerLang,
+      });
+    }
+
+    // ── One-tap "I watered this field" on an IRRIGATION alert ────────────
+    // The tap is written by the DB RPC `record_irrigation`, the only writer of
+    // IRRIGATION_APPLIED lifecycle events.
+    if (action === "irrigation_answer") {
+      return await handleIrrigationAnswer(admin, {
+        farmerId: farmer.id,
+        landId: String(body.landId || "").trim(),
+        alertId: String(body.alertId || "").trim() || null,
       });
     }
 
@@ -532,4 +548,42 @@ async function handleGerminationAnswer(
     needs_diagnosis: !confirmed,
     follow_up_alert_id: followUpAlertId,
   });
+}
+
+// ── Irrigation answer (2026-10-04) ───────────────────────────────────────────
+async function handleIrrigationAnswer(
+  admin: any,
+  args: { farmerId: string; landId: string; alertId: string | null },
+): Promise<Response> {
+  const { farmerId, landId, alertId } = args;
+  if (!landId) return json({ error: "landId required" }, 400);
+
+  const { data: land } = await admin
+    .from("lands")
+    .select("id, farmer_id")
+    .eq("id", landId)
+    .maybeSingle();
+  if (!land || land.farmer_id !== farmerId) return json({ error: "Land not found" }, 403);
+
+  const observedDate = new Date().toISOString().slice(0, 10);
+  const { data: recorded, error: rpcErr } = await admin.rpc("record_irrigation", {
+    p_land_id: landId,
+    p_observed_date: observedDate,
+    p_alert_id: alertId,
+  });
+  if (rpcErr) {
+    console.error("[proactive-question-seed] record_irrigation failed", rpcErr.message);
+    return json({ error: rpcErr.message }, 500);
+  }
+
+  if (alertId) {
+    await admin
+      .from("proactive_alerts")
+      .update({ status: "ACTED", acted_at: new Date().toISOString() })
+      .eq("id", alertId)
+      .eq("farmer_id", farmerId);
+  }
+
+  console.log(`[IRRIG_ANSWER] land=${landId.slice(0, 8)} depth_mm=${(recorded as any)?.applied_depth_mm ?? "none"}`);
+  return json({ ok: true, recorded });
 }

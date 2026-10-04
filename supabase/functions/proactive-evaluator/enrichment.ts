@@ -1,6 +1,9 @@
 // =====================================================
 // enrichment.ts — NEURAL NARRATION (F4) — AI MODEL REGISTRY
 // CHANGE LOG (newest first)
+// 2026-10-04 — an alert whose six text fields (title/message × mr/hi/en) are
+//   already filled is not sent to the model: the result could only fill empty
+//   fields, so 22 paid calls in 5 days wrote nothing.
 // 2026-10-02 — review fixes: ledger row carries alert.farmer_id (database-verified) so usage is
 //   attributed to the tenant; a provider cooling down after a 429 no longer ends the whole batch
 //   (only 'no API key at all' does, as the old OPENAI_API_KEY gate did).
@@ -44,7 +47,9 @@ export async function enrichAndUpdateAlerts(
     a.risk_score >= cfg.enrichment_min_risk_score || a.priority === 'CRITICAL' || a.priority === 'HIGH');
   if (highRisk.length === 0) return;
 
-  const toEnrich = highRisk.slice(0, cfg.enrichment_batch_max);
+  const TEXT_FIELDS = ['title_mr', 'title_hi', 'title_en', 'message_mr', 'message_hi', 'message_en'];
+  const hasEmptyField = (a: any) => TEXT_FIELDS.some((f) => !String(a?.[f] ?? '').trim());
+  const toEnrich = highRisk.filter(hasEmptyField).slice(0, cfg.enrichment_batch_max);
 
   for (const alert of toEnrich) {
     try {

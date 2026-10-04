@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { alertSourceText, useTranslatedTexts } from '@/hooks/useAlertText';
+import { alertSourceText, useTranslatedTexts, FARM_ADVICE_TEXT } from '@/hooks/useAlertText';
 
 interface AlertSummary {
   id: string;
@@ -86,7 +86,7 @@ export function AlertsSummaryCard() {
   }, [user?.id]);
 
   const titleSources = alerts.map((a) => alertSourceText(a, 'title', lang));
-  const { tr } = useTranslatedTexts(titleSources.filter((x) => x.needsTranslation).map((x) => x.text), lang);
+  const { tr } = useTranslatedTexts(titleSources.filter((x) => x.needsTranslation).map((x) => x.text), lang, FARM_ADVICE_TEXT);
 
   if (alerts.length === 0) return null;
 

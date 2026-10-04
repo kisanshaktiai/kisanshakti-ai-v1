@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-10-02",
+    "last_updated": "2026-10-04",
     "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
     "note": "Written for rural farmers in everyday spoken language. A native speaker should read it once before release."
   },
@@ -62,7 +62,11 @@
       "method_DRIP": "ड्रिप",
       "method_SPRINKLER": "फव्वारा",
       "method_FURROW": "नाली",
-      "method_SURFACE": "सतही"
+      "method_SURFACE": "सतही",
+      "method_MANUAL": "हाथ से",
+      "i_watered": "मैंने इस खेत को पूरा पानी दिया",
+      "answered": "दर्ज कर लिया। अगले अनुमान में आपका पानी गिना जाएगा।",
+      "answer_failed": "दर्ज नहीं हुआ। फिर से कोशिश करें।"
     },
     "evidence": {
       "title": "यह अलर्ट क्यों?",
@@ -93,7 +97,13 @@
       "phase_rising": "बढ़ रहा है",
       "phase_peak": "सबसे ज़्यादा",
       "phase_declining": "कम हो रहा है",
-      "na": "उपलब्ध नहीं"
+      "na": "उपलब्ध नहीं",
+      "leaf_moisture": "पत्तों में नमी (उपग्रह)",
+      "open_water": "खेत में भरा पानी दिखा",
+      "sat_water_canopy_moisture_fell": "पिछली तस्वीर से पत्तों में नमी कम है — सूखी मिट्टी के अनुमान से मेल खाता है",
+      "sat_water_canopy_moisture_rose": "पिछली तस्वीर से पत्तों में नमी ज़्यादा है — पानी देने से पहले मिट्टी जांचें",
+      "sat_water_surface_water_visible": "उपग्रह को खेत में पानी भरा दिखा — पानी देने से पहले जांचें",
+      "sat_water_change_within_noise": "पिछली तस्वीर से ज़्यादा बदलाव नहीं"
     },
     "rel": {
       "now": "अभी"

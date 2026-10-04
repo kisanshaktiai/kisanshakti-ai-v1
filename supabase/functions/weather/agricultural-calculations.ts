@@ -845,7 +845,10 @@ export function resolveKc(
     const a = methodParam(methods, "KC_NDVI_ADJUST", "a", 0.3);
     const b = methodParam(methods, "KC_NDVI_ADJUST", "b", 1.2);
     const rel = Math.min(1, Math.max(0, ndviRel));
-    const lo = Number(row.ini), hi = Number(row.mid);
+    // 2026-10-04: the floor is the lower of Kc_ini and Kc_end. With Kc_ini as
+    // the floor, a crop whose table has Kc_end < Kc_ini (rice: 0.90 < 1.05)
+    // could never drop below Kc_ini in its late season once NDVI was present.
+    const lo = Math.min(Number(row.ini), Number(row.end ?? row.ini)), hi = Number(row.mid);
     kcAdjusted = Math.min(hi, Math.max(lo, kcStatic * (a + b * rel)));
   }
 

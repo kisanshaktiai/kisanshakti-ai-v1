@@ -19,7 +19,10 @@ import { useTranslatedTexts } from '@/hooks/useAlertText';
  * Why comes from the values the rule was judged on (context, weather,
  * satellite, soil water), copied by the evaluator into trigger_data. Anything
  * missing is left out, never filled in. All words are i18n keys; graph text is
- * English in the DB and is translated on demand.
+ * English in the DB and is translated on demand — in the farmer's spoken
+ * register, told which crop and stage it is about (purpose 'farm_advice').
+ * Irrigation alerts also show what the satellite said about the soil-water
+ * estimate (trigger_data.satellite_water, evaluator v130).
  */
 interface AlertEvidenceSectionProps {
   triggerData: Record<string, any>;
@@ -53,12 +56,16 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
 
     const advice: AdviceItem[] = Array.isArray(triggerData?.graph_advice?.items) ? triggerData.graph_advice.items : [];
     const hasGraphField = triggerData && 'graph_advice' in triggerData;
-    // Graph text is translated only when the farmer opens the section.
+    const ctx = triggerData?.context ?? null;
+    // Graph text is translated only when the farmer opens the section, in the
+    // farmer's words for this crop and stage.
     const adviceTexts = adviceOpen ? advice.flatMap((a) => [a.action_text ?? '', a.cause_name_en ?? '']).filter(Boolean) : [];
-    const { tr, pending } = useTranslatedTexts(adviceTexts, lang);
+    const { tr, pending } = useTranslatedTexts(adviceTexts, lang, {
+      purpose: 'farm_advice',
+      context: { crop: ctx?.crop ?? null, stage: ctx?.stage ?? null, region: ctx?.region ?? null },
+    });
 
     const stageLabel = (s: string | null | undefined) => (s ? t(`sky.stage.${stageKey(s)}`, s.replace(/_/g, ' ').toLowerCase()) : null);
-    const ctx = triggerData?.context ?? null;
     // Litres are shown only on alerts built by evaluator v128+ (they carry graph_advice),
     // which attaches them on a verified water state; older rows computed them regardless.
     const irrigation = category === 'IRRIGATION' && hasGraphField ? triggerData?.irrigation : null;
@@ -258,6 +265,25 @@ function buildEvidenceRows(
     const gap = num(n?.pass_gap_days);
     push('satellite', 'drop', t('alerts.evidence.ndvi_drop', 'Fall in greenness'), (np - nv).toFixed(2),
       gap != null ? t('alerts.evidence.pass_gap', { days: gap, defaultValue: '{{days}} days between the two pictures' }) : null);
+  }
+
+  // What the satellite said about the soil-water estimate (irrigation alerts, v130).
+  const sw = td?.satellite_water;
+  if (sw) {
+    const now = num(sw.ndmi), before = num(sw.ndmi_previous);
+    const surfaceSeen = sw.basis === 'surface_water_visible';
+    const verdictNote = surfaceSeen ? '' : t(`alerts.evidence.sat_water_${String(sw.basis ?? '')}`, '');
+    if (now != null) {
+      push('satellite', 'leaf_moisture', t('alerts.evidence.leaf_moisture', 'Leaf moisture (satellite)'),
+        before != null ? `${before.toFixed(2)} → ${now.toFixed(2)}` : now.toFixed(2), verdictNote || null);
+    } else if (verdictNote) {
+      push('satellite', 'leaf_moisture', t('alerts.evidence.leaf_moisture', 'Leaf moisture (satellite)'), '—', verdictNote);
+    }
+    const water = num(sw.surface_water_p90);
+    if (water != null && surfaceSeen) {
+      push('satellite', 'open_water', t('alerts.evidence.open_water', 'Standing water seen'),
+        dayLabel(sw.surface_water_date, lang) ?? '', t('alerts.evidence.sat_water_surface_water_visible', ''));
+    }
   }
 
   const d = td?.derived;

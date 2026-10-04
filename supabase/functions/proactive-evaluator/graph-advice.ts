@@ -22,6 +22,12 @@
 //   unconfirmed risk, and the farm-monitoring policy forbids an alert from
 //   producing a chemical or fertilizer action.
 //   No agronomy lives here. Every value is a DB column.
+// 2026-10-04 — days-to-harvest gate. decision_rules.days_to_harvest_min/max
+//   (authored on 20 rows) were never read here, so set-up advice written for
+//   early season reached a crop three weeks from harvest. A row that authors
+//   either bound needs a known days-to-harvest (the active crop schedule's
+//   expected_harvest_date) and must fall inside it — fail closed, like the
+//   stage and method gates.
 // =====================================================
 
 /** Authored link from one proactive rule into the graph (conditions.metadata.graph). */
@@ -62,6 +68,8 @@ export interface GraphLandContext {
   das: number | null;
   cultivation_method: string | null;
   region_code: string | null;    // v_land_region.region_code ('IN-MH' …)
+  /** 2026-10-04: whole days to the schedule's expected harvest; null = unknown. */
+  days_to_harvest?: number | null;
 }
 
 export interface GraphAdviceItem {
@@ -136,6 +144,16 @@ function cultivationMatches(list: string[], method: string): boolean {
   return list.includes(method);
 }
 
+function harvestWindowMatches(row: any, daysToHarvest: number | null | undefined): boolean {
+  const min = row?.days_to_harvest_min;
+  const max = row?.days_to_harvest_max;
+  if (min == null && max == null) return true;
+  if (daysToHarvest == null || !Number.isFinite(daysToHarvest)) return false; // fail closed
+  if (min != null && daysToHarvest < Number(min)) return false;
+  if (max != null && daysToHarvest > Number(max)) return false;
+  return true;
+}
+
 function regionMatches(row: any, landRegion: string): boolean {
   const ruleRegion = String(row?.region_code ?? '').trim().toUpperCase();
   if (!ruleRegion) return true;
@@ -169,6 +187,7 @@ export function ruleApplies(row: any, land: GraphLandContext): boolean {
   if (hasDas && !dasMatches(row, land.das)) return false;
   if (!cultivationMatches(arr(row?.cultivation_method_applicable), norm(land.cultivation_method))) return false;
   if (!regionMatches(row, String(land.region_code ?? '').trim().toUpperCase())) return false;
+  if (!harvestWindowMatches(row, land.days_to_harvest)) return false;
   return true;
 }
 
@@ -253,7 +272,7 @@ export async function loadGraph(supabase: any, cropCodes: string[], directRuleId
     for (let i = 0; i < ids.length; i += 300) {
       const { data: rules, error: rErr } = await supabase
         .from('decision_rules')
-        .select('rule_id, crop_code, is_active, is_farmer_servable, is_safety_block, rule_intent, category, priority, growth_stage, stage_applicable, crop_age_days_min, crop_age_days_max, cultivation_method_applicable, region_code, input_class, dosage_per_acre, active_ingredient, action_text, knowledge_text')
+        .select('rule_id, crop_code, is_active, is_farmer_servable, is_safety_block, rule_intent, category, priority, growth_stage, stage_applicable, crop_age_days_min, crop_age_days_max, days_to_harvest_min, days_to_harvest_max, cultivation_method_applicable, region_code, input_class, dosage_per_acre, active_ingredient, action_text, knowledge_text')
         .eq('is_active', true)
         .in('rule_id', ids.slice(i, i + 300));
       if (rErr) { console.warn(`[GRAPH_ADVICE] rule load failed: ${rErr.message}`); continue; }

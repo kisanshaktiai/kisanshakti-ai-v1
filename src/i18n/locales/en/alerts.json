@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-10-02",
+    "last_updated": "2026-10-04",
     "translation_status": "SOURCE",
     "note": "Source language."
   },
@@ -62,7 +62,11 @@
       "method_DRIP": "Drip",
       "method_SPRINKLER": "Sprinkler",
       "method_FURROW": "Furrow",
-      "method_SURFACE": "Surface"
+      "method_SURFACE": "Surface",
+      "method_MANUAL": "By hand",
+      "i_watered": "I gave this field a full watering",
+      "answered": "Noted. Your watering will be counted in the next soil-water update.",
+      "answer_failed": "Could not save. Please try again."
     },
     "evidence": {
       "title": "Why this alert?",
@@ -93,7 +97,13 @@
       "phase_rising": "rising",
       "phase_peak": "at its peak",
       "phase_declining": "easing",
-      "na": "Not available"
+      "na": "Not available",
+      "leaf_moisture": "Leaf moisture (satellite)",
+      "open_water": "Standing water seen",
+      "sat_water_canopy_moisture_fell": "Leaves hold less water than in the last picture — matches the dry-soil estimate",
+      "sat_water_canopy_moisture_rose": "Leaves hold more water than in the last picture — check the soil before you water",
+      "sat_water_surface_water_visible": "The satellite saw water standing in the field — check before you water",
+      "sat_water_change_within_noise": "Hardly any change since the last picture"
     },
     "rel": {
       "now": "just now"

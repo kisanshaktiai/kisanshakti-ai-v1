@@ -8,7 +8,10 @@ import {
   isEnvIntelligenceRule,
   evaluateEnvRule,
   emptyDerived,
+  satelliteWaterVerdict,
   type DerivedState,
+  type SatelliteWaterEvidence,
+  type SurfaceWaterReading,
 } from './env-derived.ts';
 import {
   loadEvaluatorConfig,
@@ -23,6 +26,26 @@ import { enrichAndUpdateAlerts } from './enrichment.ts';
 import { buildGerminationQuestionAlerts } from './germination-question.ts';
 import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
 import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
+
+// =====================================================
+// v130 — WATER TRUTH + HARVEST-AWARE ADVICE (2026-10-04). Audit of the
+// Shinghan Mal screen (irrigation alert a3270b94 and the cards beside it):
+//  W1  Satellite check on the soil-water bucket (env-derived.ts
+//      satelliteWaterVerdict): derived.water_sat_agree = 1 / 0 / -1 from the
+//      canopy-moisture (NDMI) change between the two newest passes and open
+//      water (MNDWI) on the field; limits from SAT_WATER_CORROBORATION. Rule
+//      rows decide what each value means (IRRIGATION_TRIGGER_FAO56 needs >= 0,
+//      IRRIGATION_CHECK_FIELD fires on -1). The numbers ride on the alert as
+//      trigger_data.satellite_water.
+//  W2  Days to harvest from the active crop schedule's expected_harvest_date
+//      reach the graph's applicability gates (graph-advice.ts).
+//  W3  An alert from a proactive rule expires at the end of the IST day that
+//      is forecast_horizon_days ahead (never later than alert_expiry_days):
+//      a "today" card no longer stays up for a week.
+//  W4  The watering plan is sized from the root-zone depletion and needs the
+//      land's area (irrigation.ts).
+//  W5  trigger_data.ndvi_evidence carries ndmi_previous / ndmi_drop.
+// =====================================================
 
 // =====================================================
 // v128 — PROACTIVE ALERT FORENSIC AUDIT (2026-10-02). Every change maps to a
@@ -227,6 +250,10 @@ interface LandContext {
   /** v128: acquisition dates of the two passes behind ndvi / ndvi_previous. */
   ndvi_date: string | null;
   ndvi_previous_date: string | null;
+  /** v130: whole days to the active schedule's expected harvest; null = unknown. */
+  days_to_harvest: number | null;
+  /** v130: satellite verdict on the soil-water bucket, with its numbers. */
+  satellite_water: SatelliteWaterEvidence;
 }
 
 /** v127: every field is a number|null so rules can use gte/lte/eq/lt_field on it. */
@@ -399,7 +426,7 @@ async function processOneTenant(
 
   let landsQuery = supabase
     .from('lands')
-    .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, cultivation_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
+    .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, cultivation_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source, expected_harvest_date')
     .eq('is_active', true)
     .eq('tenant_id', tenantId);
 
@@ -425,9 +452,10 @@ async function processOneTenant(
     stageMasterRes,
     stageFallbackRes,
     ndviIntelRes,
+    surfaceWaterRes,
   ] = await Promise.all([
     supabase.from('crop_schedules')
-      .select('land_id, sowing_date, crop_name, status, is_active, cultivation_method')
+      .select('land_id, sowing_date, crop_name, status, is_active, cultivation_method, expected_harvest_date')
       .in('land_id', landIds)
       .eq('is_active', true)
       .order('created_at', { ascending: false }),
@@ -462,6 +490,14 @@ async function processOneTenant(
       .in('land_id', landIds)
       .order('acquisition_date', { ascending: false })
       .limit(2000),
+    // v130: open water on the field (MNDWI), newest observed pass per land.
+    supabase.from('satellite_water_layers')
+      .select('land_id, acquisition_date, value_p90, valid_fraction')
+      .in('land_id', landIds)
+      .eq('layer_code', 'surface_water_trace')
+      .eq('status', 'observed')
+      .order('acquisition_date', { ascending: false })
+      .limit(2000),
   ]);
 
   const scheduleMap = buildScheduleMap(cropSchedulesRes.data);
@@ -469,6 +505,15 @@ async function processOneTenant(
   const soilMap = buildSoilMap(soilRes.data);
   const ndviMap = buildNdviMap((ndviRes.data || []).map((r: any) => ({ ...r, date: r.acquisition_date })));
   const ndviIntelMap = buildNdviIntelMap(ndviIntelRes.data);
+  const surfaceWaterMap = new Map<string, SurfaceWaterReading>();
+  for (const r of (surfaceWaterRes.data || [])) {
+    if (surfaceWaterMap.has(r.land_id)) continue; // newest first
+    surfaceWaterMap.set(r.land_id, {
+      acquisition_date: r.acquisition_date ?? null,
+      value_p90: r.value_p90 == null ? null : Number(r.value_p90),
+      valid_fraction: r.valid_fraction == null ? null : Number(r.valid_fraction),
+    });
+  }
 
   const stageMap = buildStageMap(stageMasterRes.data);
   const stageFallbackMap = buildStageFallbackMap(stageFallbackRes.data);
@@ -563,8 +608,11 @@ async function processOneTenant(
     // A3: a derived row older than the configured age is not today's state.
     const derivedRow = derivedMap.get(land.id) || emptyDerived();
     const derivedAge = derivedRow.as_of ? daysBetween(todayStr, derivedRow.as_of) : null;
-    const derived = derivedAge != null && derivedAge <= cfg.derived_max_age_days ? derivedRow : emptyDerived();
-    if (derivedRow.as_of && derived !== derivedRow) {
+    const derivedFresh = derivedAge != null && derivedAge <= cfg.derived_max_age_days ? derivedRow : emptyDerived();
+    // v130 W1: the satellite verdict joins the derived namespace for rule rows.
+    const satelliteWater = satelliteWaterVerdict(ndvi_evidence, surfaceWaterMap.get(land.id) ?? null, methods.satWater, todayStr);
+    const derived: DerivedState = { ...derivedFresh, water_sat_agree: satelliteWater.verdict };
+    if (derivedRow.as_of && derivedFresh !== derivedRow) {
       console.warn(`[DERIVED_STALE] land=${land.id.slice(0, 8)} as_of=${derivedRow.as_of} (${derivedAge} d) > ${cfg.derived_max_age_days} d — derived predicates unavailable`);
     }
     const locKey = (land.center_lat != null && land.center_lon != null)
@@ -601,6 +649,8 @@ async function processOneTenant(
       region_code: regionMap.get(land.id) ?? null,
       ndvi_date: ndviArr[0]?.acquisition_date ?? null,
       ndvi_previous_date: ndviArr[1]?.acquisition_date ?? null,
+      days_to_harvest: daysBetween(schedule?.expected_harvest_date ?? land.expected_harvest_date ?? null, todayStr),
+      satellite_water: satelliteWater,
     });
   }
 
@@ -729,7 +779,7 @@ async function processOneTenant(
         decision_reasoning: result.reasoning,
         status: 'PENDING',
         dedup_key: dedupKey,
-        expires_at: new Date(Date.now() + cfg.alert_expiry_days * 24 * 60 * 60 * 1000).toISOString(),
+        expires_at: ruleExpiresAt(rule.forecast_horizon_days, cfg.alert_expiry_days),
       });
 
       farmerDailyCounts.set(ctx.farmer_id, dailyCount + 1);
@@ -891,6 +941,19 @@ async function processOneTenant(
 
 const LIVE_STATUSES = ['PENDING', 'DELIVERED', 'SEEN'];
 
+const IST_OFFSET_MS = 330 * 60 * 1000;
+
+/** v130 W3: end of the IST day `horizonDays` ahead, never later than the
+ *  configured expiry. Rows without a horizon keep the configured expiry. */
+function ruleExpiresAt(horizonDays: number | null | undefined, fallbackDays: number): string {
+  const fallback = Date.now() + fallbackDays * 86400000;
+  const h = Number(horizonDays);
+  if (horizonDays == null || !Number.isFinite(h) || h < 0) return new Date(fallback).toISOString();
+  const ist = new Date(Date.now() + IST_OFFSET_MS);
+  const endOfIstDay = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() + Math.floor(h) + 1) - IST_OFFSET_MS;
+  return new Date(Math.min(endOfIstDay, fallback)).toISOString();
+}
+
 /** Set live alerts to EXPIRED: past expires_at, or superseded by a row inserted
  *  this run (same rule, same land). A quiet rule does not clear its alert. */
 async function expireAlerts(
@@ -1002,12 +1065,12 @@ function applySafetySuppression(
 // BATCH LOADING HELPERS
 // =====================================================
 
-function buildScheduleMap(data: any[] | null): Map<string, { sowing_date: string; crop_name: string; cultivation_method: string | null }> {
+function buildScheduleMap(data: any[] | null): Map<string, { sowing_date: string; crop_name: string; cultivation_method: string | null; expected_harvest_date: string | null }> {
   const map = new Map();
   if (!data) return map;
   for (const cs of data) {
     if (!map.has(cs.land_id) && cs.sowing_date) {
-      map.set(cs.land_id, { sowing_date: cs.sowing_date, crop_name: cs.crop_name, cultivation_method: cs.cultivation_method ?? null });
+      map.set(cs.land_id, { sowing_date: cs.sowing_date, crop_name: cs.crop_name, cultivation_method: cs.cultivation_method ?? null, expected_harvest_date: cs.expected_harvest_date ?? null });
     }
   }
   return map;
@@ -1931,6 +1994,7 @@ function graphLandOf(ctx: LandContext) {
     das: ctx.das > 0 ? ctx.das : null,
     cultivation_method: ctx.cultivation_method,
     region_code: ctx.region_code,
+    days_to_harvest: ctx.days_to_harvest,
   };
 }
 
@@ -1955,6 +2019,7 @@ function buildAlertEvidence(
     sowing_date: ctx.sowing_date,
     cultivation_method: ctx.cultivation_method,
     region: ctx.region_code,
+    days_to_harvest: ctx.days_to_harvest,
   };
   td.weather_obs = {
     temp: ctx.weather.temp, humidity: ctx.weather.humidity, rain_mm: ctx.weather.rain_mm,
@@ -1968,6 +2033,7 @@ function buildAlertEvidence(
     age_days: ctx.ndvi_evidence.age_days, is_fresh: ctx.ndvi_evidence.is_fresh,
     evidence_rank: ctx.ndvi_evidence.evidence_rank, pass_gap_days: ctx.ndvi_evidence.pass_gap_days,
     ndmi: ctx.ndvi_evidence.ndmi, ndre: ctx.ndvi_evidence.ndre,
+    ndmi_previous: ctx.ndvi_evidence.ndmi_previous, ndmi_drop: ctx.ndvi_evidence.ndmi_drop,
     cohort_z: ctx.ndvi_evidence.cohort_z,
   };
   // derived.* keys pass through the farmer-visibility guard (env_property_master).
@@ -1980,6 +2046,9 @@ function buildAlertEvidence(
   if (alertCategory === 'IRRIGATION') {
     const irrigation = calculateIrrigationForLand(ctx, methods);
     if (irrigation) td.irrigation = irrigation;
+  }
+  if (alertCategory === 'IRRIGATION' || alertCategory === 'CROP_STRESS') {
+    td.satellite_water = ctx.satellite_water; // v130 W1: what the satellite said
   }
   td.graph_advice = advice ?? null;
   if (ctx.land_name) td.land_name = ctx.land_name;

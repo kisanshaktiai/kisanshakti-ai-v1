@@ -28,6 +28,12 @@
 //     bucket at ceiling after a month without rain WAS water stress, so that
 //     gate is removed. The state stays unverified until the bucket is known
 //     again: an irrigation event, or the profile back at field capacity.
+// 2026-10-04 — derived.water_sat_agree: what the satellite says about the
+//   bucket's "dry" — 1 agrees (canopy moisture fell between two passes),
+//   -1 disagrees (canopy moisture rose, or open water is visible on the
+//   field), 0 no basis (no fresh pass, or the change is inside the noise
+//   limit). Limits come from sci_method_registry SAT_WATER_CORROBORATION
+//   (approved); without that row the value is 0 and rules behave as before.
 
 import { isDepletionUnverifiedCeiling, UNVERIFIED_LOOKBACK_DAYS } from './weather/water-events.ts';
 
@@ -64,6 +70,8 @@ export interface DerivedState {
   /** true = the root-zone bucket rests on known ground (see isWaterStateVerified);
    *  false = it may have ratcheted without ground truth; null = no rows. */
   water_state_verified: boolean | null;
+  /** 2026-10-04: satellite verdict on the water bucket — 1 / 0 / -1 (see satelliteWaterVerdict). */
+  water_sat_agree: number | null;
   active_episodes: DerivedEpisode[];
 }
 
@@ -75,9 +83,77 @@ export function emptyDerived(): DerivedState {
     water_deficit: null, root_depletion: null, raw_mm: null, taw_mm: null,
     irrigation_urgency: null, harvest_window: null,
     rain_24h: null, infiltration_cap: null, swsi: null, swsi_class: null, n_sd_ratio: null,
-    confidence: null, as_of: null, water_state_verified: null,
+    confidence: null, as_of: null, water_state_verified: null, water_sat_agree: null,
     active_episodes: [],
   };
+}
+
+/** Newest open-water reading (MNDWI, satellite_water_layers.surface_water_trace) for one land. */
+export interface SurfaceWaterReading {
+  acquisition_date: string | null;
+  value_p90: number | null;
+  valid_fraction: number | null;
+}
+
+/** The satellite numbers behind one verdict, copied onto the alert as evidence. */
+export interface SatelliteWaterEvidence {
+  verdict: number;            // 1 agrees with "dry", -1 disagrees, 0 no basis
+  basis: string;              // which test decided
+  ndmi: number | null;
+  ndmi_previous: number | null;
+  ndmi_drop: number | null;
+  pass_gap_days: number | null;
+  surface_water_p90: number | null;
+  surface_water_date: string | null;
+}
+
+/**
+ * Satellite check on the soil-water bucket. Pure; every limit is a param of
+ * SAT_WATER_CORROBORATION (approved): ndmi_change_min, max_pass_gap_days,
+ * min_evidence_rank, surface_water_index_min, surface_water_max_age_days.
+ * No params → verdict 0 (no basis), so rules keep their old behaviour.
+ */
+export function satelliteWaterVerdict(
+  ndvi: { is_fresh: number | null; evidence_rank: number | null; ndmi: number | null; ndmi_previous: number | null; ndmi_drop: number | null; pass_gap_days: number | null },
+  surface: SurfaceWaterReading | null,
+  params: Record<string, any> | null,
+  todayIso: string,
+): SatelliteWaterEvidence {
+  const ev: SatelliteWaterEvidence = {
+    verdict: 0, basis: 'no_params',
+    ndmi: ndvi.ndmi, ndmi_previous: ndvi.ndmi_previous, ndmi_drop: ndvi.ndmi_drop,
+    pass_gap_days: ndvi.pass_gap_days,
+    surface_water_p90: surface?.value_p90 ?? null, surface_water_date: surface?.acquisition_date ?? null,
+  };
+  if (!params) return ev;
+  const p = (k: string) => num(params[k]);
+
+  // Open water seen on the field in a recent pass: the soil is not dry there.
+  const swMin = p('surface_water_index_min');
+  const swAge = p('surface_water_max_age_days');
+  const swDays = surface?.acquisition_date ? daysBetweenIso(todayIso, surface.acquisition_date) : null;
+  if (swMin != null && swAge != null && surface?.value_p90 != null && swDays != null && swDays <= swAge
+      && surface.value_p90 >= swMin) {
+    return { ...ev, verdict: -1, basis: 'surface_water_visible' };
+  }
+
+  if (ndvi.is_fresh !== 1) return { ...ev, basis: 'no_fresh_pass' };
+  const minRank = p('min_evidence_rank') ?? 1;
+  if ((ndvi.evidence_rank ?? 0) < minRank) return { ...ev, basis: 'weak_pass' };
+  const maxGap = p('max_pass_gap_days');
+  if (ndvi.ndmi_drop == null || ndvi.pass_gap_days == null || (maxGap != null && ndvi.pass_gap_days > maxGap)) {
+    return { ...ev, basis: 'no_pass_pair' };
+  }
+  const minChange = p('ndmi_change_min');
+  if (minChange == null) return ev;
+  if (ndvi.ndmi_drop >= minChange) return { ...ev, verdict: 1, basis: 'canopy_moisture_fell' };
+  if (ndvi.ndmi_drop <= -minChange) return { ...ev, verdict: -1, basis: 'canopy_moisture_rose' };
+  return { ...ev, basis: 'change_within_noise' };
+}
+
+function daysBetweenIso(a: string, b: string): number | null {
+  const ms = new Date(a.slice(0, 10)).getTime() - new Date(String(b).slice(0, 10)).getTime();
+  return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
 }
 
 /** One land_weather_state row as the water-state check reads it. */
@@ -202,6 +278,7 @@ export async function batchLoadDerived(
       confidence: num(row.confidence),
       as_of: row.metric_date ?? null,
       water_state_verified: waterRes.error ? null : isWaterStateVerified(waterRows.get(row.land_id) ?? []),
+      water_sat_agree: null,
       active_episodes: [],
     });
   }

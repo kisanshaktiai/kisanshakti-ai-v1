@@ -1,4 +1,11 @@
 // CHANGE LOG (newest first)
+// 2026-10-04 — optional `purpose: 'farm_advice'` (+ optional `context`: crop, stage,
+//   region) for alert and advice text. Those strings are written in English by
+//   agronomists and were coming out in textbook register (the crop named by its
+//   kitchen word, "drought" for a dry field). The farm-advice prompt asks for the
+//   words a farmer in that region uses in the field, short spoken sentences,
+//   numbers kept exactly. Requests without `purpose` (Community posts) get the
+//   same prompt as before.
 // 2026-10-02 — Rebased on the 2026-10-02 branch version (commit eece5418), which added the
 //   degrade-to-original-text behaviour: a provider failure returns HTTP 200 with the untranslated
 //   text and `degraded: true, reason: <status>` so the Community screen never breaks, and each text
@@ -62,7 +69,9 @@ serve(async (req) => {
 
 
   try {
-    const { text, texts, sourceLanguage, targetLanguage, batch } = await req.json();
+    const { text, texts, sourceLanguage, targetLanguage, batch, purpose, context } = await req.json();
+    const farmAdvice = purpose === 'farm_advice';
+    const adviceContext = farmAdvice ? cleanContext(context) : null;
 
     // Skip translation if same language
     if (sourceLanguage === targetLanguage) {
@@ -79,7 +88,7 @@ serve(async (req) => {
     // with HTTP 200 so the screen never breaks; `degraded` tells the client why.
     const safe = async (t: string): Promise<{ text: string; err?: APIError }> => {
       try {
-        return { text: await translateSingle(t, sourceLangName, targetLangName) };
+        return { text: await translateSingle(t, sourceLangName, targetLangName, adviceContext) };
       } catch (e) {
         const err = e instanceof APIError ? e : new APIError(String(e), 500);
         console.error('Translation error:', err.status, err.message);
@@ -119,12 +128,45 @@ serve(async (req) => {
   }
 });
 
+/** Only short plain strings from the optional context reach the prompt. */
+function cleanContext(raw: unknown): { crop?: string; stage?: string; region?: string } {
+  const c = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
+  const pick = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 60) : undefined);
+  return { crop: pick(c.crop), stage: pick(c.stage), region: pick(c.region) };
+}
+
+function farmAdvicePrompt(
+  text: string,
+  sourceLang: string,
+  targetLang: string,
+  ctx: { crop?: string; stage?: string; region?: string },
+): string {
+  const about = [
+    ctx.crop && `crop: ${ctx.crop}`,
+    ctx.stage && `crop stage: ${ctx.stage.replace(/_/g, ' ')}`,
+    ctx.region && `region: ${ctx.region}`,
+  ].filter(Boolean).join('; ');
+  return `You are rewriting farm advice for a small farmer in rural India who will read it on a phone, often aloud to family. Translate the text below from ${sourceLang} to ${targetLang} in the way a trusted village agriculture officer would say it to that farmer face to face.
+${about ? `\nThe advice is about this field (${about}).\n` : ''}
+How to write it:
+1. Use the everyday spoken words farmers of that region use in the field. Name the crop by the word used for the plant growing in the field, not the word for the grain or food in the kitchen. Name problems the way farmers describe them (for example "the field is short of water"), not with textbook or government terms.
+2. Short sentences, one action per sentence. Say what to do first, then why, if the text gives a why.
+3. Keep every number, unit, date, percentage and quantity exactly as written. Do not add, drop, round or convert any number.
+4. Do not add advice, products, doses or warnings that are not in the text, and do not leave out any instruction that is in it.
+5. A technical term with no common spoken word may stay as it is, explained in a few simple words in brackets the first time.
+6. Keep emojis and line breaks. Output only the translated text.
+
+Text:
+${text}`;
+}
+
 async function translateSingle(
   text: string,
   sourceLang: string,
   targetLang: string,
+  adviceContext: { crop?: string; stage?: string; region?: string } | null = null,
 ): Promise<string> {
-  const prompt = `You are a professional translator specializing in Indian agricultural terminology. Translate the following text from ${sourceLang} to ${targetLang}.
+  const prompt = adviceContext ? farmAdvicePrompt(text, sourceLang, targetLang, adviceContext) : `You are a professional translator specializing in Indian agricultural terminology. Translate the following text from ${sourceLang} to ${targetLang}.
 
 IMPORTANT RULES:
 1. Preserve agricultural and farming terminology accurately

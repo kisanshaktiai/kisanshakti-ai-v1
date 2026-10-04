@@ -1,6 +1,11 @@
 // =====================================================
 // irrigation.ts — GOVERNED IRRIGATION QUANTITIES (F2)
-// Volume:   land_weather_state.water_deficit_mm  (FAO-56 ETc chain, per land)
+// 2026-10-04: the depth is the root-zone depletion (refill to field capacity,
+//   FAO-56 Dr), not the one-day water_deficit_mm. The one-day figure (3-4 mm)
+//   fell under the 8 mm floor, so a field the bucket called empty got an
+//   "irrigate" alert with no amount. Land area is required — litres are never
+//   computed for an assumed 1 acre.
+// Volume:   land_weather_state.root_depletion_mm (FAO-56 root-zone bucket, per land)
 // Params:   sci_method_registry IRRIGATION_METHOD_PARAMS (efficiency/flow/cycle)
 // Cap:      derived.infiltration_cap  (SOIL_INFILTRATION_CAPS, per soil)
 // Floor:    SOIL_INFILTRATION_CAPS.min_actionable_depth_mm
@@ -36,8 +41,10 @@ export interface IrrigationPlan {
 }
 
 export function calculateIrrigationForLand(ctx: IrrigationInput, methods: MethodParams): IrrigationPlan | null {
-  const deficit = ctx.derived.water_deficit;
+  const deficit = ctx.derived.root_depletion;
   if (deficit == null || deficit <= 0) return null;
+  const area = ctx.area_acres;
+  if (area == null || !(area > 0)) return null; // no land area → no litres
   const ip = methods.irrigation;
   if (!ip || !ip.efficiency) {
     console.warn('[IRRIGATION] IRRIGATION_METHOD_PARAMS not approved/available — no irrigation quantity emitted');
@@ -63,7 +70,6 @@ export function calculateIrrigationForLand(ctx: IrrigationInput, methods: Method
     perApplicationMm = Math.round((appliedMm / applications) * 10) / 10;
   }
 
-  const area = ctx.area_acres || 1;
   const litersPerAcre = Math.round(appliedMm * ACRE_M2_MM_TO_LITERS);
   const totalLiters = Math.round(litersPerAcre * area);
   const durationHours = flowRate > 0 ? Math.round((totalLiters / flowRate) * 10) / 10 : 0;
@@ -96,6 +102,6 @@ export function calculateIrrigationForLand(ctx: IrrigationInput, methods: Method
     per_application_mm: perApplicationMm,
     frequency_days: cycleDays,
     method,
-    source: 'fao56:water_deficit_mm + IRRIGATION_METHOD_PARAMS@approved' + (cap != null ? ' + SOIL_INFILTRATION_CAPS@approved' : ''),
+    source: 'fao56:root_depletion_mm + IRRIGATION_METHOD_PARAMS@approved' + (cap != null ? ' + SOIL_INFILTRATION_CAPS@approved' : ''),
   };
 }

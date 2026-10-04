@@ -4,6 +4,28 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CHANGE LOG (newest first)
+ * 2026-10-04 — Water balance runs on measured rain, not snapshots:
+ *   (1) RAIN TRUTH. The bucket's rain was weather_aggregates.rain_mm_total,
+ *       the sum of whatever "rain in the last hour" reading each weather call
+ *       happened to see (1-11 calls a day). Measured on cell 16.8,74.1:
+ *       June 0.0 mm, July 0.0 mm, August 3.0 mm, so every land drifted to an
+ *       empty bucket. The rain now comes from a RainTruthResolver (the weather
+ *       function passes one that sums the provider's 24 hourly rain amounts
+ *       ending at this run). When no complete 24-hour total is available the
+ *       bucket is HELD at yesterday's depletion (reason RAIN_UNVERIFIED) —
+ *       unknown rain never dries a field on paper.
+ *   (2) Irrigation events are counted from the previous derive's computed_at,
+ *       not from 00:00 IST: an event logged after the 18:30 IST run used to
+ *       fall between two days and was never counted.
+ *   (3) Kc stage bucket: when the variety has no gdd_target, the position of
+ *       the land's stage in its own crop_stage_master chain (phenology_index ÷
+ *       the chain's highest index, same crop and cultivation method) picks
+ *       ini/mid/end. Before, any stage name the regex did not know (e.g.
+ *       grain_filling) stayed "mid" to harvest.
+ *   (4) Spray "rain in the next 6 h" sums forecast rows whose time falls in
+ *       the next 6 hours; the 6-row slice was 18 h on 3-hour provider rows.
+ *   (5) SWSI rain sum reads land_weather_state.rain_24h_mm (the same rain the
+ *       bucket used) instead of the snapshot aggregates.
  * 2026-08-25 18:55 UTC — P0 water-state repairs:
  *   (1) root-depletion ratchet stopped — daily IRRIGATION_APPLIED events from
  *       crop_lifecycle_events are resolved (depth → volume → pump runtime) and
@@ -67,6 +89,24 @@ import {
 // deno-lint-ignore no-explicit-any
 type Sb = any;
 type LogFn = (runId: string, level: "info" | "warn" | "error", event: string, data?: Record<string, unknown>) => void;
+
+/** Measured rain for one weather cell over the 24 h that end at this run. */
+export interface RainTruth {
+  rain_mm: number;
+  /** Hourly values the provider returned (24 = complete). */
+  hours: number;
+  window_start: string;
+  window_end: string;
+  /** Provider label, mapped to env_source_registry by providerSourceId(). */
+  source: string;
+}
+
+/** Supplied by the caller (the weather function owns provider calls and quota). */
+export type RainTruthResolver = (cellKey: string, lat: number, lon: number) => Promise<RainTruth | null>;
+
+/** Fewest hourly values that count as a full day (one boundary hour may be missing). */
+export const RAIN_TRUTH_MIN_HOURS = 23;
+export const REASON_RAIN_UNVERIFIED = "RAIN_UNVERIFIED";
 
 // ---------------------------------------------------------------------------
 // CONSTANTS
@@ -213,6 +253,36 @@ export function sigmaRefFor(property: string, methods?: MethodsMap): number {
   return 1;
 }
 
+/** Highest phenology_index per crop_code + cultivation_method chain (cached per isolate). */
+const stageChainTop = new Map<string, number | null>();
+
+/**
+ * Where the land's stage sits in its own crop_stage_master chain, 0..1:
+ * phenology_index ÷ the chain's highest phenology_index (same crop_code and
+ * cultivation_method, active rows). Null when the stage row or its index is
+ * missing. Crop-agnostic: the chain is data.
+ */
+async function stageChainFraction(
+  supabase: Sb,
+  stage: { phenology_index?: unknown; crop_code?: unknown; cultivation_method?: unknown } | null,
+): Promise<number | null> {
+  const idx = num(stage?.phenology_index);
+  const crop = stage?.crop_code ? String(stage.crop_code) : "";
+  if (idx === null || !crop) return null;
+  const method = stage?.cultivation_method ? String(stage.cultivation_method) : null;
+  const key = `${crop}|${method ?? ""}`;
+  if (!stageChainTop.has(key)) {
+    let q = supabase.from("crop_stage_master").select("phenology_index")
+      .eq("crop_code", crop).eq("is_active", true).not("phenology_index", "is", null);
+    q = method ? q.eq("cultivation_method", method) : q.is("cultivation_method", null);
+    const { data } = await q.order("phenology_index", { ascending: false }).limit(1).maybeSingle();
+    stageChainTop.set(key, num(data?.phenology_index));
+  }
+  const top = stageChainTop.get(key) ?? null;
+  if (top === null || !(top > 0)) return null;
+  return clamp(idx / top, 0, 1);
+}
+
 // ---------------------------------------------------------------------------
 // PER-LAND INPUT BUNDLE
 // ---------------------------------------------------------------------------
@@ -247,6 +317,7 @@ export async function deriveLandDaily(
   land: LandRow,
   methods: MethodsMap,
   log: LogFn,
+  rainTruth?: RainTruthResolver,
 ): Promise<DeriveOutcome> {
   const out: DeriveOutcome = {
     land_id: land.id, status: "skipped", reasons: [],
@@ -285,13 +356,13 @@ export async function deriveLandDaily(
     supabase.from("ndvi_data")
       .select("ndvi_value, mean_ndvi, median_ndvi, date, quality_score, valid_fraction, is_interpolated, rvi_value")
       .eq("land_id", land.id).order("date", { ascending: false }).limit(8),
-    supabase.from("land_weather_state").select("metric_date, root_depletion_mm, taw_mm, disease_risk_score, heat_stress_dh, frost_risk_score, raw_mm")
+    supabase.from("land_weather_state").select("metric_date, root_depletion_mm, taw_mm, disease_risk_score, heat_stress_dh, frost_risk_score, raw_mm, computed_at")
       .eq("land_id", land.id).lt("metric_date", day)
       .order("metric_date", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("weather_current").select("data_source, temperature_celsius, humidity_percent, wind_speed_kmh, cloud_cover_percent, pressure_hpa, dew_point_celsius, observation_time")
       .eq("location_key", cell).order("observation_time", { ascending: false }).limit(1).maybeSingle(),
     land.stage_uuid
-      ? supabase.from("crop_stage_master").select("growth_stage, stage_code, phenology_index, gdd_min, gdd_max")
+      ? supabase.from("crop_stage_master").select("growth_stage, stage_code, phenology_index, gdd_min, gdd_max, crop_code, cultivation_method")
         .eq("id", land.stage_uuid).maybeSingle()
       : Promise.resolve({ data: null }),
     // P0-1A/1E: irrigation events — today's for the water bucket, the whole
@@ -299,7 +370,7 @@ export async function deriveLandDaily(
     supabase.from("crop_lifecycle_events").select("id, payload, created_at")
       .eq("land_id", land.id).eq("event_type", "IRRIGATION_APPLIED")
       .gte("created_at", new Date(anchor.getTime() - UNVERIFIED_LOOKBACK_DAYS * 86400000).toISOString())
-      .lt("created_at", new Date(anchor.getTime() + 86400000).toISOString()),
+      .lte("created_at", nowIso),
   ]);
 
   const agg = aggRes?.data ?? null;
@@ -314,9 +385,13 @@ export async function deriveLandDaily(
   // Priority per event: applied_depth_mm → volume_litres ÷ area → pump
   // runtime × discharge ÷ area. Events with missing area/discharge are
   // SKIPPED with an explicit reason — never estimated.
+  // 2026-10-04: the window starts where the previous derive stopped (its
+  // computed_at), so an event logged after that run is counted exactly once.
   const irrEvents = (irrigRes?.data ?? []) as Array<{ id: string; payload: unknown; created_at: string }>;
+  const prevComputedMs = prev?.computed_at ? new Date(String(prev.computed_at)).getTime() : NaN;
+  const irrigSinceMs = Number.isFinite(prevComputedMs) ? prevComputedMs : anchor.getTime();
   const todayIrrigPayloads = irrEvents
-    .filter((e) => new Date(String(e.created_at)).getTime() >= anchor.getTime())
+    .filter((e) => new Date(String(e.created_at)).getTime() > irrigSinceMs)
     .map((e) => e.payload);
   const hadIrrigationLast21d = irrEvents.length > 0;
   const areaAcres = num(land.area_acres);
@@ -348,6 +423,19 @@ export async function deriveLandDaily(
   const curWindKmh = num(cur?.wind_speed_kmh);
   const wind10 = windKmh !== null ? windKmh / 3.6 : (curWindKmh !== null ? curWindKmh / 3.6 : null);
   const rain = num(agg?.rain_mm_total) ?? num(todayDaily?.rain_amount_mm) ?? 0;
+  // 2026-10-04: the water balance uses only a complete measured 24-hour total
+  // (RainTruth). `rain` above is the snapshot sum and stays in its old uses
+  // only when no measured total exists (disease index, spine raw RAIN).
+  let truth: RainTruth | null = null;
+  if (rainTruth && lat !== null && lon !== null) {
+    try {
+      truth = await rainTruth(cell, lat, lon);
+    } catch (e) {
+      log(runId, "warn", "rain_truth_failed", { land_id: land.id, cell, error: String(e) });
+    }
+  }
+  const rainMeasured: number | null = truth && truth.hours >= RAIN_TRUTH_MIN_HOURS ? truth.rain_mm : null;
+  if (rainMeasured === null) out.reasons.push(REASON_RAIN_UNVERIFIED);
   const cloud = num(todayDaily?.cloud_cover_percent) ?? num(cur?.cloud_cover_percent);
   const tempNow = num(cur?.temperature_celsius) ?? (tmax !== null && tmin !== null ? (tmax + tmin) / 2 : null);
   const elevation = num(land.elevation_meters) ?? undefined;
@@ -407,8 +495,11 @@ export async function deriveLandDaily(
   const cumGdd = num(land.current_gdd);
   const gddFrac = gddTarget && cumGdd !== null ? clamp(cumGdd / gddTarget, 0, 1) : null;
   const stageName = String(stage?.growth_stage ?? land.crop_stage ?? "");
-  const stageBucket: "ini" | "mid" | "end" = gddFrac !== null
-    ? (gddFrac < 0.25 ? "ini" : gddFrac < 0.75 ? "mid" : "end")
+  // 2026-10-04: no gdd_target → the stage's position in its own chain.
+  const stageFrac = gddFrac === null ? await stageChainFraction(supabase, stage) : null;
+  const seasonFrac = gddFrac ?? stageFrac;
+  const stageBucket: "ini" | "mid" | "end" = seasonFrac !== null
+    ? (seasonFrac < 0.25 ? "ini" : seasonFrac < 0.75 ? "mid" : "end")
     : /germin|nursery|seedl|emerg|establish|sow|transplant/i.test(stageName)
     ? "ini"
     : /matur|ripen|harvest|senesc|dry/i.test(stageName)
@@ -477,7 +568,7 @@ export async function deriveLandDaily(
   const soilKey = normalizeSoilType(land.soil_type);
   const infilCaps = (methods.SOIL_INFILTRATION_CAPS?.params?.max_single_application_mm ?? {}) as Record<string, number>;
   const infiltrationCap = num(infilCaps[soilKey ?? ""] ?? infilCaps.default);
-  const runoff = computeRunoffMm(rain, infiltrationCap);
+  const runoff = computeRunoffMm(rainMeasured ?? 0, infiltrationCap);
   if (runoff.reason) out.reasons.push(runoff.reason);
 
   let depletion: number | null = null;
@@ -486,11 +577,17 @@ export async function deriveLandDaily(
       // P0-2C: unresolved crop/Kc → never advance the root-water state on a
       // fabricated ETc. Preserve the previous depletion as-is.
       depletion = num(prev?.root_depletion_mm);
+    } else if (rainMeasured === null) {
+      // 2026-10-04: rain unknown → hold the bucket. Only a recorded irrigation
+      // (a known input) moves it; crop use is not charged against a day whose
+      // rain we cannot see.
+      const held = num(prev?.root_depletion_mm);
+      depletion = held === null ? null : clamp(held - irrigationMm, 0, tawRaw.taw_mm);
     } else {
       const prevDepletion = num(prev?.root_depletion_mm) ?? 0.5 * tawRaw.raw_mm;
       // P0-1B/1D: real irrigation depth + modelled runoff (no more zeros).
       const bucket = updateSoilWaterBucket(prevDepletion, {
-        etcMm: etc ?? 0, rainMm: rain, irrigationMm, runoffMm: runoff.runoffMm,
+        etcMm: etc ?? 0, rainMm: rainMeasured, irrigationMm, runoffMm: runoff.runoffMm,
       }, methods);
       depletion = clamp(bucket.depletionMm, 0, tawRaw.taw_mm);
     }
@@ -521,7 +618,13 @@ export async function deriveLandDaily(
   }, methods);
 
   // ---- (h) spray -----------------------------------------------------------
-  const next6 = hourlyRows.slice(0, 6);
+  // 2026-10-04: by time, not row count — rows are 3-hourly from OpenWeather and
+  // the list starts 36 h in the past, so slice(0, 6) read old rows.
+  const nowMs = Date.now();
+  const next6 = hourlyRows.filter((h) => {
+    const t = new Date(String(h.forecast_time)).getTime();
+    return t > nowMs && t <= nowMs + 6 * 3600 * 1000;
+  });
   const rainNext6 = next6.reduce((s, h) => s + (num(h.rain_amount_mm) ?? 0), 0);
   const spray = calculateSprayScore({
     wind_2m_ms: (wind10 ?? 0) * 0.748,
@@ -529,7 +632,7 @@ export async function deriveLandDaily(
     rh_pct: rhMean ?? 60,
     rain_prob_pct: num(todayDaily?.rain_probability_percent) ?? undefined,
     rain_next6h_mm: rainNext6,
-    hourly: hourlyRows.slice(0, 24).map((h) => ({
+    hourly: hourlyRows.filter((h) => new Date(String(h.forecast_time)).getTime() > nowMs).slice(0, 24).map((h) => ({
       wind_2m_ms: (num(h.wind_speed_kmh) ?? 0) / 3.6 * 0.748,
       temp_c: num(h.temperature_celsius) ?? undefined,
       rh_pct: num(h.humidity_percent) ?? undefined,
@@ -556,7 +659,7 @@ export async function deriveLandDaily(
 
   // ---- disease risk (now fed with real leaf wetness) -----------------------
   const disease = tempNow !== null && rhMean !== null
-    ? calculateDiseaseRiskIndex(tempNow, rhMean, dewPoint, rain, lwd ?? 0)
+    ? calculateDiseaseRiskIndex(tempNow, rhMean, dewPoint, rainMeasured ?? rain, lwd ?? 0)
     : null;
 
   // ---- (j) rain_24h / SWSI / N supply-demand -------------------------------
@@ -564,25 +667,19 @@ export async function deriveLandDaily(
   // (soilKey + infiltrationCap are computed above, before the water bucket.)
   const swsiParams = methods.SWSI_STAGE_SENSITIVITY?.params ?? {};
   const lookbackDays = num(swsiParams.lookback_days) ?? 14;
-  const yDay = istDayString(new Date(Date.now() - 86400000));
   const sinceDay = istDayString(new Date(Date.now() - lookbackDays * 86400000));
 
-  const [yAggRes, aggHistRes, stateHistRes, soilNRes] = await Promise.all([
-    supabase.from("weather_aggregates").select("rain_mm_total")
-      .eq("location_key", cell).eq("aggregate_date", yDay).is("land_id", null).maybeSingle(),
-    supabase.from("weather_aggregates").select("aggregate_date, rain_mm_total")
-      .eq("location_key", cell).is("land_id", null)
-      .gte("aggregate_date", sinceDay).lte("aggregate_date", day).limit(60),
-    supabase.from("land_weather_state").select("metric_date, etc_mm")
+  // 2026-10-04: the look-back reads this land's own daily rows — the same
+  // measured rain (rain_24h_mm) and recorded irrigation the bucket used.
+  const [stateHistRes, soilNRes] = await Promise.all([
+    supabase.from("land_weather_state").select("metric_date, etc_mm, rain_24h_mm, irrigation_mm_applied")
       .eq("land_id", land.id).gte("metric_date", sinceDay).lt("metric_date", day).limit(60),
     supabase.from("soil_health").select("nitrogen_kg_per_ha, organic_carbon")
       .eq("land_id", land.id).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
-  // (a) rain_24h_mm — today's total + yesterday's prorated remainder.
-  const hoursElapsed = clamp((Date.now() - anchor.getTime()) / 3600000, 0, 24);
-  const yRain = num(yAggRes?.data?.rain_mm_total) ?? 0;
-  const rain24h = r2(rain + yRain * ((24 - hoursElapsed) / 24));
+  // (a) rain_24h_mm — the measured 24-hour total this run used; null = unknown.
+  const rain24h = r2(rainMeasured);
 
   // (c) SWSI — unmet demand over the lookback window, stage-weighted.
   const effRainTable = (methods.SOIL_TYPE_EFFECTIVE_RAIN?.params ?? {}) as Record<string, number>;
@@ -591,14 +688,16 @@ export async function deriveLandDaily(
   const stageMult = (swsiParams.stage_multiplier ?? {}) as Record<string, number>;
   const swsiMult = num(stageMult[stageKey]) ?? num(stageMult.default) ?? 1;
 
-  const etcSum = ((stateHistRes?.data ?? []) as Array<{ etc_mm: unknown }>)
-    .reduce((s, r) => s + (num(r.etc_mm) ?? 0), 0) + (etc ?? 0);
-  const rainSum = ((aggHistRes?.data ?? []) as Array<{ rain_mm_total: unknown }>)
-    .reduce((s, r) => s + (num(r.rain_mm_total) ?? 0), 0);
+  const hist = (stateHistRes?.data ?? []) as Array<{ etc_mm: unknown; rain_24h_mm: unknown; irrigation_mm_applied: unknown }>;
+  const etcSum = hist.reduce((s, r) => s + (num(r.etc_mm) ?? 0), 0) + (etc ?? 0);
+  const rainSum = hist.reduce((s, r) => s + (num(r.rain_24h_mm) ?? 0), 0) + (rainMeasured ?? 0);
+  const irrigSum = hist.reduce((s, r) => s + (num(r.irrigation_mm_applied) ?? 0), 0) + irrigationMm;
   let swsi: number | null = null;
   let swsiClass: string | null = null;
-  if (tawRaw && tawRaw.raw_mm > 0) {
-    const unmet = Math.max(0, etcSum - rainSum * effRainFactor);
+  if (rainMeasured === null) {
+    out.reasons.push("SWSI_RAIN_UNVERIFIED");
+  } else if (tawRaw && tawRaw.raw_mm > 0) {
+    const unmet = Math.max(0, etcSum - rainSum * effRainFactor - irrigSum);
     swsi = clamp((unmet / tawRaw.raw_mm) * swsiMult, 0, 1);
     const breaks = (swsiParams.class_breaks ?? {}) as Record<string, number>;
     swsiClass = swsi >= (num(breaks.severe) ?? 0.75)
@@ -721,17 +820,31 @@ export async function deriveLandDaily(
     land, day, anchor, nowIso, providerSrc, methods, skill: skillTemp,
     raw: {
       AIR_TEMP_MAX: tmax, AIR_TEMP_MIN: tmin,
-      RH: rhMean, RAIN: rain, WIND_10M: wind10,
+      // 2026-10-04: a measured 24-hour total is written below under its own source.
+      RH: rhMean, RAIN: rainMeasured === null ? rain : null, WIND_10M: wind10,
     },
-    extraObs: ndviPick?.mode === "OPTICAL" && sourceCodeMap?.["SENTINEL2"]
-      ? [{
-          land_id: land.id, cell_key: land.cell_key, property_code: "NDVI",
-          valid_time: ndviPick.sceneIso, issue_time: ndviPick.sceneIso,
-          value: ndviPick.ndvi, source_id: sourceCodeMap["SENTINEL2"],
-          qc_level: 2, qc_flags: ndviPick.qcFlags,
-          confidence: Math.round(ndviPick.confidence * 1000) / 1000,
-        }]
-      : undefined,
+    extraObs: [
+      ...(ndviPick?.mode === "OPTICAL" && sourceCodeMap?.["SENTINEL2"]
+        ? [{
+            land_id: land.id, cell_key: land.cell_key, property_code: "NDVI",
+            valid_time: ndviPick.sceneIso, issue_time: ndviPick.sceneIso,
+            value: ndviPick.ndvi, source_id: sourceCodeMap["SENTINEL2"],
+            qc_level: 2, qc_flags: ndviPick.qcFlags,
+            confidence: Math.round(ndviPick.confidence * 1000) / 1000,
+          }]
+        : []),
+      ...(rainMeasured !== null && truth && providerSourceId(truth.source)
+        ? [{
+            land_id: land.id, cell_key: land.cell_key, property_code: "RAIN",
+            valid_time: anchor.toISOString(), issue_time: anchor.toISOString(),
+            value: rainMeasured, source_id: providerSourceId(truth.source),
+            qc_level: qcFor("RAIN", rainMeasured).level, qc_flags: qcFor("RAIN", rainMeasured).flags,
+            confidence: Math.round(computeConfidence({
+              agreement: 1.0, freshnessAgeMin: 0, ttlMin: 1440, horizonDays: 0, skill: skillTemp, isPrecip: true,
+            }, methods) * 1000) / 1000,
+          }]
+        : []),
+    ],
     derived: {
       ET0: { value: et0, u_std: pm.u_std, method: et0Method },
       VPD: { value: vpd, method: "VPD_TETENS@1.0" },
@@ -1003,7 +1116,16 @@ export async function runDailyDerive(
   methods: MethodsMap,
   log: LogFn,
   landIdFilter?: string,
+  rainTruth?: RainTruthResolver,
 ) {
+  // One measured-rain lookup per weather cell per run, shared by its lands.
+  const rainByCell = new Map<string, Promise<RainTruth | null>>();
+  const cellRain: RainTruthResolver | undefined = rainTruth
+    ? (cellKey, lat, lon) => {
+      if (!rainByCell.has(cellKey)) rainByCell.set(cellKey, rainTruth(cellKey, lat, lon).catch(() => null));
+      return rainByCell.get(cellKey)!;
+    }
+    : undefined;
   let q = supabase.from("lands")
     .select("id, tenant_id, cell_key, center_lat, center_lon, current_crop, soil_type, stage_uuid, crop_stage, current_gdd, elevation_meters, current_crop_variety_id, area_acres")
     .eq("is_active", true).not("cell_key", "is", null);
@@ -1014,7 +1136,7 @@ export async function runDailyDerive(
   const outcomes: DeriveOutcome[] = [];
   for (const land of (lands ?? []) as LandRow[]) {
     try {
-      outcomes.push(await deriveLandDaily(supabase, runId, land, methods, log));
+      outcomes.push(await deriveLandDaily(supabase, runId, land, methods, log, cellRain));
     } catch (e) {
       log(runId, "warn", "land_derive_exception", { land_id: land.id, error: String(e) });
       outcomes.push({

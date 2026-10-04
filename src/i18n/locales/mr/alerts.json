@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-10-02",
+    "last_updated": "2026-10-04",
     "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
     "note": "Written for rural farmers in everyday spoken language. A native speaker should read it once before release."
   },
@@ -62,7 +62,11 @@
       "method_DRIP": "ठिबक",
       "method_SPRINKLER": "तुषार",
       "method_FURROW": "सरी",
-      "method_SURFACE": "पृष्ठभाग"
+      "method_SURFACE": "पृष्ठभाग",
+      "method_MANUAL": "हाताने",
+      "i_watered": "मी या शेताला पूर्ण पाणी दिले",
+      "answered": "नोंद केली. पुढच्या अंदाजात तुमचे पाणी धरले जाईल.",
+      "answer_failed": "नोंद झाली नाही. पुन्हा प्रयत्न करा."
     },
     "evidence": {
       "title": "ही सूचना का?",
@@ -93,7 +97,13 @@
       "phase_rising": "वाढत आहे",
       "phase_peak": "सर्वात जास्त",
       "phase_declining": "कमी होत आहे",
-      "na": "उपलब्ध नाही"
+      "na": "उपलब्ध नाही",
+      "leaf_moisture": "पानांतील ओल (उपग्रह)",
+      "open_water": "शेतात साचलेले पाणी दिसले",
+      "sat_water_canopy_moisture_fell": "मागच्या फोटोपेक्षा पानांत ओल कमी आहे — जमीन कोरडी पडल्याच्या अंदाजाशी जुळते",
+      "sat_water_canopy_moisture_rose": "मागच्या फोटोपेक्षा पानांत ओल जास्त आहे — पाणी देण्याआधी जमीन तपासा",
+      "sat_water_surface_water_visible": "उपग्रहाला शेतात पाणी साचलेले दिसले — पाणी देण्याआधी तपासा",
+      "sat_water_change_within_noise": "मागच्या फोटोपासून फारसा फरक नाही"
     },
     "rel": {
       "now": "आत्ताच"

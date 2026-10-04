@@ -24,7 +24,7 @@ import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
 import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
 import { formatNdviValue, ndviRatio, ndviTone, type NdviTone } from '@/lib/ndviColor';
-import { alertSourceText, useTranslatedTexts, type AlertTextField } from '@/hooks/useAlertText';
+import { alertSourceText, useTranslatedTexts, FARM_ADVICE_TEXT, type AlertTextField } from '@/hooks/useAlertText';
 
 /** Semantic-token category map (no raw tailwind palette colors). */
 type Tone = 'destructive' | 'warning' | 'primary' | 'success' | 'info' | 'muted';
@@ -127,7 +127,7 @@ export default function ProactiveAlerts() {
       .map((f) => alertSourceText(a, f, lang))
       .filter((x) => x.needsTranslation)
       .map((x) => x.text)), [alerts, lang]);
-  const { tr } = useTranslatedTexts(toTranslate, lang);
+  const { tr } = useTranslatedTexts(toTranslate, lang, FARM_ADVICE_TEXT);
   const textOf = (a: ProactiveAlert, f: AlertTextField) => {
     if (f === 'action_text' && !hasGraphAdvice(a)) return '';
     const src = alertSourceText(a, f, lang);
@@ -156,6 +156,27 @@ export default function ProactiveAlerts() {
       if ((data as any)?.needs_diagnosis) handleAskAI(alert);
     } catch (e) {
       console.error('[proactive] germination answer failed', e);
+    } finally {
+      setAnsweringAlertId(null);
+    }
+  };
+
+  // One-tap "I watered this field" → record_irrigation via the same edge function.
+  // The soil-water estimate had no way to hear about watering until now.
+  const handleIrrigationAnswer = async (alert: ProactiveAlert) => {
+    if (!alert.land_id) return;
+    setAnsweringAlertId(alert.id);
+    try {
+      const { error } = await supabase.functions.invoke('proactive-question-seed', {
+        body: { action: 'irrigation_answer', alertId: alert.id, landId: alert.land_id },
+        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '' },
+      });
+      if (error) throw error;
+      toast({ description: t('alerts.water.answered', 'Noted. Your watering will be counted in the next soil-water update.') });
+      markActed(alert.id);
+    } catch (e) {
+      console.error('[proactive] irrigation answer failed', e);
+      toast({ description: t('alerts.water.answer_failed', 'Could not save. Please try again.') });
     } finally {
       setAnsweringAlertId(null);
     }
@@ -513,6 +534,20 @@ export default function ProactiveAlerts() {
                             ))}
                           </div>
                         )}
+
+                      {/* One-tap "I watered this field" on a live irrigation alert */}
+                      {alert.alert_category === 'IRRIGATION' && !isHistorical && alert.land_id && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={answeringAlertId === alert.id}
+                          onClick={(e) => { e.stopPropagation(); handleIrrigationAnswer(alert); }}
+                          className="mt-3 h-10 w-full rounded-full gap-1.5 text-sm border-primary/40 text-primary"
+                        >
+                          <Droplets className="h-4 w-4" />
+                          {t('alerts.water.i_watered', 'I gave this field a full watering')}
+                        </Button>
+                      )}
 
                       <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border/60">
                         <ChipButton onClick={(e) => { e.stopPropagation(); handleAskAI(alert); }} icon={<MessageCircle className="h-3.5 w-3.5" />}>

@@ -27,6 +27,16 @@
 //                 which IMD and the OpenWeather free tier do not publish.
 //   Tomorrow.io now has a real job instead of being a dead failover.
 //
+// 2026-10-04 — RAIN FOR THE WATER BALANCE:
+//   • The daily derive (derive_land_state, daily_derive) now gets a measured
+//     24-hour rain total per cell from Tomorrow.io recent history
+//     (makeRainTruthResolver). weather_aggregates.rain_mm_total remains the
+//     sum of snapshot readings for the weather card only; it no longer feeds
+//     the soil-water bucket.
+//   • Forecast rows now store the provider's rain amount (OpenWeather 3-hour
+//     `rain.3h`, Tomorrow.io hourly `rainAccumulation`) in rain_amount_mm;
+//     9,856 OpenWeather rows in 30 days had 0 there while 1,601 forecast > 50 %.
+//
 // CONTRACT PRESERVED: request and response shapes are unchanged, so
 // src/hooks/useWeather.ts needs no modification.
 // ============================================================================
@@ -67,7 +77,7 @@ import {
   type HourlyWetnessInput,
 } from "./agricultural-calculations.ts";
 import { loadSciMethods, type MethodsMap } from "./sci-methods.ts";
-import { runDailyDerive, writeForecastSpine } from "./derive-pipeline.ts";
+import { runDailyDerive, writeForecastSpine, type RainTruth, type RainTruthResolver } from "./derive-pipeline.ts";
 
 
 // Scientific coefficients come from public.sci_method_registry. ONE read per
@@ -176,6 +186,8 @@ interface ForecastItem {
   weather: Array<{ description: string; main: string; icon: string }>;
   pop: number;
   uv_index?: number;
+  /** Rain amount (mm) for this forecast step; the step length is the provider's. */
+  rain?: number;
 }
 
 interface DailyForecast {
@@ -436,6 +448,7 @@ async function fetchOpenWeatherForecast(
     weather: [{ description: i.weather[0].description, main: i.weather[0].main, icon: i.weather[0].icon }],
     pop: i.pop ?? 0,
     uv_index: 0,
+    rain: i.rain?.["3h"] ?? 0, // 2026-10-04: was dropped; the step is 3 hours
   }));
 
   const byDay = new Map<string, any[]>();
@@ -549,6 +562,7 @@ async function fetchTomorrowIoForecast(
       weather: [dec],
       pop: (h.values.precipitationProbability ?? 0) / 100,
       uv_index: h.values.uvIndex ?? 0,
+      rain: h.values.rainAccumulation ?? 0, // 2026-10-04: mm in this hour
     };
   });
 
@@ -573,6 +587,66 @@ async function fetchTomorrowIoForecast(
   });
 
   return { forecast, hourly };
+}
+
+/**
+ * 2026-10-04 — MEASURED RAIN for the soil-water balance.
+ * Tomorrow.io recent history returns the last 24 hourly values; each hourly
+ * `rainAccumulation` is the rain that fell in that hour (mm). Their sum is the
+ * 24-hour total ending now. This replaces summing whichever "rain in the last
+ * hour" reading each weather call happened to catch. Nothing is filled in:
+ * hours without a numeric value are not counted, and the caller treats fewer
+ * than RAIN_TRUTH_MIN_HOURS as unknown rain.
+ */
+async function fetchTomorrowIoRecentRain(lat: number, lon: number, apiKey: string, runId: string): Promise<RainTruth> {
+  const url = `https://api.tomorrow.io/v4/weather/history/recent?location=${lat},${lon}&timesteps=1h&units=metric&apikey=${apiKey}`;
+  const res = await fetchWithRetry(url, { headers: { accept: "application/json" } }, "Tomorrow history", runId);
+  if (!res.ok) throw new Error(`Tomorrow.io history: ${res.status} - ${(await res.text()).slice(0, 200)}`);
+  const d = await res.json();
+  const hourlyTl: any[] = d.timelines?.hourly ?? [];
+  let rainMm = 0;
+  let hours = 0;
+  let first = Infinity;
+  let last = -Infinity;
+  for (const h of hourlyTl) {
+    const t = new Date(h?.time).getTime();
+    const v = Number(h?.values?.rainAccumulation);
+    if (!Number.isFinite(t) || !Number.isFinite(v) || v < 0 || v > CONFIG.BOUNDS.rain.max) continue;
+    rainMm += v;
+    hours++;
+    first = Math.min(first, t);
+    last = Math.max(last, t);
+  }
+  return {
+    rain_mm: Math.round(rainMm * 100) / 100,
+    hours,
+    window_start: Number.isFinite(first) ? new Date(first).toISOString() : "",
+    window_end: Number.isFinite(last) ? new Date(last + 3600 * 1000).toISOString() : "",
+    source: "Tomorrow.io",
+  };
+}
+
+/** Rain lookup handed to the daily derive: budget-gated, one call per cell per run, logged like every provider call. */
+function makeRainTruthResolver(supabase: SupabaseClient, runId: string, apiKey: string | undefined): RainTruthResolver | undefined {
+  if (!apiKey) return undefined;
+  return async (cellKey, lat, lon) => {
+    const used = await getUsedToday(supabase, "Tomorrow.io");
+    if (used >= CONFIG.DAILY_BUDGET["Tomorrow.io"]) {
+      log(runId, "warn", "rain_truth_skipped_budget", { cell: cellKey, used });
+      return null;
+    }
+    const t0 = Date.now();
+    try {
+      const truth = await fetchTomorrowIoRecentRain(lat, lon, apiKey, runId);
+      await logCall(supabase, runId, "Tomorrow.io", "history_recent", true, Date.now() - t0);
+      log(runId, "info", "rain_truth", { cell: cellKey, rain_mm: truth.rain_mm, hours: truth.hours, window_end: truth.window_end });
+      return truth;
+    } catch (e) {
+      await logCall(supabase, runId, "Tomorrow.io", "history_recent", false, Date.now() - t0, String(e));
+      log(runId, "warn", "rain_truth_failed", { cell: cellKey, error: String(e) });
+      return null;
+    }
+  };
 }
 
 /**
@@ -729,6 +803,7 @@ async function checkCache(
           }],
           pop: (f.rain_probability_percent ?? 0) / 100,
           uv_index: f.uv_index ?? 0,
+          rain: f.rain_amount_mm ?? 0,
         });
       } else if (f.forecast_type === "daily" && daily.length < 14) {
         daily.push({
@@ -974,6 +1049,7 @@ async function cacheWeatherData(
         weather_main: h.weather[0]?.main ?? "Unknown",
         weather_icon: h.weather[0]?.icon ?? "01d",
         rain_probability_percent: Math.round(h.pop * 100),
+        rain_amount_mm: h.rain ?? 0, // 2026-10-04: forecast rain amount was never stored
         uv_index: h.uv_index ?? null,
         data_source: provider,
         issued_at: now.toISOString(),
@@ -1565,7 +1641,10 @@ serve(async (req: Request): Promise<Response> => {
       let spine: unknown = null;
       try {
         const methods = await getSciMethods(supabase, runId);
-        spine = (await runDailyDerive(supabase, runId, methods, log)).summary;
+        spine = (await runDailyDerive(
+          supabase, runId, methods, log, undefined,
+          makeRainTruthResolver(supabase, runId, tomorrowIoApiKey),
+        )).summary;
       } catch (e) {
         log(runId, "warn", "daily_derive_failed", { error: String(e) });
       }
@@ -1579,7 +1658,10 @@ serve(async (req: Request): Promise<Response> => {
     // ---- Scientific derive only (single land or all) ------------------------
     if (action === "daily_derive") {
       const methods = await getSciMethods(supabase, runId);
-      const { summary } = await runDailyDerive(supabase, runId, methods, log, landId ?? undefined);
+      const { summary } = await runDailyDerive(
+        supabase, runId, methods, log, landId ?? undefined,
+        makeRainTruthResolver(supabase, runId, tomorrowIoApiKey),
+      );
       return new Response(JSON.stringify({
         action, ...summary, timestamp: new Date().toISOString(),
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
