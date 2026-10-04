@@ -136,6 +136,15 @@ SET title_en = 'Time to water',
 WHERE rule_code = 'IRRIGATION_TRIGGER_FAO56';
 
 
+-- 8) APPLIED 2026-10-04 WITH A CORRECTION — read before re-running.
+--    forecast_horizon_days defaults to 0, so 7 active rules that are not
+--    "today" alerts (PRO_NDVI_DROP, PRO_NDVI_STRESS, DISEASE_EPISODE_DECLINING,
+--    PRO_SC_EARTHING, PRO_SC_RED_ROT, PRO_SC_SHOOT_BORER, PRO_SC_SMUT) also read
+--    0. 8a moved 37 of their live alerts to "end of creation day"; those 37 were
+--    restored to created_at + 7 days before 8b ran, and 8b expired only
+--    ENV_NO_SPRAY_TODAY (67), DISEASE_EPISODE_ONSET (19),
+--    IRRIGATION_TRIGGER_FAO56 (10) and ENV_SPRAY_WINDOW_GOOD (5).
+--    Run statement 10 BEFORE re-running 8 anywhere else.
 -- 8) Live alerts of rules with a forecast horizon end at the end of that IST
 --    day (same rule as evaluator v130 for new alerts). 8a moves expires_at
 --    earlier where it is later; 8b sets the ones already past it to EXPIRED.
@@ -219,3 +228,17 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.record_irrigation(uuid, date, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_irrigation(uuid, date, uuid) TO service_role;
+
+
+-- 10) The column default (0) is not an authored "today". These 7 active rules
+--     describe a state or risk that lasts beyond the day; give them the same
+--     7 days alert_expiry_days already gives them, so evaluator v130's
+--     horizon-based expiry changes nothing for them. Horizon 0 then means
+--     "today / right now" only for the rules that say so: ENV_NO_SPRAY_TODAY,
+--     PRO_WEATHER_FROST, PRO_WEATHER_HEATWAVE, PRO_WEATHER_HEAVY_RAIN,
+--     WATERLOGGING_GUARD_HEAVY_RAIN. A new rule should set its own horizon.
+UPDATE public.proactive_rules
+SET forecast_horizon_days = 7, updated_at = now()
+WHERE rule_code IN ('PRO_NDVI_DROP', 'PRO_NDVI_STRESS', 'DISEASE_EPISODE_DECLINING',
+                    'PRO_SC_EARTHING', 'PRO_SC_RED_ROT', 'PRO_SC_SHOOT_BORER', 'PRO_SC_SMUT')
+  AND coalesce(forecast_horizon_days, 0) = 0;
