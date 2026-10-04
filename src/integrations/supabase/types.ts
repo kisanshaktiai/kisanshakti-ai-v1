@@ -45031,6 +45031,14 @@ export type Database = {
         }
         Returns: string
       }
+      ai_route_set_steps: {
+        Args: {
+          p_change_reason: string
+          p_model_keys: string[]
+          p_task_key: string
+        }
+        Returns: undefined
+      }
       apply_stage_transitions: { Args: { p_land_id: string }; Returns: Json }
       archive_tenant_data: {
         Args: {
