@@ -20,6 +20,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase, supabaseWithAuth, getSessionToken } from '@/integrations/supabase/client';
+import { getChatAttachmentUrl, uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
@@ -469,9 +470,14 @@ export function EnhancedAIChatInterface() {
     }
     
     // Helper function to map message from DB to Message type
-    const mapMessageFromDB = (msg: any): Message => {
+    const mapMessageFromDB = async (msg: any): Promise<Message> => {
       const metadata = msg.metadata as Record<string, any> | null;
-      const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+      const rawImageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+      const rawVideoUrl = metadata?.video_url || undefined;
+      const [imageUrl, videoUrl] = await Promise.all([
+        rawImageUrl ? getChatAttachmentUrl(rawImageUrl).then(url => url || rawImageUrl) : Promise.resolve(undefined),
+        rawVideoUrl ? getChatAttachmentUrl(rawVideoUrl).then(url => url || rawVideoUrl) : Promise.resolve(undefined),
+      ]);
       const analysisResult = metadata?.analysis_result || undefined;
       
       return {
@@ -481,7 +487,7 @@ export function EnhancedAIChatInterface() {
         timestamp: new Date(msg.created_at),
         imageUrl,
         imageUrls: msg.image_urls || undefined,
-        videoUrl: metadata?.video_url || undefined,
+        videoUrl,
         messageType: msg.message_type as Message['messageType'] || 'text',
         analysisResult,
         orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
@@ -569,14 +575,13 @@ export function EnhancedAIChatInterface() {
       if (cachedMessages && cachedMessages.length > 0) {
         console.log(`⚡ [Cache-First] INSTANT load: ${cachedMessages.length} messages for ${sessionKey}`);
         
-        const sortedMessages = [...cachedMessages]
+        const sortedCachedMessages = [...cachedMessages]
           .sort((a, b) => {
             const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
             if (dt !== 0) return dt;
-            // Same-millisecond turn: question before answer
             return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
-          })
-          .map(mapMessageFromDB);
+          });
+        const sortedMessages = await Promise.all(sortedCachedMessages.map(mapMessageFromDB));
         
         // Get session ID from cache if available - CRITICAL: Pass farmer ID for isolation
         const sessions = await localDB.getChatSessionsByLand(landId, user.id);
@@ -593,7 +598,7 @@ export function EnhancedAIChatInterface() {
               console.log(`🔄 [Background Sync] Found ${newMessages.length} new messages for ${sessionKey}`);
               
               // Merge new messages into state
-              const mappedNew = newMessages.map(mapMessageFromDB);
+              void Promise.all(newMessages.map(mapMessageFromDB)).then((mappedNew) => {
               setMessages(prev => {
                 const existing = prev[sessionKey] || [];
                 const existingIds = new Set(existing.map(m => m.id));
@@ -726,7 +731,7 @@ export function EnhancedAIChatInterface() {
             
             if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${uniqueMessages.length} displayable messages`);
             
-            const loadedMessages: Message[] = uniqueMessages.map(mapMessageFromDB);
+            const loadedMessages: Message[] = await Promise.all(uniqueMessages.map(mapMessageFromDB));
             
             // Use the most recent active session as the canonical session for new messages
             const { data: canonicalSession } = await authClient
@@ -923,7 +928,7 @@ export function EnhancedAIChatInterface() {
           const filteredMessages = filterDisplayableMessages(chronologicalMessages);
           if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${filteredMessages.length}/${chronologicalMessages.length} displayable messages`);
           
-          const loadedMessages: Message[] = filteredMessages.map(mapMessageFromDB);
+          const loadedMessages: Message[] = await Promise.all(filteredMessages.map(mapMessageFromDB));
 
           // CRITICAL FIX: Sync Supabase messages TO LocalDB for offline access
           try {
@@ -1026,7 +1031,7 @@ export function EnhancedAIChatInterface() {
               if (dt !== 0) return dt;
               return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
             })
-            .map(mapMessageFromDB);
+            ; // handled with async mapping
           if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
           return { sessionId: null, messages: cachedMessages, fromCache: true };
         }
