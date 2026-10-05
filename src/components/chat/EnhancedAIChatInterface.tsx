@@ -1242,7 +1242,14 @@ export function EnhancedAIChatInterface() {
     // Block sends when farmer is over their daily AI-chat quota or when the
     // tenant has disabled the AI Chat feature. Server-side enforcement in
     // `ai-agriculture-chat` is the authoritative check; this is a fast UX guard.
-    if (!aiChatEntitlement.allowed) {
+    // Only block on a CONFIRMED reason. If the entitlement check failed or
+    // returned no data (reason null / feature_unknown), let the server decide
+    // instead of wrongly telling the farmer their chats are over.
+    if (
+      !aiChatEntitlement.allowed &&
+      (aiChatEntitlement.reason === 'feature_disabled' ||
+        aiChatEntitlement.reason === 'quota_exceeded')
+    ) {
       const reason = aiChatEntitlement.reason;
       toast({
         title: reason === 'feature_disabled'

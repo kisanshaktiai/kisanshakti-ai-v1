@@ -45287,6 +45287,14 @@ export type Database = {
         Args: { p_as_of?: string; p_land_id: string }
         Returns: Json
       }
+      confirm_test_payment: {
+        Args: {
+          p_intent_id: string
+          p_payment_method: string
+          p_safe_payment_data?: Json
+        }
+        Returns: Json
+      }
       convert_lead_to_tenant: {
         Args: {
           p_admin_email?: string
@@ -47573,6 +47581,18 @@ export type Database = {
       }
       unlockrows: { Args: { "": string }; Returns: number }
       update_community_trending_score: { Args: never; Returns: undefined }
+      update_tenant_basics: {
+        Args: {
+          p_business_address?: Json
+          p_business_registration?: string
+          p_name: string
+          p_owner_email?: string
+          p_owner_name?: string
+          p_owner_phone?: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
       update_tenant_verification: {
         Args: { p_tenant_id: string; p_verification_data: Json }
         Returns: boolean

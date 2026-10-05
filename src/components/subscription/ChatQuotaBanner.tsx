@@ -15,6 +15,7 @@ export function ChatQuotaBanner() {
   const { aiChat, tenant, isReady } = useEntitlements();
 
   if (!isReady || aiChat.allowed) return null;
+  if (aiChat.reason !== 'feature_disabled' && aiChat.reason !== 'quota_exceeded') return null;
 
   const isTenantDisabled =
     aiChat.reason === 'feature_disabled' ||
