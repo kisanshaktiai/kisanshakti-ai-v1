@@ -1034,7 +1034,8 @@ export function EnhancedAIChatInterface() {
             })
             ; // handled with async mapping
           if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
-          return { sessionId: null, messages: cachedMessages, fromCache: true };
+          const mappedCached = await Promise.all(cachedMessages.map(mapMessageFromDB));
+          return { sessionId: null, messages: mappedCached, fromCache: true };
         }
       } catch (localErr) {
         console.warn('LocalDB read failed:', localErr);
