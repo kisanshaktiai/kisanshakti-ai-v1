@@ -47498,6 +47498,26 @@ export type Database = {
             }
             Returns: Json
           }
+      tenant_create_farmer: {
+        Args: {
+          p_farmer_code?: string
+          p_farmer_name: string
+          p_farming_experience_years?: number
+          p_has_irrigation?: boolean
+          p_has_storage?: boolean
+          p_has_tractor?: boolean
+          p_irrigation_type?: string
+          p_language_preference?: string
+          p_metadata?: Json
+          p_mobile_number: string
+          p_notes?: string
+          p_pin?: string
+          p_primary_crops?: string[]
+          p_tenant_id: string
+          p_total_land_acres?: number
+        }
+        Returns: Json
+      }
       tenant_validate_farmer_login: {
         Args: { p_mobile_number: string; p_pin: string; p_tenant_id: string }
         Returns: Json
