@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-10-05 11:40 UTC — Data-audit weather card reads the canonical weather shape (temperature_c/humidity_percent/rainfall_last_24h_mm/forecast_24h) and falls back to the per-land weather reading on fused-intelligence paths; previously always showed "Weather data unavailable".
 //   2026-10-05 10:30 UTC — Navigator tenant_id uses the tenantId parameter (canonicalState is declared later → TDZ ReferenceError skipped the navigator); evidence-round index uses the per-diagnosis clarificationRoundCounter, not the lifetime session turn count (round=633/1); option-tap path records tapped symptoms as last real observations right after classification; graph-gap clarification questions carry text_hi/text_mr.
 //   2026-09-26 22:05 UTC — Type-only fixes (final pass): completed the remaining ~157 deno-check errors — widened OrchestratorResponse further (session_state_update/response/optional question fields), added `declare const userLang: any`, fixed observationKeys Set API misuse, cast cross-file interface mismatches (config_value, AuthoredObservationSet, SymptomExtraction, PrimaryDecision, DecisionOutput, EconomicAssessment, UnifiedContext) to any at use sites, annotated implicit-any callbacks, and used @ts-ignore on residual debug-log/TDZ false positives. orchestrator.ts now type-checks clean (0 errors). No runtime behavior changed.
 //   2026-09-26 18:45 UTC — Type-only fixes (continued, partial): renamed pendingClarificationScope/decision_state/confidence/symbols session-state accesses to safe casts; cast several DB-row/module-return values (_oimRow, stageAdvice, session_state_update, stageFallback) to any at their use sites; began sweep of remaining ~186 orchestrator.ts errors (Set/array API misuse, TS7006 implicit-any callbacks, InducedSymbol/StageAdvice/MainMessage/ConversationContext/AuthoredObservationSet/NLUContractOutput/SymptomExtraction/PrimaryDecision cross-file mismatches) — not fully completed this pass, see report. No runtime behavior changed.
@@ -12060,15 +12061,27 @@ export class AIAgentOrchestrator {
       missing_reasons: !ndvi ? ['No satellite NDVI data available'] : []
     };
     
-    // Weather audit  
+    // Weather audit — 2026-10-05: read the canonical shape returned by
+    // fetchWeatherDataUncached (temperature_c / humidity_percent /
+    // rainfall_last_24h_mm / forecast_24h). Callers that pass fused
+    // intelligence (no `current`) fall back to the per-land weather reading.
+    const remembered = landContext?.land_id
+      ? (this as any).__weatherByLand?.get?.(landContext.land_id)
+      : undefined;
+    const w: any = (weatherData && weatherData.current) ? weatherData : (remembered ?? weatherData);
+    const cur: any = w?.current ?? {};
+    const wTemp = cur.temperature_c ?? cur.temperature ?? null;
+    const wHum = cur.humidity_percent ?? cur.humidity ?? null;
+    const wHasReading = !!w && !w.is_default && (wTemp != null || wHum != null);
+    const wObs = w?.observation_time ? new Date(w.observation_time).getTime() : null;
     const weatherAudit = {
-      found: !!weatherData && !weatherData.is_default,
-      temperature: weatherData?.current?.temperature,
-      humidity: weatherData?.current?.humidity,
-      rain_probability: weatherData?.forecast?.[0]?.precipitation_probability,
-      rain_last_24h: weatherData?.current?.precipitation,
-      data_age_hours: null as number | null,
-      missing_reasons: !weatherData || weatherData.is_default ? ['Weather data unavailable - using defaults'] : []
+      found: wHasReading,
+      temperature: wTemp,
+      humidity: wHum,
+      rain_probability: w?.forecast_24h?.rain_probability_percent ?? w?.forecast?.[0]?.precipitation_probability ?? null,
+      rain_last_24h: cur.rainfall_last_24h_mm ?? cur.precipitation ?? null,
+      data_age_hours: wObs ? Math.round((now.getTime() - wObs) / 3_600_000) : null as number | null,
+      missing_reasons: wHasReading ? [] : ['Weather data unavailable - using defaults']
     };
     
     // Crop schedule audit
@@ -12126,15 +12139,26 @@ export class AIAgentOrchestrator {
   private fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
     const memo = turnMemoStorage.getStore();
     const key = `weather:${landId || 'none'}`;
-    if (!memo) return this.fetchWeatherDataUncached(sessionId, landId);
+    if (!memo) return this.fetchWeatherDataUncached(sessionId, landId).then((w) => this.rememberWeather(landId, w));
     const hit = memo.get(key);
     if (hit) {
       logDebug(`[TURN_MEMO_HIT] ${key}`);
       return hit;
     }
-    const p = this.fetchWeatherDataUncached(sessionId, landId);
+    const p = this.fetchWeatherDataUncached(sessionId, landId).then((w) => this.rememberWeather(landId, w));
     memo.set(key, p);
     return p;
+  }
+
+  // 2026-10-05: remember the canonical weather per land so every data-audit
+  // path (including ones that only hold fused intelligence) shows the real
+  // reading instead of "Weather data unavailable".
+  private rememberWeather(landId: string | undefined, w: any): any {
+    if (landId && w && !w.is_default) {
+      const store = ((this as any).__weatherByLand ??= new Map<string, any>());
+      store.set(landId, w);
+    }
+    return w;
   }
 
   private async fetchWeatherDataUncached(sessionId: string, landId?: string): Promise<any> {
