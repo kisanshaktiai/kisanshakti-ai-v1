@@ -615,6 +615,7 @@ export function EnhancedAIChatInterface() {
                   })
                 };
               });
+            });
             }
           }
         );
