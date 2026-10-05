@@ -47498,6 +47498,16 @@ export type Database = {
             }
             Returns: Json
           }
+      tenant_create_api_key: {
+        Args: {
+          p_expires_at?: string
+          p_key_name: string
+          p_permissions?: string[]
+          p_rate_limit_per_hour?: number
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       tenant_create_farmer: {
         Args: {
           p_farmer_code?: string
@@ -47517,6 +47527,19 @@ export type Database = {
           p_total_land_acres?: number
         }
         Returns: Json
+      }
+      tenant_regenerate_api_key: {
+        Args: {
+          p_api_key_id: string
+          p_expires_at?: string
+          p_rate_limit_per_hour?: number
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      tenant_revoke_api_key: {
+        Args: { p_api_key_id: string; p_tenant_id: string }
+        Returns: boolean
       }
       tenant_validate_farmer_login: {
         Args: { p_mobile_number: string; p_pin: string; p_tenant_id: string }
