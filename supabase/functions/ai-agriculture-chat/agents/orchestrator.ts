@@ -12060,15 +12060,27 @@ export class AIAgentOrchestrator {
       missing_reasons: !ndvi ? ['No satellite NDVI data available'] : []
     };
     
-    // Weather audit  
+    // Weather audit — 2026-10-05: read the canonical shape returned by
+    // fetchWeatherDataUncached (temperature_c / humidity_percent /
+    // rainfall_last_24h_mm / forecast_24h). Callers that pass fused
+    // intelligence (no `current`) fall back to the per-land weather reading.
+    const remembered = landContext?.land_id
+      ? (this as any).__weatherByLand?.get?.(landContext.land_id)
+      : undefined;
+    const w: any = (weatherData && weatherData.current) ? weatherData : (remembered ?? weatherData);
+    const cur: any = w?.current ?? {};
+    const wTemp = cur.temperature_c ?? cur.temperature ?? null;
+    const wHum = cur.humidity_percent ?? cur.humidity ?? null;
+    const wHasReading = !!w && !w.is_default && (wTemp != null || wHum != null);
+    const wObs = w?.observation_time ? new Date(w.observation_time).getTime() : null;
     const weatherAudit = {
-      found: !!weatherData && !weatherData.is_default,
-      temperature: weatherData?.current?.temperature,
-      humidity: weatherData?.current?.humidity,
-      rain_probability: weatherData?.forecast?.[0]?.precipitation_probability,
-      rain_last_24h: weatherData?.current?.precipitation,
-      data_age_hours: null as number | null,
-      missing_reasons: !weatherData || weatherData.is_default ? ['Weather data unavailable - using defaults'] : []
+      found: wHasReading,
+      temperature: wTemp,
+      humidity: wHum,
+      rain_probability: w?.forecast_24h?.rain_probability_percent ?? w?.forecast?.[0]?.precipitation_probability ?? null,
+      rain_last_24h: cur.rainfall_last_24h_mm ?? cur.precipitation ?? null,
+      data_age_hours: wObs ? Math.round((now.getTime() - wObs) / 3_600_000) : null as number | null,
+      missing_reasons: wHasReading ? [] : ['Weather data unavailable - using defaults']
     };
     
     // Crop schedule audit
@@ -12126,7 +12138,7 @@ export class AIAgentOrchestrator {
   private fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
     const memo = turnMemoStorage.getStore();
     const key = `weather:${landId || 'none'}`;
-    if (!memo) return this.fetchWeatherDataUncached(sessionId, landId);
+    if (!memo) return this.fetchWeatherDataUncached(sessionId, landId).then((w) => this.rememberWeather(landId, w));
     const hit = memo.get(key);
     if (hit) {
       logDebug(`[TURN_MEMO_HIT] ${key}`);
@@ -12135,6 +12147,17 @@ export class AIAgentOrchestrator {
     const p = this.fetchWeatherDataUncached(sessionId, landId);
     memo.set(key, p);
     return p;
+  }
+
+  // 2026-10-05: remember the canonical weather per land so every data-audit
+  // path (including ones that only hold fused intelligence) shows the real
+  // reading instead of "Weather data unavailable".
+  private rememberWeather(landId: string | undefined, w: any): any {
+    if (landId && w && !w.is_default) {
+      const store = ((this as any).__weatherByLand ??= new Map<string, any>());
+      store.set(landId, w);
+    }
+    return w;
   }
 
   private async fetchWeatherDataUncached(sessionId: string, landId?: string): Promise<any> {
