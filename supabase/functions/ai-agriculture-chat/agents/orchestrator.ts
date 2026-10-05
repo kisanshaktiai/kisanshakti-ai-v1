@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-10-05 10:30 UTC — Navigator tenant_id uses the tenantId parameter (canonicalState is declared later → TDZ ReferenceError skipped the navigator); evidence-round index uses the per-diagnosis clarificationRoundCounter, not the lifetime session turn count (round=633/1); option-tap path records tapped symptoms as last real observations right after classification; graph-gap clarification questions carry text_hi/text_mr.
 //   2026-09-26 22:05 UTC — Type-only fixes (final pass): completed the remaining ~157 deno-check errors — widened OrchestratorResponse further (session_state_update/response/optional question fields), added `declare const userLang: any`, fixed observationKeys Set API misuse, cast cross-file interface mismatches (config_value, AuthoredObservationSet, SymptomExtraction, PrimaryDecision, DecisionOutput, EconomicAssessment, UnifiedContext) to any at use sites, annotated implicit-any callbacks, and used @ts-ignore on residual debug-log/TDZ false positives. orchestrator.ts now type-checks clean (0 errors). No runtime behavior changed.
 //   2026-09-26 18:45 UTC — Type-only fixes (continued, partial): renamed pendingClarificationScope/decision_state/confidence/symbols session-state accesses to safe casts; cast several DB-row/module-return values (_oimRow, stageAdvice, session_state_update, stageFallback) to any at their use sites; began sweep of remaining ~186 orchestrator.ts errors (Set/array API misuse, TS7006 implicit-any callbacks, InducedSymbol/StageAdvice/MainMessage/ConversationContext/AuthoredObservationSet/NLUContractOutput/SymptomExtraction/PrimaryDecision cross-file mismatches) — not fully completed this pass, see report. No runtime behavior changed.
 //   2026-09-26 17:10 UTC — Type-only fixes (in progress): widened layeredRuleResult to any (eliminates ~35 possibly-null + related property-mismatch errors on RuleEvaluationResult/PrimaryDecision fields, no runtime change); cast Promise.all Supabase destructure results (land, soilHealth, ndviData, ndviHistory, cropSchedule) to any to fix false-positive never-type property errors from tuple inference. Reduced orchestrator.ts deno-check errors from 313 to 199; remaining categories (renames, Set/array API, TS7006 implicit any, cross-file interface mismatches) still open.
@@ -2850,6 +2851,9 @@ export class AIAgentOrchestrator {
 
           // MANDATORY GRAPH CONTRACT: confirmed observation must traverse
           const optionEvidence = classifyEvidence(allObservations);
+          if (Array.isArray(optionEvidence.real_codes) && optionEvidence.real_codes.length > 0) {
+            (this as any)._lastRealObservations = [...optionEvidence.real_codes];
+          }
           const optionGraphResolution = await resolveHypothesesFromObservations({
             supabase: this.supabase,
             observations: optionEvidence.real_codes,
@@ -2890,7 +2894,7 @@ export class AIAgentOrchestrator {
           }
           const _roundIndexThisTurn = Math.max(
             1,
-            Number((typeof clarificationTurnCount === 'number' ? clarificationTurnCount : 1)) || 1,
+            Number((options as any).clarificationRoundCounter) || 1,
           );
           try {
             if (!graph.evidence_round) {
@@ -3000,6 +3004,8 @@ export class AIAgentOrchestrator {
               question: {
                 question_id: `graph_gap_${Date.now()}`,
                 text_en: 'Please select one more visible observation from the crop so I can complete the graph diagnosis.',
+                text_hi: 'फसल पर दिखने वाला एक और लक्षण चुनें, ताकि मैं सही पहचान कर सकूँ।',
+                text_mr: 'पिकावर दिसणारे आणखी एक लक्षण निवडा, म्हणजे मी अचूक निदान करू शकेन.',
                 options: clarificationOptions,
                 scope: 'GRAPH_KNOWLEDGE_GAP',
                 source: 'hypothesis_graph',
@@ -3098,6 +3104,8 @@ export class AIAgentOrchestrator {
               question: {
                 question_id: `hyp_rule_gap_${Date.now()}`,
                 text_en: 'I need one more crop observation before I can choose a safe recommendation.',
+                text_hi: 'सुरक्षित सलाह देने के लिए मुझे फसल के बारे में एक और जानकारी चाहिए।',
+                text_mr: 'सुरक्षित सल्ला देण्यासाठी मला पिकाबद्दल आणखी एक माहिती हवी आहे.',
                 options: clarificationOptions,
                 scope: 'GRAPH_KNOWLEDGE_GAP',
                 source: 'hypothesis_graph',
@@ -7012,7 +7020,7 @@ export class AIAgentOrchestrator {
               intent_code: String(navIntentEarly),
               turn: 1,
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
-              tenant_id: (canonicalState as any)?.tenant_id ?? null,
+              tenant_id: tenantId ?? null,
               runtimeTrace,
             }).catch(() => null);
           }
@@ -7631,7 +7639,7 @@ export class AIAgentOrchestrator {
                 intent_code: String(navIntentRD),
                 turn: 1,
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
-                tenant_id: (canonicalState as any)?.tenant_id ?? null,
+                tenant_id: tenantId ?? null,
                 runtimeTrace,
               }).catch(() => null);
             }

@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+// 2026-10-05 10:30 UTC — verifyTranslationFidelity folds Indic digits to ASCII on both sides, so a correct
+//   translation that writes 120 as १२० is no longer rejected back to the untranslated English advisory.
 // 2026-09-27 — AI model SSOT: the two model calls left in this file now go through the registry
 //   (_shared/aiConfig.ts callAITask) instead of naming models in code:
 //     * proactive-alert narration → task brain.alert_narrate (was Lovable google/gemini-3-flash-preview);
@@ -66,6 +68,7 @@ console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=tru
 
 
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
+import { toAsciiDigits } from './agents/explainer.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
@@ -3504,9 +3507,9 @@ function verifyTranslationFidelity(
   }
 
   const DOSAGE_RE = /\d+(?:[.,]\d+)?\s*(?:ml|g|gm|gram|kg|l|liter|litre|%|मिली|मिली\.|ग्रॅम|ग्राम|किलो|लिटर)\b/gi;
-  const originalDoses = original.match(DOSAGE_RE) ?? [];
+  const originalDoses = toAsciiDigits(original).match(DOSAGE_RE) ?? [];
 
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  const norm = (s: string) => toAsciiDigits(s).toLowerCase().replace(/\s+/g, '');
   const translatedNorm = norm(translated);
 
   for (const dose of originalDoses) {

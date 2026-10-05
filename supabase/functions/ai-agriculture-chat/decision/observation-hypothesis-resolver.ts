@@ -2,6 +2,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-10-05 10:30 UTC — toResolution now carries eliminated_reason, so the clarification
+ *   builder's contradiction filter (IMPOSSIBLE_CROP / REQUIRED_STAGE_FAILED / ...) actually
+ *   removes biologically impossible causes instead of re-offering them as options.
  * 2026-07-25 UTC — Batch A / P1 + P2: tiered DB-driven seed expansion.
  *   Tier 0 = canonical symbol resolution (unresolved codes now PASS THROUGH
  *   normalized instead of being silently dropped). Tier 1 = observation_aliases
@@ -52,6 +55,7 @@ export interface ObservationHypothesisResolution {
   missing_conditions: string[];
   confidence_score: number;
   candidate_rule_ids: string[];
+  eliminated_reason?: string | null;
 }
 
 export type ObservationEdgeResult = 'MATCHED' | 'PARTIAL_MATCH_ONLY' | 'NO_MATCH';
@@ -94,6 +98,7 @@ const toResolution = (c: any): ObservationHypothesisResolution => ({
   missing_conditions: c.missing_required ?? [],
   confidence_score: Number(c.confidence ?? 0),
   candidate_rule_ids: c.candidate_rule_ids ?? [],
+  eliminated_reason: c.eliminated_reason ?? null,
 });
 
 export async function resolveHypothesesFromObservations(
