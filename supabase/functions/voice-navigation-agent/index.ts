@@ -12,6 +12,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { rateGuard } from '../_shared/rateGuard.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
+import { resolveVerifiedCaller } from '../_shared/sessionVerify.ts';
 
 
 interface VoiceRequest {
@@ -50,8 +51,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
+    // 2026-10-06 — identity from the DB-verified session token; headers trusted only for service role.
+    const caller = await resolveVerifiedCaller(req);
+    const tenantId = caller?.kind === 'farmer' ? caller.tenantId : caller?.kind === 'service' ? req.headers.get('x-tenant-id') : null;
+    const farmerId = caller?.kind === 'farmer' ? caller.farmerId : caller?.kind === 'service' ? req.headers.get('x-farmer-id') : null;
 
     if (!tenantId) {
       return new Response(

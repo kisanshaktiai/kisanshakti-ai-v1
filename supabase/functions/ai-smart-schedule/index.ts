@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-10-06 — SECURITY: farmer/tenant identity now comes from the DB-verified x-session-token
+//   (_shared/sessionVerify.ts); x-farmer-id / x-tenant-id headers are trusted only for service-role callers.
 // 2026-09-27 — AI model SSOT: composeFarmerText, applyScheduleHarness and narrateScheduleTasks now receive the
 //   service-role client + farmer so every model call (task schedule.compose) takes its chain from the AI model
 //   registry and is recorded in ai_model_metrics. The LOVABLE_/OPENAI_/GEMINI_SCHEDULE_MODEL secrets are no
@@ -60,6 +62,7 @@ import { sanitizeTaskText, hasFarmerText, isTechnicalLine } from "./generator/fa
 import { loadLandContext } from "./db/land-context.ts";
 import { attachRagEvidence, type RagEvidenceSummary } from "./db/rag-evidence.ts";
 import { isFlagEnabled } from "../_shared/featureFlags.ts";
+import { resolveVerifiedCaller } from "../_shared/sessionVerify.ts";
 import { applyScheduleHarness } from "./harness/index.ts";
 import { prepareCurrentFieldTasks } from "./generator/current-field-plan.ts";
 
@@ -84,6 +87,12 @@ serve(async (req) => {
     const body = await req.json();
     tenantId = req.headers.get("x-tenant-id") || "";
     farmerId = req.headers.get("x-farmer-id") || "";
+    // Identity = verified session (or service role). Spoofable headers never establish identity.
+    {
+      const caller = await resolveVerifiedCaller(req);
+      if (caller?.kind === "farmer") { farmerId = caller.farmerId; tenantId = caller.tenantId ?? ""; }
+      else if (caller?.kind !== "service") { farmerId = ""; tenantId = ""; }
+    }
 
     // ── action=narrate: finish pending farmer-language narration (no generation) ──
     if (body?.action === "narrate") {
