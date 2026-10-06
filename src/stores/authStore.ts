@@ -227,7 +227,15 @@ export const useAuthStore = create<AuthState>()(
         // Clear localStorage items - but NOT tenantId (it's system-level config)
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
-        
+
+        // SECURITY (2026-10-06): the next farmer on this device must not see the
+        // previous farmer's cached lands/chats/schedules. Wipe IndexedDB and tell
+        // the app to drop its in-memory query cache.
+        import('@/services/localDB')
+          .then(({ localDB }) => localDB.clearAll())
+          .catch((e) => console.warn('[Auth] Local cache wipe failed:', e));
+        try { window.dispatchEvent(new Event('ks:auth-logout')); } catch { /* non-browser */ }
+
         console.log('✅ [Auth] Logout complete');
       },
 

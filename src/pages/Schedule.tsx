@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Calendar, Plus, RefreshCw } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
@@ -209,6 +209,7 @@ export default function Schedule() {
         headers: {
           'x-tenant-id': tenant?.id || user?.tenantId || '',
           'x-farmer-id': user?.id || '',
+          'x-session-token': getSessionToken() || '',
         },
       });
 
@@ -310,6 +311,7 @@ export default function Schedule() {
             headers: {
               'x-tenant-id': tenant?.id || user?.tenantId || '',
               'x-farmer-id': user?.id || '',
+              'x-session-token': getSessionToken() || '',
             },
           })
           .then((r) => console.log('🈯 [Schedule] narrate follow-up:', r.error ?? r.data))
