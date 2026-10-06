@@ -143,7 +143,9 @@
       "sourceMoa": "How the product works",
       "sourceResistance": "Resistance group (rotate next spray)",
       "sourceRegulatory": "Regulatory status",
-      "sourcePhi": "Waiting-period source"
+      "sourcePhi": "Waiting-period source",
+      "gdd": "Heat units (GDD)",
+      "gddUnit": "°C-days"
     }
   }
 }
