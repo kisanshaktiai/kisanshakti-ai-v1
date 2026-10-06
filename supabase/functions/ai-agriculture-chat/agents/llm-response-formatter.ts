@@ -1,3 +1,4 @@
+// 2026-10-06 10:05 UTC — rewrite instruction no longer uses officer persona.
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * 2026-10-02 — review fix: brain.format answer budget 4000 tokens (the old Gemini tier's value, the largest
@@ -1429,7 +1430,7 @@ ${cropStageConstraints}
 
 ${input.farmer_addressing?.promptDirective || ''}
 
-IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them as a village agriculture officer EXPLAINING to the farmer in natural rural ${langName}. Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
+IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them in clear, simple ${langName} for the farmer (never introduce yourself or claim a role). Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
 
 ═══ FINAL REMINDER ═══
 You are a VILLAGE AGRICULTURE OFFICER standing in the farmer's field, not a translator at a desk.

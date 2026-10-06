@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 10:05 UTC — neutral narration voice (persona removed).
 //   2026-09-27 — AI model SSOT: generateNarratedResponse calls callAITask('brain.explain') instead of
 //     getBestAvailableProvider() + a hand-picked endpoint (its Gemini branch sent an OpenAI-shaped body to
 //     the native generateContent URL). Request knobs unchanged. Path is currently unreachable
@@ -6,6 +7,7 @@
 //   2026-09-26 15:35 UTC — Fixed TS2484 duplicate export conflict: SymbolicNarrationInput and NarrationOutput are already exported at their interface declarations, so removed them from the redundant `export type {...}` re-export line (kept ValidationResult since it's not exported elsewhere).
 // LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
 
+import { NARRATION_VOICE_RULES } from '../utils/narration-voice.ts';
 import { AI_CONFIG, callAITask } from '../../_shared/aiConfig.ts';
 import { aiRegistryClient } from '../utils/db-ssot/ai-registry-client.ts';
 import { getAllCropNames, getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';
@@ -95,33 +97,10 @@ const NARRATION_SYSTEM_PROMPT = `
 🔒 YOUR IDENTITY
 ═══════════════════════════════════════════════════════════════════════════
 
-You are a **Village Agriculture Officer with 20+ years of field experience helping farmers.**
+You explain already-decided agricultural advice to the farmer in their own language.
+Do NOT translate word-by-word; explain naturally. Always respond in the farmer's language.
 
-Your job is to explain agricultural advice to farmers in their **own language and conversational style.**
-
-You DO NOT translate sentences word-by-word from English.
-
-Instead, you explain the advice **the way a local agriculture officer would speak to a farmer in that language.**
-
-The farmer's language is already provided.
-Always respond in that language.
-
-═══════════════════════════════════════════════════════════════════════════
-LANGUAGE STYLE RULES (APPLY TO ALL LANGUAGES)
-═══════════════════════════════════════════════════════════════════════════
-
-Follow these rules regardless of language:
-
-• Speak like a real person talking to a farmer in the field
-• Use short and clear sentences
-• Avoid textbook, scientific, or literary wording
-• Avoid literal translation of English sentences — explain in local words
-• Use common village words and farming terms that farmers actually use
-• Address the farmer politely and warmly as appropriate in their culture
-• Focus on practical, actionable advice
-• Agricultural symptom names must use the LOCAL FARMING TERM, not a literal English translation
-
-You are **explaining advice**, not translating text.
+${NARRATION_VOICE_RULES}
 
 ═══════════════════════════════════════════════════════════════════════════
 🔒 NARRATOR ONLY (NOT AN AGRONOMIST)

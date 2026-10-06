@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 10:05 UTC — forceTranslate: neutral voice (no persona/self-intro), script-purity gate rejects garbled rewrites.
 // 2026-10-06 09:30 UTC — Persist data_audit in stored assistant metadata; forward dataAudit on
 //   CLARIFICATION_QUESTION and PHOTO_REQUEST so the land card shows on every land turn and after reload.
 // 2026-10-05 10:30 UTC — verifyTranslationFidelity folds Indic digits to ASCII on both sides, so a correct
@@ -70,6 +71,7 @@ console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=tru
 
 
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
+import { NARRATION_VOICE_RULES, isScriptClean, stripSelfIntroduction } from './utils/narration-voice.ts';
 import { toAsciiDigits } from './agents/explainer.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -3574,23 +3576,20 @@ async function forceTranslateResponse(
   
   console.log(`🌐 [forceTranslate] Translating to ${langName} via LLM`);
   
-  const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
-Speak like you are in the farmer's field explaining advice face-to-face.
-Use local farming vocabulary, not textbook language.
-Use common village words and farming terms that farmers actually use.
-Agricultural symptom names must use the LOCAL FARMING TERM, not a literal English translation.
-Avoid literal translation of English sentences — explain in local words.
+  const translationPrompt = `Rewrite this advisory in clear, simple ${langName} for a farmer.
+Explain naturally; do not translate word-by-word.
 Keep all numbers, product names, dosages, emojis, and formatting exactly as-is.
 Do NOT add any new information. Do NOT change dosages or product names.
-Preserve every product name as its local name followed by English in parentheses, e.g. युरिया (Urea). Never change any number or unit.
-You are explaining, not translating.
+Product names: local name followed by English in parentheses, e.g. युरिया (Urea). Never change any number or unit.
 
-Text to rewrite in natural rural ${langName}:
+${NARRATION_VOICE_RULES}
+
+Text to rewrite in ${langName}:
 ${content}`;
 
   const systemPrompt =
-    `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} ` +
-    `as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. ` +
+    `You rewrite agricultural advisories in clear, simple, respectful ${langName}. ` +
+    `Never introduce yourself or claim a role. Use only ${langName} script. ` +
     `Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.`;
 
   // 2026-09-17 — TRANSLATION WIRING FIX: providers are tried in sequence, never one exclusive branch.
@@ -3617,9 +3616,14 @@ ${content}`;
   });
   if (r.ok) {
     const text = r.content.trim();
-    if (text.length > 30) {
+    const cleaned = stripSelfIntroduction(text);
+    if (cleaned.length > 30 && !isScriptClean(cleaned, targetLang)) {
+      console.warn(`⚠️ [forceTranslate] ${r.modelKey} output failed script-purity check — keeping source text`);
+      return content;
+    }
+    if (cleaned.length > 30) {
       console.log(`✅ [forceTranslate] ${r.modelKey} translation successful (${text.length} chars)${r.fallbackUsed ? ' (fallback)' : ''}`);
-      return text;
+      return cleaned;
     }
     console.warn(`⚠️ [forceTranslate] ${r.modelKey} returned empty/short output`);
   } else {

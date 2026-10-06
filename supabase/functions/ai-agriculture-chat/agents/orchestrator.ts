@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 10:05 UTC — ROUTE_AUTHORITY invariant exempts DB DIRECT/0 contract intents.
 //   2026-10-06 08:40 UTC — Data-audit land card carries season-cumulative GDD (lands.current_gdd).
 //   2026-10-05 11:40 UTC — Data-audit weather card reads the canonical weather shape (temperature_c/humidity_percent/rainfall_last_24h_mm/forecast_24h) and falls back to the per-land weather reading on fused-intelligence paths; previously always showed "Weather data unavailable".
 //   2026-10-05 10:30 UTC — Navigator tenant_id uses the tenantId parameter (canonicalState is declared later → TDZ ReferenceError skipped the navigator); evidence-round index uses the per-diagnosis clarificationRoundCounter, not the lifetime session turn count (round=633/1); option-tap path records tapped symptoms as last real observations right after classification; graph-gap clarification questions carry text_hi/text_mr.
@@ -6008,7 +6009,8 @@ export class AIAgentOrchestrator {
         agentsUsed.push('INTENT_AUTHORITY_OVERRIDE');
       }
       // Hard invariant — never allow a diagnostic intent to run without the graph branch.
-      if (isDiagnosticIntent && queryRoute.route === 'GENERAL_INFO' && !diagnosisWithOptionalClarification && !diagnosisOnlyModeActive) {
+      // 2026-10-06 — DIRECT/0 contract intents (DB-declared, e.g. maturity/harvest) are exempt; they were crashing into ERROR_RECOVERY.
+      if (isDiagnosticIntent && !__dbDirectContractExempt && queryRoute.route === 'GENERAL_INFO' && !diagnosisWithOptionalClarification && !diagnosisOnlyModeActive) {
         throw new Error(`ROUTE_AUTHORITY_VIOLATION: diagnostic intent=${intentCode} but route=GENERAL_INFO`);
       }
       
