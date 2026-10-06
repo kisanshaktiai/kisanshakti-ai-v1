@@ -3,6 +3,7 @@
  * Lane B — CONTEXT rule selector (zero-observation advisory)
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+ *   2026-10-06 10:30 UTC — intent relevance is strict when the intent maps specific codes and none match.
  *   2026-09-06 — filterScheduleCandidatesByIntent(): Lane B schedule candidates
  *     are kept only when their condition_code / observations map to the turn's
  *     intent in intent_observation_mapping (fail-open when nothing maps).
@@ -281,7 +282,16 @@ export async function filterScheduleCandidatesByIntent(
   const kept = iomSpecific.size > 0
     ? candidates.filter((r) => codesOf(r).some((c) => iomSpecific.has(c)))
     : candidates.filter((r) => PLACEHOLDER.has(norm(r?.condition_code)));
-  if (kept.length === 0) return { kept: candidates, dropped: [], applied: false };
+  // 2026-10-06 — when the intent maps SPECIFIC codes and no schedule row carries one, NO schedule row is
+  // relevant (fail-open here served harvest timing for "which fertiliser"). Fail-open stays only for
+  // generic intents that map nothing specific.
+  if (kept.length === 0) {
+    if (iomSpecific.size > 0) {
+      console.log(`[INTENT_RELEVANCE_NONE] trace=${traceId ?? 'n/a'} intent=${intent} dropped=${candidates.map((r) => r.rule_id).join(',')}`);
+      return { kept: [], dropped: candidates, applied: true };
+    }
+    return { kept: candidates, dropped: [], applied: false };
+  }
   const dropped = candidates.filter((r) => !kept.includes(r));
   if (dropped.length > 0) {
     console.log(`[LANE_B_INTENT_RELEVANCE] trace=${traceId ?? 'n/a'} intent=${intent} kept=${kept.map((r) => r.rule_id).join(',')} dropped=${dropped.map((r) => r.rule_id).join(',')}`);
