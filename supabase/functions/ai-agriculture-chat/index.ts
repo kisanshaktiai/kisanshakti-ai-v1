@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 10:05 UTC — forceTranslate: neutral voice (no persona/self-intro), script-purity gate rejects garbled rewrites.
 // 2026-10-06 09:30 UTC — Persist data_audit in stored assistant metadata; forward dataAudit on
 //   CLARIFICATION_QUESTION and PHOTO_REQUEST so the land card shows on every land turn and after reload.
 // 2026-10-05 10:30 UTC — verifyTranslationFidelity folds Indic digits to ASCII on both sides, so a correct
@@ -70,6 +71,7 @@ console.log('[GRAPH_GATE_BUILD] rev=mandatory-graph-gate-v1 hasMandatoryGate=tru
 
 
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
+import { NARRATION_VOICE_RULES, isScriptClean, stripSelfIntroduction } from './utils/narration-voice.ts';
 import { toAsciiDigits } from './agents/explainer.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
@@ -3614,9 +3616,14 @@ ${content}`;
   });
   if (r.ok) {
     const text = r.content.trim();
-    if (text.length > 30) {
+    const cleaned = stripSelfIntroduction(text);
+    if (cleaned.length > 30 && !isScriptClean(cleaned, targetLang)) {
+      console.warn(`⚠️ [forceTranslate] ${r.modelKey} output failed script-purity check — keeping source text`);
+      return content;
+    }
+    if (cleaned.length > 30) {
       console.log(`✅ [forceTranslate] ${r.modelKey} translation successful (${text.length} chars)${r.fallbackUsed ? ' (fallback)' : ''}`);
-      return text;
+      return cleaned;
     }
     console.warn(`⚠️ [forceTranslate] ${r.modelKey} returned empty/short output`);
   } else {

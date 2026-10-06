@@ -6,6 +6,7 @@
 //   2026-09-26 15:35 UTC — Fixed TS2484 duplicate export conflict: SymbolicNarrationInput and NarrationOutput are already exported at their interface declarations, so removed them from the redundant `export type {...}` re-export line (kept ValidationResult since it's not exported elsewhere).
 // LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
 
+import { NARRATION_VOICE_RULES } from '../utils/narration-voice.ts';
 import { AI_CONFIG, callAITask } from '../../_shared/aiConfig.ts';
 import { aiRegistryClient } from '../utils/db-ssot/ai-registry-client.ts';
 import { getAllCropNames, getCropDisplayName, getCropCanonical } from '../utils/crop-names-cache.ts';

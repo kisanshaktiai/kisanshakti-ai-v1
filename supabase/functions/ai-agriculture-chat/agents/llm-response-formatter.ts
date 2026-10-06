@@ -1429,7 +1429,7 @@ ${cropStageConstraints}
 
 ${input.farmer_addressing?.promptDirective || ''}
 
-IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them as a village agriculture officer EXPLAINING to the farmer in natural rural ${langName}. Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
+IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them in clear, simple ${langName} for the farmer (never introduce yourself or claim a role). Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
 
 ═══ FINAL REMINDER ═══
 You are a VILLAGE AGRICULTURE OFFICER standing in the farmer's field, not a translator at a desk.
