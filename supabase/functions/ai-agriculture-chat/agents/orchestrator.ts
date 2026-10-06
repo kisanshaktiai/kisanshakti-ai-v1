@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+//   2026-10-06 08:40 UTC — Data-audit land card carries season-cumulative GDD (lands.current_gdd).
 //   2026-10-05 11:40 UTC — Data-audit weather card reads the canonical weather shape (temperature_c/humidity_percent/rainfall_last_24h_mm/forecast_24h) and falls back to the per-land weather reading on fused-intelligence paths; previously always showed "Weather data unavailable".
 //   2026-10-05 10:30 UTC — Navigator tenant_id uses the tenantId parameter (canonicalState is declared later → TDZ ReferenceError skipped the navigator); evidence-round index uses the per-diagnosis clarificationRoundCounter, not the lifetime session turn count (round=633/1); option-tap path records tapped symptoms as last real observations right after classification; graph-gap clarification questions carry text_hi/text_mr.
 //   2026-09-26 22:05 UTC — Type-only fixes (final pass): completed the remaining ~157 deno-check errors — widened OrchestratorResponse further (session_state_update/response/optional question fields), added `declare const userLang: any`, fixed observationKeys Set API misuse, cast cross-file interface mismatches (config_value, AuthoredObservationSet, SymptomExtraction, PrimaryDecision, DecisionOutput, EconomicAssessment, UnifiedContext) to any at use sites, annotated implicit-any callbacks, and used @ts-ignore on residual debug-log/TDZ false positives. orchestrator.ts now type-checks clean (0 errors). No runtime behavior changed.
@@ -11843,6 +11844,8 @@ export class AIAgentOrchestrator {
         village: land.village,
         center_lat: land.center_lat,
         center_lon: land.center_lon,
+        // 2026-10-06: season-cumulative heat units (GDD) for the data-audit card.
+        current_gdd: typeof land.current_gdd === 'number' ? land.current_gdd : (land.current_gdd != null ? Number(land.current_gdd) : null),
         
         // Soil health data (FULL DATA for rule engine)
         // CRITICAL FIX: Use correct column names from schema
@@ -12022,6 +12025,7 @@ export class AIAgentOrchestrator {
       growth_stage: landContext?.growth_stage,
       days_since_sowing: landContext?.days_since_sowing,
       has_coordinates: !!(landContext?.center_lat && landContext?.center_lon),
+      cumulative_gdd: Number.isFinite(Number(landContext?.current_gdd)) && landContext?.current_gdd != null ? Math.round(Number(landContext.current_gdd)) : null,
       missing_reasons: !landContext ? ['No land selected or land not found'] : 
         (!landContext.center_lat ? ['Missing GPS coordinates'] : [])
     };
