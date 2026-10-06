@@ -3574,23 +3574,20 @@ async function forceTranslateResponse(
   
   console.log(`🌐 [forceTranslate] Translating to ${langName} via LLM`);
   
-  const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
-Speak like you are in the farmer's field explaining advice face-to-face.
-Use local farming vocabulary, not textbook language.
-Use common village words and farming terms that farmers actually use.
-Agricultural symptom names must use the LOCAL FARMING TERM, not a literal English translation.
-Avoid literal translation of English sentences — explain in local words.
+  const translationPrompt = `Rewrite this advisory in clear, simple ${langName} for a farmer.
+Explain naturally; do not translate word-by-word.
 Keep all numbers, product names, dosages, emojis, and formatting exactly as-is.
 Do NOT add any new information. Do NOT change dosages or product names.
-Preserve every product name as its local name followed by English in parentheses, e.g. युरिया (Urea). Never change any number or unit.
-You are explaining, not translating.
+Product names: local name followed by English in parentheses, e.g. युरिया (Urea). Never change any number or unit.
 
-Text to rewrite in natural rural ${langName}:
+${NARRATION_VOICE_RULES}
+
+Text to rewrite in ${langName}:
 ${content}`;
 
   const systemPrompt =
-    `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} ` +
-    `as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. ` +
+    `You rewrite agricultural advisories in clear, simple, respectful ${langName}. ` +
+    `Never introduce yourself or claim a role. Use only ${langName} script. ` +
     `Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.`;
 
   // 2026-09-17 — TRANSLATION WIRING FIX: providers are tried in sequence, never one exclusive branch.

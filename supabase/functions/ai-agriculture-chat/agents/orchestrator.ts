@@ -6008,7 +6008,8 @@ export class AIAgentOrchestrator {
         agentsUsed.push('INTENT_AUTHORITY_OVERRIDE');
       }
       // Hard invariant — never allow a diagnostic intent to run without the graph branch.
-      if (isDiagnosticIntent && queryRoute.route === 'GENERAL_INFO' && !diagnosisWithOptionalClarification && !diagnosisOnlyModeActive) {
+      // 2026-10-06 — DIRECT/0 contract intents (DB-declared, e.g. maturity/harvest) are exempt; they were crashing into ERROR_RECOVERY.
+      if (isDiagnosticIntent && !__dbDirectContractExempt && queryRoute.route === 'GENERAL_INFO' && !diagnosisWithOptionalClarification && !diagnosisOnlyModeActive) {
         throw new Error(`ROUTE_AUTHORITY_VIOLATION: diagnostic intent=${intentCode} but route=GENERAL_INFO`);
       }
       
