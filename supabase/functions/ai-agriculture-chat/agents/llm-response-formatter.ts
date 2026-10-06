@@ -1,3 +1,4 @@
+// 2026-10-06 10:05 UTC — rewrite instruction no longer uses officer persona.
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * 2026-10-02 — review fix: brain.format answer budget 4000 tokens (the old Gemini tier's value, the largest

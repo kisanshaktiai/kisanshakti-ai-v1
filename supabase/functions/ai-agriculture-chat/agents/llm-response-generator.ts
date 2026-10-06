@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 10:05 UTC — neutral narration voice (persona removed).
 //   2026-09-27 — AI model SSOT: generateNarratedResponse calls callAITask('brain.explain') instead of
 //     getBestAvailableProvider() + a hand-picked endpoint (its Gemini branch sent an OpenAI-shaped body to
 //     the native generateContent URL). Request knobs unchanged. Path is currently unreachable
