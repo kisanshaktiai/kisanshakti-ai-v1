@@ -26,6 +26,7 @@ export interface DataAudit {
     growth_stage?: string;
     days_since_sowing?: number;
     has_coordinates?: boolean;
+    cumulative_gdd?: number | null;
   };
   soil_health: DataAuditItem & {
     test_date?: string;
@@ -212,8 +213,15 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 <DataRow label={t('chatCards.cards.name')} value={audit.land?.land_name} />
                 <DataRow label={t('chatCards.cards.crop')} value={audit.land?.current_crop} />
                 <DataRow label={t('chatCards.cards.area')} value={audit.land?.area_acres} unit={t('chatCards.cards.acre')} />
-                <DataRow label={t('chatCards.cards.stage')} value={audit.land?.growth_stage} />
+                <DataRow
+                  label={t('chatCards.cards.stage')}
+                  value={audit.land?.growth_stage
+                    ? t(`sky.stage.${String(audit.land.growth_stage).toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`,
+                        String(audit.land.growth_stage).replace(/_/g, ' ').toLowerCase())
+                    : undefined}
+                />
                 <DataRow label={t('chatCards.cards.das')} value={audit.land?.days_since_sowing} unit={t('chatCards.cards.days')} />
+                <DataRow label={t('chatCards.cards.gdd')} value={audit.land?.cumulative_gdd ?? undefined} unit={t('chatCards.cards.gddUnit')} />
                 {!audit.land?.has_coordinates && (
                   <div className="text-warning text-xs mt-1">{t('chatCards.cards.noGpsCoordinates')}</div>
                 )}
