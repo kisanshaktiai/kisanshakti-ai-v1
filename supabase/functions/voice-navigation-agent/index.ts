@@ -248,7 +248,7 @@ Match intent and return JSON:
     console.error('[Voice Agent] Error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         matched: false,
         suggestions: ['Try again', 'प्रयास करें', 'மீண்டும் முயற்சி செய்யவும்'],
       }),
