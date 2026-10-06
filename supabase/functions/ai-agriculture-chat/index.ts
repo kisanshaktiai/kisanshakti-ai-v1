@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 09:30 UTC — Persist data_audit in stored assistant metadata; forward dataAudit on
+//   CLARIFICATION_QUESTION and PHOTO_REQUEST so the land card shows on every land turn and after reload.
 // 2026-10-05 10:30 UTC — verifyTranslationFidelity folds Indic digits to ASCII on both sides, so a correct
 //   translation that writes 120 as १२० is no longer rejected back to the untranslated English advisory.
 // 2026-09-27 — AI model SSOT: the two model calls left in this file now go through the registry
@@ -2857,6 +2859,7 @@ serve(async (req) => {
         actions_filtered_out: actions_filtered_out,
         metadata: {
           advisor_card: advisorCard,   // 2026-09-09 — structured farmer card the UI renders
+          data_audit: orchestratorResponse.dataAudit ?? undefined, // 2026-10-06 — land card survives reload
           orchestrator_type: orchestratorResponse.type,
           confidence: (orchestratorResponse.metadata as any)?.confidence,
           safety_status: (orchestratorResponse.metadata as any)?.safety_status,
@@ -5205,6 +5208,7 @@ function transformOrchestratorResponse(
         quickReplies: safeQuickReplies.length > 0 
           ? safeQuickReplies 
           : getDefaultQuickReplies(language),
+        dataAudit: response.dataAudit,
         source: 'orchestrator_v1'
       };
 
@@ -5222,6 +5226,7 @@ function transformOrchestratorResponse(
           type: 'photo_request',
           tips: photoInstr?.tips
         },
+        dataAudit: response.dataAudit,
         source: 'orchestrator_v1'
       };
 
