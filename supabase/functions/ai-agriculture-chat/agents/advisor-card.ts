@@ -98,12 +98,11 @@ function toFactFrame(f: SourceFacts): FactFrame {
   for (const c of f.checks) facts.push({ role: 'check', gloss: c, quantities: q(c) });
   for (const c of f.failures) facts.push({ role: 'check', gloss: `If this is seen, the treatment is not working: ${c}`, quantities: q(c) });
   for (const o of f.options) facts.push({ role: 'note', concept: 'practice', gloss: o.title ? `${o.title}: ${o.text}` : o.text, quantities: q(o.text) });
-  for (const x of f.extras) facts.push({ role: 'note', gloss: x.text, quantities: q(x.text) });
   if (f.economics?.yield_gain_pct != null) facts.push({ role: 'note', concept: 'measure', gloss: `expected yield gain up to ${f.economics.yield_gain_pct}%`, quantities: [{ value: Number(f.economics.yield_gain_pct), unit: '%' }] });
   if (f.economics?.cost_min != null || f.economics?.cost_max != null) facts.push({ role: 'note', concept: 'measure', gloss: `input cost per acre ${f.economics.cost_min ?? ''}${f.economics.cost_max != null ? `-${f.economics.cost_max}` : ''}`, quantities: [f.economics.cost_min, f.economics.cost_max].filter((v) => v != null).map((v) => ({ value: Number(v), unit: 'currency' })) });
   if (f.provenance.mode_of_action) facts.push({ role: 'note', concept: 'product', gloss: `how this product works: ${f.provenance.mode_of_action}` });
   if (f.provenance.resistance_group) facts.push({ role: 'note', concept: 'product', gloss: `rotate with a different group next spray (this one is ${f.provenance.resistance_group})` });
-  for (const e of f.extras) facts.push({ role: 'note', gloss: `${e.title}: ${e.text}` });
+  for (const e of f.extras) facts.push({ role: 'note', gloss: `${e.title}: ${e.text}`, quantities: q(e.text) });
   return { kind: f.kind, crop: f.crop ?? null, stage: f.stage ?? null, das: f.das ?? null, area_acres: null, facts, rule_id: f.rule_id ?? null };
 }
 
