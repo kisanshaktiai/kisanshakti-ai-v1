@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
@@ -241,6 +241,7 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
           tenantId,
           language: i18n.language,
         },
+        headers: { 'x-session-token': getSessionToken() || '' },
       });
 
       if (error) throw error;

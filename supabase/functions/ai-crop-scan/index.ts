@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 — SECURITY: farmerId/tenantId come from the DB-verified x-session-token (service role may
+//   pass them in the body); a supplied landId must belong to that farmer. Body IDs no longer establish identity.
 // 2026-09-27 — AI model SSOT: all three AI calls take their model from the AI model registry through
 //   callAITask (_shared/aiConfig.ts) instead of literals in this file:
 //   * growth_tracking photo analysis → task vision.crop_scan. Previously literal OpenAI 'gpt-4o' with a
@@ -25,6 +27,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { rateGuard } from '../_shared/rateGuard.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
+import { resolveVerifiedCaller, sessionRequiredResponse } from '../_shared/sessionVerify.ts';
 
 // Service-role client for the AI model registry and usage ledger (created once per isolate).
 const aiRegistryDb = createClient(
@@ -191,8 +194,8 @@ serve(async (req) => {
       videoFrames,
       userNotes, 
       language = 'en', 
-      farmerId, 
-      tenantId, 
+      farmerId: bodyFarmerId,
+      tenantId: bodyTenantId,
       landId,
       landCrop,
       mode = 'full',
@@ -207,6 +210,20 @@ serve(async (req) => {
       ndviData,
       soilData
     } = requestData;
+
+    // Identity: verified session (farmer) or service role. Body IDs are not identity.
+    const caller = await resolveVerifiedCaller(req);
+    if (!caller) return sessionRequiredResponse(corsHeaders);
+    const farmerId = caller.kind === 'farmer' ? caller.farmerId : bodyFarmerId;
+    const tenantId = caller.kind === 'farmer' ? (caller.tenantId ?? undefined) : bodyTenantId;
+    if (caller.kind === 'farmer' && landId) {
+      const ownClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const { data: ownLand } = await ownClient.from('lands').select('farmer_id').eq('id', landId).maybeSingle();
+      if (!ownLand || ownLand.farmer_id !== farmerId) {
+        return new Response(JSON.stringify({ success: false, error: 'Land does not belong to this farmer', code: 'LAND_OWNERSHIP_MISMATCH' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
 
     // Handle growth_tracking mode
     if (mode === 'growth_tracking') {
