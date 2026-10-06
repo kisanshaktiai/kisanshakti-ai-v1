@@ -1,6 +1,9 @@
 // ============================================================================
 // ENV-INTELLIGENCE API  —  supabase/functions/env-intelligence/index.ts
 //
+// CHANGE LOG
+// 2026-10-06 — SECURITY: elevated roles only for a signature-verified JWT (auth.getUser), not a decoded sub.
+//
 // Read-only serving layer over the Environmental Intelligence observation
 // spine. Additive: it never writes, and it never touches the `weather`
 // function contract.
@@ -59,7 +62,11 @@ async function resolveRole(req: Request, supabase: SupabaseClient): Promise<Role
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (serviceKey && token && token === serviceKey) return "admin";
 
-  const sub = jwtSub(req);
+  // 2026-10-06 SECURITY: verify_jwt=false, so an unsigned/forged JWT must never
+  // grant an elevated role. Only a signature-verified Supabase Auth user counts.
+  if (!jwtSub(req) || !token) return "farmer";
+  const { data: authData, error: authErr } = await supabase.auth.getUser(token);
+  const sub = authErr ? null : authData?.user?.id ?? null;
   if (!sub) return "farmer";
   const { data } = await supabase.from("user_roles").select("role").eq("user_id", sub);
   let best: Role = "farmer";

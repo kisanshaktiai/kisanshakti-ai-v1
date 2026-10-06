@@ -68,11 +68,17 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   // If not authenticated, check if we're offline with cached data
   if (!isAuthenticated) {
     // Check if there's cached auth data for offline mode
-    const cachedAuth = localStorage.getItem('auth-storage');
-    const offlineAuth = localStorage.getItem('offline_auth_data');
-    
-    // If offline and has cached auth, allow access
-    if (!isOnline && (cachedAuth || offlineAuth)) {
+    // SECURITY (2026-10-06): only a persisted, PIN-verified session counts.
+    // The bare presence of 'auth-storage' (which survives logout with user=null)
+    // or 'offline_auth_data' (PIN cache — still requires PIN entry) must not open
+    // protected screens offline.
+    let hasVerifiedCachedSession = false;
+    try {
+      const st = JSON.parse(localStorage.getItem('auth-storage') || 'null')?.state;
+      hasVerifiedCachedSession = !!(st?.user?.id && st?.session?.isPinVerified);
+    } catch { /* corrupt cache → not authenticated */ }
+
+    if (!isOnline && hasVerifiedCachedSession) {
       console.log('ProtectedRoute: Offline mode with cached auth, allowing access');
       
       // Try to restore auth if not already restoring

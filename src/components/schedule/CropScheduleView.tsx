@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
@@ -290,7 +290,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         const { supabase } = await import('@/integrations/supabase/client');
         await supabase.functions.invoke('ai-smart-schedule', {
           body: { action: 'narrate', scheduleId },
-          headers: { 'x-tenant-id': user.tenantId as string, 'x-farmer-id': user.id as string },
+          headers: { 'x-tenant-id': user.tenantId as string, 'x-farmer-id': user.id as string, 'x-session-token': getSessionToken() || '', },
         });
         if (!cancelled) await fetchTasks(scheduleId);
       } catch (err) {

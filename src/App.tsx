@@ -91,6 +91,12 @@ const queryClient = new QueryClient({
   },
 });
 
+// SECURITY (2026-10-06): drop every cached query (lands, chats, schedules,
+// entitlements) the moment a farmer logs out so nothing bleeds to the next login.
+if (typeof window !== 'undefined') {
+  window.addEventListener('ks:auth-logout', () => queryClient.clear());
+}
+
 function AppInitializer({ children }: { children: React.ReactNode }) {
   const { tenant, branding, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();

@@ -9,6 +9,7 @@
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
+ * 2026-10-06 — SECURITY: farmer/tenant identity from the DB-verified x-session-token; headers trusted only for service role.
  * ───────────────────────────────────────────────────────────────────────────
  * 2026-09-27 — AI MODEL SSOT: callLLM calls callAITask task 'rag.answer'; the model chain
  *   comes from ai_task_route_step (was getBestAvailableProvider(): OpenAI default model if
@@ -116,6 +117,7 @@ import {
   type CitationRefs,
 } from '../_shared/ragRetrieval.ts';
 import { isFlagEnabled } from '../_shared/featureFlags.ts';
+import { resolveVerifiedCaller } from '../_shared/sessionVerify.ts';
 import { normalizeQueryForRetrieval, loadTopicTaxonomy, resolveCropCode, resolveStateCode, type NormalizedQuery } from '../_shared/queryNormalizer.ts';
 
 const RAG_FLAG = 'rag_general_chat';
@@ -475,8 +477,10 @@ serve(async (req: Request) => {
 
   try {
     // ── Auth headers (custom-auth, same contract as the rest of the app)
-    const tenantId = req.headers.get('x-tenant-id') || '';
-    const farmerId = req.headers.get('x-farmer-id') || '';
+    // Identity = DB-verified session token (or service role). x-farmer-id/x-tenant-id alone are spoofable.
+    const __caller = await resolveVerifiedCaller(req);
+    const tenantId = __caller?.kind === 'farmer' ? (__caller.tenantId ?? '') : __caller?.kind === 'service' ? (req.headers.get('x-tenant-id') || '') : '';
+    const farmerId = __caller?.kind === 'farmer' ? __caller.farmerId : __caller?.kind === 'service' ? (req.headers.get('x-farmer-id') || '') : '';
     if (!tenantId || !farmerId) {
       return new Response(
         JSON.stringify({ error: 'Missing x-tenant-id / x-farmer-id header' }),

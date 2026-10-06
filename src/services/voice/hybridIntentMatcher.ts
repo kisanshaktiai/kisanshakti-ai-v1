@@ -5,7 +5,7 @@
  * Achieves <100ms response for 90% of commands
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { dataIsolation } from '@/services/dataIsolationService';
 import { phoneticSimilarity, bestPhoneticMatch, normalizeForPhonetic } from './phoneticMatcher';
 
@@ -423,6 +423,7 @@ class HybridIntentMatcher {
         headers: {
           'x-tenant-id': tenantId,
           ...(farmerId ? { 'x-farmer-id': farmerId } : {}),
+          'x-session-token': getSessionToken() || '',
         },
       });
 

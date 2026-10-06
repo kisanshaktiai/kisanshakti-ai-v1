@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 — SECURITY: identity from the DB-verified x-session-token (_shared/sessionVerify.ts); headers trusted only for service role.
 // 2026-09-27 — AI model SSOT: the natural-language fallback calls callAITask task
 //   'voice.navigate'; the model comes from ai_task_route_step (was the literal 'gpt-4o-mini'
 //   posted straight to the OpenAI endpoint with OPENAI_API_KEY). Request knobs unchanged:
@@ -12,6 +13,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { rateGuard } from '../_shared/rateGuard.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
+import { resolveVerifiedCaller } from '../_shared/sessionVerify.ts';
 
 
 interface VoiceRequest {
@@ -50,8 +52,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
+    // 2026-10-06 — identity from the DB-verified session token; headers trusted only for service role.
+    const caller = await resolveVerifiedCaller(req);
+    const tenantId = caller?.kind === 'farmer' ? caller.tenantId : caller?.kind === 'service' ? req.headers.get('x-tenant-id') : null;
+    const farmerId = caller?.kind === 'farmer' ? caller.farmerId : caller?.kind === 'service' ? req.headers.get('x-farmer-id') : null;
 
     if (!tenantId) {
       return new Response(
@@ -244,7 +248,7 @@ Match intent and return JSON:
     console.error('[Voice Agent] Error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         matched: false,
         suggestions: ['Try again', 'प्रयास करें', 'மீண்டும் முயற்சி செய்யவும்'],
       }),
