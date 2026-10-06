@@ -2,6 +2,7 @@
 // ENV-INTELLIGENCE API  —  supabase/functions/env-intelligence/index.ts
 //
 // CHANGE LOG
+// 2026-10-06 — SECURITY: farmer callers need a verified x-session-token; land reads bound to that farmer.
 // 2026-10-06 — SECURITY: elevated roles only for a signature-verified JWT (auth.getUser), not a decoded sub.
 //
 // Read-only serving layer over the Environmental Intelligence observation
@@ -23,6 +24,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.5
 import { checkRateLimit } from "../_shared/rateLimiter.ts";
 import { resolveTenantFromRequest } from "../_shared/tenantMiddleware.ts";
 import { corsHeaders } from "../_shared/cors.ts";
+import { resolveVerifiedCaller, sessionRequiredResponse } from "../_shared/sessionVerify.ts";
 
 const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
 
@@ -178,6 +180,7 @@ async function handleObservations(
   url: URL,
   role: Role,
   tenantId: string | null,
+  farmerId: string | null = null,
 ) {
   const landId = url.searchParams.get("land_id");
   const cellKey = url.searchParams.get("cell_key");
@@ -192,7 +195,7 @@ async function handleObservations(
   const latestIssue = url.searchParams.get("latest_issue") !== "false";
 
   if (landId) {
-    const ok = await landInScope(supabase, landId, tenantId, role);
+    const ok = await landInScope(supabase, landId, tenantId, role, farmerId);
     if (!ok) return json({ error: "Land not found in tenant scope", code: "LAND_NOT_FOUND" }, 404);
   }
 
@@ -253,10 +256,13 @@ async function landInScope(
   landId: string,
   tenantId: string | null,
   role: Role,
+  farmerId: string | null = null,
 ): Promise<boolean> {
-  const { data } = await supabase.from("lands").select("id, tenant_id").eq("id", landId).maybeSingle();
+  const { data } = await supabase.from("lands").select("id, tenant_id, farmer_id").eq("id", landId).maybeSingle();
   if (!data) return false;
   if (role === "admin") return true;
+  // Farmers may read only their own land (identity from the verified session).
+  if (role === "farmer" && (!farmerId || data.farmer_id !== farmerId)) return false;
   if (tenantId && data.tenant_id && data.tenant_id !== tenantId) return false;
   return true;
 }
@@ -266,8 +272,9 @@ async function handleLandState(
   landId: string,
   role: Role,
   tenantId: string | null,
+  farmerId: string | null = null,
 ) {
-  const ok = await landInScope(supabase, landId, tenantId, role);
+  const ok = await landInScope(supabase, landId, tenantId, role, farmerId);
   if (!ok) return json({ error: "Land not found in tenant scope", code: "LAND_NOT_FOUND" }, 404);
 
   const [stateRes, episodeRes, gddRes] = await Promise.all([
@@ -367,8 +374,9 @@ async function handleTimeline(
   url: URL,
   role: Role,
   tenantId: string | null,
+  farmerId: string | null = null,
 ) {
-  const ok = await landInScope(supabase, landId, tenantId, role);
+  const ok = await landInScope(supabase, landId, tenantId, role, farmerId);
   if (!ok) return json({ error: "Land not found in tenant scope", code: "LAND_NOT_FOUND" }, 404);
 
   const properties = (url.searchParams.getAll("property").flatMap((p) => p.split(",")))
@@ -562,8 +570,19 @@ serve(async (req: Request): Promise<Response> => {
 
     const role = await resolveRole(req, supabase);
 
+    // 2026-10-06 SECURITY: a farmer caller must hold a DB-verified session;
+    // tenant and farmer come from that session, never from request headers.
+    let callerFarmerId: string | null = null;
+    let scopedTenantId: string | null = tenantId;
+    if (role === "farmer") {
+      const caller = await resolveVerifiedCaller(req);
+      if (!caller || caller.kind !== "farmer") return sessionRequiredResponse(corsHeaders);
+      callerFarmerId = caller.farmerId;
+      scopedTenantId = caller.tenantId ?? null;
+    }
+
     if (seg[0] === "observations" && seg.length === 1) {
-      return await handleObservations(supabase, url, role, tenantId);
+      return await handleObservations(supabase, url, role, scopedTenantId, callerFarmerId);
     }
     if (seg[0] === "observations" && seg[2] === "lineage") {
       const obsId = Number(seg[1]);
@@ -571,10 +590,10 @@ serve(async (req: Request): Promise<Response> => {
       return await handleLineage(supabase, obsId, role);
     }
     if (seg[0] === "lands" && seg[2] === "state") {
-      return await handleLandState(supabase, seg[1], role, tenantId);
+      return await handleLandState(supabase, seg[1], role, scopedTenantId, callerFarmerId);
     }
     if (seg[0] === "lands" && seg[2] === "timeline") {
-      return await handleTimeline(supabase, seg[1], url, role, tenantId);
+      return await handleTimeline(supabase, seg[1], url, role, scopedTenantId, callerFarmerId);
     }
 
     return json({ error: "Not found", code: "NO_ROUTE", path: url.pathname }, 404);
