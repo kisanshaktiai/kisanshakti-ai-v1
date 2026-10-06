@@ -9,6 +9,7 @@
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first)
+ * 2026-10-06 — SECURITY: farmer/tenant identity from the DB-verified x-session-token; headers trusted only for service role.
  * ───────────────────────────────────────────────────────────────────────────
  * 2026-09-27 — AI MODEL SSOT: callLLM calls callAITask task 'rag.answer'; the model chain
  *   comes from ai_task_route_step (was getBestAvailableProvider(): OpenAI default model if

@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-06 — SECURITY: identity from the DB-verified x-session-token (_shared/sessionVerify.ts); headers trusted only for service role.
 // 2026-09-27 — AI model SSOT: the natural-language fallback calls callAITask task
 //   'voice.navigate'; the model comes from ai_task_route_step (was the literal 'gpt-4o-mini'
 //   posted straight to the OpenAI endpoint with OPENAI_API_KEY). Request knobs unchanged:
