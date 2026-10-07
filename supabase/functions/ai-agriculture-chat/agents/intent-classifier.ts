@@ -151,6 +151,8 @@ export interface IntentClassification {
   confidence: number;
   /** NLU-only execution mode; never carries agronomic facts. */
   execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED';
+  /** Subject routing hint only; no agronomic facts. */
+  knowledge_subject: 'CROP' | 'STAGE' | 'FERTILIZER' | 'PEST' | 'WEED' | 'CHEMICAL' | 'NONE';
 }
 
 // PROMPT BUILDER
@@ -264,6 +266,15 @@ function buildLexicalEvidenceBlock(
 
 }
 
+function defaultKnowledgeSubjectFromIntent(intentMeta?: any): IntentClassification['knowledge_subject'] {
+  const category = String(intentMeta?.intent_category || '').toUpperCase();
+  if (category === 'NUTRIENT') return 'FERTILIZER';
+  if (category === 'PEST') return 'PEST';
+  if (category === 'WEED') return 'WEED';
+  if (category === 'GENERAL') return 'CROP';
+  return 'NONE';
+}
+
 function defaultExecutionModeFromIntent(intentCode: string, intentMeta?: any): 'KNOWLEDGE' | 'DECISION' | 'MIXED' {
   const mode = String(intentMeta?.clarification_mode || '').toUpperCase();
   const routing = String(intentMeta?.routing_target || '').toUpperCase();
@@ -285,6 +296,7 @@ function buildExecutionModeInstructions(): string {
     '- KNOWLEDGE: factual/static question such as definition, meaning, list, general crop fact, or documented general norm; no diagnosis or field-specific treatment decision is requested.',
     '- DECISION: diagnosis, treatment, application, dose, spray, control, what-to-do-now, or other action that should use the Decision Graph.',
     '- MIXED: the same farmer turn contains both a factual sub-question and an action/decision request.',
+    'KNOWLEDGE SUBJECT — when execution_mode is KNOWLEDGE, also return one subject: CROP, STAGE, FERTILIZER, PEST, WEED, CHEMICAL, or NONE.',
     'Execution mode is routing metadata only. Do not answer the question.',
   ].join('\\n');
 }
@@ -362,7 +374,7 @@ or has no agricultural meaning.
 Farmer query: "${farmerMessage}"
 
 Return JSON ONLY (no markdown, no prose):
-{"intent_code": "<one canonical code from the list>", "confidence": 0.0-1.0, "execution_mode": "KNOWLEDGE|DECISION|MIXED"}`;
+{"intent_code": "<one canonical code from the list>", "confidence": 0.0-1.0, "execution_mode": "KNOWLEDGE|DECISION|MIXED", "knowledge_subject": "CROP|STAGE|FERTILIZER|PEST|WEED|CHEMICAL|NONE"}`;
 }
 
 // HTTP / PARSING HELPERS
@@ -382,7 +394,7 @@ function extractFirstBalancedJSON(str: string): string | null {
   return null;
 }
 
-function safeExtractJson(content: string): { intent_code: string; confidence: number; execution_mode?: 'KNOWLEDGE' | 'DECISION' | 'MIXED' } | null {
+function safeExtractJson(content: string): { intent_code: string; confidence: number; execution_mode?: 'KNOWLEDGE' | 'DECISION' | 'MIXED'; knowledge_subject?: IntentClassification['knowledge_subject'] } | null {
   if (!content || typeof content !== 'string') return null;
   const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try { const d = JSON.parse(cleaned); if (d && typeof d.intent_code === 'string') return d; } catch {/* */}
@@ -401,7 +413,7 @@ function safeExtractJson(content: string): { intent_code: string; confidence: nu
 // Request knobs unchanged: 1024 tokens, temperature 0 / 0.1 where the model's contract allows one,
 // JSON mode for every provider except Gemini (the old `!isGemini` rule). The old same-model 429
 // retry loop is replaced by the route's next model.
-async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ intent_code: string; confidence: number; execution_mode?: 'KNOWLEDGE' | 'DECISION' | 'MIXED' } | null> {
+async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ intent_code: string; confidence: number; execution_mode?: 'KNOWLEDGE' | 'DECISION' | 'MIXED'; knowledge_subject?: IntentClassification['knowledge_subject'] } | null> {
   const db = aiRegistryClient();
   if (!db) {
     console.error('[intent-classifier] Missing Supabase credentials — cannot reach the AI model registry');
@@ -413,8 +425,8 @@ async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ int
     functionName: 'ai-agriculture-chat',
     messages: [
       { role: 'system', content: strict
-        ? 'You are a JSON-only classifier. Output MUST be valid JSON containing intent_code, confidence, and execution_mode. Nothing else.'
-        : 'You are an intent classifier. Return only JSON: {"intent_code": "...", "confidence": 0.0-1.0, "execution_mode": "KNOWLEDGE|DECISION|MIXED"}. No prose, no markdown.' },
+        ? 'You are a JSON-only classifier. Output MUST be valid JSON containing intent_code, confidence, execution_mode, and knowledge_subject. Nothing else.'
+        : 'You are an intent classifier. Return only JSON: {"intent_code": "...", "confidence": 0.0-1.0, "execution_mode": "KNOWLEDGE|DECISION|MIXED", "knowledge_subject": "CROP|STAGE|FERTILIZER|PEST|WEED|CHEMICAL|NONE"}. No prose, no markdown.' },
       { role: 'user', content: prompt }
     ],
     maxOutputTokens: 1024,
@@ -523,12 +535,16 @@ export async function classifyFarmerIntent(
 
     if (result && allowedCodes.has(result.intent_code)) {
       const conf = typeof result.confidence === 'number' ? Math.max(0, Math.min(1, result.confidence)) : 0.6;
+      const resultMeta = (intentMetaMap as Map<string, any>)?.get(result.intent_code);
       const executionMode =
         result.execution_mode === 'KNOWLEDGE' || result.execution_mode === 'MIXED'
           ? result.execution_mode
-          : defaultExecutionModeFromIntent(result.intent_code, (intentMetaMap as Map<string, any>)?.get(result.intent_code));
-      console.log(`   ✅ Intent: ${result.intent_code} (${(conf * 100).toFixed(0)}%) mode=${executionMode}`);
-      return { intent_code: result.intent_code, confidence: conf, execution_mode: executionMode };
+          : defaultExecutionModeFromIntent(result.intent_code, resultMeta);
+      const knowledgeSubject = ['CROP','STAGE','FERTILIZER','PEST','WEED','CHEMICAL','NONE'].includes(String(result.knowledge_subject).toUpperCase())
+        ? String(result.knowledge_subject).toUpperCase() as IntentClassification['knowledge_subject']
+        : defaultKnowledgeSubjectFromIntent(resultMeta);
+      console.log(`   ✅ Intent: ${result.intent_code} (${(conf * 100).toFixed(0)}%) mode=${executionMode} subject=${knowledgeSubject}`);
+      return { intent_code: result.intent_code, confidence: conf, execution_mode: executionMode, knowledge_subject: knowledgeSubject };
     }
 
     if (result) {
@@ -546,18 +562,22 @@ export async function classifyFarmerIntent(
     const retry = await callClassifierLLM(retryPrompt, true);
     if (retry && allowedCodes.has(retry.intent_code)) {
       const conf = typeof retry.confidence === 'number' ? Math.max(0, Math.min(1, retry.confidence)) : 0.5;
+      const retryMeta = (intentMetaMap as Map<string, any>)?.get(retry.intent_code);
       const executionMode =
         retry.execution_mode === 'KNOWLEDGE' || retry.execution_mode === 'MIXED'
           ? retry.execution_mode
-          : defaultExecutionModeFromIntent(retry.intent_code, (intentMetaMap as Map<string, any>)?.get(retry.intent_code));
-      console.log(`   ✅ Intent (retry): ${retry.intent_code} (${(conf * 100).toFixed(0)}%) mode=${executionMode}`);
-      return { intent_code: retry.intent_code, confidence: conf, execution_mode: executionMode };
+          : defaultExecutionModeFromIntent(retry.intent_code, retryMeta);
+      const knowledgeSubject = ['CROP','STAGE','FERTILIZER','PEST','WEED','CHEMICAL','NONE'].includes(String(retry.knowledge_subject).toUpperCase())
+        ? String(retry.knowledge_subject).toUpperCase() as IntentClassification['knowledge_subject']
+        : defaultKnowledgeSubjectFromIntent(retryMeta);
+      console.log(`   ✅ Intent (retry): ${retry.intent_code} (${(conf * 100).toFixed(0)}%) mode=${executionMode} subject=${knowledgeSubject}`);
+      return { intent_code: retry.intent_code, confidence: conf, execution_mode: executionMode, knowledge_subject: knowledgeSubject };
     }
 
     console.error(`[IntentValidator] Retry also failed. Trying keyword fallback, then GENERAL_CROP_INFO.`);
     const kw = emergencyFallback(farmerMessage, allowedCodes);
     if (kw.intent_code !== 'UNKNOWN_OBSERVATION') return kw;
-    return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3, execution_mode: 'KNOWLEDGE' };
+    return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3, execution_mode: 'KNOWLEDGE', knowledge_subject: 'CROP' };
   } catch (e) {
     console.error(`[IntentClassifier] Error: ${e}`);
     return emergencyFallback(farmerMessage, validCodes);
@@ -566,12 +586,12 @@ export async function classifyFarmerIntent(
 
 // EMERGENCY KEYWORD FALLBACK — every emitted code is gated through validCodes
 
-function emit(code: string, conf: number, validCodes: Set<string>, execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED' = 'DECISION'): IntentClassification {
+function emit(code: string, conf: number, validCodes: Set<string>, execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED' = 'DECISION', knowledge_subject: IntentClassification['knowledge_subject'] = 'NONE'): IntentClassification {
   // PR-10 · Empty-registry safety: when the DB-driven registry is empty
-  if (validCodes.size === 0) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.1, execution_mode: 'KNOWLEDGE' };
-  if (validCodes.has(code)) return { intent_code: code, confidence: conf, execution_mode };
-  if (validCodes.has('GENERAL_CROP_INFO')) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3, execution_mode: 'KNOWLEDGE' };
-  return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15, execution_mode: 'DECISION' };
+  if (validCodes.size === 0) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.1, execution_mode: 'KNOWLEDGE', knowledge_subject: 'CROP' };
+  if (validCodes.has(code)) return { intent_code: code, confidence: conf, execution_mode, knowledge_subject };
+  if (validCodes.has('GENERAL_CROP_INFO')) return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.3, execution_mode: 'KNOWLEDGE', knowledge_subject: 'CROP' };
+  return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15, execution_mode: 'DECISION', knowledge_subject: 'NONE' };
 }
 
 /**
