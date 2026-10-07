@@ -337,6 +337,12 @@ async function persistRuntimeTraceSafetyNet(params: {
   detectedLanguage: string;
   startTime: number;
   responseType?: string | null;
+  responseSource?: string | null;
+  brainExecutionMode?: string | null;
+  knowledgeProvider?: string | null;
+  authorityStatus?: string | null;
+  finalResolutionType?: string | null;
+  inferredIntent?: string | null;
   agentsUsed?: string[];
   cropCode?: string | null;
   growthStage?: string | null;
@@ -418,13 +424,20 @@ async function persistRuntimeTraceSafetyNet(params: {
         actions_filtered_out: [],
         validation_passed: true,
         validation_errors: [],
-        response_source: params.responseType === 'CLARIFICATION_QUESTION' || params.responseType === 'clarification' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE',
+        response_source:
+          params.responseSource ||
+          (params.responseType === 'CLARIFICATION_QUESTION' || params.responseType === 'clarification' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE'),
         response_language_match: true,
         processing_time_ms: Date.now() - params.startTime,
         agents_used: params.agentsUsed ?? [],
         land_id: params.landId ?? null,
         crop_code: params.cropCode ?? null,
         growth_stage: params.growthStage ?? null,
+        brain_execution_mode: params.brainExecutionMode ?? null,
+        knowledge_provider: params.knowledgeProvider ?? null,
+        authority_status: params.authorityStatus ?? null,
+        final_resolution_type: params.finalResolutionType ?? null,
+        inferred_intent: params.inferredIntent ?? null,
         ..._auditPatch,
       };
       let { error: _auditInsertError } = await params.supabase.from('ai_chat_audit_logs').insert(_auditInsertData);
@@ -1577,6 +1590,12 @@ serve(async (req) => {
       detectedLanguage,
       startTime,
       responseType: orchestratorResponse.type,
+      responseSource: (orchestratorResponse.metadata as any)?.response_source ?? null,
+      brainExecutionMode: (orchestratorResponse.metadata as any)?.brain_execution_mode ?? null,
+      knowledgeProvider: (orchestratorResponse.metadata as any)?.knowledge_provider ?? null,
+      authorityStatus: (orchestratorResponse.metadata as any)?.authority_status ?? null,
+      finalResolutionType: (orchestratorResponse.metadata as any)?.final_resolution_type ?? null,
+      inferredIntent: (orchestratorResponse.metadata as any)?.inferred_intent ?? null,
       agentsUsed: (orchestratorResponse.metadata as any)?.agents_used ?? [],
       cropCode: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
       growthStage: (orchestratorResponse.dataAudit?.land as any)?.current_crop_stage ?? null,
@@ -1900,9 +1919,14 @@ serve(async (req) => {
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
     // CRITICAL FIX: Check if Static Data Gate already handled this query
-    const isStaticGateResponse = 
+    const isStaticGateResponse =
       (orchestratorResponse.decision_output as any)?.metadata?.template_type === 'STATIC_DIRECT' ||
       (orchestratorResponse.communication as any)?.metadata?.source === 'STATIC_DATA_GATE';
+
+    const isKnowledgePlaneResponse =
+      (orchestratorResponse.decision_output as any)?.metadata?.brain_execution_mode === 'KNOWLEDGE' ||
+      (orchestratorResponse.communication as any)?.metadata?.source === 'KNOWLEDGE_PLANE' ||
+      (orchestratorResponse.decision_output as any)?.metadata?.response_source === 'KNOWLEDGE_PLANE';
     
     if (isStaticGateResponse) {
       // Static Gate already generated the response - use it directly
@@ -1910,6 +1934,17 @@ serve(async (req) => {
       responseContent = (orchestratorResponse.communication as any)?.main_message?.full_text?.[detectedLanguage] ||
                         (orchestratorResponse.communication as any)?.main_message?.full_text?.en ||
                         'Information not available';
+    } else if (isKnowledgePlaneResponse) {
+      // Knowledge Plane is deterministic DB knowledge. Do not send it through
+      // decision-action formatting, advisor cards, or decision-only heuristics.
+      console.log(`   📚 [KnowledgePlane] Using deterministic response provider=${
+        (orchestratorResponse.decision_output as any)?.metadata?.knowledge_provider || 'unknown'
+      }`);
+      responseContent =
+        (orchestratorResponse.communication as any)?.main_message?.full_text?.[detectedLanguage] ||
+        (orchestratorResponse.communication as any)?.main_message?.full_text?.en ||
+        String((orchestratorResponse.decision_output as any)?.knowledge_result?.response || '').trim() ||
+        'Verified information is not available for this question.';
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
@@ -2581,15 +2616,15 @@ serve(async (req) => {
       const _translated = await forceTranslateResponse(responseContent, detectedLanguage, { db: supabase, farmerId: finalFarmerId, traceId });
       // Deterministic safety gate: never ship a rewrite that altered/dropped a
       // dosage number or symbolic product name.
-      responseContent = verifyTranslationFidelity(_preTranslate, _translated, actions_returned)
-        ? _translated
-        : _preTranslate;
+      responseContent = isKnowledgePlaneResponse
+        ? (verifyKnowledgeTranslationFidelity(_preTranslate, _translated) ? _translated : _preTranslate)
+        : (verifyTranslationFidelity(_preTranslate, _translated, actions_returned) ? _translated : _preTranslate);
     }
 
     
     // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
     const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
-    if (symbolicProducts.length === 0 && responseContent) {
+    if (!isKnowledgePlaneResponse && symbolicProducts.length === 0 && responseContent) {
       const dosagePattern = /\d+\s*(ml|g|kg|l|gm|gram|liter|litre|मिली|ग्रॅम|किलो|लिटर)\b/gi;
       const dosageMatches = responseContent.match(dosagePattern);
       if (dosageMatches && dosageMatches.length > 0) {
@@ -2662,8 +2697,9 @@ serve(async (req) => {
     
     let validationResult = { passed: true, errors: [] as string[] };
     
-    if (isDecisionResponse && !isClarificationOrPhotoResponse) {
-      // Only validate actual decision/treatment responses
+    if (isDecisionResponse && !isClarificationOrPhotoResponse && !isKnowledgePlaneResponse) {
+      // Only validate actual decision/treatment responses. Knowledge Plane
+      // responses are fact answers with zero action rows by design.
       validationResult = validateResponseBeforeSave({
         decision_brain_source,
         actions_returned,
@@ -2872,6 +2908,15 @@ serve(async (req) => {
           actions_filtered_count: actions_filtered_out?.length || 0,
           all_actions_filtered: allActionsFiltered,
           filter_categories: audit_log.filter_categories,
+          // Knowledge Plane observability
+          response_source: (orchestratorResponse.metadata as any)?.response_source ?? null,
+          inferred_intent: (orchestratorResponse.metadata as any)?.inferred_intent ?? null,
+          brain_execution_mode: (orchestratorResponse.metadata as any)?.brain_execution_mode ?? null,
+          knowledge_provider: (orchestratorResponse.metadata as any)?.knowledge_provider ?? null,
+          authority_status: (orchestratorResponse.metadata as any)?.authority_status ?? null,
+          final_resolution_type: (orchestratorResponse.metadata as any)?.final_resolution_type ?? null,
+          knowledge_provenance: (orchestratorResponse.decision_output as any)?.knowledge_result?.provenance ?? [],
+          knowledge_facts: (orchestratorResponse.decision_output as any)?.knowledge_result?.facts ?? {},
           // PHASE 5: LLM formatter tracking
           llm_formatter_used: !!llmFormatterOutput,
           llm_formatter_source: llmFormatterOutput?.source,
@@ -3542,6 +3587,19 @@ function verifyTranslationFidelity(
   return true;
 }
 
+
+function verifyKnowledgeTranslationFidelity(original: string, translated: string): boolean {
+  if (typeof original !== 'string' || typeof translated !== 'string' || !translated.trim()) return false;
+  const numberTokens = toAsciiDigits(original).match(/\d+(?:[.,]\d+)?/g) ?? [];
+  const translatedNorm = toAsciiDigits(translated).replace(/[\s,]/g, '');
+  for (const token of numberTokens) {
+    if (!translatedNorm.includes(token.replace(/,/g, ''))) {
+      console.error(`[KNOWLEDGE_TRANSLATION_FIDELITY] numeric token lost: ${token}`);
+      return false;
+    }
+  }
+  return true;
+}
 
 // Force translate response to target language.
 // Force-translate response to target language using LLM.
