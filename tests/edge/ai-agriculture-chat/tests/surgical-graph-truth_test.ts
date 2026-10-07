@@ -126,3 +126,15 @@ Deno.test('SURGICAL GRAPH TRUTH · orchestrator builds GraphTruth before first h
   assert(build >= 0 && execute >= 0 && build < execute, 'locked GraphTruth must exist before the first hypothesis graph call');
   assert(src.includes("r.source === 'input'"), 'only input observations may become GraphTruth evidence');
 });
+
+
+Deno.test('SURGICAL GRAPH TRUTH · primary recovery cannot promote BLOCK/CONTEXT_BLOCK rows', async () => {
+  const src = await Deno.readTextFile(
+    new URL('../../../../supabase/functions/ai-agriculture-chat/index.ts', import.meta.url),
+  );
+  assert(src.includes('const isContextConstraint = (row: any) =>'));
+  assert(src.includes('!isContextConstraint(layeredPrimaryDecision)'));
+  assert(src.includes('!isContextConstraint(primaryMatchedResponse)'));
+  assert(src.includes('!isContextConstraint(r)'));
+  assert(!src.includes("rule_id: 'INVARIANT_FALLBACK'"), 'synthetic invariant action must remain removed');
+});
