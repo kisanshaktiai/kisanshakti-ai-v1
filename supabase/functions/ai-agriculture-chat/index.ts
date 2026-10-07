@@ -1779,38 +1779,28 @@ serve(async (req) => {
                   console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
                   console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
                 }
-                console.error(`   generating SYSTEM_FALLBACK`);
-                
-                (rawDecisionOutput as any).status = 'SYSTEM_FALLBACK';
-                (rawDecisionOutput as any).primary_decision = {
-                  action_type: 'MONITOR_ONLY',
-                  rule_id: 'INVARIANT_FALLBACK',
-                  specific_action: 'CONTINUE_MONITORING',
-                  target: {},
-                  urgency: 'NON_URGENT',
-                  timing: {
-                    recommended_start: new Date().toISOString(),
-                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    weather_dependency: false,
-                    reason: 'System fallback - primary decision invariant violated'
-                  },
-                  application_details: {
-                    product_name: 'Continue monitoring',
-                    product_type: 'CULTURAL',
-                    concentration: 'Daily observation',
-                    coverage_instructions: 'Monitor crop health and look for symptoms',
-                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
-                    reason_text: 'Insufficient information to provide specific recommendation.',
-                    rule_id: 'INVARIANT_FALLBACK'
-                  },
-                  expected_outcomes: {
-                    efficacy_percent: 100,
-                    time_to_visible_effect_days: 'Ongoing',
-                    success_indicators: ['Early detection of issues']
-                  }
+                console.error(`   NO_AUTHORIZED_DECISION — no graph-authorized decision is available.`);
+                // Never manufacture a MONITOR / CULTURAL action merely because
+                // the primary-decision shape is missing. That would turn a system
+                // integrity failure into an agronomic recommendation.
+                (rawDecisionOutput as any).status = 'NO_AUTHORIZED_DECISION';
+                (rawDecisionOutput as any).primary_decision = undefined;
+                (rawDecisionOutput as any).secondary_actions = [];
+                (rawDecisionOutput as any).actions_returned = [];
+                (rawDecisionOutput as any).prescription_allowed = false;
+                (rawDecisionOutput as any).prescription_gate_reason = 'NO_AUTHORIZED_DECISION';
+                (rawDecisionOutput as any).graph_gap =
+                  (rawDecisionOutput as any).graph_gap ?? 'NO_AUTHORIZED_DECISION';
+                (orchestratorResponse as any).type = 'CLARIFICATION_NEEDED';
+                (orchestratorResponse as any).question = undefined;
+                (orchestratorResponse as any).metadata = {
+                  ...((orchestratorResponse as any).metadata ?? {}),
+                  orchestrator_type: 'CLARIFICATION_NEEDED',
+                  no_authorized_decision: true,
+                  graph_gap: (rawDecisionOutput as any).graph_gap,
+                  prescription_allowed: false,
                 };
-                
-                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+                console.log(`   📋 NO_AUTHORIZED_DECISION emitted; no synthetic agronomic action generated`);
               }
             }
           }
