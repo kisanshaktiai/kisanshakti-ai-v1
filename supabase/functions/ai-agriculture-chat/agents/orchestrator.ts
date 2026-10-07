@@ -4632,7 +4632,11 @@ export class AIAgentOrchestrator {
         'CROP_HEALTH',
         'GENERAL_INFO'
       ]);
-      const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
+      // The keyword router is only a hint. It may authorize DIRECT behavior only
+      // when the DB intent contract independently says clarification_mode=DIRECT.
+      const routeDirectModeBypass =
+        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) &&
+        String(intentMetaFromDB?.clarification_mode || '').toUpperCase() === 'DIRECT';
       // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
       const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
       const cropFromAnyLayer =
@@ -5961,7 +5965,7 @@ export class AIAgentOrchestrator {
 
       // Phase H — Canonical ConversationState (frozen, single runtime authority)
       const __advisoryIntentForState =
-        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
+        String(intentMetaFromDB?.clarification_mode || '').toUpperCase() === 'DIRECT' ||
         isAdvisoryRoute(intentCode);
       const __stageForState =
         (landContext as any)?.growth_stage ||
@@ -7120,8 +7124,9 @@ export class AIAgentOrchestrator {
       }
       
       // STAGE 4B: UNDERSTANDING-BASED CLARIFICATION GATE
+      // DB intent contract is authoritative; routeQuery can never veto or grant
+      // clarification bypass on its own.
       const isAdvisoryRouteForGate =
-        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
         intentMetaFromDB?.clarification_mode === 'DIRECT' ||
         isAdvisoryRoute(intentCode); // Fix 7: canonical-intent bypass
       if (isAdvisoryRouteForGate && understandingResult.clarification_required) {
