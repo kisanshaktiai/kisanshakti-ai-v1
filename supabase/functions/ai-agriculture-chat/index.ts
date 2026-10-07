@@ -2820,7 +2820,8 @@ serve(async (req) => {
         message_type: photoDiagnosisId ? 'image_analysis' : 'text',
         image_urls: null,
         is_training_candidate: true,
-        inferred_intent: (orchestratorResponse.metadata as any)?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+        inferred_intent: (orchestratorResponse.metadata as any)?.inferred_intent ??
+          ((orchestratorResponse.metadata as any)?.agents_used?.includes('NLU') ? 'PROCESSED' : null),
         conversation_turn_number: messages.length,
         metadata: {
           source: 'orchestrator_v1',
