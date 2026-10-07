@@ -9000,19 +9000,18 @@ export class AIAgentOrchestrator {
         // (G1) context-eligible AND (G2) semantically relevant to this turn
         // (hypothesis edge / intent→observation mapping / observation / same
         // condition_code as a candidate). It suppresses a candidate only via an
-        // EXPLICIT graph edge (G3). It may lead the response and enter
-        // safety_blocks only when is_safety_block=true (G4); otherwise it is an
-        // advisory appended AFTER the kept candidates. primary_decision is
-        // always taken from the kept candidate lane unless a hard block exists.
+        // EXPLICIT graph edge (G3). Safety blocks may lead only when
+        // is_safety_block=true (G4); non-safety BLOCK constraints remain
+        // constraints/advisories and cannot become primary without a valid
+        // graph-backed decision.
         try {
           const _cbCandidates = Array.isArray(layeredRuleResult?.matched_responses)
             ? layeredRuleResult.matched_responses : [];
           // 2026-09-03 — a Lane-B (zero-symptom advisory) turn with NO candidate
-          // still runs the gate: an intent-relevant CONTEXT_BLOCK (e.g.
-          // RICE_NUTR_LATE_N_BLOCK_001 for FERTILIZER_SCHEDULE at grain_filling —
-          // relevance proven through intent_observation_mapping, G2) is the only
-          // DB-authorised answer for that turn and must not be lost to a photo
-          // request. Non-Lane-B turns keep the original candidates>0 condition.
+          // still runs the gate so intent-relevant CONTEXT_BLOCK constraints are
+          // preserved for the final response and audit trail. A non-safety BLOCK
+          // is a constraint, not a positive prescription, and therefore cannot
+          // become primary when no hypothesis-backed decision survives.
           const _cbZeroCandidateLaneB =
             _cbCandidates.length === 0 && (this as any).__laneBEligible === true;
           if (_cbCandidates.length > 0 || _cbZeroCandidateLaneB) {
