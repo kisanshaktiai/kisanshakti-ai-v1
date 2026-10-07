@@ -6216,56 +6216,110 @@ export class AIAgentOrchestrator {
             bridgedCanonical,
           );
           const resolvedCanonicalCodes: string[] = resolved.map((r) => r.code);
-          const canonical_observation_codes: string[] = resolvedCanonicalCodes.filter((code) => isRealObservation(code));
           const ignoredCanonicalCodes: string[] = resolvedCanonicalCodes.filter((code) => !isRealObservation(code));
+
+          // EVIDENCE PROVENANCE CONTRACT:
+          // deriveTrustedEvidence() has already separated farmer-confirmed and
+          // trusted perceived evidence from INFERRED / IOM / synthetic space.
+          // IOM peers remain clarification candidates only; they never become
+          // GraphTruth.canonical_observations.
+          const trustedEvidence = (this as any)._trustedEvidence as
+            | { confirmed?: string[]; perceived?: string[] }
+            | null;
+          const trustedCanonicalSet = new Set(
+            [
+              ...(trustedEvidence?.confirmed ?? []),
+              ...(trustedEvidence?.perceived ?? []),
+            ]
+              .map((code) => canonicalObsCode(code))
+              .filter(Boolean),
+          );
+
+          const canonical_observation_codes: string[] = resolved
+            .filter((r) => r.source === 'input')
+            .map((r) => canonicalObsCode(r.code))
+            .filter((code): code is string => !!code && trustedCanonicalSet.has(code));
+
+          const iomCandidateObservationCodes: string[] = Array.from(
+            new Set(
+              resolved
+                .filter((r) => r.source === 'iom_literal_peer')
+                .map((r) => canonicalObsCode(r.code))
+                .filter((code): code is string => !!code),
+            ),
+          );
+          (this as any).__observationCandidateCodes = iomCandidateObservationCodes;
+
           const frozenContext = {
             ...evidenceContext,
             metadata: Array.from(new Set([...evidenceContext.metadata, ...ignoredCanonicalCodes])),
           };
-          for (const r of resolved) {
-            if (r.source === 'iom_literal_peer') {
-              authoredObservations.add(
-                r.code,
-                ObservationAuthority.INFERRED,
-                'IOM_LITERAL_PEER',
-              );
-            }
-          }
 
           Object.freeze(real_codes);
           Object.freeze(canonical_observation_codes);
-          console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} canonical=${canonical_observation_codes.length}`);
+          Object.freeze(iomCandidateObservationCodes);
+          console.log(
+            `   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} ` +
+            `trusted=${canonical_observation_codes.length} iom_candidates=${iomCandidateObservationCodes.length}`,
+          );
 
           // STEP 8 — EVIDENCE_FREEZE ledger trace (single SSOT for the turn)
+          const confirmedSet = new Set((trustedEvidence?.confirmed ?? []).map((code) => canonicalObsCode(code)));
           const ledger = canonical_observation_codes.map((c) => ({
             code: c,
-            source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
-            confidence: real_codes.includes(c) ? 1 : 0.8,
+            source: confirmedSet.has(c) ? 'FARMER_CONFIRMED' : 'TRUSTED_PERCEIVED',
+            confidence: confirmedSet.has(c) ? 1 : 0.7,
           }));
           assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
           (this as any)._evidenceFrozen = true;
           // P4: from here on, the turn is committed to producing a populated
           // decision_output (real decision OR structured no-decision).
-          (this as any)._graphExecutionStarted = true;
-          // P1: the frozen canonical set is the SSOT every downstream stage
-          (this as any)._lastRealObservations = [...canonical_observation_codes];
-          (this as any)._lastIntentCode = intentCode;
-          console.log(
-            `[POST_EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
-              `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
-          );
-          console.log(
-            `[STAGE_BOUNDARY] stage=evidence_freeze trace=${traceId} confirmed=${canonical_observation_codes.length} ` +
-              `hyp=0 rules_pre=0 rules_post=0 winner=none`,
-          );
-
-
-          const currentObservations = canonical_observation_codes;
-          if (real_codes.length !== currentObservations.length ||
-              real_codes.some((c, i) => c !== currentObservations[i])) {
-            console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
+          // T1 — BUILD IMMUTABLE GRAPH TRUTH BEFORE ANY HYPOTHESIS EVALUATION.
+          // The first graph pass must never consume mutable pre-lock pipeline values.
+          try {
+            const existingGraphTruth = (this as any)._graphTruth as GraphTruth | null;
+            if (existingGraphTruth) {
+              assertGraphTruthIntegrity(existingGraphTruth, 'PRE_HYPOTHESIS_GRAPH');
+            } else {
+              const bioState: BiologicalState | null = (landContext as any)?.biological_state ?? null;
+              const graphTruth = buildGraphTruth({
+                land_id: options.landId ?? landContext?.id ?? null,
+                crop_code: canonicalContext?.crop_code ?? cropCode ?? landContext?.current_crop ?? null,
+                variety_id: canonicalContext?.variety_id
+                  ?? (landContext as any)?.current_crop_variety_id
+                  ?? (landContext as any)?.crop_variety_id
+                  ?? null,
+                biological_stage: canonicalContext?.growth_stage
+                  ?? bioState?.growth_stage
+                  ?? landContext?.growth_stage
+                  ?? null,
+                stage_uuid: bioState?.stage_uuid ?? canonicalContext?.biological_state?.stage_uuid ?? null,
+                DAS: typeof canonicalContext?.days_since_sowing === 'number'
+                  ? canonicalContext.days_since_sowing
+                  : (typeof bioState?.das === 'number' ? bioState.das : null),
+                GDD: typeof bioState?.gdd_accumulated === 'number' ? bioState.gdd_accumulated : null,
+                canonical_observations: canonical_observation_codes,
+                evidence_sources: canonical_observation_codes.map((code) => ({
+                  code,
+                  authority: confirmedSet.has(code) ? ('CONFIRMED' as const) : ('INFERRED' as const),
+                  source: confirmedSet.has(code) ? 'TRUSTED_CONFIRMED_EVIDENCE' : 'TRUSTED_PERCEIVED_EVIDENCE',
+                })),
+                decision_context: canonicalContext ?? null,
+              });
+              (this as any)._graphTruth = graphTruth;
+              assertGraphTruthIntegrity(graphTruth, 'POST_GRAPH_TRUTH_BUILD');
+            }
+          } catch (graphTruthError) {
+            (this as any)._graphTruth = null;
+            console.error(`[GRAPH_TRUTH_REQUIRED] trace=${traceId} intent=${intentCode} err=${(graphTruthError as Error).message}`);
+            throw new Error(`GRAPH_TRUTH_REQUIRED: unable to create the locked graph context for intent=${intentCode}: ${(graphTruthError as Error).message}`);
           }
 
+          const _gtForGraph = (this as any)._graphTruth as GraphTruth;
+          const _graphCrop = _gtForGraph.crop_code;
+          const _graphStage = _gtForGraph.biological_stage;
+          const _graphDas = _gtForGraph.DAS;
+          const _graphObservations = [..._gtForGraph.canonical_observations];
           // STEP 8 — HYPOTHESIS GRAPH EVALUATOR (DB graph discovery)
           let graphHypothesisRuleIds: string[] = [];
           let graphHypothesisEdgeMissing: string[] = [];
@@ -6275,15 +6329,11 @@ export class AIAgentOrchestrator {
               | { predicted_stage_confidence?: number }
               | undefined;
             const graphInput = {
-              crop_code: cropCode ?? null,
-              crop_group: cropCode ?? null,
-              growth_stage: graphGrowthStage,
-              das: (typeof (canonicalContext as any)?.days_since_sowing === 'number'
-                ? (canonicalContext as any).days_since_sowing
-                : ((typeof (landContext as any)?.days_since_sowing === 'number')
-                  ? (landContext as any).days_since_sowing
-                  : null)),
-              observation_codes: currentObservations,
+              crop_code: _graphCrop,
+              crop_group: _graphCrop,
+              growth_stage: _graphStage,
+              das: _graphDas,
+              observation_codes: _graphObservations,
               supabase: this.supabase,
               trace_id: traceId,
               canonical_context: canonicalContext,
@@ -6550,48 +6600,12 @@ export class AIAgentOrchestrator {
 
 
 
-          // T1/T9 · BUILD IMMUTABLE GRAPH TRUTH + CANONICAL HASH
-          try {
-            const bioState: any = (landContext as any)?.biological_state ?? null;
-            const graphTruth = buildGraphTruth({
-              land_id: options.landId ?? landContext?.id ?? null,
-              crop_code: cropCode ?? landContext?.current_crop ?? null,
-              variety_id: (landContext as any)?.crop_variety_id
-                ?? (landContext as any)?.crop_variety
-                ?? null,
-              biological_stage: bioState?.growth_stage
-                ?? canonicalContext?.growth_stage
-                ?? landContext?.growth_stage
-                ?? null,
-              stage_uuid: bioState?.stage_uuid ?? null,
-              DAS: (typeof canonicalContext?.days_since_sowing === 'number'
-                ? canonicalContext.days_since_sowing
-                : (typeof landContext?.days_since_sowing === 'number'
-                    ? landContext.days_since_sowing
-                    : null)),
-              GDD: (typeof bioState?.gdd_accumulated === 'number' ? bioState.gdd_accumulated : null),
-              canonical_observations: canonical_observation_codes,
-              evidence_sources: real_codes.map((c) => ({
-                code: c,
-                authority: 'CONFIRMED' as const,
-                source: 'EXTRACTOR',
-              })),
-            });
-            // Attach to closure state for downstream stages
-            (this as any)._graphTruth = graphTruth;
-          } catch (e) {
-            // RC-1 FIX: do NOT let a stale prior-turn _graphTruth survive when
-            (this as any)._graphTruth = null;
-            console.error(
-              `[GRAPH_TRUTH_BUILD_FAILED] trace=${traceId} intent=${intentCode} obs_in=${canonical_observation_codes.length} err=${(e as Error).message}`,
-            );
-            if (isDiagnosticIntent) {
-              throw new Error(`GRAPH_TRUTH_BUILD_FAILED: diagnostic intent=${intentCode} obs=${canonical_observation_codes.length}: ${(e as Error).message}`);
-            }
-          }
-
-
-
+          // T1/T9 — REUSE THE SINGLE LOCKED GRAPH TRUTH FOR THE TURN.
+          // No second GraphTruth build: rebuilding here would create a second authority.
+          assertGraphTruthIntegrity(
+            (this as any)._graphTruth as GraphTruth,
+            'PRE_HYPOTHESIS_ENGINE',
+          );
           // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
           const resolvedDAS = canonicalContext?.days_since_sowing 
             ?? landContext?.days_since_sowing 
@@ -8190,10 +8204,10 @@ export class AIAgentOrchestrator {
 
         // Strip metadata (CROP_IDENTIFIED, *_UNKNOWN, PHOTO_NOT_PROVIDED, ACTION_*, CONTEXT_*)
         // so downstream rule/hypothesis engines never see it as evidence.
-        const _rawObsForBuild = allObservationsForPreAuth && allObservationsForPreAuth.size > 0
-          ? Array.from(allObservationsForPreAuth)
-          : (uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms);
-        const _realObsForBuild = classifyEvidence(_rawObsForBuild).real_codes;
+        const _graphTruthForBuild = (this as any)._graphTruth as GraphTruth | null;
+        const _realObsForBuild = _graphTruthForBuild
+          ? [..._graphTruthForBuild.canonical_observations]
+          : [];
 
         canonicalState = buildCanonicalState({
           landContext,
