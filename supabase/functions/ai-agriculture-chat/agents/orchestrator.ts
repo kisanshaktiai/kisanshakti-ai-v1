@@ -4467,9 +4467,42 @@ export class AIAgentOrchestrator {
       // this lane. The existing observation invariant remains unchanged.
       const nluExecutionMode = String((semanticExtraction as any)?.execution_mode || '').toUpperCase();
       const nluKnowledgeSubject = String((semanticExtraction as any)?.knowledge_subject || 'NONE').toUpperCase();
+
+      // FINAL MODE AUTHORITY: the database intent contract decides the lane.
+      // GENERAL intent_category is the deterministic Knowledge Plane contract;
+      // clarification_mode remains authoritative for decision/observation lanes.
+      // The LLM execution_mode is retained as a routing/observability signal and
+      // can never upgrade a DB decision intent into knowledge mode.
+      const dbClarificationMode = String(intentMetaFromDB?.clarification_mode || '').toUpperCase();
+      const dbIntentCategory = String(intentMetaFromDB?.intent_category || '').toUpperCase();
+      const dbExecutionLane =
+        dbIntentCategory === 'GENERAL'
+          ? 'KNOWLEDGE'
+          : dbClarificationMode === 'DIRECT'
+            ? 'DIRECT'
+            : dbClarificationMode === 'SYMPTOM_DRIVEN'
+              ? 'OBSERVATION'
+              : dbClarificationMode === 'DIFFERENTIAL'
+                ? 'DIFFERENTIAL'
+                : (dbClarificationMode === 'AUTO' || dbClarificationMode === 'NONE')
+                  ? 'AUTO'
+                  : 'DECISION';
+
+      if (nluExecutionMode !== dbExecutionLane) {
+        console.log(
+          '[MODE_AUTHORITY] intent=' + intentCode +
+          ' db_category=' + dbIntentCategory +
+          ' db_clarification_mode=' + dbClarificationMode +
+          ' db_lane=' + dbExecutionLane +
+          ' nlu_lane=' + (nluExecutionMode || 'NONE') +
+          ' → DB contract wins',
+        );
+        agentsUsed.push('DB_MODE_AUTHORITY');
+      }
+
       const knowledgePlaneEligible =
         !!intentMetaFromDB &&
-        nluExecutionMode === 'KNOWLEDGE' &&
+        dbExecutionLane === 'KNOWLEDGE' &&
         String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
         realObsCountForSalvage === 0 &&
         ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
@@ -4492,7 +4525,8 @@ export class AIAgentOrchestrator {
             language: options.language || normalizedInput.detected_language || 'en',
             intent_code: intentCode,
             intent_category: intentMetaFromDB?.intent_category ?? null,
-            execution_mode: nluExecutionMode as 'KNOWLEDGE' | 'DECISION' | 'MIXED',
+            execution_mode: 'KNOWLEDGE',
+
             knowledge_subject: nluKnowledgeSubject as 'CROP' | 'STAGE' | 'FERTILIZER' | 'PEST' | 'WEED' | 'CHEMICAL' | 'NONE',
             land_context: landContext
               ? {
