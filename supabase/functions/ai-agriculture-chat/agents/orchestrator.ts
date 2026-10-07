@@ -9284,7 +9284,15 @@ export class AIAgentOrchestrator {
 
         // PHASE C, GATE #3 — SCIENTIFIC VALIDATOR (after rules, before authority)
         try {
+          // Scientific validation is a treatment/diagnosis gate. A context-only
+          // BLOCK constraint is neither a diagnosis nor a treatment and must
+          // not promote prescription_allowed.
           const candidates: CandidateRecommendation[] = (layeredRuleResult.matched_responses || [])
+            .filter((r: any) => {
+              const actionType = String(r?.action_type ?? '').trim().toUpperCase();
+              const triggerClass = String(r?.trigger_class ?? '').trim().toUpperCase();
+              return actionType !== 'BLOCK' && triggerClass !== 'CONTEXT_BLOCK';
+            })
             .map((r: any) => ({
               rule_id: r?.rule_id || r?.id || 'unknown',
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
@@ -9306,6 +9314,25 @@ export class AIAgentOrchestrator {
         } catch (sciErr) {
           console.warn('[SCIENTIFIC_GATE] non-fatal failure', sciErr instanceof Error ? sciErr.message : sciErr);
         }
+        // A non-safety context constraint with no graph-backed primary decision
+        // is not a treatment authorization. Keep it visible as a constraint but
+        // fail closed for prescription.
+        if (
+          !layeredRuleResult?.primary_decision &&
+          Array.isArray(layeredRuleResult?.matched_responses) &&
+          layeredRuleResult.matched_responses.some((r: any) =>
+            String(r?.action_type ?? '').trim().toUpperCase() === 'BLOCK' ||
+            String(r?.trigger_class ?? '').trim().toUpperCase() === 'CONTEXT_BLOCK'
+          )
+        ) {
+          layeredRuleResult.prescription_allowed = false;
+          layeredRuleResult.prescription_gate_reason = 'CONTEXT_CONSTRAINT_ONLY_NO_GRAPH_DECISION';
+          console.warn(
+            `[PRESCRIPTION_GATE_FAIL_CLOSED] trace=${traceId} ` +
+            `reason=CONTEXT_CONSTRAINT_ONLY_NO_GRAPH_DECISION matched=${layeredRuleResult.matched_responses.length}`
+          );
+        }
+
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
         requestCtx.chain.set('rules',
           (layeredRuleResult.rules_matched || 0) > 0 ? 0.85 : 0.4);
