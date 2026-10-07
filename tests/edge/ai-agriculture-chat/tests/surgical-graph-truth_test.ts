@@ -119,7 +119,7 @@ Deno.test('SURGICAL GRAPH TRUTH · field-twin environment changes change context
 
 Deno.test('SURGICAL GRAPH TRUTH · orchestrator builds GraphTruth before first hypothesis graph', async () => {
   const src = await Deno.readTextFile(
-    new URL('../supabase/functions/ai-agriculture-chat/agents/orchestrator.ts', import.meta.url),
+    new URL('../../../../supabase/functions/ai-agriculture-chat/agents/orchestrator.ts', import.meta.url),
   );
   const build = src.indexOf('const _gtForGraph = (this as any)._graphTruth as GraphTruth;');
   const execute = src.indexOf('const graphOut = await evaluateHypothesisGraph(graphInput);');
