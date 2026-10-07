@@ -433,11 +433,9 @@ async function persistRuntimeTraceSafetyNet(params: {
         land_id: params.landId ?? null,
         crop_code: params.cropCode ?? null,
         growth_stage: params.growthStage ?? null,
-        brain_execution_mode: params.brainExecutionMode ?? null,
-        knowledge_provider: params.knowledgeProvider ?? null,
-        authority_status: params.authorityStatus ?? null,
-        final_resolution_type: params.finalResolutionType ?? null,
-        inferred_intent: params.inferredIntent ?? null,
+        // Only response_source is a physical audit column today; the richer
+        // Knowledge Plane fields live in ai_chat_messages.metadata until a
+        // schema migration is explicitly approved.
         ..._auditPatch,
       };
       let { error: _auditInsertError } = await params.supabase.from('ai_chat_audit_logs').insert(_auditInsertData);
