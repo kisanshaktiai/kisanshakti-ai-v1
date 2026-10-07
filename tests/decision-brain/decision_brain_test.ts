@@ -84,7 +84,7 @@ Deno.test('T2c region invariant matrix: scoped row IN-TN vs land IN-TN / IN-KA /
 });
 
 // ── T3 / N4 / N5 / N7: late-N block on a zero-candidate advisory turn
-Deno.test('T3/N4/N5/N7 FERTILIZER_SCHEDULE @ grain_filling DAS 82, zero candidates: block relevant via IOM, leads as advisory, safety_blocks EMPTY, no treatment fabricated', async () => {
+Deno.test('T3/N4/N5/N7 FERTILIZER_SCHEDULE @ grain_filling DAS 82, zero candidates: block is advisory constraint only, never primary', async () => {
   const { client } = makeMockSupabase(FIX);
   const q = { ...MH, growthStage: 'grain_filling', das: 82, traceId: 'T3' };
   const gate = await sel.applyContextBlockGate(client, q, [], { intentCode: 'FERTILIZER_SCHEDULE', hypothesisIds: [], observationCodes: [] });
@@ -95,12 +95,13 @@ Deno.test('T3/N4/N5/N7 FERTILIZER_SCHEDULE @ grain_filling DAS 82, zero candidat
   assertEquals(gate.safetyBlocks.length, 0);                    // N4
   assertEquals(gate.conflictBlocks.length, 0);
   const out = sel.resolveContextGateOutcome(gate, { priorPrimary: null, zeroCandidateLaneB: true }); // orchestrator selection path
-  assertEquals(out.nextPrimary?.rule_id, 'RICE_NUTR_LATE_N_BLOCK_001');
-  assertEquals(out.advisoryLeadReason, 'zero_candidate_lane_b');
-  assertEquals(out.safetyBlockEntries, []);                     // N5: cannot drive BLOCKED
-  assertEquals(out.nextPrimary.action_type, 'block');           // N7: a block row, not a treatment
-  assertEquals(out.nextPrimary.dosage_per_acre ?? null, null);  // N7: no dose fabricated
+  assertEquals(out.nextPrimary, null, 'a non-safety CONTEXT_BLOCK must not become the answer when no hypothesis survived');
+  assertEquals(out.advisoryLead, null, 'a BLOCK action cannot become advisory lead');
+  assertEquals(out.advisoryLeadReason, null);
+  assertEquals(out.safetyBlockEntries, []);                     // N5
   assertEquals(out.nextMatched.map((m: any) => m.rule_id), ['RICE_NUTR_LATE_N_BLOCK_001']);
+  assertEquals(gate.advisoryResponses[0].action_type, 'block');
+  assertEquals(gate.advisoryResponses[0].dosage_per_acre ?? null, null);  // N7: no dose fabricated
   const out2 = sel.resolveContextGateOutcome(gate, { priorPrimary: null, zeroCandidateLaneB: false }); // not Lane B → no lead
   assertEquals(out2.nextPrimary, null);
 });
