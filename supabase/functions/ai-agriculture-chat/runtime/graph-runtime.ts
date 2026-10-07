@@ -126,10 +126,6 @@ export async function runGraphRuntime(
   const graphObservations = graphTruth
     ? [...graphTruth.canonical_observations]
     : [...input.known_observations];
-  const canonicalConfirmed = graphTruth
-    ? [...confirmed].map((code) => String(code).trim().toLowerCase()).filter(Boolean)
-    : [];
-
   // ─── Split-check on authority-owned fields (crop/stage/dates only) ─────
   if (cctx) {
     const norm = (v: unknown) => (v == null ? null : String(v).toUpperCase());
@@ -172,6 +168,13 @@ export async function runGraphRuntime(
     }
   }
 
+  if (graphTruth && input.variety_id != null && String(input.variety_id) !== String(graphTruth.variety_id ?? null)) {
+    const msg =
+      `GRAPH_CONTEXT_SPLIT_ERROR trace=${input.trace_id ?? 'n/a'} ` +
+      `fields=variety_id(graph=${graphTruth.variety_id ?? 'null'} supplied=${input.variety_id})`;
+    console.error(`[GRAPH_CONTEXT_SPLIT_ERROR] ${msg}`);
+    throw new Error(msg);
+  }
   if (graphTruth) {
     const normalizeObs = (xs: readonly unknown[]) =>
       xs.map((x) => String(x).trim().toLowerCase()).filter(Boolean).sort();
