@@ -3981,10 +3981,16 @@ export class AIAgentOrchestrator {
         'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN', 'UNKNOWN_OBSERVATION'
       ];
       const currentIntentForGate = semanticExtraction?.intent_code || 'UNKNOWN';
+      const earlyExecutionMode = String((semanticExtraction as any)?.execution_mode || '').toUpperCase();
       const isSymptomBasedIntent = symptomBasedIntents.includes(currentIntentForGate);
       const zeroCodeGateExemptRoutes = new Set(['FERTILIZER_NUTRITION', 'IRRIGATION_SCHEDULING', 'WEATHER_SPRAY_TIMING', 'CROP_HEALTH', 'GENERAL_INFO']);
-      // Fix 7: also exempt when the canonical intent code is advisory.
-      const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route) || isAdvisoryRoute(currentIntentForGate);
+      // KNOWLEDGE is a separate evidence class: zero observations are expected.
+      // Do not convert a factual knowledge turn into a diagnostic clarification.
+      // Existing DECISION/OBSERVATION safety behavior remains unchanged.
+      const isZeroCodeGateExempt =
+        earlyExecutionMode === 'KNOWLEDGE' ||
+        zeroCodeGateExemptRoutes.has(queryRoute.route) ||
+        isAdvisoryRoute(currentIntentForGate);
 
       
       if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
