@@ -39,6 +39,8 @@ export interface KnowledgeQueryInput {
   language: string;
   intent_code: string;
   intent_category?: string | null;
+  execution_mode?: 'KNOWLEDGE' | 'DECISION' | 'MIXED';
+  knowledge_subject?: 'CROP' | 'STAGE' | 'FERTILIZER' | 'PEST' | 'WEED' | 'CHEMICAL' | 'NONE';
   land_context: KnowledgeLandContext | null;
   supabase: any;
 }
@@ -101,7 +103,12 @@ function hasKnowledgeOperation(message: string): boolean {
   return textContainsAny(message, KNOWLEDGE_OPERATION_TERMS);
 }
 
-function detectTopic(message: string): KnowledgeResponseType {
+function detectTopic(message: string, subject?: KnowledgeQueryInput['knowledge_subject']): KnowledgeResponseType {
+  if (subject === 'FERTILIZER') return 'FERTILIZER_KNOWLEDGE';
+  if (subject === 'PEST') return 'PEST_KNOWLEDGE';
+  if (subject === 'WEED') return 'WEED_KNOWLEDGE';
+  if (subject === 'STAGE') return 'CROP_STAGE_KNOWLEDGE';
+  if (subject === 'CHEMICAL') return 'CHEMICAL_STATUS';
   if (textContainsAny(message, WEED_TERMS)) return 'WEED_KNOWLEDGE';
   if (textContainsAny(message, FERTILIZER_TERMS)) return 'FERTILIZER_KNOWLEDGE';
   if (textContainsAny(message, PEST_TERMS)) return 'PEST_KNOWLEDGE';
@@ -350,7 +357,7 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
     cleanStringArray(row.crop_associations).some((association) =>
       association.toLowerCase() === crop.toLowerCase() ||
       association.toLowerCase() === 'all crops' ||
-      association.toLowerCase() === 'vegetables' && crop === 'brinjal',
+      association.toLowerCase().replace(/\\s*\\(.*\\)\\s*$/, '') === crop.toLowerCase(),
     ),
   );
 
@@ -396,6 +403,47 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
 }
 
 async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
+  // First resolve a named pest dynamically from the DB vocabulary. This is
+  // what lets a farmer ask for "BPH" in any script without a hardcoded list.
+  try {
+    const { data: pestRows } = await input.supabase
+      .from('pest_master')
+      .select('pest_code,pest_name_en,pest_name_hi,pest_name_mr')
+      .eq('is_active', true)
+      .limit(200);
+    const message = String(input.farmer_message || '').toLowerCase();
+    const named = (pestRows || []).filter((row: any) => {
+      const variants = [row.pest_code, row.pest_name_en, row.pest_name_hi, row.pest_name_mr]
+        .map((v) => String(v ?? '').trim().toLowerCase())
+        .filter(Boolean);
+      return variants.some((v) => message.includes(v));
+    });
+    if (named.length === 1) {
+      const row = named[0];
+      const lang = String(input.language || 'en').toLowerCase();
+      const localName = lang === 'mr' ? row.pest_name_mr : lang === 'hi' ? row.pest_name_hi : row.pest_name_en;
+      return {
+        handled: true,
+        response: 'Verified pest identity: ' + String(localName || row.pest_name_en || row.pest_code) +
+          ' (' + String(row.pest_code) + ')',
+        response_type: 'PEST_KNOWLEDGE',
+        provider: 'PestKnowledgeProvider',
+        authority_status: 'VERIFIED',
+        authority: 'pest_master',
+        confidence: 0.99,
+        facts: {
+          pest_code: row.pest_code,
+          name_en: row.pest_name_en ?? null,
+          name_hi: row.pest_name_hi ?? null,
+          name_mr: row.pest_name_mr ?? null,
+        },
+        provenance: [{ table: 'pest_master', row_id: row.pest_code, source: 'structured SSOT' }],
+        processing_time_ms: performance.now() - started,
+      };
+    }
+  } catch (e) {
+    console.warn('[PestKnowledgeProvider] name lookup failed:', (e as Error).message);
+  }
   const started = performance.now();
   let query = input.supabase
     .from('crop_stage_knowledge')
@@ -522,17 +570,17 @@ export async function queryKnowledgePlane(input: KnowledgeQueryInput): Promise<K
     };
   }
 
-  if (input.intent_category && String(input.intent_category).toUpperCase() !== 'GENERAL') {
+  if (String(input.execution_mode || '').toUpperCase() !== 'KNOWLEDGE') {
     return {
       handled: false,
       confidence: 0,
       processing_time_ms: performance.now() - started,
-      reason: 'INTENT_NOT_GENERAL',
+      reason: 'EXECUTION_MODE_NOT_KNOWLEDGE',
     };
   }
 
   const crop = canonicalCrop(input);
-  const topic = detectTopic(input.farmer_message);
+  const topic = detectTopic(input.farmer_message, input.knowledge_subject);
 
   // A general knowledge turn should normally be phrased as a fact/explanation
   // query. When the semantic classifier has already supplied the GENERAL intent,
