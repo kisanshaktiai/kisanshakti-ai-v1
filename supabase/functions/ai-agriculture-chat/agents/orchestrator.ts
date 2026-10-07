@@ -8957,16 +8957,25 @@ export class AIAgentOrchestrator {
                 .filter((m: any) => !existingIds.has(String(m?.rule_id ?? '')));
               const merged = [...existing, ...matched];
               const streamWasEmpty = existing.length === 0;
+              const nonConstraintMatched = merged.find((m: any) => {
+                const at = String(m?.action_type ?? '').trim().toUpperCase();
+                const trigger = String(m?.trigger_class ?? '').trim().toUpperCase();
+                return at !== 'BLOCK' && trigger !== 'CONTEXT_BLOCK';
+              }) ?? null;
               layeredRuleResult = {
                 ...(layeredRuleResult ?? {}),
                 matched_responses: merged,
+                // A context-only zero-candidate lane may expose advisory/constraint
+                // rows, but cannot promote a BLOCK/CONTEXT_BLOCK into primary.
                 primary_decision: streamWasEmpty
-                  ? (merged[0] ?? null)
+                  ? nonConstraintMatched
                   : (layeredRuleResult?.primary_decision ?? existing[0] ?? null),
                 rules_evaluated: (layeredRuleResult?.rules_evaluated ?? 0) + ctxSel.applicable.length,
                 rules_matched: merged.length,
                 rules_applied: merged.map((m: any) => m.rule_id),
-                prescription_allowed: streamWasEmpty ? true : (layeredRuleResult?.prescription_allowed ?? true),
+                prescription_allowed: streamWasEmpty
+                  ? !!nonConstraintMatched
+                  : (layeredRuleResult?.prescription_allowed ?? true),
                 safety_blocks: Array.isArray(layeredRuleResult?.safety_blocks)
                   ? layeredRuleResult.safety_blocks : [],
                 lane: streamWasEmpty ? 'CONTEXT' : (layeredRuleResult as any)?.lane,
