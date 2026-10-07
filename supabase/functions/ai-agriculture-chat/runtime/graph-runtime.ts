@@ -118,6 +118,18 @@ export async function runGraphRuntime(
   const confirmed = input.confirmed_observations ?? input.known_observations ?? [];
   const cctx = input.canonical_context ?? null;
 
+
+  const graphTruth = input.graph_truth ?? null;
+  const graphCrop = graphTruth?.crop_code ?? input.crop_code;
+  const graphStage = graphTruth?.biological_stage ?? input.growth_stage;
+  const graphDas = graphTruth?.DAS ?? input.days_since_sowing;
+  const graphObservations = graphTruth
+    ? [...graphTruth.canonical_observations]
+    : [...input.known_observations];
+  const canonicalConfirmed = graphTruth
+    ? [...confirmed].map((code) => String(code).trim().toLowerCase()).filter(Boolean)
+    : [];
+
   // ─── Split-check on authority-owned fields (crop/stage/dates only) ─────
   if (cctx) {
     const norm = (v: unknown) => (v == null ? null : String(v).toUpperCase());
@@ -160,6 +172,19 @@ export async function runGraphRuntime(
     }
   }
 
+  if (graphTruth) {
+    const normalizeObs = (xs: readonly unknown[]) =>
+      xs.map((x) => String(x).trim().toLowerCase()).filter(Boolean).sort();
+    const suppliedObs = normalizeObs(input.known_observations ?? []);
+    const lockedObs = normalizeObs(graphTruth.canonical_observations ?? []);
+    if (suppliedObs.join('|') !== lockedObs.join('|')) {
+      const msg =
+        `GRAPH_CONTEXT_SPLIT_ERROR trace=${input.trace_id ?? 'n/a'} ` +
+        `fields=known_observations(graph=${lockedObs.join(',')} supplied=${suppliedObs.join(',')})`;
+      console.error(`[GRAPH_CONTEXT_SPLIT_ERROR] ${msg}`);
+      throw new Error(msg);
+    }
+  }
   if (input.diagnostic_intent === true && confirmed.length === 0) {
     const ms = Date.now() - t0;
     console.log(
@@ -177,21 +202,22 @@ export async function runGraphRuntime(
   }
 
   const result = await evaluateCandidateHypotheses({
-    graph_truth: input.graph_truth ?? null,
-    crop_code: input.crop_code as any,
-    growth_stage: input.growth_stage as any,
-    days_since_sowing: input.days_since_sowing as any,
-    ndvi_level: input.ndvi_level,
-    ndvi_trend: input.ndvi_trend,
-    weather: input.weather,
-    known_observations: input.known_observations,
+    ...passthrough,
+    // GraphTruth is the sole authority once present. Keep mutable compatibility
+    // parameters aligned to the locked values; passthrough cannot override them.
+    graph_truth: graphTruth,
+    crop_code: graphCrop as any,
+    growth_stage: graphStage as any,
+    days_since_sowing: graphDas as any,
+    ndvi_level: cctx?.ndvi?.value ?? input.ndvi_level,
+    ndvi_trend: cctx?.ndvi?.trend ?? input.ndvi_trend,
+    weather: cctx?.weather ?? input.weather,
+    known_observations: graphObservations,
     user_query: input.user_query,
     supabaseClient: input.supabase,
     trace_id: input.trace_id,
-    variety_id: input.variety_id ?? null,
-    // Forward the frozen canonical context so DB predicates that reference
+    variety_id: graphTruth?.variety_id ?? cctx?.variety_id ?? input.variety_id ?? null,
     canonical_context: cctx,
-    ...passthrough,
   } as any);
 
   // Contract flip — MUST happen only after the evaluator resolves without
@@ -214,10 +240,10 @@ export async function runGraphRuntime(
     `[GRAPH_RUNTIME] loader=HypothesisEvaluator ` +
     `trace=${input.trace_id ?? 'n/a'} ` +
     `intent=${input.intent_code ?? 'n/a'} ` +
-    `crop=${input.crop_code ?? 'n/a'} ` +
-    `stage=${input.growth_stage ?? 'n/a'} ` +
-    `das=${input.days_since_sowing ?? 'n/a'} ` +
-    `obs=${input.known_observations?.length ?? 0} ` +
+    `crop=${graphCrop ?? 'n/a'} ` +
+    `stage=${graphStage ?? 'n/a'} ` +
+    `das=${graphDas ?? 'n/a'} ` +
+    `obs=${graphObservations.length} ` +
     `candidates=${candidates} ` +
     `winner=${winner ?? 'none'} ` +
     `ms=${ms}`,
