@@ -6294,7 +6294,11 @@ export class AIAgentOrchestrator {
                 DAS: typeof canonicalContext?.days_since_sowing === 'number'
                   ? canonicalContext.days_since_sowing
                   : (typeof bioState?.das === 'number' ? bioState.das : null),
-                GDD: typeof bioState?.gdd_accumulated === 'number' ? bioState.gdd_accumulated : null,
+                GDD: typeof bioState?.gdd_accumulated === 'number'
+                  ? bioState.gdd_accumulated
+                  : (typeof (landContext as any)?.current_gdd === 'number'
+                    ? (landContext as any).current_gdd
+                    : null),
                 canonical_observations: canonical_observation_codes,
                 evidence_sources: canonical_observation_codes.map((code) => ({
                   code,
