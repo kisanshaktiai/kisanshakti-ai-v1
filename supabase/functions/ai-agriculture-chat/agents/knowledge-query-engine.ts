@@ -9,9 +9,9 @@
  *   - It only serves facts from explicitly approved / agronomist-reviewed SSOT rows.
  *   - Unsupported facts fail closed with an evidence-gap response.
  *
- * The orchestrator decides WHEN this plane is eligible (currently the DB's
- * GENERAL intent category with zero real symptom evidence). This module owns
- * ONLY deterministic fact resolution and provenance.
+ * The orchestrator decides WHEN this plane is eligible (NLU execution_mode=KNOWLEDGE
+ * with zero real symptom evidence). This module owns only deterministic fact
+ * resolution and provenance.
  */
 
 import { normalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
@@ -23,6 +23,7 @@ export type KnowledgeResponseType =
   | 'PEST_KNOWLEDGE'
   | 'WEED_KNOWLEDGE'
   | 'CHEMICAL_STATUS'
+  | 'HERBICIDE_KNOWLEDGE'
   | 'KNOWLEDGE_GAP';
 
 export interface KnowledgeLandContext {
@@ -64,6 +65,11 @@ const FERTILIZER_TERMS = [
   'urea', 'dap', 'npk', 'potash', 'nutrient', 'nutrients',
   'खत', 'खाद', 'उर्वरक', 'पोषक', 'युरिया', 'यूरिया', 'डीएपी', 'पोटॅश',
   'khat', 'khaad', 'khad', 'urea', 'poshak', 'urvarak',
+];
+
+const HERBICIDE_TERMS = [
+  'herbicide', 'herbicides', 'weedicide', 'weedicide',
+  'तणनाशक', 'निंदानाशक', 'खरपतवारनाशक', 'tan nashak', 'kharpatwar nashak',
 ];
 
 const WEED_TERMS = [
@@ -109,6 +115,7 @@ function detectTopic(message: string, subject?: KnowledgeQueryInput['knowledge_s
   if (subject === 'WEED') return 'WEED_KNOWLEDGE';
   if (subject === 'STAGE') return 'CROP_STAGE_KNOWLEDGE';
   if (subject === 'CHEMICAL') return 'CHEMICAL_STATUS';
+  if (textContainsAny(message, HERBICIDE_TERMS)) return 'HERBICIDE_KNOWLEDGE';
   if (textContainsAny(message, WEED_TERMS)) return 'WEED_KNOWLEDGE';
   if (textContainsAny(message, FERTILIZER_TERMS)) return 'FERTILIZER_KNOWLEDGE';
   if (textContainsAny(message, PEST_TERMS)) return 'PEST_KNOWLEDGE';
@@ -482,6 +489,13 @@ async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   };
 }
 
+async function herbicideKnowledgeProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
+  // No dedicated approved herbicide knowledge master exists in the verified
+  // schema. Do not repurpose conditional treatment rules as static facts.
+  // Named regulatory status questions are still answered by chemicalStatusProvider.
+  return null;
+}
+
 async function chemicalStatusProvider(input: KnowledgeQueryInput): Promise<KnowledgeQueryOutput | null> {
   const started = performance.now();
   const { data, error } = await input.supabase
@@ -603,7 +617,9 @@ export async function queryKnowledgePlane(input: KnowledgeQueryInput): Promise<K
 
   let result: KnowledgeQueryOutput | null = null;
 
-  if (topic === 'FERTILIZER_KNOWLEDGE') {
+  if (topic === 'HERBICIDE_KNOWLEDGE') {
+    result = await herbicideKnowledgeProvider(input, crop);
+  } else if (topic === 'FERTILIZER_KNOWLEDGE') {
     result = await fertilizerProvider(input, crop);
   } else if (topic === 'WEED_KNOWLEDGE') {
     result = await weedProvider(input, crop);
