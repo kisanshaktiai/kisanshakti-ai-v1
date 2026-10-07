@@ -407,6 +407,7 @@ import {
 import { routeQuery, getRouteRequirements } from './query-router.ts';
 import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authority-resolver.ts';
 import { checkStaticDataGate } from './static-data-gate.ts';
+import { queryKnowledgePlane } from './knowledge-query-engine.ts';
 import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, UnderstandingConfidence } from './understanding-completeness-checker.ts';
@@ -4433,7 +4434,7 @@ export class AIAgentOrchestrator {
       }
       
       // PATCH 2: STAGE CONTEXT GUARD
-      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number } | null = null;
+      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number; intent_category?: string } | null = null;
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -4441,7 +4442,7 @@ export class AIAgentOrchestrator {
         
         const { data: intentRow } = await supabaseClient
           .from('observation_intent_master')
-          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode, max_clarification_rounds')
+          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode, max_clarification_rounds, intent_category')
           .eq('intent_code', intentCode)
           .eq('is_active', true)
           .maybeSingle();
@@ -4454,6 +4455,161 @@ export class AIAgentOrchestrator {
         console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
       }
       
+      // KNOWLEDGE PLANE — SURGICAL P0 FIX
+      // DB intent category GENERAL is the current semantic contract for
+      // general agronomic knowledge. Real symptom evidence never enters
+      // this lane. The existing observation invariant remains unchanged.
+      const knowledgePlaneEligible =
+        !!intentMetaFromDB &&
+        String(intentMetaFromDB?.intent_category || '').toUpperCase() === 'GENERAL' &&
+        String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
+        realObsCountForSalvage === 0 &&
+        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
+
+      if (knowledgePlaneEligible) {
+        console.log(
+          '\n📚 [KNOWLEDGE_PLANE_GATE] trace=' + traceId +
+          ' intent=' + intentCode +
+          ' category=' + intentMetaFromDB?.intent_category +
+          ' crop=' + (cropFromAnyLayer || 'UNKNOWN') +
+          ' realObs=' + realObsCountForSalvage +
+          ' → deterministic knowledge resolution',
+        );
+        agentsUsed.push('KNOWLEDGE_PLANE_GATE');
+
+        try {
+          const knowledgeResult = await queryKnowledgePlane({
+            farmer_message: farmerMessage,
+            language: options.language || normalizedInput.detected_language || 'en',
+            intent_code: intentCode,
+            intent_category: intentMetaFromDB?.intent_category ?? null,
+            land_context: landContext
+              ? {
+                  current_crop: landContext.current_crop ?? null,
+                  growth_stage: landContext.growth_stage ?? (canonicalContext as any)?.growth_stage ?? null,
+                  days_since_sowing: landContext.days_since_sowing ?? (canonicalContext as any)?.days_since_sowing ?? null,
+                  state: (landContext as any)?.state ?? null,
+                  soil_type: (landContext as any)?.soil_type ?? null,
+                  cultivation_method:
+                    (landContext as any)?.cultivation_method ??
+                    (canonicalContext as any)?.cultivation_method ??
+                    null,
+                }
+              : null,
+            supabase: this.supabase,
+          });
+
+          if (knowledgeResult.handled) {
+            agentsUsed.push(knowledgeResult.provider || 'KNOWLEDGE_PROVIDER');
+            const knowledgeDecisionId = 'knowledge_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const knowledgeText = String(knowledgeResult.response || '').trim();
+            const knowledgeLanguage = options.language || normalizedInput.detected_language || 'en';
+
+            console.log(
+              '✅ [KNOWLEDGE_PLANE] provider=' + (knowledgeResult.provider || 'unknown') +
+              ' status=' + (knowledgeResult.authority_status || 'UNKNOWN') +
+              ' type=' + (knowledgeResult.response_type || 'UNKNOWN') +
+              ' latency=' + knowledgeResult.processing_time_ms.toFixed(1) + 'ms',
+            );
+
+            return {
+              type: 'DECISION_PROVIDED',
+              session_id: sessionId,
+              dataAudit: landContext
+                ? {
+                    land: {
+                      found: true,
+                      land_id: landContext.land_id ?? null,
+                      current_crop: landContext.current_crop ?? null,
+                      growth_stage: landContext.growth_stage ?? null,
+                      days_since_sowing: landContext.days_since_sowing ?? null,
+                    },
+                  }
+                : undefined,
+              communication: {
+                message_id: crypto.randomUUID(),
+                decision_id: knowledgeDecisionId,
+                session_id: sessionId,
+                farmer_id: farmerId,
+                language: knowledgeLanguage,
+                format: 'RICH_TEXT',
+                tone: 'FRIENDLY',
+                created_at: new Date().toISOString(),
+                main_message: {
+                  full_text: {
+                    [knowledgeLanguage]: knowledgeText,
+                    en: knowledgeText,
+                  },
+                },
+                quick_actions: [],
+                metadata: {
+                  word_count: knowledgeText.split(/\s+/).filter(Boolean).length,
+                  reading_time_seconds: Math.max(5, Math.ceil(knowledgeText.split(/\s+/).filter(Boolean).length / 3)),
+                  confidence_score: knowledgeResult.confidence,
+                  source: 'KNOWLEDGE_PLANE',
+                  response_type: knowledgeResult.response_type,
+                  provider: knowledgeResult.provider,
+                  authority_status: knowledgeResult.authority_status,
+                },
+              } as any,
+              decision_output: {
+                decision_id: knowledgeDecisionId,
+                session_id: sessionId,
+                status: knowledgeResult.authority_status === 'EVIDENCE_GAP'
+                  ? 'KNOWLEDGE_GAP'
+                  : 'KNOWLEDGE_ANSWERED',
+                decision_brain_source: true,
+                actions_returned: [],
+                matched_responses: [],
+                knowledge_result: knowledgeResult,
+                metadata: {
+                  confidence: knowledgeResult.confidence,
+                  trace_id: traceId,
+                  processing_time_ms: Date.now() - startTime,
+                  agents_used: [...agentsUsed],
+                  template_type: 'KNOWLEDGE_DIRECT',
+                  brain_execution_mode: 'KNOWLEDGE',
+                  knowledge_provider: knowledgeResult.provider || null,
+                  authority_status: knowledgeResult.authority_status || 'EVIDENCE_GAP',
+                  final_resolution_type: knowledgeResult.response_type || 'KNOWLEDGE_GAP',
+                  response_source: 'KNOWLEDGE_PLANE',
+                  inferred_intent: intentCode,
+                  rules_applied: 0,
+                  knowledge_provenance: knowledgeResult.provenance || [],
+                  knowledge_facts: knowledgeResult.facts || {},
+                },
+              } as any,
+              metadata: {
+                confidence: knowledgeResult.confidence,
+                safety_status: 'SAFE',
+                rules_applied: 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: [...agentsUsed],
+                trace_id: traceId,
+                response_source: 'KNOWLEDGE_PLANE',
+                brain_execution_mode: 'KNOWLEDGE',
+                knowledge_provider: knowledgeResult.provider || null,
+                authority_status: knowledgeResult.authority_status || 'EVIDENCE_GAP',
+                final_resolution_type: knowledgeResult.response_type || 'KNOWLEDGE_GAP',
+                inferred_intent: intentCode,
+              },
+            } as any;
+          }
+
+          console.log(
+            '↩️ [KNOWLEDGE_PLANE] not handled; reason=' +
+            (knowledgeResult.reason || 'UNKNOWN') +
+            ' → existing decision pipeline',
+          );
+        } catch (knowledgeErr) {
+          console.error(
+            '[KNOWLEDGE_PLANE_ERROR] trace=' + traceId +
+            ' ' + ((knowledgeErr as Error)?.message || String(knowledgeErr)) +
+            ' → existing pipeline preserved',
+          );
+        }
+      }
+
       // FIX 1: DIRECT-MODE INTENT BYPASS
       let directModeBypass = false;
       // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
