@@ -6095,9 +6095,6 @@ export class AIAgentOrchestrator {
             canonicalContext?.growth_stage ||
             landContext?.growth_stage ||
             'UNKNOWN';
-          const graphGrowthStage = growthStage && String(growthStage).toUpperCase() !== 'UNKNOWN'
-            ? growthStage
-            : null;
 
           // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
