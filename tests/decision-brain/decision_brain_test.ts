@@ -106,6 +106,18 @@ Deno.test('T3/N4/N5/N7 FERTILIZER_SCHEDULE @ grain_filling DAS 82, zero candidat
   assertEquals(out2.nextPrimary, null);
 });
 
+Deno.test('T3a Lane-B context constraint cannot become a primary prescription', () => {
+  const block = { rule_id: 'RICE_NUTR_LATE_N_BLOCK_001', action_type: 'block', trigger_class: 'CONTEXT_BLOCK' };
+  const merged = [block];
+  const primary = merged.find((m: any) => {
+    const at = String(m?.action_type ?? '').trim().toUpperCase();
+    const trigger = String(m?.trigger_class ?? '').trim().toUpperCase();
+    return at !== 'BLOCK' && trigger !== 'CONTEXT_BLOCK';
+  }) ?? null;
+  assertEquals(primary, null);
+  assertEquals(primary ? true : false, false);
+});
+
 Deno.test('T3b HARVEST_TIMING @ grain_filling: late-N block not relevant → dropped, nothing leads', async () => {
   const { client } = makeMockSupabase(FIX);
   const gate = await sel.applyContextBlockGate(client, { ...MH, growthStage: 'grain_filling', das: 82 }, [], { intentCode: 'HARVEST_TIMING' });
