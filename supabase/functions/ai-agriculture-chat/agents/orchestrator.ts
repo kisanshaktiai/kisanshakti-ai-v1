@@ -4459,9 +4459,11 @@ export class AIAgentOrchestrator {
       // DB intent category GENERAL is the current semantic contract for
       // general agronomic knowledge. Real symptom evidence never enters
       // this lane. The existing observation invariant remains unchanged.
+      const nluExecutionMode = String((semanticExtraction as any)?.execution_mode || '').toUpperCase();
+      const nluKnowledgeSubject = String((semanticExtraction as any)?.knowledge_subject || 'NONE').toUpperCase();
       const knowledgePlaneEligible =
         !!intentMetaFromDB &&
-        String(intentMetaFromDB?.intent_category || '').toUpperCase() === 'GENERAL' &&
+        nluExecutionMode === 'KNOWLEDGE' &&
         String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
         realObsCountForSalvage === 0 &&
         ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
@@ -4473,6 +4475,7 @@ export class AIAgentOrchestrator {
           ' category=' + intentMetaFromDB?.intent_category +
           ' crop=' + (cropFromAnyLayer || 'UNKNOWN') +
           ' realObs=' + realObsCountForSalvage +
+          ' subject=' + nluKnowledgeSubject +
           ' → deterministic knowledge resolution',
         );
         agentsUsed.push('KNOWLEDGE_PLANE_GATE');
@@ -4483,6 +4486,8 @@ export class AIAgentOrchestrator {
             language: options.language || normalizedInput.detected_language || 'en',
             intent_code: intentCode,
             intent_category: intentMetaFromDB?.intent_category ?? null,
+            execution_mode: nluExecutionMode as 'KNOWLEDGE' | 'DECISION' | 'MIXED',
+            knowledge_subject: nluKnowledgeSubject as 'CROP' | 'STAGE' | 'FERTILIZER' | 'PEST' | 'WEED' | 'CHEMICAL' | 'NONE',
             land_context: landContext
               ? {
                   current_crop: landContext.current_crop ?? null,
