@@ -68,7 +68,7 @@ const FERTILIZER_TERMS = [
 ];
 
 const HERBICIDE_TERMS = [
-  'herbicide', 'herbicides', 'weedicide', 'weedicide',
+  'herbicide', 'herbicides', 'weedicide',
   'तणनाशक', 'निंदानाशक', 'खरपतवारनाशक', 'tan nashak', 'kharpatwar nashak',
 ];
 
@@ -354,8 +354,9 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   const started = performance.now();
   const { data, error } = await input.supabase
     .from('weed_master')
-    .select('weed_code,scientific_name,common_names,weed_type,lifecycle,season,crop_associations,resistance_notes,management_note,source,authority,confidence,review_status')
+    .select('weed_code,scientific_name,common_names,weed_type,lifecycle,season,crop_associations,resistance_notes,management_note,source,authority,confidence,review_status,is_active')
     .eq('review_status', 'approved')
+    .eq('is_active', true)
     .limit(100);
 
   if (error || !Array.isArray(data)) return null;
