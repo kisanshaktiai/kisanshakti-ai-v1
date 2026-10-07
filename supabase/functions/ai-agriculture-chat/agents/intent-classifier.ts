@@ -357,8 +357,17 @@ ${lexBlock}
 ${buildExecutionModeInstructions()}
 
 ROUTING HINTS:
-- "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
-- "spray", "फवारणी", "छिड़काव", "spraying schedule" → SPRAY_TIMING_QUERY
+- ACTION / ADVISORY wording such as "what fertilizer should I apply now", "खत द्यावे", "किती द्यावे",
+  "what should I spray", "काय फवारू", "which herbicide should I use now" → use the domain-specific
+  advisory/decision intent (for example FERTILIZER_SCHEDULE, SPRAY_TIMING_QUERY, or the applicable
+  treatment/weed intent) and execution_mode=DECISION.
+- PURE KNOWLEDGE wording such as "what is urea", "which pests attack rice", "what is BPH",
+  "rice growth stages", "तण म्हणजे काय", "भातावरील कीड कोणती", "उर्वरक की जानकारी" →
+  use GENERAL_CROP_INFO and execution_mode=KNOWLEDGE, with knowledge_subject set to the actual
+  subject (FERTILIZER, PEST, WEED, STAGE, CHEMICAL, or CROP).
+- MIXED wording such as "BPH म्हणजे काय आणि आता काय करू?" → use the best canonical intent for
+  the decision half, execution_mode=MIXED, and set knowledge_subject for the factual half.
+- "spray", "फवारणी", "छिड़काव", "spraying schedule" without an educational meaning → decision intent.
 - "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
   (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
