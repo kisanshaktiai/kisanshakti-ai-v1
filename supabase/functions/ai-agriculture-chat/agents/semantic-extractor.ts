@@ -11,6 +11,8 @@ export interface SemanticExtraction {
   // PRIMARY OUTPUT (v5.0.0+)
   intent_code: string;
   intent_confidence: number;
+  /** NLU-only routing mode; facts/actions remain authoritative in DB/graph. */
+  execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED';
   
   // BACKWARD-COMPATIBLE DEFAULTS (all deprecated, but safe to access)
   
@@ -44,12 +46,14 @@ export interface SemanticExtraction {
 // Build a SemanticExtraction with all required fields having safe defaults.
 function buildSafeSemanticExtraction(
   intent_code: string,
-  intent_confidence: number
+  intent_confidence: number,
+  execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED' = 'DECISION'
 ): SemanticExtraction {
   return {
     // Primary output
     intent_code,
     intent_confidence,
+    execution_mode,
     
     // Backward-compatible defaults (all safe to access)
     farmer_concern: '',                    // Empty string - safe for .substring()
@@ -97,7 +101,7 @@ export async function extractSemanticMeaning(
     
     console.log(`   🎯 Intent: ${intent_code} (${(intentResult.confidence * 100).toFixed(0)}%)`);
     
-    return buildSafeSemanticExtraction(intent_code, intentResult.confidence);
+    return buildSafeSemanticExtraction(intent_code, intentResult.confidence, intentResult.execution_mode);
     
   } catch (error) {
     console.error(`   ❌ [SemanticExtractor] Error: ${error}`);
