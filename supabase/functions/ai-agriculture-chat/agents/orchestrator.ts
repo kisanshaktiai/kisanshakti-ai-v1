@@ -9140,13 +9140,19 @@ export class AIAgentOrchestrator {
             ? layeredRuleResult.matched_responses
             : [];
           const candidateIds = new Set<string>();
-          for (const id of safeApplied) {
-            const s = typeof id === 'string' ? id : String(id ?? '');
-            if (s) candidateIds.add(s);
-          }
-          for (const r of safeMatched) {
-            const s = String((r as any)?.rule_id ?? (r as any)?.id ?? '');
-            if (s) candidateIds.add(s);
+          // HYPOTHESIS_GRAPH provenance invariant:
+          // only rules explicitly authorized by surviving hypothesis→rule edges
+          // may be materialized into the hypothesis graph. Context-lane rules
+          // (including CONTEXT_BLOCK/CONTEXT_SCHEDULE) do not become hypotheses.
+          if (graphRuleIdSet.size > 0) {
+            for (const id of safeApplied) {
+              const s = typeof id === 'string' ? id : String(id ?? '');
+              if (s && graphRuleIdSet.has(s)) candidateIds.add(s);
+            }
+            for (const r of safeMatched) {
+              const s = String((r as any)?.rule_id ?? (r as any)?.id ?? '');
+              if (s && graphRuleIdSet.has(s)) candidateIds.add(s);
+            }
           }
           const existingIds = new Set(graph.hypothesis_graph.map((c) => c.rule_id));
           for (const rid of candidateIds) {
