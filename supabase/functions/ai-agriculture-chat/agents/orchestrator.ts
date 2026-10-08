@@ -8330,68 +8330,38 @@ export class AIAgentOrchestrator {
           }
         }
 
-        // Step 2 — POST-PROJECTION MUTATION BLOCK COLLAPSED (was lines 6252-6277).
+        // Step 2 — GRAPH TRUTH PROJECTION INVARIANT.
+        // GraphTruth is the sole authority after evidence freeze. No fallback,
+        // induction result, crop schedule, or land-context value may rewrite
+        // crop/stage after projection. Unknown means the graph genuinely lacks
+        // authoritative evidence and must remain unknown until the graph resolves it.
         {
           const _gtForAudit = (this as any)._graphTruth as
             | import('../runtime/graph-truth.ts').GraphTruth
             | null;
-          const projectedCrop = canonicalState.crop_type as unknown as string | null;
-          const projectedStage = canonicalState.growth_stage as unknown as string | null;
+          const projectedCrop = String(canonicalState.crop_type ?? '').trim();
+          const projectedStage = String(
+            (canonicalState as any).growth_stage ?? (canonicalState as any).crop_stage ?? ''
+          ).trim();
+          const gtCrop = String(_gtForAudit?.crop_code ?? '').trim();
+          const gtStage = String(_gtForAudit?.biological_stage ?? '').trim();
 
-          // FIX H1 (DB-SSOT backfill for stage): the prior refusal blocked BOTH
-          const _cropAuthorityIsSSOT =
-            cropContextAuthority?.source === 'crop_schedules';
-
-          if (!projectedCrop || projectedCrop === 'UNKNOWN') {
-            if (
-              _cropAuthorityIsSSOT &&
-              cropContextAuthority?.crop_name &&
-              cropContextAuthority.crop_name !== 'UNKNOWN'
-            ) {
-              (canonicalState as any).crop_type = cropContextAuthority.crop_name;
-              console.log(
-                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION crop was UNKNOWN — ` +
-                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
-                  `crop=${cropContextAuthority.crop_name}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            } else {
-              console.warn(
-                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION crop is UNKNOWN after GraphTruth projection ` +
-                  `— refusing to overwrite from induction (${inductionCrop}) or cropContextAuthority ` +
-                  `(${cropContextAuthority?.crop_name ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'} — downstream must emit GRAPH_NEEDS_MORE_EVIDENCE.`,
-              );
-            }
+          if (gtCrop && projectedCrop.toLowerCase() !== gtCrop.toLowerCase()) {
+            throw new Error(
+              `GRAPH_PROJECTION_DRIFT: trace=${traceId} crop projected=${projectedCrop || 'EMPTY'} graph=${gtCrop}`
+            );
           }
-          if (!projectedStage || projectedStage === 'UNKNOWN') {
-            if (
-              _cropAuthorityIsSSOT &&
-              cropContextAuthority?.growth_stage &&
-              cropContextAuthority.growth_stage !== 'UNKNOWN'
-            ) {
-              (canonicalState as any).growth_stage = cropContextAuthority.growth_stage;
-              // Some downstream call sites read `.crop_stage`; keep parity.
-              (canonicalState as any).crop_stage = cropContextAuthority.growth_stage;
-              console.log(
-                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION stage was UNKNOWN — ` +
-                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
-                  `stage=${cropContextAuthority.growth_stage}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            } else {
-              console.warn(
-                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION stage is UNKNOWN after GraphTruth projection ` +
-                  `— refusing to overwrite from cropContextAuthority ` +
-                  `(${cropContextAuthority?.growth_stage ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            }
+          if (gtStage && projectedStage.toLowerCase() !== gtStage.toLowerCase()) {
+            throw new Error(
+              `GRAPH_PROJECTION_DRIFT: trace=${traceId} stage projected=${projectedStage || 'EMPTY'} graph=${gtStage}`
+            );
           }
+          console.log(
+            `[CANONICAL_PROJECTION_ONLY] trace=${traceId} crop=${projectedCrop || 'UNKNOWN'} ` +
+            `stage=${projectedStage || 'UNKNOWN'} graph_hash=${_gtForAudit?.hash ?? 'null'}`
+          );
         }
 
-
-        
         // NEURO-SYMBOLIC CONTRACT: CanonicalState transports symbols only.
         if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE') && uniqueSymptomCodes.length > 0) {
           const firstRealCode = uniqueSymptomCodes[0];
