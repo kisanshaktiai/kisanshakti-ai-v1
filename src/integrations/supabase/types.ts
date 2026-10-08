@@ -47821,6 +47821,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      verify_proactive_evaluator_cron_secret: {
+        Args: { p_secret: string }
+        Returns: boolean
+      }
       water_signal_since_anchor: { Args: { p_land_id: string }; Returns: Json }
       weather_ingest_health: { Args: never; Returns: Json }
     }
