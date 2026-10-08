@@ -4819,12 +4819,15 @@ export class AIAgentOrchestrator {
         try {
           const directGraph = await resolveDirectContextGraph({
             intent_code: intentCode,
-            execution_mode: nluExecutionMode === 'KNOWLEDGE' || nluExecutionMode === 'MIXED' ? nluExecutionMode : 'DECISION',
+            execution_mode: Number(intentMetaFromDB?.max_clarification_rounds ?? 1) === 0
+              ? 'KNOWLEDGE'
+              : (nluExecutionMode === 'KNOWLEDGE' || nluExecutionMode === 'MIXED' ? nluExecutionMode : 'DECISION'),
             farmer_message: farmerMessage,
             language: options.language || normalizedInput.detected_language || 'en',
             crop_code: String(cropFromAnyLayer),
             growth_stage: (canonicalContext as any)?.growth_stage ?? (landContext as any)?.growth_stage ?? null,
             days_since_sowing: (canonicalContext as any)?.days_since_sowing ?? (landContext as any)?.days_since_sowing ?? null,
+            expected_harvest_date: (canonicalContext as any)?.expected_harvest_date ?? (landContext as any)?.expected_harvest_date ?? null,
             state: (landContext as any)?.state ?? (landContext as any)?.region ?? null,
             soil_type: (landContext as any)?.soil_type ?? (landContext as any)?.soil_health?.soil_type ?? null,
             cultivation_method: (landContext as any)?.cultivation_method ?? (canonicalContext as any)?.cultivation_method ?? (landContext as any)?.biological_state?.cultivation_method ?? null,
