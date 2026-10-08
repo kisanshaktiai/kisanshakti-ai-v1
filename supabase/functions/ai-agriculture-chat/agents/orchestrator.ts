@@ -7316,7 +7316,7 @@ export class AIAgentOrchestrator {
             'NITROGEN_DEFICIENCY': 'NUTRIENT_DEFICIENCY'
           };
           
-          const mappedIntent = causeToIntent[matchedObservation.likely_cause] || 'PEST_PROBLEM';
+          const mappedIntent = causeToIntent[matchedObservation.likely_cause] || 'PEST_PRESENCE_VISIBLE';
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
           nluOutput.intent_classification = {
             ...nluOutput.intent_classification,
