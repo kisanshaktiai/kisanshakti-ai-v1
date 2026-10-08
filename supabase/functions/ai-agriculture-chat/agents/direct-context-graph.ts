@@ -24,6 +24,7 @@ export interface DirectContextGraphInput {
   state?: string | null;
   soil_type?: string | null;
   cultivation_method?: string | null;
+  expected_harvest_date?: string | null;
   confirmed_observations?: string[];
   perceived_observations?: string[];
   supabase: any;
@@ -380,6 +381,10 @@ export async function resolveDirectContextGraph(input: DirectContextGraphInput):
         crop_code: crop,
         growth_stage: input.growth_stage ?? null,
         days_since_sowing: input.days_since_sowing ?? null,
+        expected_harvest_date: input.expected_harvest_date ?? null,
+        days_to_expected_harvest: input.expected_harvest_date
+          ? Math.max(0, Math.ceil((new Date(input.expected_harvest_date + 'T00:00:00').getTime() - Date.now()) / 86400000))
+          : null,
         mode: input.execution_mode,
         rules: sourceRules.map(r => ({
           rule_id: r.rule_id,
