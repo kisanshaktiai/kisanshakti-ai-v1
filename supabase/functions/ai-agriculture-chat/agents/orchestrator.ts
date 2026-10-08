@@ -407,7 +407,6 @@ import {
 import { routeQuery, getRouteRequirements } from './query-router.ts';
 import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authority-resolver.ts';
 import { checkStaticDataGate } from './static-data-gate.ts';
-import { resolveKnowledgeLookup } from './knowledge-lookup-gate.ts';
 import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, UnderstandingConfidence } from './understanding-completeness-checker.ts';
@@ -2358,98 +2357,6 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // PHASE 0.6: KNOWLEDGE LOOKUP NODE
-      // Taxonomy/list questions are factual DB lookups, not observations.
-      // Terminate this lane before NLU/hypothesis/rule evaluation so
-      // context-triggered treatment rules cannot fire on a pure question.
-      if (queryRoute.context_hints.includes('KNOWLEDGE_LOOKUP')) {
-        const knowledgeLookup = await resolveKnowledgeLookup({
-          farmer_message: farmerMessage,
-          language: options.language || 'mr',
-          crop_code: landContext?.current_crop ?? queryRoute.detected_entities?.crop ?? null,
-          cultivation_method:
-            (landContext as any)?.biological_state?.cultivation_method
-            ?? (landContext as any)?.cultivation_method
-            ?? null,
-          supabase: this.supabase,
-        });
-
-        if (knowledgeLookup.handled) {
-          const selectedLang = (options.language || 'mr').toLowerCase().slice(0, 2);
-          const responseText =
-            knowledgeLookup.response_by_language?.[selectedLang]
-            ?? knowledgeLookup.fallback_text
-            ?? '';
-          const responseByLanguage = knowledgeLookup.response_by_language ?? {
-            en: knowledgeLookup.fallback_text ?? '',
-            hi: knowledgeLookup.fallback_text ?? '',
-            mr: knowledgeLookup.fallback_text ?? '',
-          };
-
-          console.log(
-            `⚡ [${traceId}] [KNOWLEDGE_LOOKUP_GATE] kind=${knowledgeLookup.kind} ` +
-            `crop=${knowledgeLookup.crop_code} items=${knowledgeLookup.items?.length ?? 0} ` +
-            `latency=${knowledgeLookup.processing_time_ms.toFixed(1)}ms — rule graph skipped`,
-          );
-          agentsUsed.push('KNOWLEDGE_LOOKUP_GATE');
-
-          const knowledgeDecisionId = `knowledge_${Date.now()}`;
-          return {
-            type: 'DECISION_PROVIDED',
-            session_id: sessionId,
-            communication: {
-              message_id: crypto.randomUUID(),
-              decision_id: knowledgeDecisionId,
-              session_id: sessionId,
-              farmer_id: farmerId,
-              language: options.language || 'mr',
-              format: 'RICH_TEXT',
-              tone: 'FRIENDLY',
-              created_at: new Date().toISOString(),
-              main_message: { full_text: responseByLanguage },
-              quick_actions: [],
-              metadata: {
-                word_count: responseText.split(/\s+/).filter(Boolean).length,
-                reading_time_seconds: 5,
-                confidence_score: knowledgeLookup.confidence,
-                source: 'DECISION_BRAIN_KNOWLEDGE_NODE',
-                knowledge_kind: knowledgeLookup.kind,
-                crop_code: knowledgeLookup.crop_code,
-                source_tables: knowledgeLookup.source_tables,
-                processing_time_ms: knowledgeLookup.processing_time_ms,
-              },
-            } as any,
-            decision_output: {
-              decision_id: knowledgeDecisionId,
-              session_id: sessionId,
-              status: 'INFORMATION_PROVIDED',
-              decision_brain_source: true,
-              actions_returned: [],
-              metadata: {
-                confidence: knowledgeLookup.confidence,
-                trace_id: traceId,
-                graph_lane: 'KNOWLEDGE_LOOKUP',
-                knowledge_kind: knowledgeLookup.kind,
-                crop_code: knowledgeLookup.crop_code,
-                source_tables: knowledgeLookup.source_tables,
-                processing_time_ms: knowledgeLookup.processing_time_ms,
-                agents_used: ['QUERY_ROUTER', 'KNOWLEDGE_LOOKUP_GATE'],
-              },
-            } as any,
-            metadata: {
-              confidence: knowledgeLookup.confidence,
-              safety_status: 'SAFE',
-              rules_applied: 0,
-              processing_time_ms: knowledgeLookup.processing_time_ms,
-              agents_used: [...agentsUsed],
-              template_type: 'KNOWLEDGE_LOOKUP',
-              trace_id: traceId,
-              graph_lane: 'KNOWLEDGE_LOOKUP',
-            },
-          };
-        }
-      }
-
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
       // PHASE 9.1-FIX PATCH 1+2: CLARIFICATION RESPONSE HARD GATE
