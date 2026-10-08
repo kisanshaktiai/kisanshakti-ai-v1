@@ -195,13 +195,39 @@ export async function resolveKnowledgeLookup(input: KnowledgeLookupInput): Promi
     const raw = baseline?.data?.[key];
     const baselineItems = Array.isArray(raw) ? raw : [];
 
-    if (kind === 'PEST_LIST' && baselineItems.length > 0) {
+    // Baseline is the preferred taxonomy source. When it is absent, fall back
+    // to active crop-scoped graph entities rather than fabricating a list.
+    let effectiveBaselineItems = baselineItems;
+    if (effectiveBaselineItems.length === 0 && kind === 'PEST_LIST') {
+      const rules = await input.supabase
+        .from('decision_rules')
+        .select('pest_code,stage_applicable,etl_value,etl_unit')
+        .eq('is_active', true)
+        .ilike('crop_code', cropCode)
+        .not('pest_code', 'is', null);
+      const codes = [...new Set((Array.isArray(rules?.data) ? rules.data : [])
+        .map((r: any) => String(r?.pest_code ?? '').trim()).filter(Boolean))];
+      if (codes.length > 0) {
+        const master = await input.supabase
+          .from('pest_master')
+          .select('pest_code,pest_name_en,pest_name_hi,pest_name_mr')
+          .in('pest_code', codes)
+          .eq('is_active', true);
+        const byCode = new Map((Array.isArray(master?.data) ? master.data : [])
+          .map((r: any) => [norm(r.pest_code), r]));
+        effectiveBaselineItems = codes.map((code) => ({
+          pest: byCode.get(norm(code))?.pest_name_en ?? code,
+          pest_code: code,
+        }));
+      }
+    }
+    if (kind === 'PEST_LIST' && effectiveBaselineItems.length > 0) {
       const master = await input.supabase
         .from('pest_master')
         .select('pest_code,pest_name_en,pest_name_hi,pest_name_mr')
         .eq('is_active', true);
       const byName = new Map((Array.isArray(master?.data) ? master.data : []).map((r: any) => [norm(r.pest_name_en), r]));
-      const items = baselineItems.map((p: any) => {
+      const items = effectiveBaselineItems.map((p: any) => {
         const row = byName.get(norm(p?.pest));
         return {
           name: row ? localizedPestName(row, input.language) : String(p?.pest ?? ''),
