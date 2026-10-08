@@ -274,6 +274,7 @@ import {
   canAnswerDirectly, 
   requiresRuleEngine, 
   generateLLMResponse,
+  generateNarratedResponse,
   type LLMResponseInput 
 } from './llm-response-generator.ts';
 
@@ -408,6 +409,7 @@ import { routeQuery, getRouteRequirements } from './query-router.ts';
 import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authority-resolver.ts';
 import { checkStaticDataGate } from './static-data-gate.ts';
 import { queryKnowledgePlane } from './knowledge-query-engine.ts';
+import { resolveDirectContextGraph } from './direct-context-graph.ts';
 import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, UnderstandingConfidence } from './understanding-completeness-checker.ts';
@@ -4803,6 +4805,99 @@ export class AIAgentOrchestrator {
         }
       }
       
+      // DIRECT CONTEXT GRAPH — DB-owned intent scope + land context.
+      // Candidate observations are never promoted to farmer evidence.
+      const directGraphEligible =
+        !!intentMetaFromDB &&
+        String(intentMetaFromDB?.clarification_mode || '').toUpperCase() === 'DIRECT' &&
+        String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
+        !!cropFromAnyLayer &&
+        realObsCountForSalvage === 0 &&
+        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
+
+      if (directGraphEligible) {
+        try {
+          const directGraph = await resolveDirectContextGraph({
+            intent_code: intentCode,
+            execution_mode: nluExecutionMode === 'KNOWLEDGE' || nluExecutionMode === 'MIXED' ? nluExecutionMode : 'DECISION',
+            farmer_message: farmerMessage,
+            language: options.language || normalizedInput.detected_language || 'en',
+            crop_code: String(cropFromAnyLayer),
+            growth_stage: (canonicalContext as any)?.growth_stage ?? (landContext as any)?.growth_stage ?? null,
+            days_since_sowing: (canonicalContext as any)?.days_since_sowing ?? (landContext as any)?.days_since_sowing ?? null,
+            state: (landContext as any)?.state ?? (landContext as any)?.region ?? null,
+            soil_type: (landContext as any)?.soil_type ?? (landContext as any)?.soil_health?.soil_type ?? null,
+            cultivation_method: (landContext as any)?.cultivation_method ?? (canonicalContext as any)?.cultivation_method ?? (landContext as any)?.biological_state?.cultivation_method ?? null,
+            confirmed_observations: [],
+            perceived_observations: [],
+            supabase: this.supabase,
+            trace_id: traceId,
+          });
+          agentsUsed.push('DIRECT_CONTEXT_GRAPH');
+          console.log('[DIRECT_CONTEXT_GRAPH_RESULT] trace=' + traceId + ' status=' + directGraph.status + ' rules=' + directGraph.rule_ids.length + ' reason=' + directGraph.reason);
+
+          if (directGraph.status === 'READY' && directGraph.rules.length > 0) {
+            const winner = directGraph.rules[0];
+            const authoritativeText = String(winner.action_text || winner.knowledge_text || winner.reason_text || '').trim();
+            if (authoritativeText) {
+              const directDecisionId = 'direct_graph_' + Date.now();
+              const narration = await generateNarratedResponse({
+                language: options.language || normalizedInput.detected_language || 'en',
+                farmer_message: farmerMessage,
+                land_context: landContext ? {
+                  current_crop: String(landContext.current_crop ?? cropFromAnyLayer),
+                  crop_stage: String((landContext as any)?.growth_stage ?? (canonicalContext as any)?.growth_stage ?? ''),
+                  village: (landContext as any)?.village,
+                  district: (landContext as any)?.district,
+                } : undefined,
+                symbolic_decision: {
+                  status: 'READY',
+                  primary_action: {
+                    action_type: String(winner.action_type || 'ADVISORY'),
+                    action_text: authoritativeText,
+                    reason_text: winner.reason_text || undefined,
+                    knowledge_text: winner.knowledge_text || undefined,
+                  },
+                  fallback_text: authoritativeText,
+                  rules_applied: directGraph.rule_ids,
+                },
+              });
+              const responseText = String(narration.response_text || authoritativeText).trim();
+              return {
+                type: 'DECISION_PROVIDED',
+                session_id: sessionId,
+                communication: {
+                  message_id: crypto.randomUUID(), decision_id: directDecisionId, session_id: sessionId, farmer_id: farmerId,
+                  language: options.language || normalizedInput.detected_language || 'en', format: 'RICH_TEXT', tone: 'FRIENDLY', created_at: new Date().toISOString(),
+                  main_message: { full_text: { [options.language || normalizedInput.detected_language || 'en']: responseText, en: responseText } },
+                  quick_actions: [],
+                  metadata: { word_count: responseText.split(/\s+/).filter(Boolean).length, reading_time_seconds: Math.max(5, Math.ceil(responseText.split(/\s+/).filter(Boolean).length / 3)), confidence_score: 0.99, source: 'DIRECT_CONTEXT_GRAPH', response_type: 'DIRECT_DB_RULE', narration_source: narration.source },
+                },
+                decision_output: {
+                  decision_id: directDecisionId, session_id: sessionId, status: 'DECISION_PROVIDED', decision_brain_source: true,
+                  actions_returned: [{ rule_id: winner.rule_id, action_type: winner.action_type, action_text: authoritativeText, reason_text: winner.reason_text }],
+                  matched_responses: directGraph.rules,
+                  metadata: { confidence: 0.99, trace_id: traceId, processing_time_ms: Date.now() - startTime, agents_used: [...agentsUsed], template_type: 'DIRECT_CONTEXT_GRAPH', brain_execution_mode: nluExecutionMode || 'DECISION', graph_reason: directGraph.reason, rules_applied: directGraph.rule_ids.length, rule_ids: directGraph.rule_ids, provenance: directGraph.provenance, response_facts: directGraph.response_facts },
+                } as any,
+                metadata: { confidence: 0.99, safety_status: 'SAFE', rules_applied: directGraph.rule_ids.length, processing_time_ms: Date.now() - startTime, agents_used: [...agentsUsed], trace_id: traceId },
+              } as any;
+            }
+          }
+
+          if (directGraph.status === 'NEEDS_MORE_EVIDENCE') {
+            const missing = Array.from(new Set([...directGraph.missing_observation_codes, ...directGraph.missing_observation_categories])).filter(Boolean);
+            const questionText = missing.length > 0 ? 'The database rule requires field evidence before a final recommendation: ' + missing.join(', ') + '.' : 'The database rule needs additional field evidence before a final recommendation.';
+            return {
+              type: 'CLARIFICATION_QUESTION', session_id: sessionId,
+              question: { question_id: 'direct_graph_evidence_' + Date.now(), text_en: questionText, text_hi: questionText, text_mr: questionText, options: [], scope: 'DIRECT_CONTEXT_GRAPH_EVIDENCE', source: 'decision_rules' },
+              communication: { options: [] },
+              metadata: { orchestrator_type: 'DIRECT_CONTEXT_GRAPH_EVIDENCE', graph_reason: directGraph.reason, missing_observation_codes: directGraph.missing_observation_codes, missing_observation_categories: directGraph.missing_observation_categories, trace_id: traceId, rules_applied: 0 },
+            } as any;
+          }
+        } catch (directGraphErr) {
+          console.warn('[DIRECT_CONTEXT_GRAPH_ERROR] trace=' + traceId + ' error=' + (directGraphErr as Error).message);
+        }
+      }
       // PATCH 6: HYBRID ROUTING LOGIC
       if (intentMetaFromDB?.routing_target === 'INFO_MODULE') {
         console.log(`   📚 [PATCH 6] INFO_MODULE route: Intent ${intentCode} → LLM direct response (no rule engine)`);
@@ -6270,7 +6365,14 @@ export class AIAgentOrchestrator {
 
           // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
-          const raw_evidence_codes: string[] = [...allObservationsForPreAuth].map((o) => String(o));
+          const raw_evidence_codes: string[] = authoredObservations
+            .getConfirmedAndExtractedCodes()
+            .map((o) => String(o));
+          console.log(
+            '[EVIDENCE_STREAM_HANDOFF] trace=' + traceId +
+            ' authored=' + raw_evidence_codes.length +
+            ' candidate_space=' + Math.max(0, allObservationsForPreAuth.size - raw_evidence_codes.length),
+          );
           // ── S2 — CURRENT-TURN OBSERVATION PURGE ────────────────────────────
           const _staleKeys = new Set(
             ((options as any)?.sessionState?.pendingClarificationObservationKeys ?? [])
