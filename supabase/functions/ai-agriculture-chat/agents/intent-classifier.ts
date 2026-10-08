@@ -315,7 +315,8 @@ ${landBlock}
 
 ${lexBlock}
 
-ROUTING HINTS:- "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
+ROUTING HINTS:
+- "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
 - "spray", "फवारणी", "छिड़काव", "spraying schedule" → SPRAY_TIMING_QUERY
 - "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
