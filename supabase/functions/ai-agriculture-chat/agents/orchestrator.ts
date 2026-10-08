@@ -8274,28 +8274,9 @@ export class AIAgentOrchestrator {
         // Phase 5 — GraphTruth is the sole authority for crop / stage / observations.
         projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
 
-        // FIX 2 (2026-08-26) — LOCKED BIOLOGICAL STATE OWNS STAGE + DAS.
-        // When landContext.biological_state is locked it is the SSOT for the turn;
-        // neither lands.crop_stage nor crop_schedules DAS may override it.
-        {
-          const _bioLock: any = (landContext as any)?.biological_state ?? null;
-          if (_bioLock?.growth_stage) {
-            const _prevStage = (canonicalState as any).crop_stage ?? (canonicalState as any).growth_stage ?? null;
-            const _prevDas = (canonicalState as any).days_since_sowing ?? null;
-            (canonicalState as any).crop_stage = _bioLock.growth_stage;
-            (canonicalState as any).growth_stage = _bioLock.growth_stage;
-            if (typeof _bioLock.das === 'number' && isFinite(_bioLock.das)) {
-              (canonicalState as any).days_since_sowing = _bioLock.das;
-              (canonicalState as any).das = _bioLock.das;
-            }
-            if (_prevStage !== _bioLock.growth_stage || _prevDas !== _bioLock.das) {
-              console.log(
-                `🔒 [BIO_STATE_STAGE_ENFORCE] stage ${_prevStage ?? 'null'}→${_bioLock.growth_stage} ` +
-                `das ${_prevDas ?? 'null'}→${_bioLock.das ?? 'null'} source=biological_state_ssot`,
-              );
-            }
-          }
-        }
+        // FIX 2 (2026-08-26): biological_state is an input to GraphTruth,
+        // not a post-freeze writer. CanonicalState must never be rewritten here.
+        // GraphTruth already owns stage + DAS and projection below enforces it.
 
         // Step 2 — GRAPH TRUTH PROJECTION INVARIANT.
         // GraphTruth is the sole authority after evidence freeze. No fallback,
