@@ -2,7 +2,7 @@
 
 import { classifyFarmerIntent, type IntentLandContext } from './intent-classifier.ts';
 
-export const SEMANTIC_EXTRACTOR_VERSION = '5.1.0';
+export const SEMANTIC_EXTRACTOR_VERSION = '5.2.0';
 
 // OUTPUT INTERFACE - PURE INTENT + BACKWARD-COMPATIBLE DEFAULTS
 

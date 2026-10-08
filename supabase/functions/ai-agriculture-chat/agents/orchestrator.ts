@@ -3700,89 +3700,56 @@ export class AIAgentOrchestrator {
             }
           }
 
-          // PHASE-14: Generate stage-aware fallback response
-          const stageFallback = this.generateStageAwareFallback(
-            cropName || 'UNKNOWN',
-            growthStage || 'UNKNOWN',
-            matchResult.matched_option || farmerMessage,
-            landContextForOptionSelection?.days_since_sowing || 0,
-            options.language || 'mr'
+          // PHASE-14: Zero-rule option selection must not fabricate a stage advisory.
+          // The graph has confirmed evidence but no authoritative rule matched.
+          console.warn(
+            `🛑 [OPTION_SELECTED_GRAPH_GAP] trace=${traceId} crop=${cropName} ` +
+            `stage=${growthStage} observation=${mappedObservationKey ?? 'none'}`
           );
-
-          
-          // SESSION STATE: Stage fallback still transitions decision state
           const sessionStateUpdateNoRules = {
             decision_state: 'decision_in_progress',
             pending_options: 0,
             pending_action: false,
-            last_action_source: 'FARMER_SELECTION_STAGE_FALLBACK',
+            last_action_source: 'GRAPH_NEEDS_MORE_EVIDENCE',
             clarification_answered: true,
             clarification_resolved_at: new Date().toISOString(),
             session_ssot: (this as any)._sessionSSOT ?? null
           };
-          
-          console.log(`\n🔄 [SESSION_STATE] ═══ DECISION STATE TRANSITION (Stage Fallback) ═══`);
-          console.log(`   session_decision_state: ${sessionStateUpdateNoRules.decision_state}`);
-          console.log(`   clarification_active: false (answered with stage fallback)`);
-          console.log(`   option_selected: "${matchResult.matched_option}"`);
-          console.log(`   ═══════════════════════════════════════════════`);
+          const optionConfirmed = Array.isArray(optionEvidence?.real_codes)
+            ? [...optionEvidence.real_codes]
+            : (mappedObservationKey ? [mappedObservationKey] : []);
+          (this as any)._lastRealObservations = optionConfirmed;
+          try {
+            ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(optionConfirmed);
+          } catch {}
 
-          // Mirror confirmed observations onto the enforcer-visible field so
-          {
-            const _rc = Array.isArray(optionEvidence?.real_codes)
-              ? [...optionEvidence.real_codes]
-              : (mappedObservationKey ? [mappedObservationKey] : []);
-            (this as any)._lastRealObservations = _rc;
-            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
-          }
-
+          agentsUsed.push('GRAPH_NEEDS_MORE_EVIDENCE');
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
             session_state_update: sessionStateUpdateNoRules as any,
-            decision_output: {
-              decision_id: `option_selected_stage_fallback_${Date.now()}`,
-              session_id: sessionId,
-              status: 'STAGE_FALLBACK',
-              decision_brain_source: true,
-              // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
-              authority_decision: authorityDecision,
-              // PHASE-14: Include stage-aware fallback message
-              stage_fallback_message: (stageFallback as any).message,
-              stage_fallback_actions: (stageFallback as any).actions,
-              photo_requested: stageFallback.photoRequested,
-              actions_returned: [],
-              metadata: {
-                confidence: 0.6, // Lower confidence since no rules matched
-                trace_id: traceId,
-                processing_time_ms: Date.now() - startTime,
-                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
-                clarification_resolved: true,
-                selected_option: matchResult.matched_option,
-                mapped_observation: mappedObservationKey,
-                rules_evaluated: ruleResult.rules_evaluated,
-                rules_matched: 0,
-                no_rules_matched_reason: `Stage-aware fallback for ${cropName}/${growthStage}`,
-                // FIX: Include locked crop context in metadata
-                lockedCropContext: finalLockedCropContextNoRules,
-                session_state_update: sessionStateUpdateNoRules
-              }
-            } as any,
-            // FIX: Include dataAudit to preserve land context
+            decision_output: this.buildStructuredNoDecision({
+              trace_id: traceId,
+              graph_gap: 'NO_RULE_MATCHED',
+              confirmed: optionConfirmed,
+              hypotheses_partial: (this as any).__winningHypothesisId ? [(this as any).__winningHypothesisId] : [],
+              attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+              candidate_rules: []
+            }) as any,
             dataAudit: dataAuditNoRules,
             metadata: {
-              confidence: 0.6,
-              safety_status: 'SAFE',
+              confidence: 0,
+              safety_status: 'GRAPH_NEEDS_MORE_EVIDENCE',
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
-              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
+              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
               lockedCropContext: finalLockedCropContextNoRules,
               session_state_update: sessionStateUpdateNoRules
             }
-          };
+          } as any;
         } else {
           // PHASE-9.1-FIX: Farmer did NOT select a valid option - RETURN REMINDER IMMEDIATELY
           // DO NOT continue to NLU pipeline - this is the HARD GATE
@@ -8433,91 +8400,42 @@ export class AIAgentOrchestrator {
         // Phase 5 — GraphTruth is the sole authority for crop / stage / observations.
         projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
 
-        // FIX 2 (2026-08-26) — LOCKED BIOLOGICAL STATE OWNS STAGE + DAS.
-        // When landContext.biological_state is locked it is the SSOT for the turn;
-        // neither lands.crop_stage nor crop_schedules DAS may override it.
-        {
-          const _bioLock: any = (landContext as any)?.biological_state ?? null;
-          if (_bioLock?.growth_stage) {
-            const _prevStage = (canonicalState as any).crop_stage ?? (canonicalState as any).growth_stage ?? null;
-            const _prevDas = (canonicalState as any).days_since_sowing ?? null;
-            (canonicalState as any).crop_stage = _bioLock.growth_stage;
-            (canonicalState as any).growth_stage = _bioLock.growth_stage;
-            if (typeof _bioLock.das === 'number' && isFinite(_bioLock.das)) {
-              (canonicalState as any).days_since_sowing = _bioLock.das;
-              (canonicalState as any).das = _bioLock.das;
-            }
-            if (_prevStage !== _bioLock.growth_stage || _prevDas !== _bioLock.das) {
-              console.log(
-                `🔒 [BIO_STATE_STAGE_ENFORCE] stage ${_prevStage ?? 'null'}→${_bioLock.growth_stage} ` +
-                `das ${_prevDas ?? 'null'}→${_bioLock.das ?? 'null'} source=biological_state_ssot`,
-              );
-            }
-          }
-        }
+        // FIX 2 (2026-08-26): biological_state is an input to GraphTruth,
+        // not a post-freeze writer. CanonicalState must never be rewritten here.
+        // GraphTruth already owns stage + DAS and projection below enforces it.
 
-        // Step 2 — POST-PROJECTION MUTATION BLOCK COLLAPSED (was lines 6252-6277).
+        // Step 2 — GRAPH TRUTH PROJECTION INVARIANT.
+        // GraphTruth is the sole authority after evidence freeze. No fallback,
+        // induction result, crop schedule, or land-context value may rewrite
+        // crop/stage after projection. Unknown means the graph genuinely lacks
+        // authoritative evidence and must remain unknown until the graph resolves it.
         {
           const _gtForAudit = (this as any)._graphTruth as
             | import('../runtime/graph-truth.ts').GraphTruth
             | null;
-          const projectedCrop = canonicalState.crop_type as unknown as string | null;
-          const projectedStage = canonicalState.growth_stage as unknown as string | null;
+          const projectedCrop = String(canonicalState.crop_type ?? '').trim();
+          const projectedStage = String(
+            (canonicalState as any).growth_stage ?? (canonicalState as any).crop_stage ?? ''
+          ).trim();
+          const gtCrop = String(_gtForAudit?.crop_code ?? '').trim();
+          const gtStage = String(_gtForAudit?.biological_stage ?? '').trim();
 
-          // FIX H1 (DB-SSOT backfill for stage): the prior refusal blocked BOTH
-          const _cropAuthorityIsSSOT =
-            cropContextAuthority?.source === 'crop_schedules';
-
-          if (!projectedCrop || projectedCrop === 'UNKNOWN') {
-            if (
-              _cropAuthorityIsSSOT &&
-              cropContextAuthority?.crop_name &&
-              cropContextAuthority.crop_name !== 'UNKNOWN'
-            ) {
-              (canonicalState as any).crop_type = cropContextAuthority.crop_name;
-              console.log(
-                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION crop was UNKNOWN — ` +
-                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
-                  `crop=${cropContextAuthority.crop_name}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            } else {
-              console.warn(
-                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION crop is UNKNOWN after GraphTruth projection ` +
-                  `— refusing to overwrite from induction (${inductionCrop}) or cropContextAuthority ` +
-                  `(${cropContextAuthority?.crop_name ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'} — downstream must emit GRAPH_NEEDS_MORE_EVIDENCE.`,
-              );
-            }
+          if (gtCrop && projectedCrop.toLowerCase() !== gtCrop.toLowerCase()) {
+            throw new Error(
+              `GRAPH_PROJECTION_DRIFT: trace=${traceId} crop projected=${projectedCrop || 'EMPTY'} graph=${gtCrop}`
+            );
           }
-          if (!projectedStage || projectedStage === 'UNKNOWN') {
-            if (
-              _cropAuthorityIsSSOT &&
-              cropContextAuthority?.growth_stage &&
-              cropContextAuthority.growth_stage !== 'UNKNOWN'
-            ) {
-              (canonicalState as any).growth_stage = cropContextAuthority.growth_stage;
-              // Some downstream call sites read `.crop_stage`; keep parity.
-              (canonicalState as any).crop_stage = cropContextAuthority.growth_stage;
-              console.log(
-                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION stage was UNKNOWN — ` +
-                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
-                  `stage=${cropContextAuthority.growth_stage}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            } else {
-              console.warn(
-                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION stage is UNKNOWN after GraphTruth projection ` +
-                  `— refusing to overwrite from cropContextAuthority ` +
-                  `(${cropContextAuthority?.growth_stage ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            }
+          if (gtStage && projectedStage.toLowerCase() !== gtStage.toLowerCase()) {
+            throw new Error(
+              `GRAPH_PROJECTION_DRIFT: trace=${traceId} stage projected=${projectedStage || 'EMPTY'} graph=${gtStage}`
+            );
           }
+          console.log(
+            `[CANONICAL_PROJECTION_ONLY] trace=${traceId} crop=${projectedCrop || 'UNKNOWN'} ` +
+            `stage=${projectedStage || 'UNKNOWN'} graph_hash=${_gtForAudit?.hash ?? 'null'}`
+          );
         }
 
-
-        
         // NEURO-SYMBOLIC CONTRACT: CanonicalState transports symbols only.
         if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE') && uniqueSymptomCodes.length > 0) {
           const firstRealCode = uniqueSymptomCodes[0];
@@ -10939,60 +10857,35 @@ export class AIAgentOrchestrator {
         !!landContext?.current_crop;
       
       if (shouldUseStageAdvisoryFallback) {
-        const cropName = landContext.current_crop || 'crop';
-        const stageName = landContext.growth_stage || 'current stage';
-        const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
-        const userLanguage = options.language || 'mr';
-        const _grsForStageAdvisory = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
-        const _stageRealFromGraph = _grsForStageAdvisory?.last_real_observations;
-        const stageAdvisoryRealObservations = _stageRealFromGraph && _stageRealFromGraph.length > 0
-          ? [..._stageRealFromGraph]
-          : (Array.isArray((this as any)._lastRealObservations)
-              ? [...(this as any)._lastRealObservations]
-              : []);
-        const stageFallback = this.generateStageAwareFallback(
-          cropName,
-          stageName,
-          'stage_advisory',
-          landContext.days_since_sowing || 0,
-          userLanguage
+        console.log(
+          `🛑 [GRAPH_NEEDS_MORE_EVIDENCE] trace=${traceId} route=${queryRoute.route} ` +
+          `crop=${landContext?.current_crop ?? 'UNKNOWN'} reason=ZERO_RULES_NO_OBSERVATION`
         );
-        const fallbackMessage = userLanguage === 'mr'
-          ? `तुमच्या ${cropName} पिकाची अवस्था ${stageName}${dasText} आहे. सध्या खत/फवारणीचा निर्णय पिकाची अवस्था, माती परीक्षण, NDVI आणि हवामान पाहून घ्या. स्पष्ट कीड/रोगाची लक्षणे दिसत नसतील तर अनावश्यक रासायनिक फवारणी टाळा; नियोजित पोषण, पाणी व्यवस्थापन आणि निरीक्षण चालू ठेवा.`
-          : userLanguage === 'hi'
-            ? `आपकी ${cropName} फसल अभी ${stageName}${dasText} अवस्था में है। अभी खाद/स्प्रे का निर्णय फसल अवस्था, मिट्टी परीक्षण, NDVI और मौसम देखकर लें। कीट/रोग के स्पष्ट लक्षण न हों तो अनावश्यक रासायनिक स्प्रे टालें; नियोजित पोषण, पानी प्रबंधन और निगरानी जारी रखें।`
-            : `Your ${cropName} crop is at ${stageName}${dasText}. Use crop stage, soil test, NDVI and weather before deciding fertilizer or spray. If there are no clear pest/disease symptoms, avoid unnecessary chemical spray; continue scheduled nutrition, water management and monitoring.`;
-        agentsUsed.push('STAGE_ADVISORY_FALLBACK');
+        agentsUsed.push('GRAPH_NEEDS_MORE_EVIDENCE');
+        const confirmed = Array.isArray((this as any)._lastRealObservations)
+          ? [...(this as any)._lastRealObservations]
+          : [];
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
-          decision_output: {
-            decision_id: `stage_advisory_${Date.now()}`,
-            session_id: sessionId,
-            status: 'STAGE_FALLBACK',
-            decision_brain_source: true,
-            stage_fallback_message: fallbackMessage,
-            action_codes: stageFallback.action_codes,
-            rules_applied: [],
-            metadata: {
-              ...stageFallback.metadata,
-              route: queryRoute.route,
-              reason: 'ZERO_RULES_FOR_SYMPTOM_FREE_ADVISORY',
-              i18n_key: stageFallback.i18n_key,
-              real_observations: stageAdvisoryRealObservations
-            }
-          } as any,
+          decision_output: this.buildStructuredNoDecision({
+            trace_id: traceId,
+            graph_gap: 'NO_RULE_MATCHED',
+            confirmed,
+            hypotheses_partial: [],
+            attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+            candidate_rules: []
+          }) as any,
           dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
           metadata: {
-            confidence: 0.65,
-            safety_status: 'SAFE_STAGE_ADVISORY',
+            confidence: 0,
+            safety_status: 'GRAPH_NEEDS_MORE_EVIDENCE',
             rules_applied: 0,
             processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
+            agents_used: [...agentsUsed],
             trace_id: traceId,
-            response_source: 'STAGE_ADVISORY_FALLBACK',
+            response_source: 'GRAPH_NEEDS_MORE_EVIDENCE',
             symptomKeys: Array.from(allObservationsForPreAuth || []),
-            real_observations: stageAdvisoryRealObservations,
             isEmergency: false
           }
         } as any;
