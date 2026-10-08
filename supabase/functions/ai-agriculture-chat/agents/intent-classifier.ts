@@ -1,3 +1,4 @@
+import { routeQuery } from './query-router.ts';
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first)
@@ -270,6 +271,10 @@ function buildConstrainedPrompt(
   labels?: Map<string, Record<string, string>>,
 ): string {
   const lang = (landContext?.language || '').toLowerCase().slice(0, 2);
+  const routerHint = routeQuery(farmerMessage, {
+    lastCrop: landContext?.current_crop,
+    turnCount: 0
+  });
   const codesList = Array.from(validCodes).sort().map((code) => {
     const t = labels?.get(code);
     if (!t) return code;
@@ -315,8 +320,17 @@ ${landBlock}
 
 ${lexBlock}
 
-ROUTING HINTS:
-- "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
+TASK GATE (higher priority than lexical matches):
+- ROUTER TASK TYPE: ${routerHint.route}
+- ROUTER HINTS: ${routerHint.context_hints.join(', ') || 'none'}
+- KNOWLEDGE_LOOKUP / NO_FARMER_OBSERVATION is a taxonomy/fact request, not proof
+  that a pest or disease is present. Never select a diagnostic intent solely
+  because "pest", "insect", "bug", "रोग", or "किडी" appears in a question.
+- FERTILIZER_NUTRITION with no symptoms is advisory scheduling; prefer
+  FERTILIZER_SCHEDULE when that canonical code is allowed.
+- Diagnostic intents require actual farmer-observable evidence in the sentence.
+
+ROUTING HINTS:- "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
 - "spray", "फवारणी", "छिड़काव", "spraying schedule" → SPRAY_TIMING_QUERY
 - "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
@@ -466,6 +480,25 @@ export async function classifyFarmerIntent(
   }
 
 
+
+  const deterministicRoute = routeQuery(farmerMessage, {
+    lastCrop: landContext?.current_crop,
+    turnCount: 0
+  });
+
+  // SURGICAL-2026-10-08: task-class fast paths. The DB registry + crop/lane
+  // scope remains authoritative; the router only chooses the request class.
+  if (deterministicRoute.route === 'FERTILIZER_NUTRITION' &&
+      allowedCodes.has('FERTILIZER_SCHEDULE')) {
+    console.log('   ⚡ [INTENT_FAST_PATH] FERTILIZER_NUTRITION → FERTILIZER_SCHEDULE');
+    return { intent_code: 'FERTILIZER_SCHEDULE', confidence: 0.99 };
+  }
+  if (deterministicRoute.route === 'GENERAL_INFO' &&
+      deterministicRoute.context_hints.includes('KNOWLEDGE_LOOKUP') &&
+      allowedCodes.has('GENERAL_CROP_INFO')) {
+    console.log('   ⚡ [INTENT_FAST_PATH] KNOWLEDGE_LOOKUP → GENERAL_CROP_INFO');
+    return { intent_code: 'GENERAL_CROP_INFO', confidence: 0.99 };
+  }
 
   const prompt = buildConstrainedPrompt(farmerMessage, allowedCodes, landContext, intentLabels);
 
