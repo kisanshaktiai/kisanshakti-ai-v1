@@ -12644,6 +12644,42 @@ export type Database = {
         }
         Relationships: []
       }
+      direct_intent_rule_scope: {
+        Row: {
+          created_at: string
+          id: string
+          intent_code: string
+          is_active: boolean
+          notes: string | null
+          priority: number
+          rule_category: string
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intent_code: string
+          is_active?: boolean
+          notes?: string | null
+          priority?: number
+          rule_category: string
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intent_code?: string
+          is_active?: boolean
+          notes?: string | null
+          priority?: number
+          rule_category?: string
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       direct_messages: {
         Row: {
           content: string
