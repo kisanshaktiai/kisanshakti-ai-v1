@@ -7270,20 +7270,18 @@ export class AIAgentOrchestrator {
         
         // Also set a higher-confidence intent based on the likely cause
         if (matchedObservation.likely_cause && matchedObservation.likely_cause !== 'UNKNOWN') {
-          // DB-canonical intent bridge. Never emit legacy/non-registered intent names
-          // such as PEST_PROBLEM or DISEASE_PROBLEM into the downstream graph.
           const causeToIntent: Record<string, string> = {
-            'SHOOT_BORER': 'PEST_PRESENCE_VISIBLE',
-            'STEM_BORER': 'PEST_PRESENCE_VISIBLE',
-            'ROOT_ROT': 'DISEASE_LIKE_PATTERN',
-            'WATER_LOGGING': 'WATERLOGGING_DAMAGE',
-            'WHITEFLY': 'PEST_PRESENCE_VISIBLE',
-            'BOLLWORM': 'PEST_PRESENCE_VISIBLE',
-            'LEAF_SPOT': 'LEAF_MARKS_OR_SPOTS',
-            'NITROGEN_DEFICIENCY': 'NUTRIENT_DEFICIENCY'
+            'SHOOT_BORER': 'PEST_PROBLEM',
+            'STEM_BORER': 'PEST_PROBLEM',
+            'ROOT_ROT': 'DISEASE_PROBLEM',
+            'WATER_LOGGING': 'WATER_ISSUE',
+            'WHITEFLY': 'PEST_PROBLEM',
+            'BOLLWORM': 'PEST_PROBLEM',
+            'LEAF_SPOT': 'DISEASE_PROBLEM',
+            'NITROGEN_DEFICIENCY': 'NUTRIENT_ISSUE'
           };
           
-          const mappedIntent = causeToIntent[matchedObservation.likely_cause] || 'PEST_PRESENCE_VISIBLE';
+          const mappedIntent = causeToIntent[matchedObservation.likely_cause] || 'PEST_PROBLEM';
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
           nluOutput.intent_classification = {
             ...nluOutput.intent_classification,
