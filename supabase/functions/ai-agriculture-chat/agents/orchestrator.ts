@@ -3792,89 +3792,56 @@ export class AIAgentOrchestrator {
             }
           }
 
-          // PHASE-14: Generate stage-aware fallback response
-          const stageFallback = this.generateStageAwareFallback(
-            cropName || 'UNKNOWN',
-            growthStage || 'UNKNOWN',
-            matchResult.matched_option || farmerMessage,
-            landContextForOptionSelection?.days_since_sowing || 0,
-            options.language || 'mr'
+          // PHASE-14: Zero-rule option selection must not fabricate a stage advisory.
+          // The graph has confirmed evidence but no authoritative rule matched.
+          console.warn(
+            `🛑 [OPTION_SELECTED_GRAPH_GAP] trace=${traceId} crop=${cropName} ` +
+            `stage=${growthStage} observation=${mappedObservationKey ?? 'none'}`
           );
-
-          
-          // SESSION STATE: Stage fallback still transitions decision state
           const sessionStateUpdateNoRules = {
             decision_state: 'decision_in_progress',
             pending_options: 0,
             pending_action: false,
-            last_action_source: 'FARMER_SELECTION_STAGE_FALLBACK',
+            last_action_source: 'GRAPH_NEEDS_MORE_EVIDENCE',
             clarification_answered: true,
             clarification_resolved_at: new Date().toISOString(),
             session_ssot: (this as any)._sessionSSOT ?? null
           };
-          
-          console.log(`\n🔄 [SESSION_STATE] ═══ DECISION STATE TRANSITION (Stage Fallback) ═══`);
-          console.log(`   session_decision_state: ${sessionStateUpdateNoRules.decision_state}`);
-          console.log(`   clarification_active: false (answered with stage fallback)`);
-          console.log(`   option_selected: "${matchResult.matched_option}"`);
-          console.log(`   ═══════════════════════════════════════════════`);
+          const optionConfirmed = Array.isArray(optionEvidence?.real_codes)
+            ? [...optionEvidence.real_codes]
+            : (mappedObservationKey ? [mappedObservationKey] : []);
+          (this as any)._lastRealObservations = optionConfirmed;
+          try {
+            ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(optionConfirmed);
+          } catch {}
 
-          // Mirror confirmed observations onto the enforcer-visible field so
-          {
-            const _rc = Array.isArray(optionEvidence?.real_codes)
-              ? [...optionEvidence.real_codes]
-              : (mappedObservationKey ? [mappedObservationKey] : []);
-            (this as any)._lastRealObservations = _rc;
-            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
-          }
-
+          agentsUsed.push('GRAPH_NEEDS_MORE_EVIDENCE');
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
             session_state_update: sessionStateUpdateNoRules as any,
-            decision_output: {
-              decision_id: `option_selected_stage_fallback_${Date.now()}`,
-              session_id: sessionId,
-              status: 'STAGE_FALLBACK',
-              decision_brain_source: true,
-              // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
-              authority_decision: authorityDecision,
-              // PHASE-14: Include stage-aware fallback message
-              stage_fallback_message: (stageFallback as any).message,
-              stage_fallback_actions: (stageFallback as any).actions,
-              photo_requested: stageFallback.photoRequested,
-              actions_returned: [],
-              metadata: {
-                confidence: 0.6, // Lower confidence since no rules matched
-                trace_id: traceId,
-                processing_time_ms: Date.now() - startTime,
-                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
-                clarification_resolved: true,
-                selected_option: matchResult.matched_option,
-                mapped_observation: mappedObservationKey,
-                rules_evaluated: ruleResult.rules_evaluated,
-                rules_matched: 0,
-                no_rules_matched_reason: `Stage-aware fallback for ${cropName}/${growthStage}`,
-                // FIX: Include locked crop context in metadata
-                lockedCropContext: finalLockedCropContextNoRules,
-                session_state_update: sessionStateUpdateNoRules
-              }
-            } as any,
-            // FIX: Include dataAudit to preserve land context
+            decision_output: this.buildStructuredNoDecision({
+              trace_id: traceId,
+              graph_gap: 'NO_RULE_MATCHED',
+              confirmed: optionConfirmed,
+              hypotheses_partial: (this as any).__winningHypothesisId ? [(this as any).__winningHypothesisId] : [],
+              attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+              candidate_rules: []
+            }) as any,
             dataAudit: dataAuditNoRules,
             metadata: {
-              confidence: 0.6,
-              safety_status: 'SAFE',
+              confidence: 0,
+              safety_status: 'GRAPH_NEEDS_MORE_EVIDENCE',
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
-              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
+              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
               lockedCropContext: finalLockedCropContextNoRules,
               session_state_update: sessionStateUpdateNoRules
             }
-          };
+          } as any;
         } else {
           // PHASE-9.1-FIX: Farmer did NOT select a valid option - RETURN REMINDER IMMEDIATELY
           // DO NOT continue to NLU pipeline - this is the HARD GATE
@@ -10742,60 +10709,35 @@ export class AIAgentOrchestrator {
         !!landContext?.current_crop;
       
       if (shouldUseStageAdvisoryFallback) {
-        const cropName = landContext.current_crop || 'crop';
-        const stageName = landContext.growth_stage || 'current stage';
-        const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
-        const userLanguage = options.language || 'mr';
-        const _grsForStageAdvisory = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
-        const _stageRealFromGraph = _grsForStageAdvisory?.last_real_observations;
-        const stageAdvisoryRealObservations = _stageRealFromGraph && _stageRealFromGraph.length > 0
-          ? [..._stageRealFromGraph]
-          : (Array.isArray((this as any)._lastRealObservations)
-              ? [...(this as any)._lastRealObservations]
-              : []);
-        const stageFallback = this.generateStageAwareFallback(
-          cropName,
-          stageName,
-          'stage_advisory',
-          landContext.days_since_sowing || 0,
-          userLanguage
+        console.log(
+          `🛑 [GRAPH_NEEDS_MORE_EVIDENCE] trace=${traceId} route=${queryRoute.route} ` +
+          `crop=${landContext?.current_crop ?? 'UNKNOWN'} reason=ZERO_RULES_NO_OBSERVATION`
         );
-        const fallbackMessage = userLanguage === 'mr'
-          ? `तुमच्या ${cropName} पिकाची अवस्था ${stageName}${dasText} आहे. सध्या खत/फवारणीचा निर्णय पिकाची अवस्था, माती परीक्षण, NDVI आणि हवामान पाहून घ्या. स्पष्ट कीड/रोगाची लक्षणे दिसत नसतील तर अनावश्यक रासायनिक फवारणी टाळा; नियोजित पोषण, पाणी व्यवस्थापन आणि निरीक्षण चालू ठेवा.`
-          : userLanguage === 'hi'
-            ? `आपकी ${cropName} फसल अभी ${stageName}${dasText} अवस्था में है। अभी खाद/स्प्रे का निर्णय फसल अवस्था, मिट्टी परीक्षण, NDVI और मौसम देखकर लें। कीट/रोग के स्पष्ट लक्षण न हों तो अनावश्यक रासायनिक स्प्रे टालें; नियोजित पोषण, पानी प्रबंधन और निगरानी जारी रखें।`
-            : `Your ${cropName} crop is at ${stageName}${dasText}. Use crop stage, soil test, NDVI and weather before deciding fertilizer or spray. If there are no clear pest/disease symptoms, avoid unnecessary chemical spray; continue scheduled nutrition, water management and monitoring.`;
-        agentsUsed.push('STAGE_ADVISORY_FALLBACK');
+        agentsUsed.push('GRAPH_NEEDS_MORE_EVIDENCE');
+        const confirmed = Array.isArray((this as any)._lastRealObservations)
+          ? [...(this as any)._lastRealObservations]
+          : [];
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
-          decision_output: {
-            decision_id: `stage_advisory_${Date.now()}`,
-            session_id: sessionId,
-            status: 'STAGE_FALLBACK',
-            decision_brain_source: true,
-            stage_fallback_message: fallbackMessage,
-            action_codes: stageFallback.action_codes,
-            rules_applied: [],
-            metadata: {
-              ...stageFallback.metadata,
-              route: queryRoute.route,
-              reason: 'ZERO_RULES_FOR_SYMPTOM_FREE_ADVISORY',
-              i18n_key: stageFallback.i18n_key,
-              real_observations: stageAdvisoryRealObservations
-            }
-          } as any,
+          decision_output: this.buildStructuredNoDecision({
+            trace_id: traceId,
+            graph_gap: 'NO_RULE_MATCHED',
+            confirmed,
+            hypotheses_partial: [],
+            attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+            candidate_rules: []
+          }) as any,
           dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
           metadata: {
-            confidence: 0.65,
-            safety_status: 'SAFE_STAGE_ADVISORY',
+            confidence: 0,
+            safety_status: 'GRAPH_NEEDS_MORE_EVIDENCE',
             rules_applied: 0,
             processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
+            agents_used: [...agentsUsed],
             trace_id: traceId,
-            response_source: 'STAGE_ADVISORY_FALLBACK',
+            response_source: 'GRAPH_NEEDS_MORE_EVIDENCE',
             symptomKeys: Array.from(allObservationsForPreAuth || []),
-            real_observations: stageAdvisoryRealObservations,
             isEmergency: false
           }
         } as any;
