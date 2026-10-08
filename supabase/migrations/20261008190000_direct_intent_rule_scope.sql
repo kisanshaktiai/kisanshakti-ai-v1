@@ -47,7 +47,17 @@ VALUES
   ('SOIL_TYPE_MANAGEMENT', 'soil', 10, 'DB_AUTHORED_ROUTING', 'Direct soil-type management scope'),
   ('IRRIGATION_METHOD_SELECTION', 'irrigation', 10, 'DB_AUTHORED_ROUTING', 'Direct irrigation-method scope'),
   ('IRRIGATION_QUERY', 'irrigation', 10, 'DB_AUTHORED_ROUTING', 'Direct irrigation guidance scope'),
-  ('IRRIGATION_SCHEDULING_QUERY', 'irrigation', 10, 'DB_AUTHORED_ROUTING', 'Direct irrigation-schedule scope')
+  ('IRRIGATION_SCHEDULING_QUERY', 'irrigation', 10, 'DB_AUTHORED_ROUTING', 'Direct irrigation-schedule scope'),
+  ('COST_ESTIMATION_QUERY', 'economics', 10, 'DB_AUTHORED_ROUTING', 'Direct farm cost scope'),
+  ('LABOR_PLANNING_QUERY', 'economics', 10, 'DB_AUTHORED_ROUTING', 'Direct labour planning scope'),
+  ('TREATMENT_ROI_QUERY', 'economics', 10, 'DB_AUTHORED_ROUTING', 'Direct treatment economics scope'),
+  ('CROP_ROTATION_QUERY', 'crop_rotation', 10, 'DB_AUTHORED_ROUTING', 'Direct crop rotation scope'),
+  ('BEST_PRACTICE_GENERAL', 'best_practice', 10, 'DB_AUTHORED_ROUTING', 'Direct best-practice scope'),
+  ('YIELD_FORECAST_QUERY', 'proactive_yield', 10, 'DB_AUTHORED_ROUTING', 'Direct yield intelligence scope'),
+  ('YIELD_FORECAST_QUERY', 'economics', 20, 'DB_AUTHORED_ROUTING', 'Yield economics context'),
+  ('PLANTING_METHOD_QUERY', 'planting', 20, 'DB_AUTHORED_ROUTING', 'Planting practice fallback scope'),
+  ('VARIETY_SELECTION_QUERY', 'planting_material', 20, 'DB_AUTHORED_ROUTING', 'Variety and planting-material scope'),
+  ('INTERCROPPING_QUERY', 'crop_rotation', 20, 'DB_AUTHORED_ROUTING', 'Intercropping/rotation context scope')
 ON CONFLICT (intent_code, rule_category) DO UPDATE
 SET priority = EXCLUDED.priority,
     is_active = true,
