@@ -4473,7 +4473,7 @@ export class AIAgentOrchestrator {
         !!intentMetaFromDB &&
         dbExecutionLane === 'KNOWLEDGE' &&
         String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
-        realObsCountForSalvage === 0 &&
+        authoredObservations.getConfirmedAndExtractedCodes().filter((code: string) => isInformativeObs(code)).length === 0 &&
         ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
 
       if (knowledgePlaneEligible) {
