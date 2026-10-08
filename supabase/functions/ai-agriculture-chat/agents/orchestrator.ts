@@ -2409,7 +2409,7 @@ export class AIAgentOrchestrator {
               main_message: { full_text: responseByLanguage },
               quick_actions: [],
               metadata: {
-                word_count: responseText.split(/\\s+/).filter(Boolean).length,
+                word_count: responseText.split(/\s+/).filter(Boolean).length,
                 reading_time_seconds: 5,
                 confidence_score: knowledgeLookup.confidence,
                 source: 'DECISION_BRAIN_KNOWLEDGE_NODE',
