@@ -201,7 +201,7 @@ export async function resolveKnowledgeLookup(input: KnowledgeLookupInput): Promi
     if (effectiveBaselineItems.length === 0 && kind === 'PEST_LIST') {
       const rules = await input.supabase
         .from('decision_rules')
-        .select('pest_code,stage_applicable,etl_value,etl_unit')
+        .select('pest_code,stage_applicable,etl_threshold,etl_unit')
         .eq('is_active', true)
         .ilike('crop_code', cropCode)
         .not('pest_code', 'is', null);
