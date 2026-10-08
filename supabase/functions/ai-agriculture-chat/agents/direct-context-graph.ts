@@ -169,6 +169,26 @@ function hasFarmerEvidenceRequirement(rule: any, availableContextTokens: Set<str
   };
 }
 
+async function loadIntentCandidateCodes(input: DirectContextGraphInput): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const crop = normalizeCropCode(input.crop_code);
+    const { data } = await input.supabase
+      .from('intent_observation_mapping')
+      .select('observation_code,crop_code,is_active')
+      .eq('intent_code', input.intent_code)
+      .eq('is_active', true)
+      .in('crop_code', [crop, 'ALL', 'all']);
+    for (const row of (data || [])) {
+      const code = token(row?.observation_code);
+      if (code) out.add(code);
+    }
+  } catch (e) {
+    console.warn('[DIRECT_CONTEXT_GRAPH] intent-candidate lookup failed:', (e as Error).message);
+  }
+  return out;
+}
+
 async function loadContextTokens(input: DirectContextGraphInput): Promise<Set<string>> {
   const out = new Set<string>();
   try {
@@ -198,6 +218,8 @@ async function loadContextTokens(input: DirectContextGraphInput): Promise<Set<st
 }
 
 function sortRules(a: any, b: any): number {
+  const relevance = Number(b?._intent_relevance ?? 0) - Number(a?._intent_relevance ?? 0);
+  if (relevance !== 0) return relevance;
   const authority = Number(b?.data_authority_rank ?? 0) - Number(a?.data_authority_rank ?? 0);
   if (authority !== 0) return authority;
   const priority = Number(b?.priority ?? 0) - Number(a?.priority ?? 0);
@@ -300,10 +322,16 @@ export async function resolveDirectContextGraph(input: DirectContextGraphInput):
   }
 
   const contextTokens = await loadContextTokens(input);
+  const intentCandidateCodes = await loadIntentCandidateCodes(input);
 
   const candidates = rows
     .filter((r: any) => stageMatches(r, input.growth_stage))
     .filter((r: any) => contextMatches(r, input))
+    .map((r: any) => {
+      const ruleCodes = extractObservationCodes(r);
+      const overlap = ruleCodes.filter((code) => intentCandidateCodes.has(token(code))).length;
+      return { ...r, _intent_relevance: overlap };
+    })
     .sort(sortRules);
 
   const availableEvidence = new Set([
