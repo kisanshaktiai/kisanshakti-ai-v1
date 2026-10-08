@@ -210,6 +210,29 @@ const FERTILIZER_NUTRITION_PATTERNS = [
   /khat\s*(devu|dya|kadhi|kab|kontya|kounsa)/i
 ];
 
+// KNOWLEDGE LOOKUP QUERIES — informational taxonomy/fact requests.
+// These are NOT farmer observations and must never enter the diagnostic lane.
+const KNOWLEDGE_LOOKUP_PATTERNS = [
+  // English
+  /\b(?:which|what)\s+(?:pests?|insects?|bugs?|diseases?)\s+(?:attack|affect|occur|come|are\s+common|do)\b/i,
+  /\b(?:what|which)\s+(?:are\s+)?the\s+(?:common\s+)?(?:pests?|insects?|diseases?)\b/i,
+  /\b(?:what|which)\s+(?:are\s+)?the\s+(?:crop|rice|sugarcane|cotton)\s+(?:growth\s+)?stages?\b/i,
+  // Marathi
+  /(?:कोणत्या|कुठल्या|कोणते)\s*(?:किडी|किडे|किड|कीटक|रोग)\s*(?:येतात|आतात|असतात|लागतात)/i,
+  /(?:कुठल्या|कोणत्या)\s*(?:किडी|किडे)\s*(?:पीकावर|भातावर|तांदळावर)/i,
+  /(?:पिकाचे|पिकाचे\s*|वाढीचे|वाढीचा)\s*(?:टप्पे|अवस्थ|टप्पा)/i,
+  // Hindi
+  /(?:कौन\s*से|कौन\s*सी|कौन\s*से)\s*(?:कीट|किडे|रोग)\s*(?:आते|लगते|होते|होते\s*हैं)/i,
+  /(?:फसल|धान|चावल)\s*(?:की\s*)?(?:अवस्थाएँ|अवस्था|चरण)/i,
+  // Romanized Marathi/Hindi
+  /\b(?:kontya|kuthlya|konatya)\s+(?:kidi|kide|kida)\b.*\b(?:yetat|atat|astat|lagtat)\b/i,
+  /\b(?:pikali|pikache|vikasache)\s+(?:tappe|avastha|stage)\b/i,
+];
+
+function isKnowledgeLookupQuery(message: string): boolean {
+  return KNOWLEDGE_LOOKUP_PATTERNS.some((p) => p.test(message));
+}
+
 // SYMPTOM TOKENS — actual disease/pest evidence (used to differentiate
 const SYMPTOM_TOKENS = [
   // Color / damage
@@ -304,6 +327,17 @@ export function routeQuery(
     return result;
   }
   
+  // Priority 3.4: informational knowledge lookup — never treat taxonomy questions
+  // ("which pests attack rice?") as observed pest evidence.
+  if (isKnowledgeLookupQuery(message)) {
+    result.route = 'GENERAL_INFO';
+    result.confidence = 0.97;
+    result.requires_decision_brain = false;
+    result.context_hints.push('KNOWLEDGE_LOOKUP', 'NO_FARMER_OBSERVATION');
+    result.detected_entities = extractPestDiseaseEntities(message);
+    return result;
+  }
+
   // Priority 3.5: P1-A Crop Health queries (use land context + NDVI + weather)
   const cropHealthScore = countPatternMatches(message, CROP_HEALTH_PATTERNS);
   if (cropHealthScore >= 1) {
