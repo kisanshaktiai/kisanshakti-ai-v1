@@ -4852,6 +4852,8 @@ export class AIAgentOrchestrator {
                   crop_stage: String((landContext as any)?.growth_stage ?? (canonicalContext as any)?.growth_stage ?? ''),
                   village: (landContext as any)?.village,
                   district: (landContext as any)?.district,
+                  expected_harvest_date: (landContext as any)?.expected_harvest_date ?? (canonicalContext as any)?.expected_harvest_date ?? undefined,
+                  days_to_expected_harvest: directGraph.response_facts?.days_to_expected_harvest as number | null | undefined,
                 } : undefined,
                 symbolic_decision: {
                   status: 'READY',
