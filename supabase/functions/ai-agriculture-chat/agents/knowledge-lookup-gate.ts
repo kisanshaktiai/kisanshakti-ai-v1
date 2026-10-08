@@ -22,6 +22,7 @@ export interface KnowledgeLookupOutput {
   items?: Array<Record<string, any>>;
   source_tables?: string[];
   fallback_text?: string;
+  response_by_language?: Record<string, string>;
   confidence: number;
   processing_time_ms: number;
 }
@@ -98,6 +99,30 @@ function dedupeSortedStages(rows: any[], cultivationMethod: string | null): any[
     });
 }
 
+function buildLocalizedResponses(
+  kind: KnowledgeKind,
+  cropCode: string,
+  items: Array<Record<string, any>>,
+): Record<string, string> {
+  const langs = ['en', 'hi', 'mr'];
+  const out: Record<string, string> = {};
+  for (const lang of langs) {
+    const crop = getCropDisplayName(cropCode, lang) || getCropCanonical(cropCode);
+    if (kind === 'PEST_LIST') {
+      const names = items.map((x: any) => {
+        const byLang = x?.localized_names ?? {};
+        return byLang[lang] || x?.english_name || x?.name;
+      }).filter(Boolean);
+      out[lang] = crop + ': ' + names.join(', ') + '.';
+    } else if (kind === 'DISEASE_LIST') {
+      out[lang] = crop + ': ' + items.map((x: any) => x?.name).filter(Boolean).join(', ') + '.';
+    } else {
+      out[lang] = crop + ': ' + items.map((x: any) => String(x?.stage ?? '').replace(/_/g, ' ')).filter(Boolean).join(', ') + '.';
+    }
+  }
+  return out;
+}
+
 function localizedPestName(row: any, language: string): string {
   const lang = norm(language).slice(0, 2);
   return (lang === 'mr' ? row?.pest_name_mr : lang === 'hi' ? row?.pest_name_hi : row?.pest_name_en)
@@ -150,6 +175,9 @@ export async function resolveKnowledgeLookup(input: KnowledgeLookupInput): Promi
         })),
         source_tables: ['crop_stage_master'],
         fallback_text: displayCrop + ': ' + stageNames.join(', ') + '.',
+        response_by_language: buildLocalizedResponses('GROWTH_STAGE_LIST', cropCode, stages.map((s) => ({
+          stage: s.growth_stage
+        }))),
         confidence: 0.99,
         processing_time_ms: performance.now() - start
       };
@@ -177,6 +205,11 @@ export async function resolveKnowledgeLookup(input: KnowledgeLookupInput): Promi
         const row = byName.get(norm(p?.pest));
         return {
           name: row ? localizedPestName(row, input.language) : String(p?.pest ?? ''),
+          localized_names: {
+            en: row?.pest_name_en ?? p?.pest ?? null,
+            hi: row?.pest_name_hi ?? p?.pest ?? null,
+            mr: row?.pest_name_mr ?? p?.pest ?? null,
+          },
           english_name: p?.pest ?? null,
           scientific_name: p?.scientific_name ?? null,
           critical_stage: p?.critical_stage ?? null,
@@ -192,6 +225,7 @@ export async function resolveKnowledgeLookup(input: KnowledgeLookupInput): Promi
         items,
         source_tables: ['crop_baseline_guidelines', 'pest_master'],
         fallback_text: displayCrop + ': ' + items.map((x: any) => x.name).join(', ') + '.',
+        response_by_language: buildLocalizedResponses('PEST_LIST', cropCode, items),
         confidence: items.length > 0 ? 0.99 : 0,
         processing_time_ms: performance.now() - start
       };
@@ -215,6 +249,7 @@ export async function resolveKnowledgeLookup(input: KnowledgeLookupInput): Promi
         items,
         source_tables: ['crop_baseline_guidelines'],
         fallback_text: displayCrop + ': ' + items.map((x: any) => x.name).join(', ') + '.',
+        response_by_language: buildLocalizedResponses('DISEASE_LIST', cropCode, items),
         confidence: items.length > 0 ? 0.99 : 0,
         processing_time_ms: performance.now() - start
       };
