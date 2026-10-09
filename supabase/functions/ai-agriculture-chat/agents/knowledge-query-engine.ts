@@ -1,6 +1,11 @@
 /**
  * KNOWLEDGE QUERY ENGINE
  *
+ * CHANGE LOG (newest first)
+ *   2026-10-09 12:30 UTC — TDZ fix: `started` was declared below the try block in
+ *   pestProvider but read inside it — ReferenceError on the named-pest path.
+ *   Hoisted the declaration above the try.
+ *
  * Deterministic, DB-backed Knowledge Plane for the land-specific brain.
  *
  * Contract:
