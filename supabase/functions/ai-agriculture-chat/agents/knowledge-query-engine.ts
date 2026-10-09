@@ -411,6 +411,9 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
 }
 
 async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
+  // TDZ FIX (2026-10-09): `started` was declared below the try block but read
+  // inside it — ReferenceError on the named-pest path. Hoisted above the try.
+  const started = performance.now();
   // First resolve a named pest dynamically from the DB vocabulary. This is
   // what lets a farmer ask for "BPH" in any script without a hardcoded list.
   try {
