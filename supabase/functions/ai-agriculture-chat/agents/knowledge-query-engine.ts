@@ -1,6 +1,11 @@
 /**
  * KNOWLEDGE QUERY ENGINE
  *
+ * CHANGE LOG (newest first)
+ *   2026-10-09 12:30 UTC — TDZ fix: `started` was declared below the try block in
+ *   pestProvider but read inside it — ReferenceError on the named-pest path.
+ *   Hoisted the declaration above the try.
+ *
  * Deterministic, DB-backed Knowledge Plane for the land-specific brain.
  *
  * Contract:
@@ -411,6 +416,9 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
 }
 
 async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
+  // TDZ FIX (2026-10-09): `started` was declared below the try block but read
+  // inside it — ReferenceError on the named-pest path. Hoisted above the try.
+  const started = performance.now();
   // First resolve a named pest dynamically from the DB vocabulary. This is
   // what lets a farmer ask for "BPH" in any script without a hardcoded list.
   try {
@@ -452,7 +460,6 @@ async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   } catch (e) {
     console.warn('[PestKnowledgeProvider] name lookup failed:', (e as Error).message);
   }
-  const started = performance.now();
   let query = input.supabase
     .from('crop_stage_knowledge')
     .select('id,crop_code,growth_stage,pest_watch,source,reviewed_by_agronomist')

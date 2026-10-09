@@ -1,4 +1,9 @@
 // CHANGE LOG (newest first)
+// 2026-10-09 12:25 UTC — TDZ FIX: KNOWLEDGE_PLANE_GATE log referenced cropFromAnyLayer
+//   (declared ~200 lines later) before initialization — every GENERAL intent /
+//   SYMBOLIC_BRAIN / zero-observation turn threw ReferenceError and fell into
+//   handleOrchestrationError. Gate log now derives the crop inline from
+//   landContext/canonicalContext; no behavior change on other lanes.
 // 2026-10-06 10:05 UTC — ROUTE_AUTHORITY invariant exempts DB DIRECT/0 contract intents.
 //   2026-10-06 08:40 UTC — Data-audit land card carries season-cumulative GDD (lands.current_gdd).
 //   2026-10-05 11:40 UTC — Data-audit weather card reads the canonical weather shape (temperature_c/humidity_percent/rainfall_last_24h_mm/forecast_24h) and falls back to the per-land weather reading on fused-intelligence paths; previously always showed "Weather data unavailable".
@@ -4475,11 +4480,19 @@ export class AIAgentOrchestrator {
         ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
 
       if (knowledgePlaneEligible) {
+        // TDZ FIX (2026-10-09): cropFromAnyLayer is declared further below (line ~4643);
+        // referencing it here threw ReferenceError: Cannot access before initialization,
+        // crashing every GENERAL/SYMBOLIC_BRAIN/zero-observation turn at the knowledge gate.
+        const knowledgeGateCrop =
+          (landContext as any)?.current_crop ||
+          (canonicalContext as any)?.crop ||
+          (landContext as any)?.crop_schedule?.crop_name ||
+          (landContext as any)?.crop_name;
         console.log(
           '\n📚 [KNOWLEDGE_PLANE_GATE] trace=' + traceId +
           ' intent=' + intentCode +
           ' category=' + intentMetaFromDB?.intent_category +
-          ' crop=' + (cropFromAnyLayer || 'UNKNOWN') +
+          ' crop=' + (knowledgeGateCrop || 'UNKNOWN') +
           ' realObs=' + realObsCountForSalvage +
           ' subject=' + nluKnowledgeSubject +
           ' → deterministic knowledge resolution',
