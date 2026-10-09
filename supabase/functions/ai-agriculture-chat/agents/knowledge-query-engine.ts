@@ -455,7 +455,6 @@ async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   } catch (e) {
     console.warn('[PestKnowledgeProvider] name lookup failed:', (e as Error).message);
   }
-  const started = performance.now();
   let query = input.supabase
     .from('crop_stage_knowledge')
     .select('id,crop_code,growth_stage,pest_watch,source,reviewed_by_agronomist')
