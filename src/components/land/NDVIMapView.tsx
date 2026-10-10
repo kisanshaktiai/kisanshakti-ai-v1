@@ -196,7 +196,9 @@ export function NDVIMapView({
   areaAcres,
   currentCrop,
   landThumbnailUrl,
-  landThumbnailDate, overlayAssetPath = null }: NDVIMapViewProps) {
+  landThumbnailDate,
+  overlayAssetPath = null,
+}: NDVIMapViewProps) {
   const { t } = useTranslation();
   const { tenant } = useTenant();
   const { session } = useAuthStore();
