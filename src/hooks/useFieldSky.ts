@@ -23,7 +23,6 @@ import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
 import { useNDVIAnalysis, type NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
 import { useLandWeatherState, type LandWeatherState } from '@/hooks/useLandWeatherState';
-import { useSatelliteWaterLayers } from '@/hooks/useSatelliteWaterLayers';
 
 export type FieldState = 'as_expected' | 'slower' | 'something_wrong' | 'unclear' | 'no_data';
 export type CohortState = 'well_behind' | 'behind' | 'with' | 'ahead' | 'unknown';
@@ -96,8 +95,12 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
 
   const ndvi = useNDVIAnalysis(landId);
   const weather = useLandWeatherState(landId);
-  const canopy = useSatelliteWaterLayers(landId || undefined, 'canopy_moisture_signal', reloadKey);
-  const surface = useSatelliteWaterLayers(landId || undefined, 'surface_water_trace', reloadKey);
+  void reloadKey; // refresh re-runs the shared 'ndvi-analysis' query, which carries every satellite row
+  // 2026-10-10: intel / radar / schedule / water layers come from the same server read as the
+  // optical passes (lands-api?action=satellite). Direct browser reads were refused (42501).
+  const bundle = ndvi.bundle;
+  const canopy = { layers: (bundle?.canopy ?? []) as WaterRowLite[] };
+  const surface = { layers: (bundle?.surface ?? []) as WaterRowLite[] };
 
   // The lands table is not readable from the farmer's session directly (its row rules are
   // auth.uid()-based, so a direct read returns nothing, silently). The lands-api edge function
@@ -110,47 +113,11 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
   });
   const landRow: LandCtxRow | null = useMemo(() => (landsQ.data || []).find((l) => l.id === landId) ?? null, [landsQ.data, landId]);
 
-  const intelQ = useQuery({
-    queryKey: ['field-sky-intel', landId, tenantId],
-    enabled: !!landId && !!tenantId,
-    staleTime: 10 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('ndvi_intelligence')
-        .select('acquisition_date, observed_or_predicted, observed_ndvi, context_ndvi_median, parcel_context_robust_z, parcel_context_delta, evidence_json, estimated_ndvi_low, estimated_ndvi_high, intelligence_status')
-        .eq('land_id', landId!).eq('tenant_id', tenantId!)
-        .order('acquisition_date', { ascending: false }).limit(40);
-      if (error) throw error; return (data || []) as IntelRow[];
-    },
-  });
-
-  const radarQ = useQuery({
-    queryKey: ['field-sky-radar', landId, tenantId],
-    enabled: !!landId && !!tenantId,
-    staleTime: 10 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('ndvi_data')
-        .select('acquisition_date, rvi_value, cross_ratio_db')
-        .eq('land_id', landId!).eq('tenant_id', tenantId!).eq('observation_source', 'sentinel-1')
-        .not('rvi_value', 'is', null)
-        .order('acquisition_date', { ascending: false }).limit(VISITS_SHOWN);
-      if (error) throw error; return (data || []) as RadarRow[];
-    },
-  });
-
+  const intelQ = { data: (bundle?.intel ?? []) as IntelRow[], isLoading: false, error: null };
+  const radarQ = { data: (bundle?.radar ?? []) as RadarRow[] };
   // The proactive evaluator takes the sowing date from the ACTIVE crop schedule
   // first and only then from the land row; the Season card must agree with it.
-  const scheduleQ = useQuery({
-    queryKey: ['field-sky-schedule', landId, tenantId],
-    enabled: !!landId && !!tenantId,
-    staleTime: 10 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('crop_schedules')
-        .select('sowing_date, transplant_date, cultivation_method, crop_name')
-        .eq('land_id', landId!).eq('tenant_id', tenantId!).eq('is_active', true)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle();
-      if (error) throw error; return data as ScheduleRow | null;
-    },
-  });
+  const scheduleQ = { data: (bundle?.schedule ?? null) as ScheduleRow | null, isLoading: false };
   const scheduleSowing: string | null = scheduleQ.data?.sowing_date ?? scheduleQ.data?.transplant_date ?? null;
   const landSowing: string | null = landRow?.last_sowing_date ?? landRow?.planting_date ?? landRow?.transplant_date ?? null;
   const sowingDate: string | null = scheduleSowing ?? landSowing;

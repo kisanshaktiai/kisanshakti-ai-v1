@@ -67,6 +67,76 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // ACTION: satellite  (GET /lands-api?action=satellite&land_id=...)
+    // 2026-10-10: the field-from-the-sky screen read satellite tables directly
+    // from the browser; the anon role is refused by their row rules (42501), so
+    // the screen always showed "Could not load satellite data". Same rows, read
+    // here with the service role, ONLY for a land owned by the verified farmer.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (req.method === 'GET' && url.searchParams.get('action') === 'satellite') {
+      const satLandId = url.searchParams.get('land_id') || '';
+      const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      if (!/^[0-9a-f-]{36}$/i.test(satLandId)) return json({ error: 'land_id required', code: 'BAD_LAND_ID' }, 400);
+      const { data: owned, error: ownErr } = await supabase.from('lands').select('id').eq('id', satLandId)
+        .eq('tenant_id', tenantId).eq('farmer_id', farmerId).maybeSingle();
+      if (ownErr) return dbErrorResponse(ownErr, 500);
+      if (!owned) return json({ error: 'Land not found', code: 'LAND_NOT_FOUND' }, 404);
+      const cutoff = new Date(Date.now() - 90 * 86400000);
+      const cutoffDay = cutoff.toISOString().slice(0, 10);
+      const DC = 'land_id,tenant_id,acquisition_date,acquisition_time,scene_id,ndvi_value,savi_value,ndre_value,ndmi_value,uniformity_cv,quality_score,confidence_level,cloud_cover,observation_source,effective_pixel_count,coverage_weighted_purity,boundary_contamination_fraction,ndvi_spatial_se,evidence_confidence,measurement_status,spatial_stat_method,age_days,is_fresh';
+      const base = (t: string, cols: string) => supabase.from(t).select(cols).eq('land_id', satLandId).eq('tenant_id', tenantId);
+      const [dec, logs, intel, radar, sched, canopy, surface] = await Promise.all([
+        base('v_ndvi_decision_grade', DC).gte('acquisition_date', cutoffDay).order('acquisition_date', { ascending: false }).limit(60),
+        base('ndvi_processing_logs', 'id,land_id,processing_step,step_status,completed_at,created_at,error_message,metadata').gte('created_at', cutoff.toISOString()).order('created_at', { ascending: false }).limit(30),
+        base('ndvi_intelligence', 'acquisition_date, observed_or_predicted, observed_ndvi, context_ndvi_median, parcel_context_robust_z, parcel_context_delta, evidence_json, estimated_ndvi_low, estimated_ndvi_high, intelligence_status').order('acquisition_date', { ascending: false }).limit(40),
+        base('ndvi_data', 'acquisition_date, rvi_value, cross_ratio_db').eq('observation_source', 'sentinel-1').not('rvi_value', 'is', null).order('acquisition_date', { ascending: false }).limit(8),
+        base('crop_schedules', 'sowing_date, transplant_date, cultivation_method, crop_name').eq('is_active', true).order('created_at', { ascending: false }).limit(1),
+        base('satellite_water_layers', '*').eq('layer_code', 'canopy_moisture_signal').eq('status', 'observed').order('acquisition_date', { ascending: false }).limit(12),
+        base('satellite_water_layers', '*').eq('layer_code', 'surface_water_trace').eq('status', 'observed').order('acquisition_date', { ascending: false }).limit(12),
+      ]);
+      if (dec.error) return dbErrorResponse(dec.error, 500);
+      let decisionRows: any[] = dec.data || [];
+      if (!decisionRows.length) {
+        const older = await base('v_ndvi_decision_grade', DC).order('acquisition_date', { ascending: false }).limit(1);
+        if (older.error) return dbErrorResponse(older.error, 500);
+        decisionRows = older.data || [];
+      }
+      const sceneIds = decisionRows.map((r) => r.scene_id).filter(Boolean);
+      let assets: any[] = [];
+      if (sceneIds.length) {
+        const a = await base('ndvi_data', 'land_id,tenant_id,date,scene_id,image_url,metadata,evi_value,ndwi_value,min_ndvi,max_ndvi,mean_ndvi,median_ndvi,ndvi_std,ndvi_spatial_min,ndvi_spatial_max,ndvi_spatial_median,ndvi_spatial_std,ndvi_p10,ndvi_p90,valid_pixels,total_pixels,satellite_source,collection_id,processing_level,spatial_resolution,tile_id,created_at,updated_at,computed_at,soil_moisture').in('scene_id', sceneIds);
+        if (a.error) return dbErrorResponse(a.error, 500);
+        assets = a.data || [];
+      }
+      for (const r of [logs, intel, radar, sched, canopy, surface]) if (r.error) console.warn('[lands-api satellite] partial read failed', r.error.message);
+      return json({
+        decision: decisionRows, assets, logs: logs.data || [], intel: intel.data || [], radar: radar.data || [],
+        schedule: (sched.data || [])[0] ?? null, canopy: canopy.data || [], surface: surface.data || [],
+      });
+    }
+
+    // ACTION: sign-satellite (POST /lands-api?action=sign-satellite) — signs
+    // field pictures of an owned land; path must be {tenant}/{land}/...
+    if (req.method === 'POST' && url.searchParams.get('action') === 'sign-satellite') {
+      const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const { paths } = await req.json().catch(() => ({ paths: [] }));
+      const list: string[] = Array.isArray(paths) ? paths.slice(0, 40).map((p: unknown) => String(p).replace(/^\/+/, '')) : [];
+      const landIds = [...new Set(list.map((p) => p.split('/')[1]).filter(Boolean))];
+      const { data: ownedLands } = landIds.length
+        ? await supabase.from('lands').select('id').in('id', landIds).eq('tenant_id', tenantId).eq('farmer_id', farmerId)
+        : { data: [] as any[] };
+      const ok = new Set((ownedLands || []).map((l: any) => l.id));
+      const out: Record<string, string> = {};
+      await Promise.all(list.map(async (p) => {
+        const seg = p.split('/');
+        if (seg.length < 3 || seg[0] !== tenantId || !ok.has(seg[1])) return;
+        const { data } = await supabase.storage.from('ndvi-thumbnails').createSignedUrl(p, 3600);
+        if (data?.signedUrl) out[p] = data.signedUrl;
+      }));
+      return json({ urls: out });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // ACTION: infer-context  (POST /lands-api?action=infer-context)
     // Returns AI-derived suggestions for a new land based on its centroid:
     //   • reverse-geocoded village/taluka/district/state (+ matched IDs)
