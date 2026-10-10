@@ -1,4 +1,15 @@
 // CHANGE LOG (newest first)
+// 2026-10-10 — SURGICAL BRAIN FIX (live audit of deployed v102):
+//   (1) ReferenceError `currentObservations is not defined`: commit c1939d6
+//       renamed the hypothesis-graph input to the GraphTruth-locked
+//       `_graphObservations` but left 11 reads of the old name. Every diagnostic
+//       turn crashed into ERROR_RECOVERY (GRAPH_PIPELINE_BYPASSED). All reads now
+//       use `_graphObservations` (same value: GraphTruth.canonical_observations).
+//   (2) Advisory override + Knowledge Plane gate now count farmer-text evidence
+//       only; intent candidate-space (IOM seeds) no longer turns a knowledge
+//       question into DIAGNOSTIC_INQUIRY.
+//   (3) Knowledge Plane receives the SessionSSOT cultivation lane.
+//   (4) Error fallback no longer emits a raw `[i18n:…]` placeholder.
 // 2026-10-09 12:25 UTC — TDZ FIX: KNOWLEDGE_PLANE_GATE log referenced cropFromAnyLayer
 //   (declared ~200 lines later) before initialization — every GENERAL intent /
 //   SYMBOLIC_BRAIN / zero-observation turn threw ReferenceError and fell into
@@ -379,7 +390,7 @@ import {
 } from './language-induction-layer.ts';
 
 // GraphTruth — immutable per-turn agronomic node (T1 in refactor plan)
-import { buildGraphTruth, assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
+import { buildGraphTruth, assertGraphTruthIntegrity, type GraphTruth } from '../runtime/graph-truth.ts';
 
 // CRITICAL FIX: Import normalization functions from type-mappers for consistent code matching
 import { 
@@ -4057,9 +4068,22 @@ export class AIAgentOrchestrator {
 
       // INTENT SALVAGE + EVIDENCE OVERRIDE (Fix 2)
       let realObsCountForSalvage = 0;
+      // 2026-10-10 — FARMER-TEXT EVIDENCE COUNT. SURGICAL FIX 1 (2026-08-19,
+      // above) already states that intent candidate-space is NOT evidence, but
+      // the advisory override and the Knowledge Plane gate counted it: live
+      // traces trace_muyvh6s5_2cgi6s / trace_muyvj9pl_oxsacy / trace_muz7i6e6_winmpc
+      // ("which pests attack rice", "which crop is in this field") were
+      // classified GENERAL_CROP_INFO mode=KNOWLEDGE, then rewritten to
+      // DIAGNOSTIC_INQUIRY by the GENERAL_CROP_INFO IOM seeds
+      // (HEALTHY_CROP, VARIETY_QUERY, STAGE_GENERAL) and blocked by the invariant
+      // gate. Only codes derived from the farmer's own text may convert a
+      // knowledge question into a diagnosis or close the Knowledge Plane.
+      let farmerTextObsCount = 0;
       try {
         const ec = classifyEvidence(obsCodesList);
         realObsCountForSalvage = ec.real_symptom_count;
+        const ecText = classifyEvidence(obsCodesList.filter((c) => !isIntentCandidateCode(c)));
+        farmerTextObsCount = ecText.real_symptom_count;
         const cropPresent = !!(canonicalContext?.crop_code || landContext?.current_crop);
         const isUnknown = intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION';
         const isAdvisoryLike = ['GENERAL_CROP_INFO', 'CROP_INFO', 'GENERAL_INFO', 'GENERAL_QUERY'].includes(intentCode);
@@ -4068,9 +4092,15 @@ export class AIAgentOrchestrator {
           const salvaged = realObsCountForSalvage > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
           console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCountForSalvage})`);
           intentCode = salvaged;
-        } else if (isAdvisoryLike && realObsCountForSalvage > 0) {
-          console.log(`[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${intentCode} → DIAGNOSTIC_INQUIRY reason=real_symptoms_present codes=[${ec.real_codes.slice(0, 6).join(',')}]`);
+        } else if (isAdvisoryLike && farmerTextObsCount > 0) {
+          console.log(`[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${intentCode} → DIAGNOSTIC_INQUIRY reason=real_symptoms_present codes=[${ecText.real_codes.slice(0, 6).join(',')}]`);
           intentCode = 'DIAGNOSTIC_INQUIRY';
+        } else if (isAdvisoryLike && realObsCountForSalvage > 0) {
+          console.log(
+            `[INTENT_KEPT_CANDIDATE_SPACE][${traceId}] ${intentCode} kept — ` +
+            `${realObsCountForSalvage} code(s) are intent candidate space, not farmer evidence ` +
+            `codes=[${ec.real_codes.slice(0, 6).join(',')}]`,
+          );
         }
         emitNodeTrace(traceId, 'INTENT', {
           intent: intentCode,
@@ -4476,7 +4506,8 @@ export class AIAgentOrchestrator {
         !!intentMetaFromDB &&
         dbExecutionLane === 'KNOWLEDGE' &&
         String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
-        realObsCountForSalvage === 0 &&
+        // 2026-10-10 — farmer-text evidence only (see FARMER-TEXT EVIDENCE COUNT).
+        farmerTextObsCount === 0 &&
         ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
 
       if (knowledgePlaneEligible) {
@@ -4494,6 +4525,7 @@ export class AIAgentOrchestrator {
           ' category=' + intentMetaFromDB?.intent_category +
           ' crop=' + (knowledgeGateCrop || 'UNKNOWN') +
           ' realObs=' + realObsCountForSalvage +
+          ' farmerTextObs=' + farmerTextObsCount +
           ' subject=' + nluKnowledgeSubject +
           ' → deterministic knowledge resolution',
         );
@@ -4515,7 +4547,12 @@ export class AIAgentOrchestrator {
                   days_since_sowing: landContext.days_since_sowing ?? (canonicalContext as any)?.days_since_sowing ?? null,
                   state: (landContext as any)?.state ?? null,
                   soil_type: (landContext as any)?.soil_type ?? null,
+                  // 2026-10-10 — same lane chain as the SessionSSOT build above
+                  // (biological_state first) so the stage list is served for the
+                  // land's own cultivation lane, never a mix of lanes.
                   cultivation_method:
+                    ((this as any)._sessionSSOT as any)?.cultivation_method ??
+                    ((landContext as any)?.biological_state as any)?.cultivation_method ??
                     (landContext as any)?.cultivation_method ??
                     (canonicalContext as any)?.cultivation_method ??
                     null,
@@ -6554,7 +6591,7 @@ export class AIAgentOrchestrator {
               directModeBypass = false;
               console.log(
                 `[OBS_TO_HYP_GAP] trace=${traceId} intent=${intentCode} ` +
-                `confirmed_obs=${conversationState.confirmed.length} real_obs=${currentObservations.length} ` +
+                `confirmed_obs=${conversationState.confirmed.length} real_obs=${_graphObservations.length} ` +
                 `hypotheses=0 action=route_to_clarification_question`
               );
               agentsUsed.push('OBS_TO_HYP_GAP_CLARIFICATION');
@@ -6608,7 +6645,7 @@ export class AIAgentOrchestrator {
                 : null;
               const merged = buildGraphRuntimeSnapshot({
                 trace_id: traceId,
-                observations: (currentObservations ?? []) as string[],
+                observations: (_graphObservations ?? []) as string[],
                 engineA: engineAForMerge as any,
                 engineB: { candidates: graphOut.candidates as any },
                 edges: { ruleToHypothesis },
@@ -6696,7 +6733,7 @@ export class AIAgentOrchestrator {
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
               // a single grep on trace= reconstructs the full edge chain.
-              const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
+              const obsSample = (_graphObservations ?? []).slice(0, 12).join(',');
               const hypSample = hypIds.slice(0, 12).join(',');
               assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
               console.log(
@@ -6747,7 +6784,7 @@ export class AIAgentOrchestrator {
                 (this as any)._graphHypothesisResult = {
                   candidates: [],
                   eliminated: [],
-                  input_observations: currentObservations,
+                  input_observations: _graphObservations,
                   trace_id: traceId,
                   timings_ms: 0,
                 };
@@ -6763,7 +6800,7 @@ export class AIAgentOrchestrator {
               } catch {}
               (this as any)._graphExhaustedReason = graphErrMessage;
               console.warn(
-                `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
+                `[OBS_TO_HYP] trace=${traceId} obs=[${(_graphObservations ?? []).slice(0, 12).join(',')}] ` +
                 `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
                 `reason=GRAPH_CONTEXT_EXHAUSTED`,
               );
@@ -6801,7 +6838,7 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
-          console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
+          console.log(`   📊 Observations (${_graphObservations.length}): ${_graphObservations.slice(0, 5).join(', ') || 'none'}`);
 
           // T1 — GraphTruth integrity check before hypothesis engine
           assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
@@ -6810,9 +6847,9 @@ export class AIAgentOrchestrator {
           const _gtForHyp = (this as any)._graphTruth as import('../runtime/graph-truth.ts').GraphTruth | null;
           const hypObservations: string[] = _gtForHyp
             ? [..._gtForHyp.canonical_observations]
-            : currentObservations;
+            : _graphObservations;
           if (_gtForHyp) {
-            const a = [...currentObservations].sort().join(',');
+            const a = [..._graphObservations].sort().join(',');
             const b = [..._gtForHyp.canonical_observations].sort().join(',');
             if (a !== b) {
               console.warn(`[GRAPH_OBS_DRIFT] site=PRE_HYPOTHESIS pipe=[${a}] graph=[${b}] — using GraphTruth`);
@@ -6858,7 +6895,7 @@ export class AIAgentOrchestrator {
             }
             const snap = buildGraphRuntimeSnapshot({
               trace_id: traceId,
-              observations: (currentObservations ?? []) as string[],
+              observations: (_graphObservations ?? []) as string[],
               engineA: { candidates: hypothesisResult.candidates as any },
               engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
               edges: { ruleToHypothesis },
@@ -6914,7 +6951,7 @@ export class AIAgentOrchestrator {
               hypotheses: hypothesisResult.candidates,
               crop_code: cropCode,
               growth_stage: growthStage,
-              current_observations: currentObservations,
+              current_observations: _graphObservations,
                language: options.language || 'mr',
               damage_observations: cropDamageResult.damage_observations,
               trace_id: traceId,
@@ -13428,9 +13465,18 @@ export class AIAgentOrchestrator {
       
       const i18nKey = stageI18nKeys[stageUpper] || 'error.fallback.stage.generic';
       
-      // Build symbolic fallback advice with data placeholders
-      // Narration layer will resolve i18n_key and inject data
-      fallbackAdvice = `[i18n:${i18nKey}][crop:${cropName}][days:${days}][stage:${stageUpper}]`;
+      // 2026-10-10 — no layer resolves this placeholder: an English farmer saw
+      // the raw "[i18n:error.fallback.stage.grain_filling][crop:Rice]…" text
+      // (trace_muz40pws_sp664q) and other languages received an LLM guess at it.
+      // English-only like the other fallbacks in this block — the
+      // forceTranslateResponse() narration step localizes it — and honest that
+      // the analysis did not complete instead of implying advice was given.
+      void i18nKey;
+      const stageLabel = String(stage).replace(/_/g, ' ');
+      fallbackAdvice =
+        `Your ${cropName} crop is at the ${stageLabel} stage (${days} days after sowing). ` +
+        `I could not complete the analysis of this question just now. ` +
+        `Please ask again, or send a clear photo of the affected part of the crop.`;
     }
     
     // If no stage advice, detect query type and provide relevant generic advice

@@ -2,6 +2,25 @@
  * KNOWLEDGE QUERY ENGINE
  *
  * CHANGE LOG (newest first)
+ *   2026-10-10 — accuracy + language-agnostic pass (live audit of v102):
+ *     • Removed the hardcoded Marathi/Hindi/romanized term lists. The provider is
+ *       chosen only from the NLU knowledge_subject (the multilingual authority);
+ *       subject NONE/CROP → crop facts. No target-language words remain here.
+ *     • Stage provider: the stage list is filtered to the land's cultivation lane
+ *       (rice has direct_seeded AND transplanted rows in crop_stage_master; the old
+ *       list mixed both, e.g. two different "tillering" DAS windows) and the
+ *       answer always carries the full stage list with the current stage marked,
+ *       plus the agronomist-reviewed guidance for the current stage.
+ *     • Pest provider: crop pest list and named-pest facts come from etl_standards
+ *       (ICAR ETL, sampling method, stages, localized names); crop_stage_knowledge
+ *       pest_watch stays as the fallback, merged across all reviewed stages
+ *       instead of only the current stage.
+ *     • Fertilizer split_schedule rendered as readable splits instead of raw JSON.
+ *     • Weed crop-association regex had double-escaped tokens (matched literal
+ *       backslashes) — fixed.
+ *     • Crop label reads label_<language> for all 14 app languages.
+ *     • CHEMICAL subject with no chemical named in the message → evidence gap,
+ *       never crop facts.
  *   2026-10-09 12:30 UTC — TDZ fix: `started` was declared below the try block in
  *   pestProvider but read inside it — ReferenceError on the named-pest path.
  *   Hoisted the declaration above the try.
@@ -65,66 +84,14 @@ export interface KnowledgeQueryOutput {
   reason?: string;
 }
 
-const FERTILIZER_TERMS = [
-  'fertilizer', 'fertiliser', 'fertilizers', 'fertilisers',
-  'urea', 'dap', 'npk', 'potash', 'nutrient', 'nutrients',
-  'खत', 'खाद', 'उर्वरक', 'पोषक', 'युरिया', 'यूरिया', 'डीएपी', 'पोटॅश',
-  'khat', 'khaad', 'khad', 'urea', 'poshak', 'urvarak',
-];
-
-const HERBICIDE_TERMS = [
-  'herbicide', 'herbicides', 'weedicide',
-  'तणनाशक', 'निंदानाशक', 'खरपतवारनाशक', 'tan nashak', 'kharpatwar nashak',
-];
-
-const WEED_TERMS = [
-  'weed', 'weeds', 'weed management', 'weed control', 'herbicide', 'weedicide',
-  'तण', 'तणनाशक', 'खरपतवार', 'निंदानाशक',
-  'tan', 'tan nashak', 'kharpatwar',
-];
-
-const PEST_TERMS = [
-  'pest', 'pests', 'insect', 'insects', 'bug', 'bugs', 'borer',
-  'कीड', 'किडा', 'किडे', 'कीटक', 'कीट', 'अळी',
-  'kida', 'kide', 'kitak', 'ali',
-];
-
-const STAGE_TERMS = [
-  'stage', 'growth stage', 'growth', 'flowering', 'tillering', 'booting',
-  'maturity', 'crop cycle', 'crop stage',
-  'टप्पा', 'वाढीची अवस्था', 'अवस्था', 'फुलोरा', 'फुलणे', 'कणस',
-  'अवस्था', 'फसल की अवस्था', 'फूल', 'बालियाँ',
-];
-
-const KNOWLEDGE_OPERATION_TERMS = [
-  'what is', 'what are', 'which are', 'tell me about', 'explain', 'meaning',
-  'information', 'types of', 'common', 'usually', 'generally', 'about',
-  'काय आहे', 'काय आहेत', 'कोणते', 'कोणकोणते', 'माहिती', 'सांगा', 'समजावून',
-  'म्हणजे काय', 'कशासाठी', 'किती प्रकार',
-  'क्या है', 'क्या हैं', 'कौन से', 'कौन-कौन', 'जानकारी', 'बताइए', 'समझाइए',
-  'मतलब क्या', 'किस लिए',
-];
-
-function textContainsAny(text: string, terms: string[]): boolean {
-  const value = String(text ?? '').toLowerCase();
-  return terms.some((term) => value.includes(term.toLowerCase()));
-}
-
-function hasKnowledgeOperation(message: string): boolean {
-  return textContainsAny(message, KNOWLEDGE_OPERATION_TERMS);
-}
-
-function detectTopic(message: string, subject?: KnowledgeQueryInput['knowledge_subject']): KnowledgeResponseType {
+function detectTopic(subject?: KnowledgeQueryInput['knowledge_subject']): KnowledgeResponseType {
+  // The NLU knowledge_subject is the only topic authority: it reads the
+  // farmer's meaning in any language. No keyword lists live in this module.
   if (subject === 'FERTILIZER') return 'FERTILIZER_KNOWLEDGE';
   if (subject === 'PEST') return 'PEST_KNOWLEDGE';
   if (subject === 'WEED') return 'WEED_KNOWLEDGE';
   if (subject === 'STAGE') return 'CROP_STAGE_KNOWLEDGE';
   if (subject === 'CHEMICAL') return 'CHEMICAL_STATUS';
-  if (textContainsAny(message, HERBICIDE_TERMS)) return 'HERBICIDE_KNOWLEDGE';
-  if (textContainsAny(message, WEED_TERMS)) return 'WEED_KNOWLEDGE';
-  if (textContainsAny(message, FERTILIZER_TERMS)) return 'FERTILIZER_KNOWLEDGE';
-  if (textContainsAny(message, PEST_TERMS)) return 'PEST_KNOWLEDGE';
-  if (textContainsAny(message, STAGE_TERMS)) return 'CROP_STAGE_KNOWLEDGE';
   return 'CROP_INFO';
 }
 
@@ -135,10 +102,21 @@ function canonicalCrop(input: KnowledgeQueryInput): string {
 }
 
 function localLabel(row: any, language: string): string {
-  const lang = String(language || 'en').toLowerCase();
-  if (lang === 'mr' && row?.label_mr) return String(row.label_mr);
-  if (lang === 'hi' && row?.label_hi) return String(row.label_hi);
+  const lang = String(language || 'en').toLowerCase().split('-')[0];
+  const localized = lang && lang !== 'en' ? row?.['label_' + lang] : null;
+  if (localized) return String(localized);
   return String(row?.label || row?.local_name || row?.value || '');
+}
+
+/** DB vocabulary codes (snake_case) → readable words; free text is unchanged. */
+function readable(value: unknown): string {
+  return String(value ?? '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function sameStage(a: unknown, b: unknown): boolean {
+  const x = String(a ?? '').trim().toLowerCase();
+  const y = String(b ?? '').trim().toLowerCase();
+  return !!x && x === y;
 }
 
 function cleanStringArray(values: unknown): string[] {
@@ -156,7 +134,7 @@ async function cropProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   const started = performance.now();
   const { data, error } = await input.supabase
     .from('crops')
-    .select('value,label,label_hi,label_mr,label_local,description,season,duration_days,is_active')
+    .select('*')
     .eq('value', crop)
     .eq('is_active', true)
     .maybeSingle();
@@ -166,6 +144,17 @@ async function cropProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   const label = localLabel(data, input.language) || getFullCropName(crop);
   const pieces: string[] = [];
   if (label) pieces.push('Crop: ' + label);
+  // The land record is the SSOT for "which crop is in this field": when the
+  // question is about the farmer's own land crop, state its live position too.
+  const landCrop = normalizeCropCode(input.land_context?.current_crop ?? '');
+  const landStage = String(input.land_context?.growth_stage ?? '').trim();
+  const landDas = input.land_context?.days_since_sowing;
+  if (landCrop && landCrop === crop && landStage) {
+    pieces.push(
+      'Your field: ' + readable(landStage) + ' stage' +
+      (typeof landDas === 'number' ? ' (' + String(landDas) + ' days after sowing)' : '') + '.',
+    );
+  }
   if (data.description) pieces.push('Description: ' + String(data.description));
   if (data.season) pieces.push('Season: ' + String(data.season));
   if (data.duration_days != null) pieces.push('Typical duration recorded in the crop master: ' + String(data.duration_days) + ' days.');
@@ -184,6 +173,8 @@ async function cropProvider(input: KnowledgeQueryInput, crop: string): Promise<K
       description: data.description ?? null,
       season: data.season ?? null,
       duration_days: data.duration_days ?? null,
+      field_stage: landCrop === crop ? (landStage || null) : null,
+      field_das: landCrop === crop && typeof landDas === 'number' ? landDas : null,
     },
     provenance: [{ table: 'crops', row_id: data.value, authority: 'structured SSOT' }],
     processing_time_ms: performance.now() - started,
@@ -193,104 +184,155 @@ async function cropProvider(input: KnowledgeQueryInput, crop: string): Promise<K
 async function stageProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
   const started = performance.now();
   const stage = String(input.land_context?.growth_stage ?? '').trim();
+  const lane = String(input.land_context?.cultivation_method ?? '').trim().toLowerCase();
 
+  // 1) Full stage list from crop_stage_master (crop stage SSOT), one lane only.
+  const { data: masterRows, error: masterErr } = await input.supabase
+    .from('crop_stage_master')
+    .select('id,crop_code,growth_stage,stage_code,das_min,das_max,stage_description,phenology_index,cultivation_method,is_active')
+    .eq('crop_code', crop)
+    .eq('is_active', true)
+    .limit(100);
+
+  let laneRows: any[] = [];
+  let laneUsed: string | null = null;
+  if (!masterErr && Array.isArray(masterRows) && masterRows.length > 0) {
+    const lanes = uniqueStrings(masterRows.map((r: any) => String(r.cultivation_method ?? '').toLowerCase()));
+    if (lane && masterRows.some((r: any) => String(r.cultivation_method ?? '').toLowerCase() === lane)) {
+      laneRows = masterRows.filter((r: any) => String(r.cultivation_method ?? '').toLowerCase() === lane);
+      laneUsed = lane;
+    } else if (lanes.length <= 1) {
+      laneRows = masterRows;
+      laneUsed = lanes[0] || null;
+    }
+    // Several lanes and the land's lane is unknown: a merged list would give
+    // contradictory DAS windows for the same stage name, so no list is served.
+    laneRows = laneRows
+      .filter((r: any) => r.phenology_index != null || r.das_min != null)
+      .sort((x: any, y: any) =>
+        (Number(x.phenology_index ?? 999) - Number(y.phenology_index ?? 999)) ||
+        (Number(x.das_min ?? 9999) - Number(y.das_min ?? 9999)));
+  }
+
+  // 2) Agronomist-reviewed guidance for the land's current stage.
+  let knowledgeRow: any = null;
   if (stage) {
-    const { data, error } = await input.supabase
+    const { data: ksRows, error: ksErr } = await input.supabase
       .from('crop_stage_knowledge')
       .select('id,crop_code,growth_stage,water,fertilizer,pest_watch,disease_watch,critical_actions,avoid_actions,source,reviewed_by_agronomist')
       .eq('crop_code', crop)
-      .ilike('growth_stage', stage)
       .eq('reviewed_by_agronomist', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (!error && data) {
-      const pieces: string[] = [
-        'Crop: ' + getFullCropName(crop),
-        'Stage: ' + String(data.growth_stage),
-      ];
-      if (data.water) pieces.push('Water: ' + String(data.water));
-      if (data.fertilizer) pieces.push('Fertilizer note: ' + String(data.fertilizer));
-      const pestWatch = cleanStringArray(data.pest_watch);
-      const diseaseWatch = cleanStringArray(data.disease_watch);
-      const critical = cleanStringArray(data.critical_actions);
-      const avoid = cleanStringArray(data.avoid_actions);
-      if (pestWatch.length) pieces.push('Pest watch: ' + pestWatch.join('; '));
-      if (diseaseWatch.length) pieces.push('Disease watch: ' + diseaseWatch.join('; '));
-      if (critical.length) pieces.push('Critical actions: ' + critical.join('; '));
-      if (avoid.length) pieces.push('Avoid: ' + avoid.join('; '));
-
-      return {
-        handled: true,
-        response: pieces.join('\n'),
-        response_type: 'CROP_STAGE_KNOWLEDGE',
-        provider: 'CropStageKnowledgeProvider',
-        authority_status: 'VERIFIED',
-        authority: String(data.source || 'agronomist reviewed crop_stage_knowledge'),
-        confidence: 0.99,
-        facts: {
-          crop_code: crop,
-          growth_stage: data.growth_stage,
-          water: data.water ?? null,
-          fertilizer: data.fertilizer ?? null,
-          pest_watch: pestWatch,
-          disease_watch: diseaseWatch,
-          critical_actions: critical,
-          avoid_actions: avoid,
-        },
-        provenance: [{
-          table: 'crop_stage_knowledge',
-          row_id: data.id,
-          source: data.source ?? null,
-          reviewed_by_agronomist: true,
-        }],
-        processing_time_ms: performance.now() - started,
-      };
+      .limit(100);
+    if (!ksErr && Array.isArray(ksRows)) {
+      knowledgeRow = ksRows.find((r: any) => sameStage(r.growth_stage, stage)) ?? null;
     }
   }
 
-  const { data, error } = await input.supabase
-    .from('crop_stage_master')
-    .select('id,crop_code,growth_stage,stage_code,das_min,das_max,stage_description,phenology_index,is_active')
-    .eq('crop_code', crop)
-    .eq('is_active', true)
-    .order('phenology_index', { ascending: true })
-    .limit(50);
+  if (laneRows.length === 0 && !knowledgeRow) return null;
 
-  if (error || !Array.isArray(data) || data.length === 0) return null;
-
-  const stages = uniqueStrings(data.map((row: any) => String(row.growth_stage || row.stage_code || '')));
-  if (!stages.length) return null;
-
-  const stageRows = data.map((row: any) => ({
+  const pieces: string[] = [];
+  const provenance: Array<Record<string, unknown>> = [];
+  const stageFacts = laneRows.map((row: any) => ({
     growth_stage: row.growth_stage ?? row.stage_code ?? null,
     das_min: row.das_min ?? null,
     das_max: row.das_max ?? null,
     description: row.stage_description ?? null,
+    is_current: sameStage(row.growth_stage, stage),
   }));
+
+  if (stageFacts.length > 0) {
+    pieces.push(
+      'Crop stages of ' + getFullCropName(crop) +
+      (laneUsed ? ' (' + readable(laneUsed) + ')' : '') + ':',
+    );
+    for (const row of stageFacts) {
+      const das = row.das_min != null || row.das_max != null
+        ? ' (' + String(row.das_min ?? '?') + '–' + String(row.das_max ?? '?') + ' days)'
+        : '';
+      pieces.push(
+        '- ' + readable(row.growth_stage) + das +
+        (row.is_current ? ' ← your crop is here now' : '') +
+        (row.description ? ': ' + String(row.description) : ''),
+      );
+    }
+    for (const row of laneRows) provenance.push({ table: 'crop_stage_master', row_id: row.id, source: 'structured SSOT' });
+  }
+
+  const pestWatch = cleanStringArray(knowledgeRow?.pest_watch).map(readable);
+  const diseaseWatch = cleanStringArray(knowledgeRow?.disease_watch).map(readable);
+  const critical = cleanStringArray(knowledgeRow?.critical_actions).map(readable);
+  const avoid = cleanStringArray(knowledgeRow?.avoid_actions).map(readable);
+  if (knowledgeRow) {
+    const das = input.land_context?.days_since_sowing;
+    pieces.push(
+      (pieces.length ? '\n' : '') + 'Current stage: ' + readable(knowledgeRow.growth_stage) +
+      (typeof das === 'number' ? ' (' + String(das) + ' days after sowing)' : ''),
+    );
+    if (knowledgeRow.water) pieces.push('Water: ' + String(knowledgeRow.water));
+    if (knowledgeRow.fertilizer) pieces.push('Fertilizer note: ' + String(knowledgeRow.fertilizer));
+    if (pestWatch.length) pieces.push('Pest watch: ' + pestWatch.join('; '));
+    if (diseaseWatch.length) pieces.push('Disease watch: ' + diseaseWatch.join('; '));
+    if (critical.length) pieces.push('Critical actions: ' + critical.join('; '));
+    if (avoid.length) pieces.push('Avoid: ' + avoid.join('; '));
+    provenance.push({
+      table: 'crop_stage_knowledge',
+      row_id: knowledgeRow.id,
+      source: knowledgeRow.source ?? null,
+      reviewed_by_agronomist: true,
+    });
+  }
 
   return {
     handled: true,
-    response: 'Verified crop stages for ' + getFullCropName(crop) + ':\n' + stageRows
-      .map((row: any) => {
-        const das = row.das_min != null || row.das_max != null
-          ? ' (' + String(row.das_min ?? '?') + '–' + String(row.das_max ?? '?') + ' DAS)'
-          : '';
-        return '- ' + String(row.growth_stage) + das + (row.description ? ': ' + String(row.description) : '');
-      }).join('\n'),
+    response: pieces.join('\n'),
     response_type: 'CROP_STAGE_KNOWLEDGE',
     provider: 'CropStageKnowledgeProvider',
     authority_status: 'VERIFIED',
-    authority: 'crop_stage_master',
-    confidence: 0.97,
-    facts: { crop_code: crop, stages: stageRows },
-    provenance: data.map((row: any) => ({
-      table: 'crop_stage_master',
-      row_id: row.id,
-      source: 'structured SSOT',
-    })),
+    authority: knowledgeRow
+      ? String(knowledgeRow.source || 'agronomist reviewed crop_stage_knowledge')
+      : 'crop_stage_master',
+    confidence: knowledgeRow ? 0.99 : 0.97,
+    facts: {
+      crop_code: crop,
+      cultivation_method: laneUsed,
+      stages: stageFacts,
+      current_stage: stage || null,
+      water: knowledgeRow?.water ?? null,
+      fertilizer: knowledgeRow?.fertilizer ?? null,
+      pest_watch: pestWatch,
+      disease_watch: diseaseWatch,
+      critical_actions: critical,
+      avoid_actions: avoid,
+    },
+    provenance,
     processing_time_ms: performance.now() - started,
   };
+}
+
+/**
+ * split_schedule is stored as JSON text: [{stage, nutrient, percent}, …].
+ * Render it as "N 50% at transplanting; …" grouped by stage, in stored order.
+ * Unparseable text is returned unchanged (never guessed).
+ */
+function renderSplitSchedule(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  let items: any[] | null = null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) items = parsed;
+  } catch { /* free text — keep as is */ }
+  if (!items) return String(raw);
+  const byStage = new Map<string, string[]>();
+  for (const it of items) {
+    const stage = readable(it?.stage);
+    const nutrient = String(it?.nutrient ?? '').trim();
+    const pct = it?.percent;
+    if (!stage || !nutrient || pct == null) continue;
+    if (!byStage.has(stage)) byStage.set(stage, []);
+    byStage.get(stage)!.push(nutrient + ' ' + String(pct) + '%');
+  }
+  if (byStage.size === 0) return String(raw);
+  return Array.from(byStage.entries()).map(([stage, parts]) => 'at ' + stage + ': ' + parts.join(', ')).join('; ');
 }
 
 async function fertilizerProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
@@ -322,7 +364,8 @@ async function fertilizerProvider(input: KnowledgeQueryInput, crop: string): Pro
     'P2O5: ' + String(row.p2o5_kg_ha) + ' kg/ha',
     'K2O: ' + String(row.k2o_kg_ha) + ' kg/ha',
   ];
-  if (row.split_schedule) pieces.push('Split schedule: ' + String(row.split_schedule));
+  const splitText = renderSplitSchedule(row.split_schedule);
+  if (splitText) pieces.push('Split schedule: ' + splitText);
   if (row.cultivation_context) pieces.push('Cultivation context: ' + String(row.cultivation_context));
 
   return {
@@ -366,12 +409,14 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
 
   if (error || !Array.isArray(data)) return null;
 
+  // crop_associations hold crop codes, 'all crops', or a qualified form such
+  // as 'all crops (edge ingress)' / '<crop> (<note>)' — the parenthetical note
+  // never changes which crop the weed belongs to.
   const rows = (data as any[]).filter((row) =>
-    cleanStringArray(row.crop_associations).some((association) =>
-      association.toLowerCase() === crop.toLowerCase() ||
-      association.toLowerCase() === 'all crops' ||
-      association.toLowerCase().replace(/\\s*\\(.*\\)\\s*$/, '') === crop.toLowerCase(),
-    ),
+    cleanStringArray(row.crop_associations).some((association) => {
+      const base = association.toLowerCase().replace(/\s*\(.*\)\s*$/, '').trim();
+      return base === crop.toLowerCase() || base === 'all crops';
+    }),
   );
 
   if (!rows.length) return null;
@@ -415,78 +460,160 @@ async function weedProvider(input: KnowledgeQueryInput, crop: string): Promise<K
   };
 }
 
+function pestDisplayName(row: any, language: string): string {
+  const lang = String(language || 'en').toLowerCase().split('-')[0];
+  const en = String(row?.pest_name_en ?? '').trim();
+  const local = lang && lang !== 'en' ? String(row?.['pest_name_' + lang] ?? '').trim() : '';
+  const base = en || readable(row?.pest_code);
+  return local && local !== base ? base + ' (' + local + ')' : base;
+}
+
+function pestNameVariants(row: any): string[] {
+  return [row?.pest_code, row?.pest_name_en, row?.pest_name_hi, row?.pest_name_mr]
+    .map((v) => String(v ?? '').trim().toLowerCase())
+    .filter((v) => v.length >= 2);
+}
+
 async function pestProvider(input: KnowledgeQueryInput, crop: string): Promise<KnowledgeQueryOutput | null> {
   // TDZ FIX (2026-10-09): `started` was declared below the try block but read
   // inside it — ReferenceError on the named-pest path. Hoisted above the try.
   const started = performance.now();
-  // First resolve a named pest dynamically from the DB vocabulary. This is
-  // what lets a farmer ask for "BPH" in any script without a hardcoded list.
+  const stage = String(input.land_context?.growth_stage ?? '').trim();
+  const message = String(input.farmer_message || '').toLowerCase();
+
+  // etl_standards is the crop-scoped, ICAR-sourced pest record (economic
+  // threshold, sampling method, susceptible stages, localized names).
+  let etlRows: any[] = [];
   try {
-    const { data: pestRows } = await input.supabase
-      .from('pest_master')
-      .select('pest_code,pest_name_en,pest_name_hi,pest_name_mr')
+    const { data } = await input.supabase
+      .from('etl_standards')
+      .select('id,pest_code,pest_name_en,pest_name_hi,pest_name_mr,crop_code,growth_stage,etl_value,etl_unit,sampling_unit,action_threshold,sampling_method,icar_source,is_active')
+      .eq('crop_code', crop)
       .eq('is_active', true)
       .limit(200);
-    const message = String(input.farmer_message || '').toLowerCase();
-    const named = (pestRows || []).filter((row: any) => {
-      const variants = [row.pest_code, row.pest_name_en, row.pest_name_hi, row.pest_name_mr]
-        .map((v) => String(v ?? '').trim().toLowerCase())
-        .filter(Boolean);
-      return variants.some((v) => message.includes(v));
-    });
-    if (named.length === 1) {
-      const row = named[0];
-      const lang = String(input.language || 'en').toLowerCase();
-      const localName = lang === 'mr' ? row.pest_name_mr : lang === 'hi' ? row.pest_name_hi : row.pest_name_en;
-      return {
-        handled: true,
-        response: 'Verified pest identity: ' + String(localName || row.pest_name_en || row.pest_code) +
-          ' (' + String(row.pest_code) + ')',
-        response_type: 'PEST_KNOWLEDGE',
-        provider: 'PestKnowledgeProvider',
-        authority_status: 'VERIFIED',
-        authority: 'pest_master',
-        confidence: 0.99,
-        facts: {
-          pest_code: row.pest_code,
-          name_en: row.pest_name_en ?? null,
-          name_hi: row.pest_name_hi ?? null,
-          name_mr: row.pest_name_mr ?? null,
-        },
-        provenance: [{ table: 'pest_master', row_id: row.pest_code, source: 'structured SSOT' }],
-        processing_time_ms: performance.now() - started,
-      };
-    }
+    etlRows = Array.isArray(data) ? data : [];
   } catch (e) {
-    console.warn('[PestKnowledgeProvider] name lookup failed:', (e as Error).message);
+    console.warn('[PestKnowledgeProvider] etl_standards lookup failed:', (e as Error).message);
   }
-  let query = input.supabase
+
+  // 1) A pest named in the message (any script) — DB vocabulary only.
+  let named: any[] = etlRows.filter((row) => pestNameVariants(row).some((v) => message.includes(v)));
+  if (named.length === 0) {
+    try {
+      const { data: pestRows } = await input.supabase
+        .from('pest_master')
+        .select('pest_code,pest_name_en,pest_name_hi,pest_name_mr')
+        .eq('is_active', true)
+        .limit(500);
+      named = (pestRows || []).filter((row: any) => pestNameVariants(row).some((v) => message.includes(v)));
+    } catch (e) {
+      console.warn('[PestKnowledgeProvider] name lookup failed:', (e as Error).message);
+    }
+  }
+  const namedCodes = uniqueStrings(named.map((r: any) => String(r.pest_code ?? '').toUpperCase()));
+  if (namedCodes.length === 1) {
+    const row = named[0];
+    const etl = etlRows.find((r) => String(r.pest_code ?? '').toUpperCase() === namedCodes[0]) ?? null;
+    const pieces = ['Pest: ' + pestDisplayName(etl ?? row, input.language) + ' (' + String(row.pest_code) + ')'];
+    if (etl) {
+      const stages = cleanStringArray(etl.growth_stage);
+      if (stages.length) {
+        pieces.push(
+          'Attacks ' + getFullCropName(crop) + ' at: ' + stages.map(readable).join(', ') +
+          (stage && stages.some((st) => sameStage(st, stage)) ? ' — this includes your crop\'s current stage.' : ''),
+        );
+      }
+      const unit = String(etl.sampling_unit || readable(etl.etl_unit) || '').trim();
+      if (etl.etl_value != null) pieces.push('Economic threshold level (ETL): ' + String(etl.etl_value) + (unit ? ' ' + unit : ''));
+      if (etl.action_threshold != null) pieces.push('Action threshold: ' + String(etl.action_threshold) + (unit ? ' ' + unit : ''));
+      if (etl.sampling_method) pieces.push('How to check: ' + String(etl.sampling_method));
+    }
+    return {
+      handled: true,
+      response: pieces.join('\n'),
+      response_type: 'PEST_KNOWLEDGE',
+      provider: 'PestKnowledgeProvider',
+      authority_status: 'VERIFIED',
+      authority: etl ? String(etl.icar_source || 'etl_standards') : 'pest_master',
+      confidence: 0.99,
+      facts: {
+        pest_code: row.pest_code,
+        name_en: row.pest_name_en ?? null,
+        name_hi: row.pest_name_hi ?? null,
+        name_mr: row.pest_name_mr ?? null,
+        crop_code: crop,
+        stages: etl ? cleanStringArray(etl.growth_stage) : [],
+        etl_value: etl?.etl_value ?? null,
+        etl_unit: etl?.sampling_unit ?? etl?.etl_unit ?? null,
+        action_threshold: etl?.action_threshold ?? null,
+      },
+      provenance: etl
+        ? [{ table: 'etl_standards', row_id: etl.id, source: etl.icar_source ?? null }]
+        : [{ table: 'pest_master', row_id: row.pest_code, source: 'structured SSOT' }],
+      processing_time_ms: performance.now() - started,
+    };
+  }
+
+  // 2) Pest list for the crop, current-stage pests first.
+  if (etlRows.length > 0) {
+    const isNow = (r: any) => !!stage && cleanStringArray(r.growth_stage).some((st) => sameStage(st, stage));
+    const ordered = [...etlRows].sort((x, y) => Number(isNow(y)) - Number(isNow(x)));
+    const lines = ordered.map((r) => {
+      const unit = String(r.sampling_unit || readable(r.etl_unit) || '').trim();
+      const etl = r.etl_value != null ? ' — ETL ' + String(r.etl_value) + (unit ? ' ' + unit : '') : '';
+      return '- ' + pestDisplayName(r, input.language) + etl + (isNow(r) ? ' (watch now at ' + readable(stage) + ')' : '');
+    });
+    return {
+      handled: true,
+      response: 'Main pests of ' + getFullCropName(crop) + ' (economic threshold level per ICAR standards):\n' + lines.join('\n'),
+      response_type: 'PEST_KNOWLEDGE',
+      provider: 'PestKnowledgeProvider',
+      authority_status: 'VERIFIED',
+      authority: 'etl_standards (ICAR)',
+      confidence: 0.97,
+      facts: {
+        crop_code: crop,
+        growth_stage: stage || null,
+        pests: ordered.map((r) => ({
+          pest_code: r.pest_code,
+          name_en: r.pest_name_en ?? null,
+          stages: cleanStringArray(r.growth_stage),
+          etl_value: r.etl_value ?? null,
+          etl_unit: r.sampling_unit ?? r.etl_unit ?? null,
+          current_stage: isNow(r),
+        })),
+      },
+      provenance: ordered.map((r) => ({ table: 'etl_standards', row_id: r.id, source: r.icar_source ?? null })),
+      processing_time_ms: performance.now() - started,
+    };
+  }
+
+  // 3) Fallback: agronomist-reviewed pest-watch across all stages of the crop.
+  const { data, error } = await input.supabase
     .from('crop_stage_knowledge')
     .select('id,crop_code,growth_stage,pest_watch,source,reviewed_by_agronomist')
     .eq('crop_code', crop)
-    .eq('reviewed_by_agronomist', true);
-
-  const stage = String(input.land_context?.growth_stage ?? '').trim();
-  if (stage) query = query.ilike('growth_stage', stage);
-
-  const { data, error } = await query.limit(50);
+    .eq('reviewed_by_agronomist', true)
+    .limit(100);
   if (error || !Array.isArray(data) || data.length === 0) return null;
 
-  const watches = uniqueStrings(
-    data.flatMap((row: any) => cleanStringArray(row.pest_watch)),
-  );
-  if (!watches.length) return null;
+  const nowRow = stage ? data.find((r: any) => sameStage(r.growth_stage, stage)) : null;
+  const nowWatch = uniqueStrings(cleanStringArray(nowRow?.pest_watch).map(readable));
+  const allWatch = uniqueStrings(data.flatMap((row: any) => cleanStringArray(row.pest_watch).map(readable)));
+  if (!allWatch.length) return null;
+
+  const pieces = ['Pest-watch records for ' + getFullCropName(crop) + ':', ...allWatch.map((item) => '- ' + item)];
+  if (nowWatch.length) pieces.push('At your current stage (' + readable(stage) + ') watch for: ' + nowWatch.join('; '));
 
   return {
     handled: true,
-    response: 'Verified pest-watch records for ' + getFullCropName(crop) + ':' + (stage ? ' at ' + stage + ' stage' : '') + '\n' +
-      watches.map((item) => '- ' + item).join('\n'),
+    response: pieces.join('\n'),
     response_type: 'PEST_KNOWLEDGE',
     provider: 'PestKnowledgeProvider',
     authority_status: 'VERIFIED',
     authority: 'agronomist-reviewed crop_stage_knowledge',
     confidence: 0.96,
-    facts: { crop_code: crop, growth_stage: stage || null, pest_watch: watches },
+    facts: { crop_code: crop, growth_stage: stage || null, pest_watch: allWatch, current_stage_watch: nowWatch },
     provenance: data.map((row: any) => ({
       table: 'crop_stage_knowledge',
       row_id: row.id,
@@ -562,7 +689,8 @@ function evidenceGap(input: KnowledgeQueryInput, crop: string, topic: KnowledgeR
   const subject = crop ? getFullCropName(crop) : 'the requested crop';
   return {
     handled: true,
-    response: 'I do not have a verified fact for this question in the current agricultural knowledge SSOT. I will not invent an answer.',
+    // Farmer-facing: plain words, no internal terms (translated downstream).
+    response: 'I do not have verified information for this question yet, so I will not give a guessed answer.',
     response_type: 'KNOWLEDGE_GAP',
     provider: 'KnowledgePlaneAuthorityGate',
     authority_status: 'EVIDENCE_GAP',
@@ -602,14 +730,7 @@ export async function queryKnowledgePlane(input: KnowledgeQueryInput): Promise<K
   }
 
   const crop = canonicalCrop(input);
-  const topic = detectTopic(input.farmer_message, input.knowledge_subject);
-
-  // A general knowledge turn should normally be phrased as a fact/explanation
-  // query. When the semantic classifier has already supplied the GENERAL intent,
-  // we still allow the provider because that classifier is the authority on
-  // multilingual meaning. These terms are used only to disambiguate the
-  // structured provider, never to grant a decision.
-  const knowledgeOperation = hasKnowledgeOperation(input.farmer_message);
+  const topic = detectTopic(input.knowledge_subject);
 
   // Regulatory status is safe to resolve directly only when a chemical name is
   // actually present in the farmer's message.
@@ -617,6 +738,14 @@ export async function queryKnowledgePlane(input: KnowledgeQueryInput): Promise<K
   if (chemical) {
     chemical.processing_time_ms = performance.now() - started;
     return chemical;
+  }
+
+  // A chemical-subject question with no registered chemical named in it has
+  // no verified fact to serve here (product choice is a field decision).
+  if (topic === 'CHEMICAL_STATUS') {
+    const gap = evidenceGap(input, crop, topic, started);
+    gap.reason = 'NO_NAMED_CHEMICAL_IN_REGISTRY';
+    return gap;
   }
 
   if (!crop) {
@@ -647,11 +776,7 @@ export async function queryKnowledgePlane(input: KnowledgeQueryInput): Promise<K
 
   // Knowledge intent without a verified provider match: terminate cleanly
   // instead of falling into the diagnostic/observation graph.
-  const gap = evidenceGap(input, crop, topic, started);
-  if (!knowledgeOperation) {
-    gap.reason = 'GENERAL_INTENT_NO_STRUCTURED_MATCH';
-  }
-  return gap;
+  return evidenceGap(input, crop, topic, started);
 }
 
 export default { queryKnowledgePlane };
