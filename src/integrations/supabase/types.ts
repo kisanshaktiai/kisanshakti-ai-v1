@@ -12644,6 +12644,42 @@ export type Database = {
         }
         Relationships: []
       }
+      direct_intent_rule_scope: {
+        Row: {
+          created_at: string
+          id: string
+          intent_code: string
+          is_active: boolean
+          notes: string | null
+          priority: number
+          rule_category: string
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          intent_code: string
+          is_active?: boolean
+          notes?: string | null
+          priority?: number
+          rule_category: string
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          intent_code?: string
+          is_active?: boolean
+          notes?: string | null
+          priority?: number
+          rule_category?: string
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       direct_messages: {
         Row: {
           content: string
@@ -47820,6 +47856,10 @@ export type Database = {
           is_valid: boolean
           user_id: string
         }[]
+      }
+      verify_proactive_evaluator_cron_secret: {
+        Args: { p_secret: string }
+        Returns: boolean
       }
       water_signal_since_anchor: { Args: { p_land_id: string }; Returns: Json }
       weather_ingest_health: { Args: never; Returns: Json }
