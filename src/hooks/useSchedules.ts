@@ -77,7 +77,7 @@ export function useSchedules(landId?: string) {
 
           // Direct PostgREST reads of crop_schedules are denied for the anon role;
           // schedules-api verifies the session token and scopes rows server-side.
-          const data = (await schedulesApi.fetchSchedules(landId, { limit: 100 }))
+          const data = ((await schedulesApi.fetchSchedules(landId, { limit: 100 })) as any[])
             .filter((s) => s.is_active !== false);
 
           console.log(`✅ [useSchedules] API returned ${data?.length || 0} schedules`);
