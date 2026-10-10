@@ -35,16 +35,9 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
 
   const fetchTaskStatistics = useCallback(async () => {
     try {
-      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-      const client = supabaseWithAuth();
-
-      const { data: tasks, error } = await client
-        .from('schedule_tasks')
-        .select('id, status, completed_at, task_date')
-        .eq('schedule_id', scheduleId)
-        .order('task_date', { ascending: true });
-
-      if (error) throw error;
+      // Session-verified edge read; direct PostgREST on schedule_tasks is denied for anon.
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      const tasks = await schedulesApi.fetchTasks(scheduleId, { limit: 500 });
 
       if (!tasks || tasks.length === 0) {
         setLoading(false);

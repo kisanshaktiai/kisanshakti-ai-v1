@@ -72,37 +72,13 @@ export function useSchedules(landId?: string) {
         console.log('🌐 [useSchedules] Online - fetching from API FIRST');
         try {
           // CRITICAL: Wait for headers to be set before making API calls
-          const { waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
-          console.log('⏳ [useSchedules] Waiting for headers...');
+          const { waitForHeaders } = await import('@/integrations/supabase/client');
           await waitForHeaders();
-          console.log('✅ [useSchedules] Headers ready, proceeding with API call');
-          console.log('🔐 [useSchedules] Fetching with farmer_id:', user.id, 'tenant_id:', user.tenantId);
-          
-          // Use supabaseWithAuth to include custom headers for RLS
-          const authClient = supabaseWithAuth(user.id, user.tenantId);
-          
-          // SPRINT 3: bound payload — a farmer should never need more than 100 active schedules.
-          let query = authClient
-            .from('crop_schedules')
-            .select('*')
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(100);
 
-          if (landId) {
-            console.log('🎯 [useSchedules] Filtering by land_id:', landId);
-            query = query.eq('land_id', landId);
-          }
-          
-          console.log('🔍 [useSchedules] Query filters: is_active=true', landId ? `, land_id=${landId}` : '');
-
-          console.log('📡 [useSchedules] Executing Supabase query...');
-          const { data, error } = await query;
-
-          if (error) {
-            console.error('❌ [useSchedules] Supabase query error:', error);
-            throw error;
-          }
+          // Direct PostgREST reads of crop_schedules are denied for the anon role;
+          // schedules-api verifies the session token and scopes rows server-side.
+          const data = (await schedulesApi.fetchSchedules(landId, { limit: 100 }))
+            .filter((s) => s.is_active !== false);
 
           console.log(`✅ [useSchedules] API returned ${data?.length || 0} schedules`);
           if (data && data.length > 0) {
