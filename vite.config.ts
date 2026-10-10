@@ -66,7 +66,10 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
-        skipWaiting: true,
+        // IMPORTANT: keep new workers waiting until the application explicitly activates them.
+        // clientsClaim is retained because an explicitly-approved activation must take control
+        // so the guarded controllerchange handler can perform the single reload.
+        skipWaiting: false,
         clientsClaim: true,
         navigateFallbackDenylist: [/^\/api/, /supabase/, /^\/~oauth/],
         runtimeCaching: [

@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { installPwaFetchTracking, waitForPwaReloadSafe } from "./utils/pwaActivity";
+
+installPwaFetchTracking();
 
 // =============================================================================
 // Global chunk-load error recovery — fixes "Importing a module script failed"
@@ -21,12 +24,11 @@ import "./index.css";
     if (sessionStorage.getItem(RELOAD_KEY)) return;
     sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
     try {
+      await waitForPwaReloadSafe(1000, 5000);
+
       if ('caches' in window) {
         const names = await caches.keys();
         await Promise.all(names.map((n) => caches.delete(n)));
-      }
-      if (navigator.serviceWorker?.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
       }
     } catch {/* ignore */}
     const url = new URL(window.location.href);
@@ -157,21 +159,6 @@ const registerServiceWorker = async () => {
       active: !!registration.active
     });
     
-    // Listen for updates
-    registration.addEventListener('updatefound', () => {
-      const newWorker = registration.installing;
-      console.log('🔄 [PWA] New Service Worker installing...');
-      
-      if (newWorker) {
-        newWorker.addEventListener('statechange', () => {
-          console.log('📊 [PWA] SW state changed:', newWorker.state);
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('✨ [PWA] New version available!');
-            window.dispatchEvent(new CustomEvent('pwa-update-available'));
-          }
-        });
-      }
-    });
   } catch (error) {
     console.error('❌ [PWA] Service Worker registration failed:', error);
   }

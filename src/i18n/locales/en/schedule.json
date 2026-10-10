@@ -357,7 +357,17 @@
       "later": "Moved {{days}} day(s) later — your crop reached this stage later than expected",
       "earlier": "Moved {{days}} day(s) earlier — your crop reached this stage sooner than expected",
       "generic": "This date was adjusted to match your crop's actual growth stage",
-      "was": "Was {{date}}"
+      "was": "Was {{date}}",
+      "reason": {
+        "decision_no_irrigation": "Rain has already given the field enough water — watering moved to the next turn.",
+        "decision_irrigate_urgent": "The field is drying fast — water it today.",
+        "decision_water_stress_confirmed": "The field is dry and the crop is showing stress (satellite and heat) — water it today.",
+        "decision_no_spray_today": "Today's weather is not right for spraying (rain, wind or damp) — moved to tomorrow.",
+        "decision_rain_loss_risk": "Heavy rain — fertilizer given now would wash away. Moved to tomorrow.",
+        "decision_nutrient_deficiency": "The crop is showing a nutrient shortage — this feeding is brought forward to today.",
+        "decision_episode_onset": "Disease-friendly weather has started — check your crop today; treat only what you find.",
+        "decision_risk_scout_now": "Risk reported for your field — check your crop today."
+      }
     },
     "variety": {
       "label": "Seed variety",
@@ -519,6 +529,13 @@
       "cancel": "Go Back & Change Date",
       "important": "Important",
       "important_note": "For accurate AI recommendations, please ensure the sowing date matches when you actually planted the crop."
+    },
+    "field_verdict": {
+      "label_today": "Do today",
+      "label_info": "Field note",
+      "scout_now": "Check your crop today — risk reported for your field.",
+      "water_sufficient": "No water needed today — the soil already has enough.",
+      "application_window_exhausted": "No good spraying day was left in this stage — do it today, in the calmest hours."
     }
   },
   "common": {

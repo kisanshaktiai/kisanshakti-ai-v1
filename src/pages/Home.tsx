@@ -37,6 +37,9 @@ import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useFeatures } from '@/hooks/useFeatures';
+import { Button } from '@/components/ui/button';
+import { resolveRainProbabilityTone, resolveTemperatureTone } from '@/lib/weatherAlertTone';
+import { resolveFarmerDisplayName } from '@/lib/farmerDisplayName';
 
 // Lazy-load the heavy video card (carousel + lazy images) to keep initial JS small.
 const VideoHelpCard = lazy(() =>
@@ -47,6 +50,8 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const { lands, isLoading: loading } = useLands();
+  const weatherLand = lands.find((land: any) => land.is_active !== false) ?? lands[0];
   const {
     currentWeather,
     forecast,
@@ -58,7 +63,7 @@ export default function Home() {
     weatherDistanceKm,
     weatherStationName,
     refetch: refetchWeather,
-  } = useWeather();
+  } = useWeather(undefined, weatherLand?.id);
   const reduceMotion = useReducedMotion();
 
   // ---------------------------------------------------------------------
@@ -86,12 +91,14 @@ export default function Home() {
   })();
 
   // Rain in the next 6 hours is what actually changes the morning plan.
-  const rainNext6h = (() => {
+  const rainForecast = (() => {
     const next6 = (hourlyForecast ?? []).slice(0, 6);
-    if (next6.length) return Math.round(Math.max(...next6.map((h: any) => Number(h?.pop ?? 0))) * 100);
+    if (next6.length) return { value: Math.round(Math.max(...next6.map((h: any) => Number(h?.pop ?? 0))) * 100), hours: 6 };
     const pop = forecast?.[0]?.pop;
-    return pop != null ? Math.round(Number(pop) * 100) : 0;
+    return pop != null ? { value: Math.round(Number(pop) * 100), hours: 24 } : null;
   })();
+  const rainAlertTone = rainForecast ? resolveRainProbabilityTone(rainForecast.value) : '';
+  const temperatureTone = resolveTemperatureTone(currentWeather?.temp);
 
 
   const currentTime = useMinuteTick();
@@ -127,9 +134,6 @@ export default function Home() {
     }
   }, [isWeatherExpanded]);
 
-  // Use consistent data fetching hook (handles online/offline automatically)
-  const { lands, isLoading: loading } = useLands();
-
   // Calculate total area from farmer's lands (memoized)
   const totalArea = useMemo(
     () =>
@@ -150,8 +154,10 @@ export default function Home() {
   const avgNdvi = useMemo(() => {
     if (lands.length === 0) return 0;
     const ndviValues = lands
-      .map((l: any) => l.latest_ndvi ?? l.ndvi_value)
-      .filter((v: any) => typeof v === 'number' && v > 0);
+      // lands.last_ndvi_value is the field the pipeline keeps current for each land (the lands
+      // payload has no `latest_ndvi` / `ndvi_value`, so those always read as "no data")
+      .map((l: any) => (l.last_ndvi_value == null ? null : Number(l.last_ndvi_value)))
+      .filter((v: any) => typeof v === 'number' && Number.isFinite(v) && v > 0);
     return ndviValues.length > 0
       ? Math.round((ndviValues.reduce((s: number, v: number) => s + v, 0) / ndviValues.length) * 100) / 100
       : 0;
@@ -285,11 +291,7 @@ export default function Home() {
     return <HomeSkeleton />;
   }
 
-  const farmerName =
-    user?.fullName?.split(' ')[0] ||
-    (user as any)?.farmerName?.split(' ')[0] ||
-    user?.name?.split(' ')[0] ||
-    t('home.default_name');
+  const farmerName = resolveFarmerDisplayName(user, t('home.default_name'));
   const formattedDate = currentTime.toLocaleDateString('en-US', {
     weekday: 'short',
     day: 'numeric',
@@ -396,7 +398,7 @@ export default function Home() {
                         {t('home.namaste', { name: farmerName })}
                       </span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs font-medium text-muted-foreground">
                       {t('home.last_synced', { time: formattedTime })}
                     </span>
                   </motion.div>
@@ -415,7 +417,7 @@ export default function Home() {
                         <>
                           <Thermometer className="w-4 h-4 text-primary" />
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground">{t('home.stats.temp')}</span>
+                            <span className="text-xs font-semibold text-muted-foreground">{t('home.stats.temp')}</span>
                             <span className="text-sm font-bold text-foreground">
                               {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}°C
                             </span>
@@ -427,7 +429,7 @@ export default function Home() {
                         <>
                           <Droplets className="w-4 h-4 text-primary" />
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground">{t('home.stats.humidity')}</span>
+                            <span className="text-xs font-semibold text-muted-foreground">{t('home.stats.humidity')}</span>
                             <span className="text-sm font-bold text-foreground">
                               {currentWeather?.humidity != null ? currentWeather.humidity : '--'}%
                             </span>
@@ -439,7 +441,7 @@ export default function Home() {
                         <>
                           <Activity className="w-4 h-4 text-primary" />
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground">{t('home.stats.pressure')}</span>
+                            <span className="text-xs font-semibold text-muted-foreground">{t('home.stats.pressure')}</span>
                             <span className="text-sm font-bold text-foreground">
                               {currentWeather?.pressure != null ? currentWeather.pressure : '--'} hPa
                             </span>
@@ -468,75 +470,78 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3 }}
-                className="relative z-10 p-3 pt-6"
+                className="relative z-10 p-3 pt-5"
               >
                 {/* Farmer Info & Date - Small at top */}
                 <motion.div
-                  className="flex items-center justify-between mb-2.5"
+                  className="flex items-center justify-between mb-2"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
                 >
-                  <div className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
+                  <div className="flex flex-col bg-primary/10 rounded-xl px-2.5 py-1">
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
                       <span className="text-xs font-semibold text-primary">
                         {t('home.namaste', { name: farmerName })}
                       </span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-xs font-medium text-muted-foreground">
                       {t('home.last_synced', { time: formattedTime })}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
-                    <Calendar className="w-3 h-3 text-muted-foreground" />
-                    <span className="text-[10px] font-medium text-muted-foreground">{formattedDate}</span>
+                  <div className="flex items-center gap-1 bg-background/50 rounded-xl px-2.5 py-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground">{formattedDate}</span>
                   </div>
                 </motion.div>
 
                 {/* Provenance + freshness + manual refresh */}
-                <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
-                    <MapPin className="w-2.5 h-2.5" />
+                <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                  <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+                    <MapPin className="w-3 h-3" />
                     {weatherProvenance}
                   </span>
                   {weatherUpdatedLabel && (
-                    <span className="text-[10px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+                    <span className="text-xs font-medium text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
                       {t('weather.header.updated_prefix')} {weatherUpdatedLabel}
                     </span>
                   )}
                   {weatherIsStale && (
-                    <span className="text-[10px] font-medium text-warning bg-warning/15 rounded-full px-2 py-0.5">
+                    <span className="text-xs font-semibold text-warning bg-warning/15 rounded-full px-2 py-0.5">
                       {t('weather.provenance.stale')}
                     </span>
                   )}
-                  {rainNext6h > 0 && (
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-info bg-info/15 rounded-full px-2 py-0.5">
-                      <CloudRain className="w-2.5 h-2.5" />
-                      {t('weather.widget.rain_6h', { value: rainNext6h })}
-                    </span>
-                  )}
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     aria-label={t('weather.actions.refresh')}
                     onClick={(e) => {
                       e.stopPropagation();
                       refetchWeather();
                     }}
-                    className="ml-auto p-1 rounded-full bg-background/60 text-muted-foreground active:scale-95 transition-transform"
+                    className="ml-auto h-7 w-7 bg-background/60 text-muted-foreground"
                   >
-                    <RefreshCw className={`w-3 h-3 ${weatherLoading ? 'animate-spin' : ''}`} />
-                  </button>
+                    <RefreshCw className={`h-3.5 w-3.5 ${weatherLoading ? 'animate-spin' : ''}`} />
+                  </Button>
                 </div>
 
+                {rainForecast && (
+                  <div className={`mb-1.5 flex h-8 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md border px-3 text-sm font-bold ${rainAlertTone}`}>
+                    <CloudRain className="h-4 w-4 shrink-0" />
+                    <span>{t('weather.widget.rain_period', { value: rainForecast.value, hours: rainForecast.hours })}</span>
+                  </div>
+                )}
+
                 {/* Header - Compact */}
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-baseline gap-2">
                     <motion.span
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
-                      className="text-5xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent"
+                      className={`text-5xl font-bold ${temperatureTone}`}
                     >
                       {currentWeather?.temp != null ? Math.round(currentWeather.temp) : '--'}
                     </motion.span>
@@ -573,7 +578,7 @@ export default function Home() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.25 }}
-                      className="text-[10px] font-medium text-foreground/80 capitalize relative z-10"
+                        className="text-xs font-semibold text-foreground/80 capitalize relative z-10"
                     >
                       {currentWeather?.description || t('home.loading')}
                     </motion.p>
@@ -583,82 +588,82 @@ export default function Home() {
 
                 {/* Weather Details Grid - Compact */}
                 <motion.div
-                  className="grid grid-cols-3 gap-1.5 pt-2 mt-2 border-t border-border/20"
+                  className="grid grid-cols-3 gap-1.5 pt-1.5 mt-1.5 border-t border-border/20"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
                 >
                   <motion.div
-                    className="flex flex-col items-center gap-1 bg-background/40 backdrop-blur-sm rounded-xl p-2 border border-border/20"
+                    className="flex flex-col items-center gap-0.5 bg-background/40 rounded-xl px-1.5 py-1.5 border border-border/20"
                     whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Wind className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.wind')}</span>
-                    <span className="text-sm font-bold text-foreground">
+                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.wind')}</span>
+                    <span className="text-base font-bold leading-5 text-foreground">
                       {currentWeather?.wind_speed != null ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
-                      <span className="text-[10px] font-normal"> {t('weather.units.kmh')}</span>
+                      <span className="text-xs font-medium"> {t('weather.units.kmh')}</span>
                     </span>
 
                   </motion.div>
 
                   <motion.div
-                    className="flex flex-col items-center gap-1 bg-background/40 backdrop-blur-sm rounded-xl p-2 border border-border/20"
+                    className="flex flex-col items-center gap-0.5 bg-background/40 rounded-xl px-1.5 py-1.5 border border-border/20"
                     whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Droplets className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.humidity')}</span>
-                    <span className="text-sm font-bold text-foreground">
+                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.humidity')}</span>
+                    <span className="text-base font-bold leading-5 text-foreground">
                       {currentWeather?.humidity != null ? currentWeather.humidity : '--'}
-                      <span className="text-[10px] font-normal">%</span>
+                      <span className="text-xs font-medium">%</span>
                     </span>
 
                   </motion.div>
 
                   <motion.div
-                    className="flex flex-col items-center gap-1 bg-background/40 backdrop-blur-sm rounded-xl p-2 border border-border/20"
+                    className="flex flex-col items-center gap-0.5 bg-background/40 rounded-xl px-1.5 py-1.5 border border-border/20"
                     whileHover={reduceMotion ? undefined : { scale: 1.05, y: -2 }}
                     transition={{ type: 'spring', stiffness: 300 }}
                   >
                     <Activity className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.pressure')}</span>
-                    <span className="text-sm font-bold text-foreground">
-                      {currentWeather?.pressure != null ? currentWeather.pressure : '--'} <span className="text-[10px] font-normal">hPa</span>
+                    <span className="text-xs text-muted-foreground font-semibold">{t('home.stats.pressure')}</span>
+                    <span className="text-base font-bold leading-5 text-foreground">
+                      {currentWeather?.pressure != null ? currentWeather.pressure : '--'} <span className="text-xs font-medium">hPa</span>
                     </span>
                   </motion.div>
                 </motion.div>
 
                 {/* Farm Stats - Compact */}
                 <motion.div
-                  className="grid grid-cols-2 gap-1.5 mt-2 pt-2 border-t border-border/20"
+                  className="grid grid-cols-2 gap-1.5 mt-1.5 pt-1.5 border-t border-border/20"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.35 }}
                 >
                   <motion.div
-                    className="flex items-center gap-2 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-xl p-2 border border-primary/20"
+                    className="flex items-center gap-2 bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl px-2 py-1.5 border border-primary/20"
                     whileHover={reduceMotion ? undefined : { scale: 1.03, x: 2 }}
                   >
                     <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
                       <MapPin className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground font-medium">{t('home.stats.plots')}</p>
-                      <p className="text-sm font-bold text-foreground">{lands.length}</p>
+                      <p className="text-xs text-muted-foreground font-semibold">{t('home.stats.plots')}</p>
+                      <p className="text-base font-bold leading-5 text-foreground">{lands.length}</p>
                     </div>
                   </motion.div>
                   <motion.div
-                    className="flex items-center gap-2 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-xl p-2 border border-primary/20"
+                    className="flex items-center gap-2 bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl px-2 py-1.5 border border-primary/20"
                     whileHover={reduceMotion ? undefined : { scale: 1.03, x: 2 }}
                   >
                     <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
                       <Leaf className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground font-medium">{t('home.stats.area')}</p>
-                      <p className="text-sm font-bold text-foreground">
-                        {totalArea.toFixed(1)} <span className="text-[10px] font-normal">ac</span>
+                      <p className="text-xs text-muted-foreground font-semibold">{t('home.stats.area')}</p>
+                      <p className="text-base font-bold leading-5 text-foreground">
+                        {totalArea.toFixed(1)} <span className="text-xs font-medium">ac</span>
                       </p>
                     </div>
                   </motion.div>

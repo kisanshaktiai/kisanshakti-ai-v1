@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+// 2026-10-06 10:30 UTC — numbers in reason/cause/options/extras now count as DB facts for the explainer number check.
 /**
  * ADVISOR CARD — the farmer-facing contract of every decision turn (2026-09-09).
  *
@@ -85,8 +87,8 @@ function toFactFrame(f: SourceFacts): FactFrame {
     return out.length ? out : undefined;
   };
   const facts: Fact[] = [];
-  if (f.cause) facts.push({ role: 'situation', concept: 'other', code: f.rule_id ?? null, gloss: f.cause });
-  if (f.reason_text) facts.push({ role: 'cause', gloss: f.reason_text });
+  if (f.cause) facts.push({ role: 'situation', concept: 'other', code: f.rule_id ?? null, gloss: f.cause, quantities: q(f.cause) });
+  if (f.reason_text) facts.push({ role: 'cause', gloss: f.reason_text, quantities: q(f.reason_text) });
   if (f.action_text) facts.push({ role: 'action', gloss: f.action_text, quantities: q(f.action_text) });
   if (f.product) facts.push({ role: 'input', concept: 'product', gloss: f.product + (f.dose ? ` — ${f.dose}` : ''), quantities: q(f.dose ?? '') });
   if (f.method) facts.push({ role: 'method', concept: 'practice', gloss: f.method });
@@ -95,12 +97,12 @@ function toFactFrame(f: SourceFacts): FactFrame {
   for (const s2 of f.safety) facts.push({ role: 'safety', concept: 'measure', gloss: s2, quantities: q(s2) });
   for (const c of f.checks) facts.push({ role: 'check', gloss: c, quantities: q(c) });
   for (const c of f.failures) facts.push({ role: 'check', gloss: `If this is seen, the treatment is not working: ${c}`, quantities: q(c) });
-  for (const o of f.options) facts.push({ role: 'note', concept: 'practice', gloss: o.title ? `${o.title}: ${o.text}` : o.text });
+  for (const o of f.options) facts.push({ role: 'note', concept: 'practice', gloss: o.title ? `${o.title}: ${o.text}` : o.text, quantities: q(o.text) });
   if (f.economics?.yield_gain_pct != null) facts.push({ role: 'note', concept: 'measure', gloss: `expected yield gain up to ${f.economics.yield_gain_pct}%`, quantities: [{ value: Number(f.economics.yield_gain_pct), unit: '%' }] });
   if (f.economics?.cost_min != null || f.economics?.cost_max != null) facts.push({ role: 'note', concept: 'measure', gloss: `input cost per acre ${f.economics.cost_min ?? ''}${f.economics.cost_max != null ? `-${f.economics.cost_max}` : ''}`, quantities: [f.economics.cost_min, f.economics.cost_max].filter((v) => v != null).map((v) => ({ value: Number(v), unit: 'currency' })) });
   if (f.provenance.mode_of_action) facts.push({ role: 'note', concept: 'product', gloss: `how this product works: ${f.provenance.mode_of_action}` });
   if (f.provenance.resistance_group) facts.push({ role: 'note', concept: 'product', gloss: `rotate with a different group next spray (this one is ${f.provenance.resistance_group})` });
-  for (const e of f.extras) facts.push({ role: 'note', gloss: `${e.title}: ${e.text}` });
+  for (const e of f.extras) facts.push({ role: 'note', gloss: `${e.title}: ${e.text}`, quantities: q(e.text) });
   return { kind: f.kind, crop: f.crop ?? null, stage: f.stage ?? null, das: f.das ?? null, area_acres: null, facts, rule_id: f.rule_id ?? null };
 }
 

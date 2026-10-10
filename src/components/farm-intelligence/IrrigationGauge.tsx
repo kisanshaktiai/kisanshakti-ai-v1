@@ -11,13 +11,16 @@ interface IrrigationGaugeProps {
   tawMm?: number | null;
   /** Crop evapotranspiration for the day (mm). */
   etcMm?: number | null;
+  /** Decision-Brain result; presentation must not infer irrigation status locally. */
+  irrigationNeeded?: boolean | null;
+  irrigationUrgency?: string | null;
 }
 
 /**
  * Soil-water bucket gauge. Shows how full the root zone is and how close the
  * crop is to the FAO-56 readily-available-water trigger.
  */
-export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm }: IrrigationGaugeProps) {
+export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm, irrigationNeeded, irrigationUrgency }: IrrigationGaugeProps) {
   const { t } = useTranslation();
 
   const taw = Number(tawMm ?? 0);
@@ -35,15 +38,15 @@ export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm }: Irrigation
   const remaining = Math.max(0, taw - depletion);
   const fillPct = Math.min(100, Math.round((remaining / taw) * 100));
   const triggerPct = Math.min(100, Math.round(((taw - raw) / taw) * 100));
-  const needsIrrigation = depletion >= raw && raw > 0;
-
+  const urgency = String(irrigationUrgency ?? '').toUpperCase();
+  const needsIrrigation = irrigationNeeded === true;
+  const barColor = needsIrrigation ? 'bg-destructive' : 'bg-primary';
   const statusKey = needsIrrigation
     ? 'farmIntel.irrigation.status_now'
-    : fillPct < 60
-      ? 'farmIntel.irrigation.status_soon'
-      : 'farmIntel.irrigation.status_ok';
-
-  const barColor = needsIrrigation ? 'bg-destructive' : fillPct < 60 ? 'bg-warning' : 'bg-primary';
+    : irrigationNeeded === false
+      ? 'farmIntel.irrigation.status_ok'
+      : 'farmIntel.irrigation.status_unknown';
+  const urgencyLabel = urgency && urgency !== 'NONE' ? urgency : null;
 
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 space-y-3">
@@ -57,7 +60,7 @@ export function IrrigationGauge({ depletionMm, rawMm, tawMm, etcMm }: Irrigation
         <span
           className={`text-xs font-semibold ${needsIrrigation ? 'text-destructive' : 'text-muted-foreground'}`}
         >
-          {t(statusKey)}
+          {urgencyLabel ?? t(statusKey, irrigationNeeded == null ? 'No decision' : undefined)}
         </span>
       </div>
 

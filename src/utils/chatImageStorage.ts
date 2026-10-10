@@ -6,6 +6,47 @@ const TARGET_SIZE_KB = 150;
 const MAX_DIMENSION = 1024;
 const VIDEO_TARGET_SIZE_MB = 5;
 const AUDIO_TARGET_BITRATE = 64000;
+const CHAT_SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
+
+/** Convert a stored chat object URL/path into a short-lived authenticated URL. */
+export async function getChatAttachmentUrl(value: string): Promise<string | null> {
+  if (!value || typeof value !== 'string') return null;
+
+  let filePath = value.trim();
+  if (filePath.startsWith('http')) {
+    try {
+      const url = new URL(filePath);
+      const publicMarker = '/storage/v1/object/public/chat-attachments/';
+      const signMarker = '/storage/v1/object/sign/chat-attachments/';
+      const publicIndex = url.pathname.indexOf(publicMarker);
+      const signIndex = url.pathname.indexOf(signMarker);
+
+      if (publicIndex >= 0) {
+        filePath = decodeURIComponent(url.pathname.slice(publicIndex + publicMarker.length));
+      } else if (signIndex >= 0) {
+        filePath = decodeURIComponent(url.pathname.slice(signIndex + signMarker.length));
+      } else {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  if (!filePath || filePath.startsWith('/') || filePath.includes('..')) return null;
+  const firstSegment = filePath.split('/')[0];
+  const authState = useAuthStore.getState();
+  if (!authState.user?.id || authState.user.id !== firstSegment || !authState.user.tenantId) {
+    return null;
+  }
+
+  const client = getAuthenticatedClient();
+  const { data, error } = await client.storage
+    .from(STORAGE_BUCKET)
+    .createSignedUrl(filePath, CHAT_SIGNED_URL_TTL_SECONDS);
+
+  return error || !data?.signedUrl ? null : data.signedUrl;
+}
 
 // Helper to get authenticated client for storage operations
 function getAuthenticatedClient() {
@@ -429,17 +470,14 @@ export async function uploadChatImage(
             continue;
           }
         } else if (data) {
-          // Use plain supabase for public URL (no auth needed)
-          const { data: urlData } = supabase.storage
-            .from(STORAGE_BUCKET)
-            .getPublicUrl(data.path);
+          const signedUrl = await getChatAttachmentUrl(data.path);
+          if (!signedUrl) throw new Error('Unable to create secure attachment URL');
 
           console.log(`✅ Image uploaded successfully:`, {
-            url: urlData.publicUrl,
             sizeKB: Math.round(blob.size / 1024),
             path: data.path
           });
-          return { url: urlData.publicUrl, compressedBase64, success: true };
+          return { url: signedUrl, compressedBase64, success: true };
         }
       } catch (attemptErr) {
         lastError = attemptErr as Error;
@@ -529,25 +567,28 @@ export async function uploadCompressedVideo(
       console.error('❌ Video upload error:', { videoError, thumbError });
       // Try to at least return thumbnail URL if it uploaded
       if (!thumbError && thumbData) {
-        const { data: thumbUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(thumbData.path);
-        return { videoUrl: videoBase64, thumbnailUrl: thumbUrlData.publicUrl, success: false };
+        const thumbSignedUrl = await getChatAttachmentUrl(thumbData.path);
+        return {
+          videoUrl: videoBase64,
+          thumbnailUrl: thumbSignedUrl || thumbnailBase64,
+          success: false
+        };
       }
       return { videoUrl: videoBase64, thumbnailUrl: thumbnailBase64, success: false };
     }
     
-    // Use plain supabase for public URLs (no auth needed)
-    const { data: videoUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(videoData!.path);
-    const { data: thumbUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(thumbData!.path);
-    
-    console.log(`✅ Video uploaded successfully:`, {
-      videoUrl: videoUrlData.publicUrl,
-      thumbnailUrl: thumbUrlData.publicUrl,
-      sizeMB: Math.round(videoBlob.size / 1024 / 1024 * 100) / 100
-    });
-    
+    const [videoUrl, thumbnailUrl] = await Promise.all([
+      getChatAttachmentUrl(videoData!.path),
+      getChatAttachmentUrl(thumbData!.path)
+    ]);
+
+    if (!videoUrl || !thumbnailUrl) {
+      throw new Error('Unable to create secure video attachment URLs');
+    }
+
     return {
-      videoUrl: videoUrlData.publicUrl,
-      thumbnailUrl: thumbUrlData.publicUrl,
+      videoUrl,
+      thumbnailUrl,
       success: true
     };
   } catch (err) {
@@ -600,7 +641,8 @@ export async function uploadCompressedAudio(
     const timestamp = Date.now();
     const audioPath = `${userId}/${sessionId}/${messageId}_${timestamp}.webm`;
     
-    const { data, error } = await supabase.storage
+    const client = getAuthenticatedClient();
+    const { data, error } = await client.storage
       .from(STORAGE_BUCKET)
       .upload(audioPath, audioBlob, {
         contentType: 'audio/webm',
@@ -613,12 +655,13 @@ export async function uploadCompressedAudio(
       return { audioUrl: audioBase64, durationSeconds };
     }
     
-    const { data: urlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data.path);
-    
-    console.log(`✅ Audio uploaded: ${urlData.publicUrl} (${Math.round(audioBlob.size / 1024)}KB)`);
-    
+    const audioUrl = await getChatAttachmentUrl(data.path);
+    if (!audioUrl) {
+      return { audioUrl: audioBase64, durationSeconds };
+    }
+
     return {
-      audioUrl: urlData.publicUrl,
+      audioUrl,
       durationSeconds
     };
   } catch (err) {
@@ -652,13 +695,25 @@ export async function deleteChatImage(imageUrl: string): Promise<void> {
   try {
     if (!imageUrl || !imageUrl.includes('supabase')) return;
     
-    const url = new URL(imageUrl);
-    const pathMatch = url.pathname.match(/\/storage\/v1\/object\/public\/chat-attachments\/(.+)/);
-    if (!pathMatch) return;
-    
-    const filePath = decodeURIComponent(pathMatch[1]);
-    
-    await supabase.storage
+    let filePath = imageUrl;
+    if (imageUrl.startsWith('http')) {
+      const url = new URL(imageUrl);
+      const publicIndex = url.pathname.indexOf('/storage/v1/object/public/chat-attachments/');
+      const signIndex = url.pathname.indexOf('/storage/v1/object/sign/chat-attachments/');
+      if (publicIndex >= 0) {
+        filePath = decodeURIComponent(url.pathname.slice(publicIndex + '/storage/v1/object/public/chat-attachments/'.length));
+      } else if (signIndex >= 0) {
+        filePath = decodeURIComponent(url.pathname.slice(signIndex + '/storage/v1/object/sign/chat-attachments/'.length));
+      } else {
+        return;
+      }
+    }
+
+    const authState = useAuthStore.getState();
+    if (authState.user?.id !== filePath.split('/')[0]) return;
+
+    const client = getAuthenticatedClient();
+    await client.storage
       .from(STORAGE_BUCKET)
       .remove([filePath]);
       
@@ -681,5 +736,5 @@ export function isStorageUrl(url: string): boolean {
  */
 export function getStorageBucketUrl(): string {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qfklkkzxemsbeniyugiz.supabase.co';
-  return `${supabaseUrl}/storage/v1/object/public/${STORAGE_BUCKET}`;
+  return `${supabaseUrl}/storage/v1/object/sign/${STORAGE_BUCKET}`;
 }

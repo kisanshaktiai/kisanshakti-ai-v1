@@ -4,6 +4,8 @@
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CHANGE LOG (newest first):
+ *   2026-10-05 10:30 UTC — observation_master lookup queries and keys by the lowercase DB
+ *     form (PostgREST .in() is case-sensitive); uppercase codes were dropped as unknown.
  *   2026-07-09 04:10 UTC — Initial. Implements v4 crop-agnostic patches:
  *     P5 SYMBOL_IDENTITY_CONTRACT      (runs first)
  *     P1 BIOLOGICAL_SCOPE_CONTRACT     (runs after identity)
@@ -194,7 +196,7 @@ async function fetchObservationScopeRows(
   if (!codes.length) return map;
   const CHUNK = 500;
   for (let i = 0; i < codes.length; i += CHUNK) {
-    const slice = codes.slice(i, i + CHUNK);
+    const slice = Array.from(new Set(codes.slice(i, i + CHUNK).map((c) => String(c).trim().toLowerCase())));
     try {
       const { data, error } = await supabase
         .from('observation_master')
@@ -205,7 +207,7 @@ async function fetchObservationScopeRows(
         continue;
       }
       for (const r of (data ?? []) as ObservationScopeRow[]) {
-        if (r?.observation_code) map.set(String(r.observation_code), r);
+        if (r?.observation_code) map.set(String(r.observation_code).trim().toLowerCase(), r);
       }
     } catch (e) {
       console.warn(`[OBSERVATION_SCOPE][EXCEPTION] error=${(e as Error).message}`);
@@ -241,7 +243,7 @@ export async function filterByBiologicalScope(
   const rows = await fetchObservationScopeRows(supabase, list);
 
   for (const code of list) {
-    const row = rows.get(code);
+    const row = rows.get(String(code).trim().toLowerCase());
     if (!row) {
       // Symbol not in observation_master → identity failure. Drop.
       result.dropped_unknown.push({ code, reason: 'UNKNOWN_OBSERVATION_SYMBOL' });

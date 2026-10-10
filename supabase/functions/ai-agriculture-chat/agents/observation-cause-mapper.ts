@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Cast language index lookup on local 'questions' record to keyof typeof — type-only.
+
 // OBSERVATION-TO-CAUSE MAPPER - Symbolic (No AI) Cause Inference
 
 import { getUiString } from '../i18n/ui-strings.ts';
@@ -553,7 +556,7 @@ function generateAmbiguityQuestion(cause_codes: string[], language?: string): st
     hi: `हमें कई समस्याएं दिख रही हैं। आपकी मुख्य समस्या कौन सी है?`,
     en: `We detected multiple issues. Which is your primary concern?`
   };
-  return questions[language || 'en'];
+  return questions[(language || 'en') as keyof typeof questions];
 }
 
 // HELPER FUNCTIONS

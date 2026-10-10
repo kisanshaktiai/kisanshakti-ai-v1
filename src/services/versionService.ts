@@ -1,4 +1,5 @@
 import { getSupabaseFunctionUrl } from '@/config/supabase';
+import { waitForPwaReloadSafe } from '@/utils/pwaActivity';
 
 /**
  * Version Service for tracking app version and checking for updates
@@ -197,6 +198,11 @@ class VersionService {
     console.log('[VersionService] Force updating app...');
 
     try {
+      // A forced version update may be discovered from SplashScreen after the
+      // farmer has already continued into the app. Never invalidate or reload
+      // while an active request/save/composer is still in progress.
+      await waitForPwaReloadSafe();
+
       // Clear all caches using the new method
       await this.clearAllCaches();
 

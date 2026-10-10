@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Calendar, Plus, RefreshCw } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
@@ -19,6 +19,7 @@ import CropScheduleView from '@/components/schedule/CropScheduleView';
 import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
+import { beginPwaWork } from '@/utils/pwaActivity';
 import { useLocation } from '@/hooks/useLocation';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
@@ -130,6 +131,8 @@ export default function Schedule() {
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
     
+    const releasePwaWork = beginPwaWork();
+
     // Set generating state FIRST before anything else
     setGenerating(true);
     setGeneratingCropName(localizedCropName || cropName);
@@ -206,6 +209,7 @@ export default function Schedule() {
         headers: {
           'x-tenant-id': tenant?.id || user?.tenantId || '',
           'x-farmer-id': user?.id || '',
+          'x-session-token': getSessionToken() || '',
         },
       });
 
@@ -307,6 +311,7 @@ export default function Schedule() {
             headers: {
               'x-tenant-id': tenant?.id || user?.tenantId || '',
               'x-farmer-id': user?.id || '',
+              'x-session-token': getSessionToken() || '',
             },
           })
           .then((r) => console.log('🈯 [Schedule] narrate follow-up:', r.error ?? r.data))
@@ -383,6 +388,7 @@ export default function Schedule() {
         ),
       });
     } finally {
+      releasePwaWork();
       setGenerating(false);
     }
   };

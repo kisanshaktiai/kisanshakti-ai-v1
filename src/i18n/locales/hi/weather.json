@@ -118,6 +118,8 @@
       "title": "आज का मौसम",
       "loading": "लोड हो रहा है...",
       "rain_6h": "{{value}}% / 6 घंटे",
+      "rain_period": "{{value}}% / {{hours}} घंटे",
+      "rain_probability_line": "आज अगले {{hours}} घंटों में बारिश की संभावना {{value}}% है।",
       "irrigate_today": "आज पानी दें",
       "irrigation_soon": "जल्द पानी देना होगा",
       "high_disease_risk": "रोग का खतरा ज़्यादा",

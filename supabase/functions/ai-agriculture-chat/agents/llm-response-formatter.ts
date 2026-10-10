@@ -1,5 +1,29 @@
+// 2026-10-06 10:05 UTC — rewrite instruction no longer uses officer persona.
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-10-02 — review fix: brain.format answer budget 4000 tokens (the old Gemini tier's value, the largest
+ *   of the three tiers) instead of 2800, so no step truncates a Devanagari answer earlier than before.
+ * 2026-09-27 — AI model SSOT: formatRecommendationsWithLLM's three hardcoded tiers
+ *   (OpenAI AI_MODELS.openai.default 8s → native Gemini AI_MODELS.gemini.default 6s →
+ *   Lovable AI_MODELS.lovable.default 5s) replaced by one callAITask('brain.format').
+ *   Chain and models come from ai_task_route_step; same 14s budget, 8s per model,
+ *   2800 tokens, same ai_model label format; every call lands in ai_model_metrics.
+ *   callOpenAIWithTimeout / callGeminiWithTimeout / callLovableAIWithTimeout removed
+ *   (no other caller). Gemini is now reached through its OpenAI-compatible endpoint
+ *   with a real system message instead of system+user concatenated into one part.
+ * 2026-09-26 12:00 UTC — TYPE FIX: added local RuntimePrimaryDecision/
+ *   RuntimeApplicationDetails/RuntimeDecisionOutput extension interfaces to
+ *   cover runtime-only decision_output fields not present on the shared
+ *   DecisionOutput/PrimaryDecision/ApplicationDetails types (symptom_keys,
+ *   clarification_options, primary_i18n_key, action_codes, severity,
+ *   decision_brain_source, products, recommended_products, risk_level,
+ *   canonical_group, dosage, method, monitoring_note, action_type on
+ *   SecondaryAction). Cast actions_returned (typed number, runtime array) via
+ *   the extension interface. Fixed startTime-out-of-scope bug in
+ *   buildRecommendationSummary, added missing reasoning_included field to the
+ *   ERROR_NO_ACTIONS return, and replaced the non-existent
+ *   GateAction.ALLOW_TREATMENT with GateAction.ALLOW_TREATMENT.
+ *   Type-only change — no runtime/logic behavior altered.
  * 2026-08-15 09:50 UTC — FIX 2 (organic preference): farming_preference threaded
  *   into the deterministic builder (both LLM + template paths), no-invention
  *   directive added to the system prompt, and [NARRATION_NUMERIC_DRIFT]
@@ -13,7 +37,7 @@
  */
 // PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
 
-import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
+import type { DecisionOutput, FarmerCommunication, PrimaryDecision, ApplicationDetails, SecondaryAction } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
 import { getLanguageName } from '../utils/language-utils.ts';
@@ -47,7 +71,7 @@ import { getUiString } from '../i18n/ui-strings.ts';
 // 2026-09-11 — MODEL SSOT. The formatter had `model: 'gpt-4o-mini'` + legacy `max_tokens`/`temperature` while the
 // project standard (_shared/aiConfig.ts) is gpt-5.6-luna with `max_completion_tokens` and no custom temperature.
 // The 5.x API rejects the legacy body, so every OpenAI call here failed and the chain fell to Gemini.
-import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
+import { callAITask, type AITaskCall } from '../../_shared/aiConfig.ts';
 import { farmerSafeActionText, isDiagnosisRule, isDifferentialText, oneLine } from '../utils/farmer-text-filter.ts';
 import type {
   RichRuleData,
@@ -107,7 +131,7 @@ import type { ModeRenderedOutput } from '../utils/response-mode-renderer.ts';
 export interface LLMFormatterInput {
   farmer_message: string;
   language: string;
-  decision_output: DecisionOutput;
+  decision_output: RuntimeDecisionOutput;
   land_context?: {
     current_crop?: string;
     growth_stage?: string;
@@ -128,7 +152,8 @@ export interface LLMFormatterInput {
   };
   data_audit?: DataAudit;
   trace_id?: string;
-  supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
+  supabase_client?: any;  // v2.1: For DB-driven translation of technical terms; 2026-09-27 also the AI model registry + usage ledger
+  farmer_id?: string | null; // 2026-09-27 — usage-ledger attribution for the brain.format call (ai_model_metrics.farmer_id)
   market_product_memo?: MarketProductMemo;
   // Farmer's persisted farming preference (farmers.farming_preference).
   farming_preference?: 'unset' | 'conventional' | 'organic' | 'integrated';
@@ -142,6 +167,37 @@ export interface LLMFormatterInput {
     toneHint: string;
     promptDirective: string;
   };
+}
+
+// LOCAL RUNTIME TYPE EXTENSIONS (type-only; decision_output carries extra
+// fields populated at runtime by the rule engine/orchestrator that are not
+// declared on the shared rule-engine-types.ts interfaces).
+interface RuntimePrimaryDecision extends Omit<PrimaryDecision, 'target'> {
+  target?: { pest_code?: string; disease_code?: string; nutrient_deficiency?: string; crop?: string };
+  risk_level?: string;
+  canonical_group?: string;
+}
+interface RuntimeApplicationDetails extends ApplicationDetails {
+  dosage?: string;
+  method?: string;
+}
+interface RuntimeSecondaryAction extends SecondaryAction {
+  action_type?: string;
+}
+interface RuntimeDecisionOutput extends Omit<DecisionOutput, 'primary_decision' | 'secondary_actions' | 'actions_returned'> {
+  symptom_keys?: string[];
+  clarification_options?: Array<{ label?: string; display_text?: string; text?: string; value?: string; observation_key?: string }>;
+  primary_i18n_key?: string;
+  action_codes?: string[];
+  severity?: string;
+  decision_brain_source?: boolean;
+  products?: any[];
+  recommended_products?: any[];
+  monitoring_note?: string;
+  primary_decision?: RuntimePrimaryDecision;
+  secondary_actions?: RuntimeSecondaryAction[];
+  /** Runtime observed as an array in some code paths despite the shared type declaring it as a number */
+  actions_returned?: number | any[];
 }
 
 export interface LLMFormatterOutput {
@@ -276,14 +332,13 @@ export async function formatRecommendationsWithLLM(
   
   // CRASH-PROOF: Extract confidence data with safe defaults
   // BUG-D FIX: Add weighted_confidence fallback from primary_decision
-  const decisionConfidence = input.decision_output?.metadata?.decision_confidence ?? 
+  const decisionConfidence = (input.decision_output?.metadata?.decision_confidence as number | undefined) ?? 
                               input.decision_output?.primary_decision?.weighted_confidence ??
                               input.decision_output?.confidence ?? 0;
   // BUG-C FIX: Also check symptom_keys on decision_output directly
-  const hasSymptoms = input.decision_output?.metadata?.has_symptoms ?? 
-                       !!(input.decision_output?.symptom_keys?.length) ??
-                       !!(input.metadata?.symptomKeys?.length);
-  const hasVisualAmbiguity = input.decision_output?.metadata?.has_visual_ambiguity ?? 
+  const hasSymptoms = (input.decision_output?.metadata?.has_symptoms as boolean | undefined) ??
+                       !!(input.decision_output?.symptom_keys?.length);
+  const hasVisualAmbiguity = (input.decision_output?.metadata?.has_visual_ambiguity as boolean | undefined) ?? 
                               input.decision_output?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = input.decision_output?.clarification_options ?? [];
   
@@ -300,8 +355,8 @@ export async function formatRecommendationsWithLLM(
   const severity = resolveSeverity(input.decision_output?.severity ?? input.decision_output?.metadata?.severity);
   
   const responseMode = resolveResponseMode({
-    response_mode: input.decision_output?.metadata?.response_mode,
-    gate_action: input.decision_output?.metadata?.gate_action,
+    response_mode: input.decision_output?.metadata?.response_mode as string | undefined,
+    gate_action: input.decision_output?.metadata?.gate_action as string | undefined,
     has_treatment: !!input.decision_output?.primary_decision?.action_type,
     has_clarification: !!input.decision_output?.clarification_needed,
     has_options: clarificationOptions.length > 0,
@@ -328,7 +383,8 @@ export async function formatRecommendationsWithLLM(
   console.log(`   📋 [LLM Formatter] Gate pre-validated by index.ts - proceeding with formatting`);
   
   // Extract decision properties for validation and formatting
-  const actions = input.decision_output?.actions_returned;
+  const actions = input.decision_output?.actions_returned as any[] | number | undefined;
+  const actionsArr: any[] | undefined = Array.isArray(actions) ? actions : undefined;
   const isDecisionBrain = input.decision_output?.decision_brain_source === true;
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
@@ -389,13 +445,13 @@ export async function formatRecommendationsWithLLM(
   }
   
   // VALIDATION GATE 1: Decision brain invoked but no actions = mapping failure
-  if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actions || actions.length === 0)) {
+  if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actionsArr || actionsArr.length === 0)) {
     console.error(`
 🚫 [INPUT VALIDATION GATE] CRITICAL ERROR:
    Decision Brain invoked: ${isDecisionBrain}
    Has Primary Decision: ${hasPrimaryDecision}
    Has Secondary Actions: ${hasSecondaryActions}
-   Actions Returned: ${actions?.length || 0}
+   Actions Returned: ${actionsArr?.length || 0}
    
    This indicates a mapping failure in the rule engine.
    BLOCKING LLM to prevent hallucinated advice.
@@ -408,13 +464,14 @@ export async function formatRecommendationsWithLLM(
       processing_time_ms: Date.now() - startTime,
       sections_included: ['ERROR_NO_ACTIONS'],
       validation_passed: false,
-      validation_violations: ['Decision brain produced rules but no actions extracted']
+      validation_violations: ['Decision brain produced rules but no actions extracted'],
+      reasoning_included: false
     };
   }
   
   // PHASE 6: PRE-LLM GATE - If action_list is empty, force INFORMATION_ONLY mode
   let suppressHowSection = false;
-  if (!hasPrimaryDecision && (!actions || actions.length === 0)) {
+  if (!hasPrimaryDecision && (!actionsArr || actionsArr.length === 0)) {
     console.warn(`
 ⚠️ [PHASE 6 PRE-LLM GATE] No primary decision and no actions
    response_mode = INFORMATION_ONLY (forced)
@@ -425,7 +482,7 @@ export async function formatRecommendationsWithLLM(
   }
   
   // ADDITIONAL GATE: If decision_brain_source but no actions → INFORMATION_ONLY
-  if (isDecisionBrain && (!actions || actions.length === 0) && !hasPrimaryDecision) {
+  if (isDecisionBrain && (!actionsArr || actionsArr.length === 0) && !hasPrimaryDecision) {
     console.warn(`
 ⚠️ [PHASE 6 GATE-2] Decision brain invoked with ZERO actions → INFORMATION_ONLY
    LLM will render observation summary only. No treatments, products, or dosages.
@@ -479,8 +536,8 @@ export async function formatRecommendationsWithLLM(
     }
     
     // FALLBACK: Extract from actions_returned if no structured products
-    if (allowedProducts.length === 0 && actions && actions.length > 0) {
-      for (const action of actions) {
+    if (allowedProducts.length === 0 && actionsArr && actionsArr.length > 0) {
+      for (const action of actionsArr) {
         addToAllowed(action.application_details || action);
         addToAllowed(action);
       }
@@ -494,7 +551,7 @@ export async function formatRecommendationsWithLLM(
     // so LLM validation gate doesn't reject them as "unauthorized"
     if (primary?.application_details?.active_ingredient && input.supabase_client) {
       try {
-        const cropCode = input.decision_output?.metadata?.crop_code || primary?.target?.crop || '';
+        const cropCode = (input.decision_output?.metadata?.crop_code as string | undefined) || (primary?.target as { crop?: string } | undefined)?.crop || '';
         const marketResult = await lookupMarketProductsMemoized(
           input.market_product_memo ?? new Map(),
           input.supabase_client,
@@ -564,50 +621,36 @@ export async function formatRecommendationsWithLLM(
   // LATENCY BATCH L1 (2026-07-29): narration budget capped.
   const NARRATION_BUDGET_MS = 14_000;
   const narrationStart = Date.now();
-  const remaining = () => NARRATION_BUDGET_MS - (Date.now() - narrationStart);
 
   try {
-    // TIER 1: OpenAI (primary) — 8s cap
-    if (OPENAI_API_KEY && remaining() > 1500) {
-      console.log(`   🔄 Trying OpenAI (primary, ${Math.min(8000, remaining())}ms cap)...`);
-      const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, Math.min(8000, remaining()));
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = AI_MODELS.openai.default;
-        tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ OpenAI formatting successful (${AI_MODELS.openai.default}) in ${Date.now() - narrationStart}ms`);
-      } else if (result.error === 'RATE_LIMIT') {
-        console.warn(`   ⚠️ OpenAI rate limited — failing over immediately (no sleep)`);
-      }
-    }
-
-    // TIER 2: Gemini — 6s cap, only if budget remains
-    if (!formattedResponse && GEMINI_API_KEY && remaining() > 1500) {
-      console.log(`   🔄 Trying Gemini (fallback, ${Math.min(6000, remaining())}ms cap)...`);
-      const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, Math.min(6000, remaining()));
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = AI_MODELS.gemini.default;
-        tokensUsed = result.tokens_used || 0;
-        console.log(`   ✅ Gemini formatting successful in ${Date.now() - narrationStart}ms`);
-      } else if (result.error === 'RATE_LIMIT') {
-        console.warn(`   ⚠️ Gemini rate limited (429) — failing over immediately (no sleep)`);
-      }
-    }
-
-    // TIER 3: Lovable AI — 5s cap, only if budget remains
-    if (!formattedResponse && LOVABLE_API_KEY && remaining() > 1500) {
-      console.log(`   🔄 Trying Lovable AI (tertiary, ${Math.min(5000, remaining())}ms cap)...`);
-      const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, Math.min(5000, remaining()));
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = 'lovable-gemini-2.5-flash';
-        console.log(`   ✅ Lovable AI formatting successful in ${Date.now() - narrationStart}ms`);
-      }
-    }
-
-    if (!formattedResponse) {
-      console.warn(`   ⏱️ [NARRATION_BUDGET_EXHAUSTED] no tier produced text in ${Date.now() - narrationStart}ms (budget ${NARRATION_BUDGET_MS}ms)`);
+    // 2026-09-27 — AI model SSOT: the tier order (OpenAI → Gemini → Lovable) and the models now come
+    // from the registry task `brain.format` (ai_task_route / ai_task_route_step), not from AI_MODELS.
+    // Same 14 s budget, same 8 s cap per model. Answer budget 4000 tokens = the largest of the old tiers
+    // (OpenAI 2800 / Gemini 4000 "for complete Devanagari responses" / Lovable 800): the route has one
+    // budget for every step, and 4000 is the only value that truncates no step earlier than before.
+    const r = await callAITask({
+      db: input.supabase_client,
+      task: 'brain.format',
+      functionName: 'ai-agriculture-chat',
+      farmerId: input.farmer_id ?? null,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      maxOutputTokens: 4000,
+      temperature: 0.5, // sent only to models whose catalog contract allows a temperature (unchanged rule)
+      attemptTimeoutMs: 8000,
+      timeoutMs: NARRATION_BUDGET_MS,
+      metadata: { caller: 'formatRecommendationsWithLLM', trace_id: input.trace_id ?? null },
+    });
+    if (r.ok) {
+      formattedResponse = r.content;
+      // Same label format as before (ai_chat_messages.ai_model): bare model id, "lovable/<id>" for the gateway.
+      aiModelUsed = r.provider === 'lovable' ? `lovable/${r.apiModelId}` : r.apiModelId;
+      tokensUsed = r.usage.input_tokens + r.usage.output_tokens;
+      console.log(`   ✅ ${r.modelKey} formatting successful${r.fallbackUsed ? ' (fallback)' : ''} in ${Date.now() - narrationStart}ms`);
+    } else {
+      console.warn(`   ⏱️ [NARRATION_BUDGET_EXHAUSTED] brain.format ${r.errorClass} in ${Date.now() - narrationStart}ms (budget ${NARRATION_BUDGET_MS}ms) attempts=${JSON.stringify(r.attempts)}`);
     }
   } catch (error) {
     console.error(`   ❌ LLM formatting error:`, error);
@@ -1135,10 +1178,10 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   // PART 4: Determine response format type from action_type
   const primary = input.decision_output?.primary_decision;
   const actionTypeUpper = (primary?.action_type || '').toUpperCase();
-  const riskLevel = (primary?.risk_level || input.decision_output?.metadata?.risk_level || '').toUpperCase();
-  const hasDosage = !!(primary?.application_details?.dosage_per_acre || primary?.application_details?.dosage || primary?.application_details?.concentration);
+  const riskLevel = (primary?.risk_level || (input.decision_output?.metadata?.risk_level as string | undefined) || '').toUpperCase();
+  const hasDosage = !!(primary?.application_details?.dosage_per_acre || (primary?.application_details as RuntimeApplicationDetails | undefined)?.dosage || primary?.application_details?.concentration);
   const hasProduct = !!(primary?.application_details?.product_name && primary?.application_details?.product_name !== 'Not specified' && primary?.application_details?.product_name !== 'N/A');
-  const hasActions = (input.decision_output?.actions_returned?.length || 0) > 0 || !!primary;
+  const hasActions = ((Array.isArray(input.decision_output?.actions_returned) ? input.decision_output.actions_returned.length : 0) || 0) > 0 || !!primary;
   const isClarification = !!input.decision_output?.clarification_needed;
   
   let formatType = 'FORMAT_4'; // Default: stage-advisory fallback
@@ -1387,7 +1430,7 @@ ${cropStageConstraints}
 
 ${input.farmer_addressing?.promptDirective || ''}
 
-IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them as a village agriculture officer EXPLAINING to the farmer in natural rural ${langName}. Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
+IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them in clear, simple ${langName} for the farmer (never introduce yourself or claim a role). Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
 
 ═══ FINAL REMINDER ═══
 You are a VILLAGE AGRICULTURE OFFICER standing in the farmer's field, not a translator at a desk.
@@ -1543,6 +1586,7 @@ function filterRelevantResponses(
 // RECOMMENDATION DATA EXTRACTOR
 
 async function buildRecommendationSummary(input: LLMFormatterInput): Promise<string> {
+  const startTime = Date.now();
   const decision = input.decision_output;
   const primary = decision.primary_decision;
   
@@ -1562,7 +1606,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       } : undefined;
       
       // Build weather context if available (from decision metadata)
-      const weatherMeta = decision?.metadata?.weather_context;
+      const weatherMeta = decision?.metadata?.weather_context as { temperature?: number; humidity?: number; wind_speed?: number; rain_forecast_hours?: number; is_raining?: boolean } | undefined;
       const weather: WeatherContext | undefined = weatherMeta ? {
         temperature_celsius: weatherMeta.temperature,
         humidity_pct: weatherMeta.humidity,
@@ -1578,7 +1622,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       let marketProductsLine = '';
       if (richData.active_ingredient && input.supabase_client) {
         try {
-          const cropCode = decision?.metadata?.crop_code || primary?.target?.crop || '';
+          const cropCode = (decision?.metadata?.crop_code as string | undefined) || (primary?.target as { crop?: string } | undefined)?.crop || '';
           const marketResult = await lookupMarketProductsMemoized(
             input.market_product_memo ?? new Map(),
             input.supabase_client,
@@ -1616,7 +1660,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       if (secondary && secondary.length > 0) {
         parts.push(`\n═══ ADDITIONAL OBSERVATION ═══`);
         const sec = secondary[0];
-        parts.push(`1. ${sec.action_type || sec.action || 'MONITOR'} - ${sec.reason || 'Supporting observation'}`);
+        parts.push(`1. ${(sec as RuntimeSecondaryAction).action_type || sec.action || 'MONITOR'} - ${sec.reason || 'Supporting observation'}`);
         // BLOCKED: product_name and dosage_per_acre — prevents cross-rule contamination
         if (sec.success_indicators) {
           const indicators = Array.isArray(sec.success_indicators) ? sec.success_indicators : [sec.success_indicators];
@@ -1675,10 +1719,10 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
           }
         }
         if (!actionText) {
-          actionText = reasonText;
+          actionText = reasonText || '';
           if (!actionText) {
             console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
-            return buildTemplateFallback(input, startTime);
+            return (await buildTemplateFallback(input, startTime)) as unknown as string;
           }
         }
       }
@@ -1725,9 +1769,9 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push(`Provide only monitoring guidance and safety information.`);
     } else if (isTreatmentAction && appDetails && Object.keys(appDetails).length > 0) {
       parts.push(`\n- Product Name: ${appDetails.product_name || 'Not specified'}`);
-      parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
+      parts.push(`- Dosage (concentration): ${appDetails.concentration || (appDetails as RuntimeApplicationDetails).dosage || 'As per label'}`);
       parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
-      parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
+      parts.push(`- Application Method: ${(appDetails as RuntimeApplicationDetails).method || appDetails.application_method || 'Standard application'}`);
       parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'As per label'}`);
       parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label'}`);
       parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'}`);
@@ -1778,7 +1822,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
   if (secondary && secondary.length > 0) {
     parts.push(`\n═══ ADDITIONAL OBSERVATION: ═══`);
     const sec = secondary[0];
-    const secAction = (sec.action || sec.action_type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const secAction = (sec.action || (sec as RuntimeSecondaryAction).action_type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
     parts.push(`1. ${secAction} - ${sec.reason || 'Supporting observation'}`);
     // REMOVED: sec.product_name and sec.dosage_per_acre — prevents cross-rule contamination
     if (sec.success_indicators) parts.push(`   Monitor: ${Array.isArray(sec.success_indicators) ? sec.success_indicators.join(', ') : sec.success_indicators}`);
@@ -1824,204 +1868,54 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
 
 // LLM API CALLS WITH TIMEOUT
 
-async function callGeminiWithTimeout(
-  systemPrompt: string, 
-  userPrompt: string, 
-  apiKey: string, 
-  timeoutMs: number
-): Promise<{ success: boolean; text: string; error?: string; tokens_used?: number }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODELS.gemini.default}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
-          }],
-          generationConfig: {
-            temperature: 0.5,    // LOWER: More consistent for safety
-            maxOutputTokens: 4000  // CRITICAL FIX: Increased from 3000 to 4000 for complete Devanagari responses (Marathi/Hindi use ~2.5x more tokens)
-          }
-        })
-      }
-    );
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const statusCode = response.status;
-      console.warn(`Gemini API error: ${statusCode}`);
-      if (statusCode === 429) {
-        return { success: false, text: '', error: 'RATE_LIMIT' };
-      }
-      return { success: false, text: '', error: `HTTP_${statusCode}` };
-    }
-    
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const tokens_used = data.usageMetadata?.totalTokenCount || 0;
-    
-    // Log token usage for monitoring
-    console.log(`   📊 [Gemini] Tokens used: ${tokens_used} (prompt: ${data.usageMetadata?.promptTokenCount || 0}, candidates: ${data.usageMetadata?.candidatesTokenCount || 0})`);
-    
-    return { success: !!text, text, tokens_used };
-    
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const isAbort = error instanceof Error && error.name === 'AbortError';
-    console.warn(`Gemini call failed:`, isAbort ? 'TIMEOUT' : error);
-    return { success: false, text: '', error: isAbort ? 'TIMEOUT' : 'NETWORK' };
-  }
-}
-
 /**
- * 2026-09-09 — LLM callback for the EXPLAINER (agents/explainer.ts). Same provider chain as the formatter;
- * returns raw text so the explainer can parse and verify it. No agronomy passes through here.
+ * 2026-09-09 — LLM callback for the EXPLAINER (agents/explainer.ts). Returns raw text so the explainer
+ * can parse and verify it. No agronomy passes through here.
+ *
+ * 2026-09-26 — AI model SSOT: the model chain comes from the registry task `brain.explain`
+ * (ai_task_route / ai_task_route_step: gpt-5.6-luna → gemini-3.5-flash-lite → Lovable gemini-3.8-flash),
+ * the request from each model's catalog contract, and the reasoning effort from the route's params.
+ * Live 2026-09-26 (trace_muib5ioe_2jc6ov): the hardcoded chain sent gpt-5.6-luna no reasoning_effort, so
+ * it ran at its documented default `medium`; both explanation passes hit the 8 s cap and the farmer got a
+ * facts-only card. Each step keeps its 8 s cap (attemptTimeoutMs) so the fallbacks still get their turn,
+ * and every attempt is recorded in ai_model_metrics (tokens, cost, latency, fallback).
  */
-export async function explainerLLM(systemPrompt: string, userPrompt: string): Promise<string> {
-  // provider order = _shared/aiConfig.getBestAvailableProvider(): OpenAI (gpt-5.6-luna) first, then Gemini, then Lovable
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  const tryOne = async (name: string, fn: () => Promise<any>): Promise<string | null> => {
-    try {
-      const r = await fn();
-      if (typeof r === 'string' && r.trim()) return r;
-      if (r && typeof r.content === 'string' && r.content.trim()) return r.content;
-      if (r && typeof r.text === 'string' && r.text.trim()) return r.text;
-      console.warn(`[EXPLAINER_LLM] ${name} returned no text`);
-    } catch (e) { console.warn(`[EXPLAINER_LLM] ${name} failed: ${(e as Error)?.message ?? e}`); }
-    return null;
-  };
-  if (OPENAI_API_KEY) { const r = await tryOne(`openai/${AI_MODELS.openai.default}`, () => callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 8000)); if (r) return r; }
-  if (GEMINI_API_KEY) { const r = await tryOne(`gemini/${AI_MODELS.gemini.default}`, () => callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, 8000)); if (r) return r; }
-  if (LOVABLE_API_KEY) { const r = await tryOne(`lovable/${AI_MODELS.lovable.default}`, () => callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 8000)); if (r) return r; }
-  throw new Error('no LLM provider produced text for the explainer');
-}
-
-async function callOpenAIWithTimeout(
-  systemPrompt: string, 
-  userPrompt: string, 
-  apiKey: string, 
-  timeoutMs: number
-): Promise<{ success: boolean; text: string; error?: string; tokens_used?: number }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: AI_MODELS.openai.default,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        // 2800 tokens: Devanagari uses ~2.5× the tokens of English. Parameter NAME follows the model family (aiConfig).
-        ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 2800 } : { max_tokens: 2800 }),
-        ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.5 })
-      })
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const statusCode = response.status;
-      let _body = ''; try { _body = (await response.text()).slice(0, 400); } catch { /* consumed */ }
-      console.warn(`OpenAI API error: ${statusCode} model=${AI_MODELS.openai.default} body=${_body}`);
-      if (statusCode === 429) {
-        return { success: false, text: '', error: 'RATE_LIMIT' };
-      }
-      return { success: false, text: '', error: `HTTP_${statusCode}` };
-    }
-    
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
-    const tokens_used = data.usage?.total_tokens || 0;
-    
-    // Log token usage for monitoring
-    console.log(`   📊 [OpenAI] Tokens used: ${tokens_used} (prompt: ${data.usage?.prompt_tokens || 0}, completion: ${data.usage?.completion_tokens || 0})`);
-    
-    return { success: !!text, text, tokens_used };
-    
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const isAbort = error instanceof Error && error.name === 'AbortError';
-    console.warn(`OpenAI call failed:`, isAbort ? 'TIMEOUT' : error);
-    return { success: false, text: '', error: isAbort ? 'TIMEOUT' : 'NETWORK' };
-  }
-}
-
-async function callLovableAIWithTimeout(
+export async function explainerLLM(
   systemPrompt: string,
   userPrompt: string,
-  apiKey: string,
-  timeoutMs: number
-): Promise<{ success: boolean; text: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: AI_MODELS.lovable.default,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 800,
-        temperature: 0.7,
-      }),
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn(`Lovable AI error: ${response.status}`);
-      return { success: false, text: '' };
-    }
-
-    const data: any = await response.json();
-    const text = data?.choices?.[0]?.message?.content ?? '';
-
-    return {
-      success: typeof text === 'string' && text.length > 0,
-      text: typeof text === 'string' ? text : '',
-    };
-  } catch (error) {
-    clearTimeout(timeoutId);
-    console.warn('Lovable AI call failed:', error);
-    return { success: false, text: '' };
+  ctx: { db: AITaskCall['db']; farmerId?: string | null; traceId?: string | null },
+): Promise<string> {
+  const r = await callAITask({
+    db: ctx.db,
+    task: 'brain.explain',
+    functionName: 'ai-agriculture-chat',
+    farmerId: ctx.farmerId ?? null,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    // 2800 tokens: Devanagari uses ~2.5× the tokens of English (unchanged from the previous OpenAI call).
+    maxOutputTokens: 2800,
+    attemptTimeoutMs: 8000,
+    timeoutMs: 24000,
+    metadata: { caller: 'explainerLLM', trace_id: ctx.traceId ?? null },
+  });
+  if (r.ok) {
+    if (r.fallbackUsed) console.warn(`[EXPLAINER_LLM] brain.explain answered by fallback ${r.modelKey}`);
+    return r.content;
   }
+  console.warn(`[EXPLAINER_LLM] brain.explain ${r.errorClass}: ${r.detail} attempts=${JSON.stringify(r.attempts)}`);
+  throw new Error('no LLM provider produced text for the explainer');
 }
-
-// TEMPLATE FALLBACK (when LLM unavailable) - MODE-DRIVEN
 
 async function buildTemplateFallback(input: LLMFormatterInput, startTime: number): Promise<LLMFormatterOutput> {
   const lang = input.language || 'mr';
   const decision = input.decision_output;
   
   // CRASH-PROOF: Safe extraction with guaranteed defaults
-  const decisionConfidence = decision?.metadata?.decision_confidence ?? decision?.confidence ?? 0;
-  const hasSymptoms = decision?.metadata?.has_symptoms ?? !!(decision?.symptom_keys?.length);
-  const hasVisualAmbiguity = decision?.metadata?.has_visual_ambiguity ?? decision?.needs_photo_for_diagnosis ?? false;
+  const decisionConfidence = (decision?.metadata?.decision_confidence as number | undefined) ?? decision?.confidence ?? 0;
+  const hasSymptoms = (decision?.metadata?.has_symptoms as boolean | undefined) ?? !!(decision?.symptom_keys?.length);
+  const hasVisualAmbiguity = (decision?.metadata?.has_visual_ambiguity as boolean | undefined) ?? decision?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = decision?.clarification_options ?? [];
   
   // FAIL-SAFE: Resolve i18n key
@@ -2032,8 +1926,8 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   
   // RESOLVE RESPONSE MODE - Confidence-driven with invariant check
   const responseMode = resolveResponseMode({
-    response_mode: decision?.metadata?.response_mode,
-    gate_action: decision?.metadata?.gate_action,
+    response_mode: decision?.metadata?.response_mode as string | undefined,
+    gate_action: decision?.metadata?.gate_action as string | undefined,
     has_treatment: !!decision?.primary_decision?.action_type,
     has_clarification: !!decision?.clarification_needed,
     has_options: clarificationOptions.length > 0,
@@ -2159,7 +2053,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
         validation_passed: true,
         validation_violations: [],
         gate_status: GateStatus.PASS,
-        gate_action: GateAction.PROVIDE_RECOMMENDATION,
+        gate_action: GateAction.ALLOW_TREATMENT,
         reasoning_included: true
       };
     }
@@ -2203,7 +2097,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
     validation_passed: true,
     validation_violations: [],
     gate_status: GateStatus.PASS,
-    gate_action: GateAction.PROVIDE_RECOMMENDATION,
+    gate_action: GateAction.ALLOW_TREATMENT,
     reasoning_included: false
   };
 }

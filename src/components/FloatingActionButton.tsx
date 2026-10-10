@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Grid3X3, Leaf, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,18 +42,6 @@ export function FloatingActionButton() {
     // Reset morphing state after animation
     setTimeout(() => setIsMorphing(false), 300);
   };
-
-  // Voice-read support for accessibility
-  useEffect(() => {
-    if (isExpanded && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(t('fab.menuOpened'));
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.volume = 0.5;
-      // Optional: uncomment to enable voice feedback
-      // window.speechSynthesis.speak(utterance);
-    }
-  }, [isExpanded, t]);
 
   if (isLoading) {
     console.log('🔄 [FAB] Loading features...');

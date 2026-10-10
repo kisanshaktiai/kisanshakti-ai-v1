@@ -1,5 +1,9 @@
 // AGENT 1: NATURAL LANGUAGE UNDERSTANDING - TYPE DEFINITIONS v3.0
 
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Widened LandContext.crop_code to optional to accept callers that build it before crop resolution (type-only).
+//   2026-09-26 15:45 UTC — Added optional raw_observations to SymptomExtraction, is_safe_to_respond to SafetyFlags, recommended_agent to NextAgentRecommendation; widened NLUAgentInput.land_context to accept undefined crop_code; relaxed PhotoRecommendation.reason/specific_instructions to allow undefined when no text generated.
+
 // INPUT SCHEMA
 
 export interface NLUAgentInput {
@@ -38,7 +42,8 @@ export interface ConversationTurn {
 
 export interface LandContext {
   land_id: string;
-  crop_code: string;
+  /** Optional — some callers construct LandContext before crop_code resolution completes */
+  crop_code?: string;
   crop_variety?: string;
   sowing_date?: string;
   days_after_sowing?: number;
@@ -158,6 +163,8 @@ export interface SymptomExtraction {
   visual_symptoms: VisualSymptom[];
   behavioral_symptoms: BehavioralSymptom[];
   temporal_pattern: TemporalPattern;
+  /** Optional — raw farmer-described observations preserved alongside structured extraction */
+  raw_observations?: string[];
 }
 
 export interface VisualSymptom {
@@ -311,8 +318,9 @@ export interface QuestionOption {
 export interface PhotoRecommendation {
   photo_needed: boolean;
   photo_priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  reason: string;
-  specific_instructions: {
+  /** Optional — some callers skip text generation and leave this undefined */
+  reason?: string;
+  specific_instructions?: {
     mr: string;
     hi: string;
     en: string;
@@ -335,6 +343,8 @@ export interface SafetyFlags {
   dangerous_practice_details?: string;
   emergency_escalation_needed: boolean;
   human_expert_needed: boolean;
+  /** Optional — overall safety verdict computed by NLU agent */
+  is_safe_to_respond?: boolean;
 }
 
 export interface NextAgentRecommendation {
@@ -343,6 +353,8 @@ export interface NextAgentRecommendation {
   escalate_to_expert: boolean;
   confidence_sufficient: boolean;
   reasoning?: string;
+  /** Optional — name of the next agent to hand off to (e.g. 'SEMANTIC_EXTRACTOR') */
+  recommended_agent?: string;
 }
 
 // LOCAL AGRICULTURAL VOCABULARY

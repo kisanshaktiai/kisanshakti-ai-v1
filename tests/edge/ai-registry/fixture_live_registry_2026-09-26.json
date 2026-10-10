@@ -1,0 +1,576 @@
+{
+ "ai_task_route": [
+  {
+   "params": {},
+   "task_key": "alert.enrich",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "brain.alert_narrate",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "brain.classify",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "brain.explain",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "brain.nlu",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "brain.translate",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "community.caption",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "community.moderate",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "crop_scan.solution",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "farmer.translate",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "market.advice",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "marketing.insights",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "question.seed",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "rag.answer",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "rag.normalize",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "schedule.compose",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "vision.crop_scan",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "vision.diagnose",
+   "is_active": false
+  },
+  {
+   "params": {},
+   "task_key": "vision.photo_chat",
+   "is_active": true
+  },
+  {
+   "params": {},
+   "task_key": "voice.navigate",
+   "is_active": true
+  }
+ ],
+ "ai_model_catalog": [
+  {
+   "status": "retired",
+   "provider": "gemini",
+   "model_key": "gemini:gemini-2.0-flash",
+   "api_contract": {
+    "temperature": "allowed",
+    "token_param": "max_tokens",
+    "reasoning_efforts": []
+   },
+   "api_model_id": "gemini-2.0-flash",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "retired",
+   "provider": "gemini",
+   "model_key": "gemini:gemini-2.5-flash",
+   "api_contract": {
+    "temperature": "allowed",
+    "token_param": "max_tokens",
+    "reasoning_efforts": []
+   },
+   "api_model_id": "gemini-2.5-flash",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "gemini",
+   "model_key": "gemini:gemini-3.5-flash-lite",
+   "api_contract": {
+    "temperature": "omit",
+    "token_param": "max_tokens",
+    "reasoning_efforts": [
+     "minimal",
+     "low",
+     "medium",
+     "high"
+    ]
+   },
+   "api_model_id": "gemini-3.5-flash-lite",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "retired",
+   "provider": "lovable",
+   "model_key": "lovable:google/gemini-2.5-flash",
+   "api_contract": {
+    "temperature": "allowed",
+    "token_param": "max_tokens",
+    "reasoning_efforts": []
+   },
+   "api_model_id": "google/gemini-2.5-flash",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "lovable",
+   "model_key": "lovable:google/gemini-3-flash-preview",
+   "api_contract": {
+    "temperature": "omit",
+    "token_param": "max_tokens",
+    "reasoning_efforts": [
+     "minimal",
+     "low",
+     "medium",
+     "high"
+    ]
+   },
+   "api_model_id": "google/gemini-3-flash-preview",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "lovable",
+   "model_key": "lovable:google/gemini-3.8-flash",
+   "api_contract": {
+    "temperature": "omit",
+    "token_param": "max_tokens",
+    "reasoning_efforts": [
+     "minimal",
+     "low",
+     "medium",
+     "high"
+    ]
+   },
+   "api_model_id": "google/gemini-3.8-flash",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "openai",
+   "model_key": "openai:gpt-4o",
+   "api_contract": {
+    "temperature": "allowed",
+    "token_param": "max_tokens",
+    "reasoning_efforts": []
+   },
+   "api_model_id": "gpt-4o",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "openai",
+   "model_key": "openai:gpt-4o-mini",
+   "api_contract": {
+    "temperature": "allowed",
+    "token_param": "max_tokens",
+    "reasoning_efforts": []
+   },
+   "api_model_id": "gpt-4o-mini",
+   "input_modalities": [
+    "text"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "openai",
+   "model_key": "openai:gpt-5-mini",
+   "api_contract": {
+    "temperature": "omit",
+    "token_param": "max_completion_tokens",
+    "reasoning_efforts": [
+     "minimal",
+     "low",
+     "medium",
+     "high"
+    ]
+   },
+   "api_model_id": "gpt-5-mini",
+   "input_modalities": [
+    "text"
+   ]
+  },
+  {
+   "status": "active",
+   "provider": "openai",
+   "model_key": "openai:gpt-5.6-luna",
+   "api_contract": {
+    "temperature": "omit",
+    "token_param": "max_completion_tokens",
+    "reasoning_efforts": [
+     "none",
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ]
+   },
+   "api_model_id": "gpt-5.6-luna",
+   "input_modalities": [
+    "text"
+   ]
+  },
+  {
+   "status": "candidate",
+   "provider": "openai",
+   "model_key": "openai:gpt-6-luna",
+   "api_contract": {
+    "temperature": "omit",
+    "token_param": "max_completion_tokens",
+    "reasoning_efforts": [
+     "none",
+     "low",
+     "medium",
+     "high",
+     "xhigh",
+     "max"
+    ]
+   },
+   "api_model_id": "gpt-6-luna",
+   "input_modalities": [
+    "text",
+    "image"
+   ]
+  }
+ ],
+ "ai_model_pricing": [
+  {
+   "id": "bacb24e1-5f06-4078-95d5-31e625801a00",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "gemini:gemini-2.5-flash",
+   "effective_from": "2026-09-25",
+   "input_cost_per_1k": 0.0003,
+   "output_cost_per_1k": 0.0025,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "8eca7723-8505-475f-b97b-5eb6bed4d758",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "google/gemini-2.5-flash",
+   "effective_from": "2026-04-25",
+   "input_cost_per_1k": 7.5e-05,
+   "output_cost_per_1k": 0.0003,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "f0647a2c-30c5-43c1-8a19-9b2ea5252949",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "google/gemini-2.5-pro",
+   "effective_from": "2026-04-25",
+   "input_cost_per_1k": 0.00125,
+   "output_cost_per_1k": 0.005,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "1987a979-34a2-4675-b830-5fe998febb1c",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "google/gemini-3-flash-preview",
+   "effective_from": "2026-04-25",
+   "input_cost_per_1k": 7.5e-05,
+   "output_cost_per_1k": 0.0003,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "59d7cfbe-208a-4674-9127-b95996cffc62",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai:gpt-4o",
+   "effective_from": "2026-09-25",
+   "input_cost_per_1k": 0.0025,
+   "output_cost_per_1k": 0.01,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "20481295-502a-4c4a-91a8-96ebf2999a12",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai:gpt-4o-mini",
+   "effective_from": "2026-09-25",
+   "input_cost_per_1k": 0.00015,
+   "output_cost_per_1k": 0.0006,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "fac33eb8-db0c-4d5d-b61d-2acbbb21a866",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai:gpt-5-mini",
+   "effective_from": "2026-09-25",
+   "input_cost_per_1k": 0.00025,
+   "output_cost_per_1k": 0.002,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "e698dbc6-69fc-4f9b-a8de-811712a1c0dd",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai:gpt-5.6-luna",
+   "effective_from": "2026-09-25",
+   "input_cost_per_1k": 0.0002,
+   "output_cost_per_1k": 0.0012,
+   "cached_input_cost_per_1k": 2e-05
+  },
+  {
+   "id": "52f82c3c-beb2-4067-a5cc-31dd05b595a2",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai:gpt-6-luna",
+   "effective_from": "2026-09-25",
+   "input_cost_per_1k": 0.0001,
+   "output_cost_per_1k": 0.0005,
+   "cached_input_cost_per_1k": 1e-05
+  },
+  {
+   "id": "2d527c43-1cae-4916-a4f7-0f894c2d5d87",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai/gpt-5",
+   "effective_from": "2026-04-25",
+   "input_cost_per_1k": 0.005,
+   "output_cost_per_1k": 0.015,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "d8be070e-afc1-4dc0-bee1-b23389d6b1e0",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai/gpt-5-mini",
+   "effective_from": "2026-04-25",
+   "input_cost_per_1k": 0.00015,
+   "output_cost_per_1k": 0.0006,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "db24cd12-df0a-4111-ad7c-a9b315228c82",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "openai/gpt-5-nano",
+   "effective_from": "2026-04-25",
+   "input_cost_per_1k": 7.5e-05,
+   "output_cost_per_1k": 0.0003,
+   "cached_input_cost_per_1k": null
+  },
+  {
+   "id": "9491928a-ab71-40f5-a52b-eb4d40dff25a",
+   "currency": "USD",
+   "is_active": true,
+   "model_name": "gemini:gemini-3.5-flash-lite",
+   "effective_from": "2026-09-26",
+   "input_cost_per_1k": 0.0003,
+   "output_cost_per_1k": 0.0025,
+   "cached_input_cost_per_1k": 3e-05
+  }
+ ],
+ "ai_task_route_step": [
+  {
+   "task_key": "alert.enrich",
+   "step_no": 1,
+   "model_key": "openai:gpt-5-mini"
+  },
+  {
+   "task_key": "brain.alert_narrate",
+   "step_no": 1,
+   "model_key": "lovable:google/gemini-3-flash-preview"
+  },
+  {
+   "task_key": "brain.classify",
+   "step_no": 1,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "brain.classify",
+   "step_no": 2,
+   "model_key": "gemini:gemini-3.5-flash-lite"
+  },
+  {
+   "task_key": "brain.explain",
+   "step_no": 1,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "brain.explain",
+   "step_no": 2,
+   "model_key": "gemini:gemini-3.5-flash-lite"
+  },
+  {
+   "task_key": "brain.explain",
+   "step_no": 3,
+   "model_key": "lovable:google/gemini-3.8-flash"
+  },
+  {
+   "task_key": "brain.nlu",
+   "step_no": 1,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "brain.translate",
+   "step_no": 1,
+   "model_key": "lovable:google/gemini-3.8-flash"
+  },
+  {
+   "task_key": "brain.translate",
+   "step_no": 2,
+   "model_key": "gemini:gemini-3.5-flash-lite"
+  },
+  {
+   "task_key": "brain.translate",
+   "step_no": 3,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "community.caption",
+   "step_no": 1,
+   "model_key": "lovable:google/gemini-3-flash-preview"
+  },
+  {
+   "task_key": "community.moderate",
+   "step_no": 1,
+   "model_key": "lovable:google/gemini-3-flash-preview"
+  },
+  {
+   "task_key": "crop_scan.solution",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o-mini"
+  },
+  {
+   "task_key": "farmer.translate",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o-mini"
+  },
+  {
+   "task_key": "market.advice",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o-mini"
+  },
+  {
+   "task_key": "marketing.insights",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o-mini"
+  },
+  {
+   "task_key": "question.seed",
+   "step_no": 1,
+   "model_key": "lovable:google/gemini-3-flash-preview"
+  },
+  {
+   "task_key": "rag.answer",
+   "step_no": 1,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "rag.answer",
+   "step_no": 2,
+   "model_key": "gemini:gemini-3.5-flash-lite"
+  },
+  {
+   "task_key": "rag.normalize",
+   "step_no": 1,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "rag.normalize",
+   "step_no": 2,
+   "model_key": "gemini:gemini-3.5-flash-lite"
+  },
+  {
+   "task_key": "schedule.compose",
+   "step_no": 1,
+   "model_key": "lovable:google/gemini-3.8-flash"
+  },
+  {
+   "task_key": "schedule.compose",
+   "step_no": 2,
+   "model_key": "openai:gpt-5.6-luna"
+  },
+  {
+   "task_key": "schedule.compose",
+   "step_no": 3,
+   "model_key": "gemini:gemini-3.5-flash-lite"
+  },
+  {
+   "task_key": "vision.crop_scan",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o"
+  },
+  {
+   "task_key": "vision.photo_chat",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o"
+  },
+  {
+   "task_key": "voice.navigate",
+   "step_no": 1,
+   "model_key": "openai:gpt-4o-mini"
+  }
+ ]
+}

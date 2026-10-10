@@ -58,6 +58,7 @@ interface LandData {
   deleted_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  active_schedule_id?: string | null;
 }
 
 
@@ -154,6 +155,22 @@ class LandsApiService {
       console.error('❌ [LandsAPI] Error fetching lands:', error);
       throw error;
     }
+  }
+
+  /** Satellite rows for one owned land, read server-side (browser row rules refuse them). */
+  async fetchSatellite(landId: string): Promise<any> {
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(`${LANDS_API_URL}?action=satellite&land_id=${encodeURIComponent(landId)}`, { method: 'GET', headers });
+    if (!response.ok) { const e = await response.json().catch(() => ({})); throw new Error(e.error || 'Failed to load satellite data'); }
+    return response.json();
+  }
+
+  /** Signed URLs for field pictures of owned lands. */
+  async signSatellite(paths: string[]): Promise<Record<string, string>> {
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(`${LANDS_API_URL}?action=sign-satellite`, { method: 'POST', headers: { ...(headers as Record<string, string>), 'Content-Type': 'application/json' }, body: JSON.stringify({ paths }) });
+    if (!response.ok) return {};
+    return (await response.json()).urls || {};
   }
 
   async createLand(landData: Omit<LandData, 'id'>): Promise<LandData> {

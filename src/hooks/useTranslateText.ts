@@ -141,11 +141,18 @@ export const useTranslateText = (
   };
 };
 
+/** Optional register for translate-text: 'farm_advice' = farmer's spoken words (alerts, advice). */
+export interface TranslateOptions {
+  purpose?: 'farm_advice';
+  context?: { crop?: string | null; stage?: string | null; region?: string | null };
+}
+
 // Utility function for batch translation
 export const translateBatch = async (
   texts: string[],
   sourceLanguage: string,
-  targetLanguage: string
+  targetLanguage: string,
+  options?: TranslateOptions,
 ): Promise<string[]> => {
   if (sourceLanguage === targetLanguage) {
     return texts;
@@ -157,7 +164,8 @@ export const translateBatch = async (
         texts,
         sourceLanguage,
         targetLanguage,
-        batch: true
+        batch: true,
+        ...(options?.purpose ? { purpose: options.purpose, context: options.context ?? undefined } : {}),
       }
     });
 

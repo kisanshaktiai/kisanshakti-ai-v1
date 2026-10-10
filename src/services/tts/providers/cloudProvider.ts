@@ -12,6 +12,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { toLocale } from '@/services/tts/ttsLanguages';
+import { dataIsolation } from '@/services/dataIsolationService';
 
 export type CloudVendor = 'bhashini' | 'google' | 'none';
 
@@ -28,6 +29,60 @@ let statusPromise: Promise<CloudStatus> | null = null;
 /** Cheap audio cache so a repeated phrase is synthesised once per device. */
 const audioCache = new Map<string, string>();
 const AUDIO_CACHE_MAX = 120;
+
+/**
+ * One request per chunk. The engine prefetches the next chunk while the
+ * current one plays and then asks for it again when its turn comes; without
+ * this map that second ask was a second identical vendor call.
+ */
+const inFlight = new Map<string, Promise<string | null>>();
+
+/**
+ * Rural networks often report "online" while requests stall. Without a cap the
+ * engine waited on the vendor check forever, so Read Aloud and the voice
+ * command announcement never started. On timeout the device voice speaks.
+ */
+const STATUS_TIMEOUT_MS = 2500;
+const SYNTH_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/**
+ * Farmer/tenant identity for the backend's metering and per-farmer rate limit.
+ * Same headers every other function call in the app sends.
+ */
+function identityHeaders(): Record<string, string> {
+  const { tenantId, farmerId } = dataIsolation.getIsolationContext();
+  const headers: Record<string, string> = {};
+  if (tenantId) headers['x-tenant-id'] = tenantId;
+  if (farmerId) headers['x-farmer-id'] = farmerId;
+  return headers;
+}
+
+/** Container from the first bytes of the audio: MP3 (ID3 tag or frame sync), WAV, OGG. */
+async function sniffAudioMime(blob: Blob): Promise<string | null> {
+  const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  if (head.length < 4) return null;
+  const ascii = String.fromCharCode(head[0], head[1], head[2], head[3]);
+  if (ascii.startsWith('ID3')) return 'audio/mpeg';
+  if (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) return 'audio/mpeg';
+  if (ascii === 'RIFF') return 'audio/wav';
+  if (ascii === 'OggS') return 'audio/ogg';
+  return null;
+}
+
+function evictOldest() {
+  const oldest = audioCache.keys().next().value;
+  if (!oldest) return;
+  const url = audioCache.get(oldest);
+  audioCache.delete(oldest);
+  if (url && url.startsWith('blob:') && typeof URL !== 'undefined') URL.revokeObjectURL(url);
+}
 
 function cacheKey(text: string, locale: string, vendor: string) {
   return `${vendor}|${locale}|${text}`;
@@ -47,18 +102,26 @@ export const cloudProvider = {
 
     statusPromise = (async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('text-to-speech', {
-          body: { action: 'status' },
-        });
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke('text-to-speech', {
+            body: { action: 'status' },
+            headers: identityHeaders(),
+          }),
+          STATUS_TIMEOUT_MS
+        );
         if (error || !data) throw error || new Error('no status');
         cachedStatus = {
           available: Array.isArray(data.available) ? data.available : [],
           languages: Array.isArray(data.languages) ? data.languages : [],
         };
+        return cachedStatus;
       } catch {
-        cachedStatus = { available: [], languages: [] };
+        // Not cached: a status call that failed because the farmer was offline
+        // must not disable the cloud voice for the rest of the session. The
+        // next request that needs cloud asks again.
+        statusPromise = null;
+        return { available: [], languages: [] };
       }
-      return cachedStatus;
     })();
 
     return statusPromise;
@@ -85,28 +148,75 @@ export const cloudProvider = {
     const hit = audioCache.get(key);
     if (hit) return hit;
 
-    try {
-      const { data, error } = await supabase.functions.invoke('text-to-speech', {
-        body: { action: 'synthesize', text: chunk, language: locale },
-      });
-      if (error || !data?.audioContent) return null;
+    const pending = inFlight.get(key);
+    if (pending) return pending;
 
-      const mime = data.mimeType || 'audio/mpeg';
-      const url = `data:${mime};base64,${data.audioContent}`;
+    const request = (async (): Promise<string | null> => {
+      try {
+        // format: 'binary' asks the function for the audio bytes themselves as
+        // application/octet-stream, which supabase-js hands back as a Blob (any
+        // other content type comes back as text and cannot be played). The
+        // audio's real type is read from its first bytes, then it plays from an
+        // object URL without the base64 decode and the 33% larger transfer.
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke('text-to-speech', {
+            body: { action: 'synthesize', text: chunk, language: locale, format: 'binary' },
+            headers: identityHeaders(),
+          }),
+          SYNTH_TIMEOUT_MS
+        );
+        if (error || !data) return null;
 
-      if (audioCache.size >= AUDIO_CACHE_MAX) {
-        const oldest = audioCache.keys().next().value;
-        if (oldest) audioCache.delete(oldest);
+        let url: string;
+        if (typeof Blob !== 'undefined' && data instanceof Blob) {
+          if (data.size === 0) return null;
+          const mime = (await sniffAudioMime(data)) ?? 'audio/mpeg';
+          url = URL.createObjectURL(mime === data.type ? data : new Blob([data], { type: mime }));
+        } else if (data.audioContent) {
+          // Older function build: base64 JSON.
+          const mime = data.mimeType || 'audio/mpeg';
+          url = `data:${mime};base64,${data.audioContent}`;
+        } else {
+          return null;
+        }
+
+        if (audioCache.size >= AUDIO_CACHE_MAX) evictOldest();
+        audioCache.set(key, url);
+        return url;
+      } catch {
+        return null;
+      } finally {
+        inFlight.delete(key);
       }
-      audioCache.set(key, url);
-      return url;
-    } catch {
-      return null;
-    }
+    })();
+
+    inFlight.set(key, request);
+    return request;
+  },
+  /**
+   * Synthesise ahead of time into the same cache, so the next paragraph is
+   * ready while the current one is still playing. Failures are ignored: the
+   * normal path will simply synthesise it again when it is needed.
+   */
+  prefetch(chunk: string, language: string): void {
+    void this.synthesise(chunk, language).catch(() => null);
   },
 
+  /**
+   * Called when a screen that reads aloud opens, so the vendor check is
+   * already done by the time the farmer taps the speaker icon.
+   */
+  warmUp(): void {
+    void this.status().catch(() => null);
+  },
+
+
   clearCache(): void {
+    for (const url of audioCache.values()) {
+      if (url.startsWith('blob:') && typeof URL !== 'undefined') URL.revokeObjectURL(url);
+    }
     audioCache.clear();
+    inFlight.clear();
     cachedStatus = null;
     statusPromise = null;
   },

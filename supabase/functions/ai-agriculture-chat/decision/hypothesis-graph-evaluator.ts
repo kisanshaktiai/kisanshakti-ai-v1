@@ -1,5 +1,8 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-10-05 10:30 UTC — LATENCY: condition codes for ALL anchor hypotheses resolved in ONE buildCanonicalCodeMap call before the loop (was one DB round-trip per hypothesis).
+ * 2026-09-26 21:25 UTC — Type-only fix: cast the deduped hypothesis_id array to string[] (Set<unknown> spread otherwise widens to unknown[]); no runtime change.
+ * 2026-09-26 00:00 UTC — Type fix: cropHypIds narrowing via resolvedCropHypIds local (fixes possibly-null TS18047); Set unpack typed as string[] (no runtime change)
  * 2026-09-03 — S1 biological stage gate now eliminates ONLY when the failing
  *   STAGE condition has is_required=true (stagePassRaw.required_fail); a
  *   non-required STAGE mismatch is logged [HYP_STAGE_SOFT] and flows to the
@@ -395,13 +398,18 @@ async function evaluateHypothesisGraphUncached(
   const knownCropGroup = normalizeCropGroup(input.crop_group ?? input.crop_code);
   const cropKnown = knownCropGroup !== null;
 
+  // One batched canonical lookup for every anchor hypothesis' condition codes.
+  const conditionCanonical = await buildCanonicalCodeMap(
+    input.supabase,
+    anchorHypIds.flatMap((h) => (allConditions.get(h) ?? []).flatMap(resolveConditionObservationCodes)),
+  );
+
   for (const hid of anchorHypIds) {
     const m = master.get(hid);
     if (!m) { droppedMissingMaster.push(hid); continue; }
     if (m.is_active === false) { droppedInactive.push(hid); continue; }
 
     const conds = allConditions.get(hid) ?? [];
-    const conditionCanonical = await buildCanonicalCodeMap(input.supabase, conds.flatMap(resolveConditionObservationCodes));
     const buckets = bucketizeConditions(conds, observed, conditionCanonical);
 
     const rules = ruleEdges.get(hid) ?? [];
@@ -853,9 +861,9 @@ async function queryAnchorHypotheses(
       if (masterErr) {
         console.warn(`[HYP_GRAPH_CROP_SCOPE_ERR] ${masterErr.message} — falling back to unscoped scan`);
       } else {
-        cropHypIds = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))];
-        console.log(`[HYP_GRAPH_CROP_SCOPE] trace=${trace} crop=${cropKey} hypotheses=${cropHypIds.length}`);
-        if (cropHypIds.length === 0) cropHypIds = null; // nothing curated → don't blank the graph
+        const resolvedCropHypIds: string[] = [...new Set((masterRows ?? []).map((r: any) => String(r.hypothesis_id)).filter(Boolean))] as string[];
+        console.log(`[HYP_GRAPH_CROP_SCOPE] trace=${trace} crop=${cropKey} hypotheses=${resolvedCropHypIds.length}`);
+        cropHypIds = resolvedCropHypIds.length === 0 ? null : resolvedCropHypIds; // nothing curated → don't blank the graph
       }
     }
 

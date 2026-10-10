@@ -30,7 +30,7 @@ export function NDVIAlertBanner({
   className 
 }: NDVIAlertBannerProps) {
   const { t, i18n } = useTranslation();
-  const { speak, isSpeaking, stop } = useTextToSpeech({ language: i18n.language === 'hi' ? 'hi-IN' : 'en-US' });
+  const { speak, isSpeaking, stop } = useTextToSpeech({ language: i18n.language });
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
 

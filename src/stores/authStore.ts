@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { setGlobalAuthData, updateSupabaseHeaders, clearGlobalAuthData } from '@/integrations/supabase/client';
+import { setGlobalAuthData, setSessionToken, updateSupabaseHeaders, clearGlobalAuthData } from '@/integrations/supabase/client';
 
 interface User {
   id: string;
@@ -94,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
         
         // Update global auth data IMMEDIATELY when user is set
         if (user?.id && user?.tenantId) {
+          if (user.sessionToken) setSessionToken(user.sessionToken);
           setGlobalAuthData(user.id, user.tenantId);
           updateSupabaseHeaders(user.id, user.tenantId);
           console.log('✅ [Auth] Global auth data set IMMEDIATELY on setUser');
@@ -102,6 +103,10 @@ export const useAuthStore = create<AuthState>()(
 
       setSession: (session) => {
         console.log('Setting session in authStore:', session);
+        // Keep direct PostgREST/Storage clients on the same server-verified
+        // farmer session as edge-function requests. Without this, RLS returns
+        // an empty result even though the land API can still list fields.
+        setSessionToken(session?.token ?? null);
         set({ 
           session,
           isAuthenticated: session !== null && session.isPinVerified,
@@ -171,6 +176,7 @@ export const useAuthStore = create<AuthState>()(
         // Session is valid and PIN verified - ensure we have user data
         if (session.isPinVerified && user) {
           console.log('Session is valid and PIN verified');
+          setSessionToken(session.token);
           set({ 
             isAuthenticated: true,
             isPinRequired: false 
@@ -221,7 +227,15 @@ export const useAuthStore = create<AuthState>()(
         // Clear localStorage items - but NOT tenantId (it's system-level config)
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
-        
+
+        // SECURITY (2026-10-06): the next farmer on this device must not see the
+        // previous farmer's cached lands/chats/schedules. Wipe IndexedDB and tell
+        // the app to drop its in-memory query cache.
+        import('@/services/localDB')
+          .then(({ localDB }) => localDB.clearAll())
+          .catch((e) => console.warn('[Auth] Local cache wipe failed:', e));
+        try { window.dispatchEvent(new Event('ks:auth-logout')); } catch { /* non-browser */ }
+
         console.log('✅ [Auth] Logout complete');
       },
 
@@ -257,6 +271,7 @@ export const useAuthStore = create<AuthState>()(
                 });
                 
                 // Set IMMEDIATELY - no async delays!
+                setSessionToken(parsedAuth.state.session.token ?? parsedAuth.state.user.sessionToken ?? null);
                 setGlobalAuthData(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
                 updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
                 console.log('✅ [Auth] Global auth data and headers set IMMEDIATELY after restoration');

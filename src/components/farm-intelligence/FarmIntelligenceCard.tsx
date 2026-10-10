@@ -41,6 +41,8 @@ export function FarmIntelligenceCard({ landId }: { landId: string }) {
           rawMm={s.raw_mm}
           tawMm={s.taw_mm}
           etcMm={s.etc_mm}
+          irrigationNeeded={s.irrigation_needed}
+          irrigationUrgency={s.irrigation_urgency}
         />
         <SprayWindowStrip window={s.spray_window} score={s.spray_score} />
         <RiskEpisodeChips landId={landId} episodes={data.active_episodes} />

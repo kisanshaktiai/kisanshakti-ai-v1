@@ -4,6 +4,7 @@
  * Final safety checkpoint before agricultural advice reaches farmers.
  * ───────────────────────────────────────────────────────────────────────────
  * CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Type-only fixes: cast escalationLevel for EMERGENCY comparison, cast ESCALATION_SLA_HOURS index, cast insert() calls to any (client lacks Database generic).
  *   2026-07-24 — P4: DB-SSOT migration.
  *     • P4a `checkBannedSubstances`: replaced `Object.entries(BANNED_SUBSTANCES_INDIA)`
  *       loop with `isBannedChemical` / `isRestrictedChemical` / `isWatchListChemical`
@@ -572,7 +573,7 @@ export class SafetyGuardian {
     if ((context.affected_area_acres || 0) > _getConfigNumber('safety_large_area_acres', _LEGACY_SAFETY.LARGE_AREA_THRESHOLD_ACRES) &&
         context.severity === 'CRITICAL') {
       reasons.push('Large-scale outbreak - regional expert should be informed');
-      escalationLevel = escalationLevel === 'EMERGENCY' ? 'EMERGENCY' : 'REQUIRED';
+      escalationLevel = (escalationLevel as EscalationLevel) === 'EMERGENCY' ? 'EMERGENCY' : 'REQUIRED';
     }
     
     // Trigger 6: Unknown/rare pest or disease
@@ -594,7 +595,7 @@ export class SafetyGuardian {
       expert_needed: {
         type: expertType,
         reason: reasons.join('; '),
-        sla_response_hours: ESCALATION_SLA_HOURS[escalationLevel] || 0
+        sla_response_hours: (ESCALATION_SLA_HOURS as Record<string, number>)[escalationLevel] || 0
       }
     };
   }
@@ -750,7 +751,7 @@ export class SafetyGuardian {
     sessionId: string
   ): Promise<SafetyVerificationResult> {
     // Create emergency escalation
-    await this.supabase.from('expert_escalations').insert({
+    await (this.supabase.from('expert_escalations') as any).insert({
       escalation_id: crypto.randomUUID(),
       session_id: sessionId,
       decision_id: decision.decision_id,
@@ -836,7 +837,7 @@ export class SafetyGuardian {
   // Log safety check to database
   private async logSafetyCheck(check: SafetyCheck, escalation: EscalationDecision): Promise<void> {
     try {
-      await this.supabase.from('safety_verifications').insert({
+      await (this.supabase.from('safety_verifications') as any).insert({
         verification_id: check.check_id,
         decision_id: check.decision_id,
         overall_status: check.overall_safety_status,

@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { VoiceIntent, VoiceUtterance } from './types';
 import { SlotExtractor } from './SlotExtractor';
 
@@ -257,7 +257,8 @@ export class DatabaseIntentMatcher {
         },
         headers: {
           ...(tenantId && { 'x-tenant-id': tenantId }),
-          ...(userId && { 'x-farmer-id': userId })
+          ...(userId && { 'x-farmer-id': userId }),
+          'x-session-token': getSessionToken() || '',
         }
       });
 

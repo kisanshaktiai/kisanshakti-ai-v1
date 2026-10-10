@@ -8,6 +8,10 @@ import { cn } from '@/lib/utils';
 interface Props {
   /** Set by the reconciler when it shifted this task. */
   autoRescheduled?: boolean | null;
+  /** schedule_tasks.decision_state — set by the daily decision layer (DUE / BLOCKED / INFO …). */
+  decisionState?: string | null;
+  /** resources.dynamic.field_verdict — scout_now / water_sufficient / application_window_exhausted. */
+  fieldVerdict?: string | null;
   /** Date the task originally sat on, written once by the reconciler. */
   originalDate?: string | null;
   /** Current task date. */
@@ -43,11 +47,17 @@ const RescheduledNotice: React.FC<Props> = ({
   originalDate,
   taskDate,
   adjustmentReason,
+  decisionState,
+  fieldVerdict,
   className,
   variant = 'chip',
 }) => {
   const { t } = useTranslation();
-  if (!autoRescheduled) return null;
+  // A field verdict (from the daily decision layer) is shown even when the date did not move —
+  // "check your crop today" or "no water needed today" are decisions the farmer must see.
+  const verdictKey = fieldVerdict ? `schedule.field_verdict.${fieldVerdict}` : null;
+  const verdictText = verdictKey && t(verdictKey) !== verdictKey ? t(verdictKey) : null;
+  if (!autoRescheduled && !verdictText) return null;
 
   const original = safeDate(originalDate);
   const current = safeDate(taskDate);
@@ -57,12 +67,34 @@ const RescheduledNotice: React.FC<Props> = ({
     drift = Math.round((current.getTime() - original.getTime()) / 86400000);
   }
 
+  // The REASON decides the sentence. A decision-layer reason (decision_*) names the field condition —
+  // rain covered the deficit, water stress confirmed, no spray window, disease onset — and must never be
+  // explained as "your crop reached this stage sooner", which is only true for a stage-drift shift.
+  const reasonCode = (adjustmentReason ?? '').startsWith('decision_') ? adjustmentReason!.trim() : null;
+  const reasonKey = reasonCode ? `schedule.rescheduled.reason.${reasonCode}` : null;
+  const reasonText = reasonKey && t(reasonKey) !== reasonKey ? t(reasonKey) : null;
+
   const explanation =
-    drift == null || drift === 0
+    reasonText ??
+    (drift == null || drift === 0
       ? t('schedule.rescheduled.generic')
       : drift > 0
         ? t('schedule.rescheduled.later', { days: Math.abs(drift) })
-        : t('schedule.rescheduled.earlier', { days: Math.abs(drift) });
+        : t('schedule.rescheduled.earlier', { days: Math.abs(drift) }));
+
+  if (!autoRescheduled && verdictText) {
+    // verdict-only notice (priority raised / decision recorded, date unchanged)
+    const urgent = decisionState === 'DUE';
+    return (
+      <div className={cn('flex flex-col gap-1', className)}>
+        <Badge variant="outline" className={cn('text-[10px] font-semibold px-1.5 py-0', urgent ? 'bg-destructive/10 text-destructive border-destructive/30' : 'bg-info/10 text-info border-info/30')}>
+          <CalendarClock className="h-3 w-3 mr-1" />
+          {t(urgent ? 'schedule.field_verdict.label_today' : 'schedule.field_verdict.label_info')}
+        </Badge>
+        {variant === 'full' && <p className="text-[11px] text-muted-foreground leading-snug">{verdictText}</p>}
+      </div>
+    );
+  }
 
   const chip = (
     <Badge
@@ -87,6 +119,9 @@ const RescheduledNotice: React.FC<Props> = ({
         )}
       </div>
       <p className="text-[11px] text-muted-foreground leading-snug">{explanation}</p>
+      {verdictText && verdictText !== explanation && (
+        <p className="text-[11px] text-muted-foreground leading-snug">{verdictText}</p>
+      )}
     </div>
   );
 };

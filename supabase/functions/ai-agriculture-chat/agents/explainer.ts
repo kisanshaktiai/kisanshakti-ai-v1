@@ -1,4 +1,10 @@
 /**
+ * CHANGE LOG (newest first)
+ *   2026-10-05 10:30 UTC — Indic digits (all 9 Indian scripts) folded to ASCII before the number check, so a
+ *     number written in Devanagari etc. is verified instead of slipping past; formulation codes (WP/EC/SC/WG/SG/SL)
+ *     never count as English leaks; the critic only runs when the deterministic checks fail (a clean draft is
+ *     accepted in one LLM call instead of two-to-four sequential ones).
+ *
  * EXPLAINER — layer 3 of the neuro-symbolic brain (2026-09-09, replaces the curated farmer_glossary approach).
  *
  * ARCHITECTURE
@@ -40,10 +46,20 @@ export interface ExplainedCard {
 }
 
 /* ── quantity extraction: unit-agnostic, no vocabulary ─────────────────────────────────────────── */
+// Zero code points of the Indic digit blocks (Devanagari, Bengali, Gurmukhi, Gujarati, Odia, Tamil, Telugu, Kannada, Malayalam).
+const INDIC_DIGIT_ZEROS = [0x0966, 0x09E6, 0x0A66, 0x0AE6, 0x0B66, 0x0BE6, 0x0C66, 0x0CE6, 0x0D66];
+/** Fold every Indic digit to its ASCII digit. Script-agnostic; touches nothing else. */
+export function toAsciiDigits(text: string): string {
+  return String(text ?? '').replace(/[\u0966-\u096F\u09E6-\u09EF\u0A66-\u0A6F\u0AE6-\u0AEF\u0B66-\u0B6F\u0BE6-\u0BEF\u0C66-\u0C6F\u0CE6-\u0CEF\u0D66-\u0D6F]/g, (ch) => {
+    const cp = ch.codePointAt(0)!;
+    for (const z of INDIC_DIGIT_ZEROS) if (cp >= z && cp <= z + 9) return String(cp - z);
+    return ch;
+  });
+}
 const QTY = /(\d+(?:[.,]\d+)?)\s*([^\s\d,.;:()]{1,12})/gu;
 export function quantitiesOf(text: string): Array<{ value: number; unit: string }> {
   const out: Array<{ value: number; unit: string }> = [];
-  for (const m of String(text ?? '').matchAll(QTY)) out.push({ value: parseFloat(m[1].replace(',', '.')), unit: m[2].toLowerCase() });
+  for (const m of toAsciiDigits(text).matchAll(QTY)) out.push({ value: parseFloat(m[1].replace(',', '.')), unit: m[2].toLowerCase() });
   return out;
 }
 /** Every number in the explanation must be a fact quantity, or a fact quantity × land area. Language-independent. */
@@ -67,12 +83,14 @@ export function numbersBacked(text: string, frame: FactFrame): { ok: boolean; of
  * appears verbatim in the facts (brand names, formulation codes, units the DB itself wrote). Anything else is
  * an English word that leaked through — no vocabulary needed to catch it.
  */
+// Pesticide formulation codes are printed on the pack the farmer buys; they are never an English leak.
+const FORMULATION_CODES = new Set(['wp', 'ec', 'sc', 'wg', 'sg', 'sl']);
 export function scriptIntegrity(text: string, frame: FactFrame, targetIsLatin: boolean): { ok: boolean; leaks: string[] } {
   if (targetIsLatin) return { ok: true, leaks: [] };
   const factCorpus = frame.facts.map(f => `${f.gloss} ${(f.quantities ?? []).map(q => q.unit).join(' ')}`).join(' ').toLowerCase();
   const leaks = new Set<string>();
   for (const m of String(text ?? '').matchAll(/[A-Za-z][A-Za-z.\-]{1,}/g)) {
-    const w = m[0]; if (factCorpus.includes(w.toLowerCase())) continue;
+    const w = m[0]; if (factCorpus.includes(w.toLowerCase()) || FORMULATION_CODES.has(w.toLowerCase())) continue;
     leaks.add(w);
   }
   return { ok: leaks.size === 0, leaks: Array.from(leaks) };
@@ -136,9 +154,9 @@ export async function explainDecision(opts: {
     const nums = numbersBacked(joined, frame);
     const script = scriptIntegrity(joined, frame, targetIsLatin);
 
-    // linguistic critic — same model, same language, no word list
+    // Deterministic checks passed → accept in one call; the critic is advisory and only consulted on failure.
     critique = [];
-    try {
+    if (!(nums.ok && script.ok)) try {
       const cRaw = await llm(criticPrompt(lang), joined);
       const cj = JSON.parse(cRaw.replace(/```json|```/g, '').trim());
       critique = Array.isArray(cj?.flags) ? cj.flags.filter((f: any) => f?.span).map((f: any) => `${f.span}→${f.fix ?? ''}`) : [];

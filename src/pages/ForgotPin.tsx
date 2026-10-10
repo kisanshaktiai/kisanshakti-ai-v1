@@ -110,16 +110,20 @@ export default function ForgotPin() {
       await offlineAuthService.clearCachedAuth();
 
       const farmer = result.farmer;
+      const profile = result.profile;
       const session = createSession(farmer.id, farmer.tenant_id, farmer.mobile_number);
       setSession({ ...session, isPinVerified: true });
       setUser({
         id: farmer.id,
         phone: farmer.mobile_number,
-        name: farmer.farmer_code || 'Farmer',
+        name: profile?.display_name || profile?.full_name || farmer.farmer_name || 'Farmer',
         role: 'farmer',
         language: farmer.language_preference || 'hi',
         tenantId: farmer.tenant_id,
         farmerCode: farmer.farmer_code,
+        farmerName: farmer.farmer_name,
+        fullName: profile?.full_name || '',
+        displayName: profile?.display_name || '',
         sessionToken: result.session.token,
         lastLoginAt: new Date().toISOString(),
       });

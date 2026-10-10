@@ -19,7 +19,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth, getSessionToken } from '@/integrations/supabase/client';
+import { getChatAttachmentUrl, uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
@@ -29,7 +30,8 @@ import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
 import { ModernChatUI } from './ModernChatUI';
-import { WorldClassCamera } from './WorldClassCamera';
+// 2026-09-23: diagnostic photos use the central capture tool (land-bound evidence).
+import { CropPhotoCapture } from '@/components/Photo/CropPhotoCapture';
 import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DiagnosticResponseCard } from './DiagnosticResponseCard';
@@ -41,9 +43,6 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
-import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
-import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
-import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
 import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
@@ -65,8 +64,6 @@ export function EnhancedAIChatInterface() {
   const langStore = useLanguageStore();
   const language = langStore.currentLanguage || 'en';
   const isOnline = useOfflineStatus();
-  const { needsDownload, isInitialized, currentLanguage } = useVoiceInitialization();
-  const [showVoiceDownload, setShowVoiceDownload] = useState(false);
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
@@ -183,7 +180,8 @@ export function EnhancedAIChatInterface() {
 
 
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [showCamera, setShowCamera] = useState(false);
+  const [showPhotoTool, setShowPhotoTool] = useState(false);
+  const [photoToolFiles, setPhotoToolFiles] = useState<File[]>([]);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
   const [pendingVisionAnalysis, setPendingVisionAnalysis] = useState<{
     imageUrl?: string;
@@ -319,11 +317,10 @@ export function EnhancedAIChatInterface() {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   
-  const speechLang = language === 'hi' ? 'hi-IN' : language === 'mr' ? 'mr-IN' : language === 'en' ? 'en-IN' : 'hi-IN';
   
   const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
     onTranscript: (text) => setTranscript(text),
-    language: speechLang
+    language
   });
   
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
@@ -473,9 +470,14 @@ export function EnhancedAIChatInterface() {
     }
     
     // Helper function to map message from DB to Message type
-    const mapMessageFromDB = (msg: any): Message => {
+    const mapMessageFromDB = async (msg: any): Promise<Message> => {
       const metadata = msg.metadata as Record<string, any> | null;
-      const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+      const rawImageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+      const rawVideoUrl = metadata?.video_url || undefined;
+      const [imageUrl, videoUrl] = await Promise.all([
+        rawImageUrl ? getChatAttachmentUrl(rawImageUrl).then(url => url || rawImageUrl) : Promise.resolve(undefined),
+        rawVideoUrl ? getChatAttachmentUrl(rawVideoUrl).then(url => url || rawVideoUrl) : Promise.resolve(undefined),
+      ]);
       const analysisResult = metadata?.analysis_result || undefined;
       
       return {
@@ -485,7 +487,7 @@ export function EnhancedAIChatInterface() {
         timestamp: new Date(msg.created_at),
         imageUrl,
         imageUrls: msg.image_urls || undefined,
-        videoUrl: metadata?.video_url || undefined,
+        videoUrl,
         messageType: msg.message_type as Message['messageType'] || 'text',
         analysisResult,
         orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
@@ -573,14 +575,13 @@ export function EnhancedAIChatInterface() {
       if (cachedMessages && cachedMessages.length > 0) {
         console.log(`⚡ [Cache-First] INSTANT load: ${cachedMessages.length} messages for ${sessionKey}`);
         
-        const sortedMessages = [...cachedMessages]
+        const sortedCachedMessages = [...cachedMessages]
           .sort((a, b) => {
             const dt = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
             if (dt !== 0) return dt;
-            // Same-millisecond turn: question before answer
             return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
-          })
-          .map(mapMessageFromDB);
+          });
+        const sortedMessages = await Promise.all(sortedCachedMessages.map(mapMessageFromDB));
         
         // Get session ID from cache if available - CRITICAL: Pass farmer ID for isolation
         const sessions = await localDB.getChatSessionsByLand(landId, user.id);
@@ -597,7 +598,7 @@ export function EnhancedAIChatInterface() {
               console.log(`🔄 [Background Sync] Found ${newMessages.length} new messages for ${sessionKey}`);
               
               // Merge new messages into state
-              const mappedNew = newMessages.map(mapMessageFromDB);
+              void Promise.all(newMessages.map(mapMessageFromDB)).then((mappedNew) => {
               setMessages(prev => {
                 const existing = prev[sessionKey] || [];
                 const existingIds = new Set(existing.map(m => m.id));
@@ -614,6 +615,7 @@ export function EnhancedAIChatInterface() {
                   })
                 };
               });
+            });
             }
           }
         );
@@ -730,7 +732,7 @@ export function EnhancedAIChatInterface() {
             
             if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${uniqueMessages.length} displayable messages`);
             
-            const loadedMessages: Message[] = uniqueMessages.map(mapMessageFromDB);
+            const loadedMessages: Message[] = await Promise.all(uniqueMessages.map(mapMessageFromDB));
             
             // Use the most recent active session as the canonical session for new messages
             const { data: canonicalSession } = await authClient
@@ -927,7 +929,7 @@ export function EnhancedAIChatInterface() {
           const filteredMessages = filterDisplayableMessages(chronologicalMessages);
           if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${filteredMessages.length}/${chronologicalMessages.length} displayable messages`);
           
-          const loadedMessages: Message[] = filteredMessages.map(mapMessageFromDB);
+          const loadedMessages: Message[] = await Promise.all(filteredMessages.map(mapMessageFromDB));
 
           // CRITICAL FIX: Sync Supabase messages TO LocalDB for offline access
           try {
@@ -1030,9 +1032,10 @@ export function EnhancedAIChatInterface() {
               if (dt !== 0) return dt;
               return (a.role === 'user' ? 0 : 1) - (b.role === 'user' ? 0 : 1);
             })
-            .map(mapMessageFromDB);
+            ; // handled with async mapping
           if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
-          return { sessionId: null, messages: cachedMessages, fromCache: true };
+          const mappedCached = await Promise.all(cachedMessages.map(mapMessageFromDB));
+          return { sessionId: null, messages: mappedCached, fromCache: true };
         }
       } catch (localErr) {
         console.warn('LocalDB read failed:', localErr);
@@ -1205,312 +1208,26 @@ export function EnhancedAIChatInterface() {
     return newSession.id;
   }, [activeTab, sessionIds, tenant?.id, user?.id, language]);
 
-  // Process attached images through vision analysis
-  const processAttachedImages = async (imageFiles: File[]) => {
-    if (!user?.id || !tenant?.id) return;
-    
-    setIsAnalyzingImage(true);
-    
-    try {
-      const landId = activeTab !== 'general' ? activeTab : undefined;
-      const land = landId ? lands.find(l => l.id === landId) : null;
-      const sessionId = await getCurrentSessionId();
-      const userMessageId = crypto.randomUUID();
-      
-      // Read file as base64
-      const file = imageFiles[0];
-      const reader = new FileReader();
-      const imageData = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      
-      // Upload to storage
-      const result = await uploadChatImage(imageData, sessionId, userMessageId, user.id);
-      const imageStorageUrl = result.url;
-      
-      setPendingVisionAnalysis({ imageUrl: imageStorageUrl });
-      
-      // Create user message
-      const userMessage: Message = {
-        id: userMessageId,
-        role: 'user',
-        content: language === 'hi' ? 'फोटो विश्लेषण के लिए' : language === 'mr' ? 'फोटो विश्लेषणासाठी' : 'Photo for analysis',
-        timestamp: new Date(),
-        messageType: 'image_analysis'
-      };
-      
-      setMessages(prev => ({
-        ...prev,
-        [activeTab]: [...(prev[activeTab] || []), userMessage]
-      }));
-      
-      // Save user message to database - use authClient
-      const authClient = supabaseWithAuth(user.id, tenant.id);
-      await authClient.from('ai_chat_messages').insert({
-        id: userMessageId,
-        tenant_id: tenant.id,
-        farmer_id: user.id,
-        session_id: sessionId,
-        role: 'user',
-        content: '[📷 Photo uploaded for analysis]',
-        message_type: 'image_analysis',
-        image_urls: [imageStorageUrl],
-        language,
-        status: 'sent'
-      });
-      
-      // Call AI crop scan
-      const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
-        body: {
-          images: [imageData],
-          language,
-          farmerId: user.id,
-          tenantId: tenant.id,
-          landId,
-          landCrop: land?.current_crop,
-          mode: 'full'
-        }
-      });
-      
-      if (error) throw error;
-      
-      if (scanResult?.success && scanResult?.result) {
-        const aiMessageId = crypto.randomUUID();
-        const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
-        
-        const aiMessage: Message = {
-          id: aiMessageId,
-          role: 'assistant',
-          content: aiContent,
-          timestamp: new Date(),
-          messageType: 'image_analysis_response',
-          imageUrl: imageStorageUrl,
-          analysisResult: scanResult.result,
-          awaitingSuggestionSelection: true
-        };
-        
-        setMessages(prev => ({
-          ...prev,
-          [activeTab]: [...(prev[activeTab] || []), aiMessage]
-        }));
-        
-        setPendingVisionAnalysis(null);
-        
-        // Save AI response - use authClient
-        await authClient.from('ai_chat_messages').insert({
-          id: aiMessageId,
-          tenant_id: tenant.id,
-          farmer_id: user.id,
-          session_id: sessionId,
-          role: 'assistant',
-          content: aiContent,
-          message_type: 'image_analysis_response',
-          ai_model: 'gemini-2.5-flash',
-          image_urls: [imageStorageUrl],
-          metadata: {
-            analysis_result: scanResult.result,
-            crop_detected: scanResult.result.cropDetected,
-            diagnosis: scanResult.result.diagnosis
-          },
-          language,
-          status: 'sent'
-        });
-      } else {
-        throw new Error(scanResult?.error || 'Analysis failed');
-      }
-    } catch (err) {
-      console.error('Vision analysis error:', err);
-      setPendingVisionAnalysis(prev => prev ? { ...prev, error: err instanceof Error ? err.message : 'Analysis failed' } : null);
-      toast({
-        title: t('error.title'),
-        description: err instanceof Error ? err.message : 'Failed to analyze image',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsAnalyzingImage(false);
-    }
-  };
-
-  // Camera capture handler - sends to orchestrator with image
-  const handleWorldClassCapture = async (data: { type: 'photo' | 'video'; data: string; duration?: number }) => {
-    if (!user?.id || !tenant?.id) return;
-    
-    setShowCamera(false);
-    setIsAnalyzingImage(true);
-    
-    try {
-      const landId = activeTab !== 'general' ? activeTab : undefined;
-      const land = landId ? lands.find(l => l.id === landId) : null;
-      const sessionId = await getCurrentSessionId();
-      const userMessageId = crypto.randomUUID();
-      const isPhoto = data.type === 'photo';
-      
-      // Upload to storage
-      let imageStorageUrl: string;
-      let videoStorageUrl: string | undefined;
-      
-      if (isPhoto) {
-        const result = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
-        imageStorageUrl = result.url;
-      } else {
-        const result = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
-        videoStorageUrl = result.videoUrl;
-        imageStorageUrl = result.thumbnailUrl;
-      }
-      
-      setPendingVisionAnalysis({ imageUrl: imageStorageUrl, videoUrl: videoStorageUrl });
-      
-      // Create user message
-      const userMessage: Message = {
-        id: userMessageId,
-        role: 'user',
-        content: `${isPhoto ? '📷' : '🎥'} ${language === 'hi' ? (isPhoto ? 'फोटो' : 'वीडियो') + ' विश्लेषण के लिए' : language === 'mr' ? (isPhoto ? 'फोटो' : 'व्हिडिओ') + ' विश्लेषणासाठी' : (isPhoto ? 'Photo' : 'Video') + ' for analysis'}`,
-        timestamp: new Date(),
-        messageType: isPhoto ? 'image_analysis' : 'video_analysis'
-      };
-      
-      setMessages(prev => ({
-        ...prev,
-        [activeTab]: [...(prev[activeTab] || []), userMessage]
-      }));
-      
-      // Save to database - use authClient
-      const authClient = supabaseWithAuth(user.id, tenant.id);
-      await authClient.from('ai_chat_messages').insert({
-        id: userMessageId,
-        tenant_id: tenant.id,
-        farmer_id: user.id,
-        session_id: sessionId,
-        role: 'user',
-        content: `[${isPhoto ? '📷 Photo' : '🎥 Video'} captured for analysis]`,
-        message_type: isPhoto ? 'image_analysis' : 'video_analysis',
-        image_urls: [imageStorageUrl],
-        language,
-        status: 'sent'
-      });
-      
-      // ═══════════════════════════════════════════════════════════════════════
-      // 🤖 ORCHESTRATOR - Send image to 9-agent orchestrator for analysis
-      // ═══════════════════════════════════════════════════════════════════════
-      console.log('🤖 [Orchestrator] Sending image for analysis via 9-agent pipeline');
-      
-      const sessionToken = localStorage.getItem('app_session_token') || '';
-      
-      const { data: orchestratorResponse, error } = await supabase.functions.invoke('ai-agriculture-chat', {
-        body: {
-          messages: [{ role: 'user', content: 'Analyze this crop image and provide diagnosis' }],
-          sessionId,
-          landId,
-          imageUrl: imageStorageUrl,
-          language,
-          metadata: {
-            tenantId: tenant.id,
-            farmerId: user.id,
-            mediaType: data.type,
-            landContext: land ? {
-              land_id: land.id,
-              land_name: land.name,
-              current_crop: land.current_crop,
-              farming_mode: land.farming_mode
-            } : null
-          }
-        },
-        headers: {
-          'x-tenant-id': tenant.id,
-          'x-farmer-id': user.id,
-          'x-session-token': sessionToken
-        }
-      });
-      
-      if (error) throw error;
-      
-      // Create AI response from orchestrator
-      const aiMessageId = crypto.randomUUID();
-      const aiContent = orchestratorResponse?.response || 'Analysis complete';
-      
-      const aiMessage: Message = {
-        id: aiMessageId,
-        role: 'assistant',
-        content: aiContent,
-        timestamp: new Date(),
-        messageType: 'orchestrator',
-        orchestratorType: orchestratorResponse?.metadata?.type || 'DECISION_PROVIDED',
-        analytics: {
-          responseTime: orchestratorResponse?.responseTime,
-          queryComplexity: 'orchestrator_vision'
-        }
-      };
-      
-      setMessages(prev => ({
-        ...prev,
-        [activeTab]: [...(prev[activeTab] || []), aiMessage]
-      }));
-      
-      setPendingVisionAnalysis(null);
-      
-      // Save AI response - use authClient
-      await authClient.from('ai_chat_messages').insert({
-        id: aiMessageId,
-        tenant_id: tenant.id,
-        farmer_id: user.id,
-        session_id: sessionId,
-        role: 'assistant',
-        content: aiContent,
-        message_type: 'orchestrator',
-        ai_model: 'orchestrator_v2',
-        response_time_ms: orchestratorResponse?.responseTime,
-        image_urls: [imageStorageUrl],
-        metadata: {
-          orchestrator_type: orchestratorResponse?.metadata?.type,
-          image_analyzed: imageStorageUrl,
-          video_url: videoStorageUrl
-        },
-        language,
-        status: 'sent'
-      });
-      
-      // Set quick replies from orchestrator
-      if (orchestratorResponse?.quickReplies?.length > 0) {
-        setDynamicQuickReplies(prev => ({
-          ...prev,
-          [activeTab]: orchestratorResponse.quickReplies
-        }));
-      }
-      
-      console.log('✅ Orchestrator vision analysis complete');
-      
-    } catch (err) {
-      console.error('Vision analysis error:', err);
-      setPendingVisionAnalysis(prev => prev ? { ...prev, error: err instanceof Error ? err.message : 'Analysis failed' } : null);
-      toast({
-        title: t('error.title'),
-        description: err instanceof Error ? err.message : 'Failed to analyze image',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsAnalyzingImage(false);
-    }
-  };
-
   // ═══════════════════════════════════════════════════════════════════════
   // 🤖 UNIFIED SEND MESSAGE - ALL queries go to 9-Agent Orchestrator
   // ⚡ OPTIMISTIC UPDATES - Show message instantly before server confirms
   // ═══════════════════════════════════════════════════════════════════════
-  const sendMessage = async (text?: string, quickAction?: string, overrideGeneralLandId?: string | null) => {
+  const sendMessage = async (text?: string, quickAction?: string, overrideGeneralLandId?: string | null, photoDiagnosisId?: string | null) => {
     const messageText = text || inputValue.trim();
     const finalMessage = quickAction ? `${quickAction}: ${messageText}` : messageText;
     
     // Check for image attachments
     const imageFiles = attachedFiles.filter(f => f.type.startsWith('image/'));
-    if (imageFiles.length > 0 && !finalMessage) {
-      await processAttachedImages(imageFiles);
+    // 2026-09-23: attached photos open the central capture tool, which stores
+    // them as land evidence and returns a diagnosis for the brain turn.
+    if (imageFiles.length > 0 && !photoDiagnosisId) {
+      setPhotoToolFiles(imageFiles);
       setAttachedFiles([]);
+      setShowPhotoTool(true);
       return;
     }
     
-    if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
+    if (!finalMessage && !quickAction && attachedFiles.length === 0 && !photoDiagnosisId) return;
 
     // ─── GENERAL-CHAT land context gate ───────────────────────────────────
     // Only open the picker on the FIRST send of a fresh General session.
@@ -1532,7 +1249,14 @@ export function EnhancedAIChatInterface() {
     // Block sends when farmer is over their daily AI-chat quota or when the
     // tenant has disabled the AI Chat feature. Server-side enforcement in
     // `ai-agriculture-chat` is the authoritative check; this is a fast UX guard.
-    if (!aiChatEntitlement.allowed) {
+    // Only block on a CONFIRMED reason. If the entitlement check failed or
+    // returned no data (reason null / feature_unknown), let the server decide
+    // instead of wrongly telling the farmer their chats are over.
+    if (
+      !aiChatEntitlement.allowed &&
+      (aiChatEntitlement.reason === 'feature_disabled' ||
+        aiChatEntitlement.reason === 'quota_exceeded')
+    ) {
       const reason = aiChatEntitlement.reason;
       toast({
         title: reason === 'feature_disabled'
@@ -1553,7 +1277,7 @@ export function EnhancedAIChatInterface() {
       id: userMessageId,
       tempId, // Track for replacement after server confirms
       role: 'user',
-      content: finalMessage || (imageFiles.length > 0 ? `[Analyzing ${imageFiles.length} image(s)]` : ''),
+      content: finalMessage || (photoDiagnosisId ? '📷' : ''),
       timestamp: new Date(),
       status: 'sending' // ⚡ Show as "sending" initially
     };
@@ -1664,7 +1388,10 @@ export function EnhancedAIChatInterface() {
 
       const cleanHistory = conversationHistory.map(m => ({ role: m.role, content: m.content }));
       
-      const sessionToken = localStorage.getItem('app_session_token') || '';
+      // Server-verified session token (client.ts, key 'ks_session_token'). The old
+      // 'app_session_token' key is never written, so chat sent an empty token and
+      // the F-SEC-1 session guard answered 401 SESSION_REQUIRED.
+      const sessionToken = getSessionToken() || '';
       
       // CRITICAL: If this send originated from a proactive alert, attach the
       // alert's Decision-Brain payload so the orchestrator narrates from
@@ -1689,6 +1416,9 @@ export function EnhancedAIChatInterface() {
         landId,
         language,
       };
+      if (!isGeneralTab && photoDiagnosisId) {
+        invokeBody.photoDiagnosisId = photoDiagnosisId;
+      }
       if (isGeneralTab) {
         invokeBody.landContext = landContext ?? null;
         // FIX F4 (RAG audit 2026-09-04): send the farmer's state so General-chat
@@ -1849,7 +1579,10 @@ export function EnhancedAIChatInterface() {
                               (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
             trace_id: data.metadata?.trace_id,
             citations: isGeneralResponse ? (data.metadata?.citations || null) : null,
-            clarification_options: clarificationOptions
+            clarification_options: clarificationOptions,
+            // 2026-09-17 — localDB keeps only metadata (not the top-level advisorCard); the cache-first reload
+            // rebuilds the card from metadata.advisor_card, same as the server row
+            advisor_card: data?.metadata?.advisor_card ?? null
           }
         }
       ]);
@@ -1974,7 +1707,10 @@ export function EnhancedAIChatInterface() {
       console.log('🤖 [Orchestrator] Generating targeted solution:', type);
       
       // Send to orchestrator with suggestion type context
-      const sessionToken = localStorage.getItem('app_session_token') || '';
+      // Server-verified session token (client.ts, key 'ks_session_token'). The old
+      // 'app_session_token' key is never written, so chat sent an empty token and
+      // the F-SEC-1 session guard answered 401 SESSION_REQUIRED.
+      const sessionToken = getSessionToken() || '';
       
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
@@ -2144,10 +1880,6 @@ export function EnhancedAIChatInterface() {
   };
 
   const startListening = () => {
-    if (needsDownload && !isInitialized) {
-      setShowVoiceDownload(true);
-      return;
-    }
     originalStartListening();
   };
 
@@ -2167,21 +1899,20 @@ export function EnhancedAIChatInterface() {
   return (
     <div className="fixed inset-0 flex flex-col min-h-0 bg-gradient-to-br from-background via-background to-muted/30">
       {/* Camera Modal */}
-      {showCamera && (
-        <WorldClassCamera
-          onCapture={handleWorldClassCapture}
-          onClose={() => setShowCamera(false)}
-          language={language}
-        />
-      )}
-
-      {/* Voice Download Modal */}
-      {showVoiceDownload && (
-        <VoiceDownloadCard
-          language={language}
-          languageName={language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : 'English'}
-          onComplete={() => setShowVoiceDownload(false)}
-          onSkip={() => setShowVoiceDownload(false)}
+      {user?.id && tenant?.id && (
+        <CropPhotoCapture
+          isOpen={showPhotoTool}
+          onClose={() => { setShowPhotoTool(false); setPhotoToolFiles([]); }}
+          purpose="chat_question"
+          farmerId={user.id}
+          tenantId={tenant.id}
+          landId={activeTab !== 'general' ? activeTab : undefined}
+          lands={(lands || []).map((l: { id: string; name: string }) => ({ id: l.id, name: l.name }))}
+          sessionId={activeTab !== 'general' ? sessionIds[activeTab] : undefined}
+          initialFiles={photoToolFiles}
+          onDiagnosed={activeTab !== 'general'
+            ? (r) => { void sendMessage(r.farmerText, undefined, undefined, r.diagnosisId); }
+            : undefined}
         />
       )}
 
@@ -2439,7 +2170,7 @@ export function EnhancedAIChatInterface() {
                     onPlay={handlePlayMessage}
                     onSuggestionSelect={handleSuggestionSelect}
                     onClarificationSelect={handleClarificationSelect}
-                    onTakePhoto={() => setShowCamera(true)}
+                    onTakePhoto={() => setShowPhotoTool(true)}
                     isLoadingSuggestion={isLoadingSuggestion}
                   />
                 ))}
@@ -2634,7 +2365,7 @@ export function EnhancedAIChatInterface() {
 
             {/* Left: Camera Icon */}
             <button
-              onClick={() => setShowCamera(true)}
+              onClick={() => setShowPhotoTool(true)}
               className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors -ml-1"
             >
               <Camera className="h-5 w-5" />

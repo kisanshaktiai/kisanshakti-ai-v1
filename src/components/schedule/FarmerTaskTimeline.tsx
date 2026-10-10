@@ -12,6 +12,7 @@ import TaskEditDialog from './TaskEditDialog';
 import { cn } from '@/lib/utils';
 import { buildScheduleTaskPresentation } from '@/lib/scheduleTaskPresentation';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { cloudProvider } from '@/services/tts/providers/cloudProvider';
 import { toast } from 'sonner';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTranslation } from 'react-i18next';
@@ -51,8 +52,14 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   // per-language map is kept here (a map silently sent every unlisted language
   // to en-US, which read Indian-script text with an English voice).
   const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, voiceUnavailable, openVoiceInstall, canInstallVoice } =
-    useTextToSpeech({ language: currentLanguage, rate: 0.9 });
+    useTextToSpeech({ language: currentLanguage });
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
+
+  // Ask which natural voices exist as soon as the screen opens, so tapping the
+  // speaker icon starts speaking instead of waiting for that check.
+  useEffect(() => { cloudProvider.warmUp(); }, []);
+
+
 
   const speakTask = (task: Task) => {
     // Only engine support gates playback. The voice inventory is NOT a gate:
@@ -126,15 +133,16 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const Icon = config.icon;
                   const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
                   const completed = task.status === 'completed';
+                  const expired = task.resources?.timeline?.state === 'HISTORICAL_UNCONFIRMED';
                   const overdue = past && task.status === 'pending';
                   const expanded = expandedTaskId === task.id;
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
                   return (
                     <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
-                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
+                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
                         <CollapsibleTrigger asChild>
                           <Button variant="ghost" className="h-auto min-h-20 w-full justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
-                            <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
+                            <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : expired ? 'bg-muted' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
                             <span className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3">
                               <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
                               <span className="min-w-0 flex-1 whitespace-normal">
@@ -145,7 +153,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                                 {!expanded && p.how[0] && <span className="line-clamp-2 block text-sm font-medium leading-relaxed text-card-foreground">{p.how[0]}</span>}
                                 <span className="mt-2 flex flex-wrap gap-1.5">
                                   <Badge variant={overdue ? 'destructive' : completed ? 'default' : task.priority === 'high' ? 'destructive' : 'secondary'} className="font-bold">
-                                    {completed ? t('schedule.timeline.done') : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
+                                    {completed ? t('schedule.timeline.done') : expired ? t('schedule.completion.status', { status: task.status }) : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
                                   </Badge>
                                   {task.weather_dependent && <Badge variant="outline" className="border-2 font-bold"><Droplets className="mr-1 size-3" />{t('schedule.badges.weather')}</Badge>}
                                   {task.climate_adjusted && <Badge variant="outline" className="border-2 font-bold"><Zap className="mr-1 size-3" />{t('schedule.badges.ai_adjusted')}</Badge>}
@@ -179,7 +187,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                               </Button>
                             </div>
                             {((task.product_recommendations?.length ?? 0) > 0 || Number(task.resources?.labor_cost) > 0) && <ProductRecommendationCard products={task.product_recommendations || []} landAreaAcres={1} laborCost={task.resources?.labor_cost || 0} laborDays={task.resources?.labor_days || 0} laborWorkers={task.resources?.labor_workers || 0} laborDaysPerAcre={task.resources?.labor_days_per_acre || 0} laborDailyWage={task.resources?.labor_daily_wage || 350} laborDescription={task.resources?.labor_description || ''} />}
-                            <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />
+                            {!expired && <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />}
                           </div>
                         </CollapsibleContent>
                       </article>

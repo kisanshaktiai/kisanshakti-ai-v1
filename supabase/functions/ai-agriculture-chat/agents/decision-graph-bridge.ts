@@ -1,3 +1,6 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 20:00 UTC — Type-only fixes: cast P3_ADVISORY to RulePriority, guard product.sku with id fallback, add cause/reason to RuleResult mapping.
+
 // DECISION GRAPH BRIDGE - Connect 2000+ ICAR Rules to Edge Function
 
 import type {
@@ -119,7 +122,7 @@ export async function evaluateDecisionGraph(
       evaluatedRules.push({
         rule_id: 'SAFETY_WATCHLIST_INFO',
         category: 'safety',
-        priority: 'P3_ADVISORY',
+        priority: 'P3_ADVISORY' as RulePriority,
         fired: true,
         action: 'WARN',
         confidence: 0.8,
@@ -245,7 +248,7 @@ async function evaluatePestIPM(supabase: any, context: RuleEvaluationContext): P
 function buildIPMRecommendation(product: RepoProduct, context: any, severity: string, organic: boolean, isBio: boolean): EvaluatedRule {
   const cultural = getCulturalAdvice(context.crop_code || 'GENERAL');
   return {
-    rule_id: `IPM_${product.sku}`,
+    rule_id: `IPM_${product.sku ?? product.id}`,
     category: 'ipm',
     priority: severity === 'HIGH' ? 'P4_ECONOMIC' : 'P5_IPM',
     fired: true,
@@ -265,7 +268,7 @@ async function evaluateDiseaseManagement(supabase: any, context: RuleEvaluationC
   
   if (prod) {
     rules.push({
-      rule_id: `DISEASE_${prod.sku}`, category: 'disease', priority: 'P4_ECONOMIC', fired: true, action: 'RECOMMEND', confidence: 0.9,
+      rule_id: `DISEASE_${prod.sku ?? prod.id}`, category: 'disease', priority: 'P4_ECONOMIC', fired: true, action: 'RECOMMEND', confidence: 0.9,
       scientific_basis: 'DB product',
       recommendation_en: `💊 Fungicide: ${prod.name} @ ${prod.dosage}.`,
       products: [{ name: prod.name, dosage: prod.dosage, method: prod.application_method }]
@@ -276,12 +279,14 @@ async function evaluateDiseaseManagement(supabase: any, context: RuleEvaluationC
 
 export function convertToRuleResults(evaluated: EvaluatedRule[]): RuleResult[] {
   return evaluated.filter(r => r.fired).map(r => ({
-    rule_id: r.rule_id, action: r.action, priority: r.priority, category: r.category,
+    rule_id: r.rule_id, action: r.action as RuleResult['action'], priority: r.priority, category: r.category,
+    cause: r.category,
+    reason: r.recommendation_en || r.scientific_basis || '',
     messages: { en: r.recommendation_en || '' },
     products: r.products?.map(p => ({
       product_name: p.name, dosage: p.dosage, application_method: p.method
     })),
     confidence: r.confidence,
     scientific_basis: r.scientific_basis
-  }));
+  } as unknown as RuleResult));
 }

@@ -33,22 +33,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
   const [currentStep, setCurrentStep] = useState(0);
   const [isReading, setIsReading] = useState(false);
 
-  const getLanguageCode = () => {
-    const langMap: Record<string, string> = {
-      'en': 'en-US',
-      'hi': 'hi-IN',
-      'mr': 'mr-IN',
-      'pa': 'pa-IN',
-      'ta': 'ta-IN'
-    };
-    return langMap[currentLanguage] || 'en-US';
-  };
-
-  const { speak, stop, isSpeaking } = useTextToSpeech({
-    language: getLanguageCode(),
-    rate: 0.9,
-    pitch: 1.0
-  });
+  const { speak, stop, isSpeaking } = useTextToSpeech({ language: currentLanguage });
 
   const instructions = [
     {

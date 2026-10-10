@@ -1,291 +1,218 @@
 /**
- * Report engine — pure functions that turn real per-land data into derived
- * metrics (yield, water need, profit, risk, recommendations).
- *
- * Every function fails gracefully (returns null / 0 / 'unknown') when inputs
- * are missing instead of inventing numbers.
+ * Shapes server-computed rows into what the Analytics page renders.
+ * Deliberately contains NO agronomic or financial computation: yield, income,
+ * spend and the "why it moved" explanation come from v_land_economics (weekly
+ * yield engine); field condition from land_farm_state / land_weather_state.
+ * The only arithmetic here is task counting and farm-level sums of server
+ * figures.
  */
-
-import {
-  cropKey,
-  DAILY_WATER_L_PER_ACRE,
-  EXPECTED_YIELD_Q_PER_ACRE,
-  EXPECTED_COST_PER_ACRE,
-  projectedCostBreakdown,
-  nutrientLevel,
-} from './formulas';
 
 export interface LandRow {
   id: string;
   name: string;
   area_acres: number | null;
   current_crop: string | null;
-  crop_stage: string | null;
-  last_sowing_date: string | null;
-  expected_harvest_date: string | null;
+  active_schedule_id: string | null;
   ndvi_thumbnail_url: string | null;
-  last_ndvi_value: number | null;
-  irrigation_source: string | null;
-  soil_ph: number | null;
-  nitrogen_kg_per_ha: number | null;
-  phosphorus_kg_per_ha: number | null;
-  potassium_kg_per_ha: number | null;
 }
 
-export interface ScheduleTaskRow {
+/** One row of public.v_land_economics (security_invoker view). */
+export interface LandEconomicsRow {
+  land_id: string;
+  land_name: string | null;
+  area_acres: number | null;
+  active_schedule_id: string | null;
+  crop_name: string | null;
+  cultivation_method: string | null;
+  sowing_date: string | null;
+  expected_harvest_date: string | null;
+  harvest_status: string | null;
+  price_per_quintal: number | null;
+  week_start: string | null;
+  computed_at: string | null;
+  model_version: string | null;
+  crop_code: string | null;
+  variety: string | null;
+  potential_yield_per_acre: number | null;
+  predicted_yield_per_acre: number | null;
+  predicted_yield_low_per_acre: number | null;
+  predicted_yield_high_per_acre: number | null;
+  predicted_total_qtl: number | null;
+  predicted_total_low_qtl: number | null;
+  predicted_total_high_qtl: number | null;
+  confidence_score: number | null;
+  factors: Record<string, { value: number; ky?: number; vs_expected?: string }> | null;
+  explanation: ExplanationItem[] | null;
+  gaps: string[] | null;
+  prev_predicted_per_acre: number | null;
+  prev_week_start: string | null;
+  spent_confirmed: number;
+  spent_rows: number;
+  estimated_due: number;
+  estimated_remaining: number;
+  estimates_this_week: number;
+  estimate_rows: number;
+  income_received: number;
+  income_low: number | null;
+  income_high: number | null;
+}
+
+/** explanation[] items written by compute_land_yield_estimate — rendered via i18n keys analytics.why.<code>. */
+export interface ExplanationItem {
+  code: string;
+  [param: string]: string | number | null | undefined;
+}
+
+export interface FarmStateRow {
+  land_id: string;
+  state_date: string;
+  crop_code: string | null;
+  stage_code: string | null;
+  growth_stage: string | null; // joined from crop_stage_master by the hook
+  das: number | null;
+  canopy: {
+    ndvi?: number | null;
+    date?: string | null;
+    status?: string | null;
+    age_days?: number | null;
+    confidence?: number | null;
+    vs_expected?: 'below' | 'within' | 'above' | string | null;
+    expected_min?: number | null;
+    expected_max?: number | null;
+  } | null;
+  gaps: string[] | null;
+}
+
+export interface WeatherStateRow {
+  land_id: string;
+  metric_date: string;
+  total_rainfall_mm: number | null;
+  etc_mm: number | null;
+  root_depletion_mm: number | null;
+  water_balance_status: string | null;
+}
+
+export interface NdviPoint { date: string; value: number; fresh: boolean }
+
+export interface TaskRow {
   id: string;
-  land_id?: string | null;
-  schedule_id?: string | null;
+  schedule_id: string;
   status: string | null;
   task_date: string | null;
   completed_at: string | null;
-  estimated_cost: number | null;
   task_type: string | null;
 }
 
-export interface WeatherRow {
-  land_id: string | null;
-  temperature_celsius: number | null;
-  humidity_percent: number | null;
-  rain_24h_mm: number | null;
-  observation_time: string | null;
+export interface DecisionRow {
+  land_id: string;
+  decision_key: string;
+  category: string | null;
+  status: string | null;
+  created_at: string;
 }
 
 export interface SoilRow {
-  land_id: string | null;
+  land_id: string;
+  test_date: string | null;
+  source: string | null;
   ph_level: number | null;
   nitrogen_kg_per_ha: number | null;
   phosphorus_kg_per_ha: number | null;
   potassium_kg_per_ha: number | null;
   organic_carbon: number | null;
-  test_date: string | null;
-  soil_moisture_surface_percent: number | null;
-}
-
-export interface NdviRow {
-  land_id: string;
-  date: string;
-  mean_ndvi: number | null;
-  ndvi_value: number | null;
-  image_url: string | null;
-  cloud_coverage: number | null;
-}
-
-export interface FinancialRow {
-  land_id: string | null;
-  transaction_type: string;
-  category: string | null;
-  amount: number;
-  transaction_date: string;
-}
-
-export interface MarketPriceRow {
-  commodity_name_normalized: string | null;
-  crop_name: string | null;
-  modal_price: number | null;
-  price_per_unit: number | null;
-  price_date: string;
-  market_location: string | null;
 }
 
 export interface LandAnalytics {
   land: LandRow;
-  ndviTrend: { date: string; value: number }[];
-  latestNdvi: number | null;
-  weather: WeatherRow | null;
+  economics: LandEconomicsRow | null;
+  farmState: FarmStateRow | null;
+  weather: WeatherStateRow | null;
+  ndviTrend: NdviPoint[];
+  tasks: { total: number; completed: number; delayed: number; pending: number; onTime: number; completionRate: number; onTimeRate: number };
+  /** Open decisions de-duplicated by decision_key, newest first, grouped for the "watch" card. */
+  watch: { count: number; byCategory: Record<string, number>; latest: DecisionRow[] };
   soil: SoilRow | null;
-  tasks: {
-    total: number;
-    completed: number;
-    delayed: number;
-    pending: number;
-    completionRate: number;
-    onTimeRate: number;
-  };
-  finance: {
-    totalExpense: number;
-    byCategory: { category: string; amount: number }[];
-    income: number;
-    projectedExpense: number;
-    projectedExpenseBreakdown: { category: string; amount: number }[];
-    expenseSource: 'actual' | 'projected' | 'mixed';
-  };
-  marketPrice: number | null;
-  marketSource: string | null;
-  expectedYieldQuintals: number;
-  projectedRevenue: number;
-  projectedProfit: number;
-  waterRequirementL: number;
-  recommendations: string[];
 }
 
 export interface FarmAggregate {
-  totalLands: number;
   totalAreaAcres: number;
   activeCrops: number;
-  projectedRevenue: number;
-  projectedProfit: number;
-  totalExpense: number;
-  taskCompletionRate: number;
+  landsWithEstimate: number;
+  predictedTotalLowQtl: number | null;
+  predictedTotalHighQtl: number | null;
+  incomeLow: number | null;
+  incomeHigh: number | null;
+  spentConfirmed: number;
+  estimatedRemaining: number;
 }
 
-function safeAvg(nums: number[]): number {
-  const valid = nums.filter((n) => Number.isFinite(n));
-  if (!valid.length) return 0;
-  return valid.reduce((a, b) => a + b, 0) / valid.length;
+function endOfDay(iso: string): number {
+  const d = new Date(iso);
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
 }
 
-export function computeLandAnalytics(
-  land: LandRow,
-  opts: {
-    tasks: ScheduleTaskRow[];
-    weather: WeatherRow | null;
-    soil: SoilRow | null;
-    ndvi: NdviRow[];
-    finance: FinancialRow[];
-    market: MarketPriceRow[];
-  },
-): LandAnalytics {
-  const area = Number(land.area_acres) || 0;
-  const ck = cropKey(land.current_crop);
-
-  // NDVI trend (most recent first → reverse for chart)
-  const ndviSorted = [...opts.ndvi]
-    .filter((n) => n.land_id === land.id && (n.mean_ndvi ?? n.ndvi_value) != null)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const ndviTrend = ndviSorted.map((n) => ({
-    date: n.date,
-    value: Number(n.mean_ndvi ?? n.ndvi_value ?? 0),
-  }));
-  const latestNdvi = ndviTrend.length ? ndviTrend[ndviTrend.length - 1].value : land.last_ndvi_value;
-
-  // Tasks
+export function computeLandAnalytics(land: LandRow, opts: {
+  economics: LandEconomicsRow | null;
+  farmState: FarmStateRow | null;
+  weather: WeatherStateRow | null;
+  ndvi: NdviPoint[];
+  tasks: TaskRow[];
+  decisions: DecisionRow[];
+  soil: SoilRow | null;
+}): LandAnalytics {
   const now = Date.now();
   const total = opts.tasks.length;
   const completed = opts.tasks.filter((t) => t.status === 'completed').length;
-  const delayed = opts.tasks.filter(
-    (t) => t.status !== 'completed' && t.task_date && new Date(t.task_date).getTime() < now,
+  const delayed = opts.tasks.filter((t) => t.status !== 'completed' && t.task_date && endOfDay(t.task_date) < now).length;
+  const pending = Math.max(0, total - completed - delayed);
+  // On time = completed on or before its scheduled day (no grace constant).
+  const onTime = opts.tasks.filter((t) =>
+    t.status === 'completed' && t.task_date && (!t.completed_at || new Date(t.completed_at).getTime() <= endOfDay(t.task_date)),
   ).length;
-  const pending = total - completed - delayed;
-  const onTime = opts.tasks.filter((t) => {
-    if (t.status !== 'completed' || !t.completed_at || !t.task_date) return false;
-    return new Date(t.completed_at).getTime() <= new Date(t.task_date).getTime() + 86_400_000;
-  }).length;
 
-  // Finance
-  const totalExpense = opts.finance
-    .filter((f) => f.transaction_type === 'expense')
-    .reduce((s, f) => s + Number(f.amount || 0), 0);
-  const income = opts.finance
-    .filter((f) => f.transaction_type === 'income')
-    .reduce((s, f) => s + Number(f.amount || 0), 0);
-  const catMap = new Map<string, number>();
-  opts.finance
-    .filter((f) => f.transaction_type === 'expense')
-    .forEach((f) => {
-      const c = f.category || 'other';
-      catMap.set(c, (catMap.get(c) || 0) + Number(f.amount || 0));
-    });
-  const byCategory = [...catMap.entries()]
-    .map(([category, amount]) => ({ category, amount }))
-    .sort((a, b) => b.amount - a.amount);
-
-  // Market price: prefer normalized commodity matching current crop
-  const cropLc = (land.current_crop || '').toLowerCase();
-  const priceRow = cropLc
-    ? opts.market.find(
-        (m) =>
-          (m.commodity_name_normalized || m.crop_name || '').toLowerCase().includes(cropLc) &&
-          (m.modal_price || m.price_per_unit),
-      )
-    : null;
-  const marketPrice = Number(priceRow?.modal_price ?? priceRow?.price_per_unit ?? 0) || null;
-  const marketSource = priceRow?.market_location ?? null;
-
-  // Yield (quintal/acre × area), boosted/penalised by NDVI deviation from 0.6
-  const baseYieldPerAcre = EXPECTED_YIELD_Q_PER_ACRE[ck] ?? EXPECTED_YIELD_Q_PER_ACRE.default;
-  const ndviFactor =
-    latestNdvi != null ? Math.max(0.5, Math.min(1.25, 0.7 + latestNdvi * 0.5)) : 1;
-  const expectedYieldQuintals = Math.max(0, area * baseYieldPerAcre * ndviFactor);
-
-  const projectedRevenue = Math.max(0, marketPrice ? expectedYieldQuintals * marketPrice : 0);
-
-  // Projected expense — derived from crop CoC baseline (₹/acre × area).
-  // We use it when actual expense logged < 60% of baseline (sparse data).
-  const baselineCost = Math.max(0, (EXPECTED_COST_PER_ACRE[ck] ?? EXPECTED_COST_PER_ACRE.default) * area);
-  const useProjected = totalExpense < baselineCost * 0.6;
-  const projectedExpense = Math.max(0, useProjected ? baselineCost : totalExpense);
-  const projectedExpenseBreakdown = useProjected
-    ? projectedCostBreakdown(land.current_crop, area)
-    : byCategory;
-  const expenseSource: 'actual' | 'projected' | 'mixed' =
-    totalExpense === 0 ? 'projected' : useProjected ? 'mixed' : 'actual';
-
-  const projectedProfit = projectedRevenue - projectedExpense;
-
-  // Water: daily L × 7 days (weekly horizon), minus last 24 h rainfall benefit
-  const daily = DAILY_WATER_L_PER_ACRE[ck] ?? DAILY_WATER_L_PER_ACRE.default;
-  const rainfallOffsetL = (opts.weather?.rain_24h_mm || 0) * 4046.86 * area;
-  const waterRequirementL = Math.max(0, daily * area * 7 - rainfallOffsetL);
-
-  // Recommendations
-  const recs: string[] = [];
-  if (latestNdvi != null && latestNdvi < 0.35) recs.push('recommendations.low_ndvi');
-  if ((opts.weather?.rain_24h_mm ?? 0) < 1 && waterRequirementL > 0) recs.push('recommendations.irrigate_soon');
-  if (nutrientLevel(opts.soil?.nitrogen_kg_per_ha ?? null, 'N') === 'low') recs.push('recommendations.low_nitrogen');
-  if (delayed > 0) recs.push('recommendations.tasks_delayed');
-  if (opts.soil?.ph_level != null && (opts.soil.ph_level < 5.5 || opts.soil.ph_level > 8.2)) recs.push('recommendations.ph_out_of_range');
-  if (!marketPrice && land.current_crop) recs.push('recommendations.no_market_price');
+  const seen = new Set<string>();
+  const unique = [...opts.decisions]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .filter((d) => (seen.has(d.decision_key) ? false : (seen.add(d.decision_key), true)));
+  const byCategory: Record<string, number> = {};
+  for (const d of unique) byCategory[d.category ?? 'general'] = (byCategory[d.category ?? 'general'] ?? 0) + 1;
 
   return {
     land,
-    ndviTrend,
-    latestNdvi,
+    economics: opts.economics,
+    farmState: opts.farmState,
     weather: opts.weather,
-    soil: opts.soil,
+    ndviTrend: opts.ndvi,
     tasks: {
-      total,
-      completed,
-      delayed,
-      pending: Math.max(0, pending),
+      total, completed, delayed, pending, onTime,
       completionRate: total ? (completed / total) * 100 : 0,
       onTimeRate: completed ? (onTime / completed) * 100 : 0,
     },
-    finance: {
-      totalExpense,
-      byCategory,
-      income,
-      projectedExpense,
-      projectedExpenseBreakdown,
-      expenseSource,
-    },
-    marketPrice,
-    marketSource,
-    expectedYieldQuintals,
-    projectedRevenue,
-    projectedProfit,
-    waterRequirementL,
-    recommendations: recs,
+    watch: { count: unique.length, byCategory, latest: unique.slice(0, 3) },
+    soil: opts.soil,
   };
 }
 
-export function aggregateFarm(items: LandAnalytics[]): FarmAggregate {
-  const crops = new Set<string>();
-  items.forEach((i) => {
-    if (i.land.current_crop) crops.add(i.land.current_crop.toLowerCase());
-  });
-  const totalArea = items.reduce((s, i) => s + (Number(i.land.area_acres) || 0), 0);
-  const projectedRevenue = items.reduce((s, i) => s + i.projectedRevenue, 0);
-  const totalExpense = items.reduce((s, i) => s + i.finance.projectedExpense, 0);
-  const taskCompletion = safeAvg(items.map((i) => i.tasks.completionRate));
-
+/** Sums of server figures across lands; a sum is null when no land has that figure. */
+export function aggregateFarm(perLand: LandAnalytics[]): FarmAggregate {
+  const sum = (pick: (e: LandEconomicsRow) => number | null): number | null => {
+    let acc: number | null = null;
+    for (const a of perLand) {
+      const v = a.economics ? pick(a.economics) : null;
+      if (v != null) acc = (acc ?? 0) + v;
+    }
+    return acc;
+  };
   return {
-    totalLands: items.length,
-    totalAreaAcres: totalArea,
-    activeCrops: crops.size,
-    projectedRevenue,
-    projectedProfit: projectedRevenue - totalExpense,
-    totalExpense,
-    taskCompletionRate: taskCompletion,
+    totalAreaAcres: perLand.reduce((s, a) => s + (a.land.area_acres ?? 0), 0),
+    activeCrops: perLand.filter((a) => !!a.land.active_schedule_id).length,
+    landsWithEstimate: perLand.filter((a) => a.economics?.predicted_total_qtl != null).length,
+    predictedTotalLowQtl: sum((e) => e.predicted_total_low_qtl),
+    predictedTotalHighQtl: sum((e) => e.predicted_total_high_qtl),
+    incomeLow: sum((e) => e.income_low),
+    incomeHigh: sum((e) => e.income_high),
+    spentConfirmed: sum((e) => e.spent_confirmed) ?? 0,
+    estimatedRemaining: sum((e) => e.estimated_remaining) ?? 0,
   };
 }

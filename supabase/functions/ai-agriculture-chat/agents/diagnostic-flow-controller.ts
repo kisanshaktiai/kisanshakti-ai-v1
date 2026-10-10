@@ -1,6 +1,10 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (newest first):
+ *   2026-09-26 15:35 UTC — Narrow casts for NLU output fields not on
+ *     NLUOutputWithRuleMapping (overall_confidence, symptom_extraction) and
+ *     RuleEvaluationContext fields (observationExtraction, observations);
+ *     widened literal comparisons to string for intent/priority checks.
  *   2026-07-09 09:30 UTC — Diagnostic graph gate uses explicit
  *     confirmed_observation_codes; injected symptom_codes are candidates only.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -107,7 +111,8 @@ export class DiagnosticFlowController {
     this.session.status = 'GATHERING_CONTEXT';
     
     // CRITICAL FIX: Handle undefined confidence - default to medium (0.5) not undefined
-    const overallConfidence = nluOutput.overall_confidence ?? 
+    const nluOutputAny = nluOutput as any;
+    const overallConfidence = nluOutputAny.overall_confidence ?? 
                               nluOutput.understanding_confidence ?? 
                               (nluOutput.entities?.crop_code ? 0.6 : 0.4);
     
@@ -141,13 +146,14 @@ export class DiagnosticFlowController {
 
     const observationKeys = new Set<string>([
       ...(nluOutput.entities?.symptom_codes || []),
-      ...(nluOutput.symptom_extraction?.cross_crop_symptoms || []),
-      ...(nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [])
+      ...(nluOutputAny.symptom_extraction?.cross_crop_symptoms || []),
+      ...((nluOutputAny.symptom_extraction?.visual_symptoms || []).map((s: any) => s.symptom_code))
     ]);
     
     // Also check observation extraction from semantic layer
-    if (this.session.context?.observationExtraction?.observation_keys) {
-      for (const key of this.session.context.observationExtraction.observation_keys) {
+    const sessionContextAny = this.session.context as any;
+    if (sessionContextAny?.observationExtraction?.observation_keys) {
+      for (const key of sessionContextAny.observationExtraction.observation_keys) {
         observationKeys.add(key);
       }
     }
@@ -178,7 +184,7 @@ export class DiagnosticFlowController {
       : observationKeys;
     const hasObservations = confirmedObservationKeys.size > 0;
     const hasDiagnosticEvidence = hasObservations;
-    const isDiagnosticIntent = !!nluOutput.intent && nluOutput.intent !== 'UNKNOWN';
+    const isDiagnosticIntent = !!nluOutput.intent && (nluOutput.intent as string) !== 'UNKNOWN';
 
     // canProceedDirectly requires EVIDENCE, not just CONTEXT.
     const canProceedDirectly = hasDiagnosticEvidence;
@@ -220,7 +226,7 @@ export class DiagnosticFlowController {
       // Only block for critical missing info (not crop since we may have from context)
       const criticalMissingQuestions = highPriorityQuestions.filter(q => 
         !nluOutput.entities?.crop_code && q.question_id?.includes('CROP') ||
-        q.priority === 'CRITICAL'
+        (q.priority as string) === 'CRITICAL'
       );
       
       if (criticalMissingQuestions.length > 0 && !hasDiagnosticEvidence) {
@@ -309,7 +315,7 @@ export class DiagnosticFlowController {
     // Collect all observations for authority check
     const allObservations = new Set<string>([
       ...(nlu.entities?.symptom_codes || []),
-      ...(context.observations || [])
+      ...((context as any).observations || [])
     ]);
     
     // v3.0: First check terminal damage via pre-authority gate
@@ -602,8 +608,8 @@ export class DiagnosticFlowController {
     // Collect ALL symptom codes from multiple sources
     const symptomCodes = new Set<string>([
       ...(nlu.entities?.symptom_codes || []),
-      ...(nlu.symptom_extraction?.cross_crop_symptoms || []),
-      ...(nlu.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [])
+      ...((nlu as any).symptom_extraction?.cross_crop_symptoms || []),
+      ...(((nlu as any).symptom_extraction?.visual_symptoms || []).map((s: any) => s.symptom_code))
     ]);
     
     for (const symptom of symptomCodes) {

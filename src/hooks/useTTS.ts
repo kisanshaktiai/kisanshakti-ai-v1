@@ -14,9 +14,13 @@ export interface TTSConfig {
 
 export function useTTS(options: UseSpeechOptions = {}) {
   const currentLanguage = useLanguageStore((state) => state.currentLanguage);
-  const rate = options.rate ?? useTTSSettingsStore((state) => state.rate);
-  const pitch = options.pitch ?? useTTSSettingsStore((state) => state.pitch);
-  const volume = options.volume ?? useTTSSettingsStore((state) => state.volume);
+  // Hooks are always called; caller-supplied options only override the value.
+  const storedRate = useTTSSettingsStore((state) => state.rate);
+  const storedPitch = useTTSSettingsStore((state) => state.pitch);
+  const storedVolume = useTTSSettingsStore((state) => state.volume);
+  const rate = options.rate ?? storedRate;
+  const pitch = options.pitch ?? storedPitch;
+  const volume = options.volume ?? storedVolume;
   const updateSettings = useTTSSettingsStore((state) => state.updateSettings);
   const config: TTSConfig = { rate, pitch, volume };
 

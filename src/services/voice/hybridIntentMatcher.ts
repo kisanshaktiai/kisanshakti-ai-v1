@@ -5,7 +5,8 @@
  * Achieves <100ms response for 90% of commands
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
+import { dataIsolation } from '@/services/dataIsolationService';
 import { phoneticSimilarity, bestPhoneticMatch, normalizeForPhonetic } from './phoneticMatcher';
 
 export interface MatchedIntent {
@@ -404,6 +405,12 @@ class HybridIntentMatcher {
    * Cloud AI fallback for complex queries
    */
   private async matchCloud(transcript: string): Promise<MatchedIntent | null> {
+    // Offline: never wait on a network call — local matching is the answer.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+    // The backend requires x-tenant-id; without it it returns 400. Skip the
+    // cloud call entirely when no tenant is known — local matching stands.
+    const { tenantId, farmerId } = dataIsolation.getIsolationContext();
+    if (!tenantId) return null;
     try {
       const { data, error } = await supabase.functions.invoke('voice-navigation-agent', {
         body: {
@@ -412,6 +419,11 @@ class HybridIntentMatcher {
           context: {
             currentRoute: window.location.pathname,
           },
+        },
+        headers: {
+          'x-tenant-id': tenantId,
+          ...(farmerId ? { 'x-farmer-id': farmerId } : {}),
+          'x-session-token': getSessionToken() || '',
         },
       });
 

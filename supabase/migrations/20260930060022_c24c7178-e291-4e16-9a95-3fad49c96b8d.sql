@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.normalize_location_text_columns() FROM PUBLIC, anon, authenticated;

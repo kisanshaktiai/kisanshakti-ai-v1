@@ -1,8 +1,20 @@
+// CHANGE LOG (newest first)
+// 2026-09-27 — AI model SSOT: the model now comes from the AI model registry (task marketing.insights,
+//   via callAITask) instead of the literal 'gpt-4o-mini' sent to OpenAI; ai_decision_log.model_version is
+//   now `${provider}/${api model id}` of the model that answered instead of the literal 'openai/gpt-4o-mini'.
+//   Same messages, JSON mode and 4096 output tokens. Unavoidable differences: the token limit is sent under
+//   the parameter the catalog contract names for the model (for gpt-4o-mini that is max_tokens, which the
+//   model accepts, instead of max_completion_tokens); the call now has the router's default 55 s timeout
+//   (previously none); the OPENAI_API_KEY check at the top is gone — a missing key is now reported by the
+//   router (no_provider_available) after the tenant/rate-limit/schedule checks, as a 500
+//   "OpenAI API error: no_provider_available" instead of a 500 "OPENAI_API_KEY not configured". Each call
+//   is recorded in ai_model_metrics.
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { callAITask } from '../_shared/aiConfig.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -10,11 +22,6 @@ serve(async (req) => {
   }
 
   try {
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY not configured');
-    }
-    
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
@@ -180,32 +187,27 @@ Generate marketing insights as JSON:
   }
 }`;
 
-    // 6. Call OpenAI GPT-5-mini
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 4096,
-      }),
+    // 6. Call the AI model registry (task marketing.insights)
+    const r = await callAITask({
+      db: supabase,
+      task: 'marketing.insights',
+      functionName: 'ai-marketing-insights',
+      farmerId: null,
+      metadata: { caller: 'marketing-insights', tenant_id: tenantId },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      jsonMode: true,
+      maxOutputTokens: 4096,
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('OpenAI API error:', aiResponse.status, errorText);
-      throw new Error(`OpenAI API error: ${aiResponse.status}`);
+    if (!r.ok) {
+      console.error('OpenAI API error:', r.httpStatus ?? null, r.errorClass, r.detail);
+      throw new Error(`OpenAI API error: ${r.httpStatus ?? r.errorClass}`);
     }
 
-    const aiData = await aiResponse.json();
-    const analysis = JSON.parse(aiData.choices[0].message.content);
+    const analysis = JSON.parse(r.content);
 
     // 7. Save insights
     if (analysis.insights && analysis.insights.length > 0) {
@@ -234,7 +236,7 @@ Generate marketing insights as JSON:
     await supabase.from('ai_decision_log').insert({
       tenant_id: tenantId,
       decision_type: 'marketing_prediction',
-      model_version: 'openai/gpt-4o-mini',
+      model_version: `${r.provider}/${r.apiModelId}`,
       input_data: {
         schedules_count: schedules.length,
         upcoming_tasks: upcomingTasks.length,

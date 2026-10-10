@@ -1,4 +1,7 @@
 // CHANGE LOG
+// 2026-09-27 — AI model SSOT: narrateTasks now receives { db, farmerId } so the model chain comes from the
+//   AI model registry (task schedule.compose) and every call is recorded in ai_model_metrics. farmer_id
+//   is read from the schedule row (both callers select it).
 // 2026-09-07 — v1.0.0 DURABLE NARRATION WORKER (inside ai-smart-schedule; one feature = one edge
 //   function). A schedule is persisted the moment its agronomy is ready; this worker turns the
 //   remaining English task text into the farmer's language afterwards, batch by batch, and
@@ -64,7 +67,7 @@ export interface ScheduleNarrationResult {
 /** Narrate the pending tasks of ONE schedule until done or out of time; persist after each batch. */
 export async function narrateScheduleTasks(
   supabase: SupabaseClient,
-  sched: { id: string; generation_language: string | null; generation_params: Record<string, unknown> | null },
+  sched: { id: string; generation_language: string | null; generation_params: Record<string, unknown> | null; farmer_id?: string | null },
   deadlineAt: number,
 ): Promise<ScheduleNarrationResult> {
   const language = String(sched.generation_language || "").trim().toLowerCase();
@@ -89,6 +92,7 @@ export async function narrateScheduleTasks(
       batch.map((t) => ({ task_name: t.task_name, task_description: t.task_description ?? "", instructions: t.instructions ?? [] })),
       language,
       budget,
+      { db: supabase, farmerId: sched.farmer_id ?? null },
     );
     result.batches += 1;
     result.provider = narration.provider ?? result.provider;
@@ -183,7 +187,7 @@ export async function narratePendingSchedules(supabase: SupabaseClient, opts: Na
   const results: ScheduleNarrationResult[] = [];
   for (const sched of schedules) {
     if (opts.deadlineAt - Date.now() < MIN_BATCH_BUDGET_MS + PERSIST_RESERVE_MS) break;
-    try { results.push(await narrateScheduleTasks(supabase, sched as { id: string; generation_language: string | null; generation_params: Record<string, unknown> | null }, opts.deadlineAt)); }
+    try { results.push(await narrateScheduleTasks(supabase, sched as { id: string; generation_language: string | null; generation_params: Record<string, unknown> | null; farmer_id: string | null }, opts.deadlineAt)); }
     catch (e) { results.push({ schedule_id: sched.id, language: String(sched.generation_language ?? ""), total: 0, pending_before: 0, narrated_now: 0, still_pending: 0, batches: 0, reason: (e as Error).message, provider: null, model: null, failed_task_ids: [], stopped: "error" }); }
   }
   return { status: 200, body: { success: results.every((r) => r.stopped !== "error" && r.failed_task_ids.length === 0), engine: NARRATE_ENGINE_VERSION, mode: opts.sweep ? "sweep" : "farmer", schedules: results.length, results, executionTimeMs: Date.now() - startedAt } };

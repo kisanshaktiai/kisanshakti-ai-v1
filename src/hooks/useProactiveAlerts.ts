@@ -5,6 +5,7 @@ import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { localDB } from '@/services/localDB';
 import { landsApi } from '@/services/landsApi';
+import { alertSourceText } from '@/hooks/useAlertText';
 
 export interface ResolvedLand {
   id: string;
@@ -30,6 +31,7 @@ export interface ProactiveAlert {
   risk_score: number;
   status: string;
   created_at: string;
+  expires_at?: string | null;
   rule_id: string | null;
   trigger_data: Record<string, any>;
   decision_reasoning: string | null;
@@ -37,16 +39,12 @@ export interface ProactiveAlert {
   land?: ResolvedLand | null;
 }
 
-function getAlertTitle(alert: ProactiveAlert, lang: string): string {
-  if (lang === 'mr') return alert.title_mr || alert.title_en || '';
-  if (lang === 'hi') return alert.title_hi || alert.title_en || '';
-  return alert.title_en || '';
-}
+const LIVE_STATUSES = ['PENDING', 'DELIVERED', 'SEEN'];
 
-function getAlertMessage(alert: ProactiveAlert, lang: string): string {
-  if (lang === 'mr') return alert.message_mr || alert.message_en || '';
-  if (lang === 'hi') return alert.message_hi || alert.message_en || '';
-  return alert.message_en || '';
+/** Live = an open status and not past its expiry (the evaluator also expires rows server-side). */
+export function isLiveAlert(a: Pick<ProactiveAlert, 'status' | 'expires_at'>, now = Date.now()): boolean {
+  if (!LIVE_STATUSES.includes(a.status)) return false;
+  return !a.expires_at || new Date(a.expires_at).getTime() > now;
 }
 
 // Track active realtime instances to warn on duplicates
@@ -55,7 +53,7 @@ let realtimeInstanceCount = 0;
 export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
   const skipRealtime = options?.skipRealtime ?? false;
   const { user } = useAuthStore();
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const lang = i18n.language || 'en';
   const [alerts, setAlerts] = useState<ProactiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +71,8 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
     if (!navigator.onLine) {
       try {
         const cached = await localDB.getProactiveAlerts(user.id, showHistory);
-        const mapped = cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[];
+        const mapped = (cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[])
+          .filter(a => showHistory || isLiveAlert(a));
         setAlerts(mapped);
         setUnreadCount(mapped.filter(a => a.status === 'PENDING' || a.status === 'DELIVERED').length);
       } catch (err) {
@@ -98,7 +97,8 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
       }
 
       if (!showHistory) {
-        query = query.in('status', ['PENDING', 'DELIVERED', 'SEEN']);
+        query = query.in('status', LIVE_STATUSES)
+          .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
       }
 
       const { data, error } = await query;
@@ -106,7 +106,8 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
       if (error) {
         console.error('[ProactiveAlerts] Fetch error, falling back to offline cache:', error);
         const cached = await localDB.getProactiveAlerts(user.id, showHistory);
-        const mapped = cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[];
+        const mapped = (cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[])
+          .filter(a => showHistory || isLiveAlert(a));
         setAlerts(mapped);
         setUnreadCount(mapped.filter(a => a.status === 'PENDING' || a.status === 'DELIVERED').length);
         setLoading(false);
@@ -176,7 +177,8 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
       // Last-resort offline fallback
       try {
         const cached = await localDB.getProactiveAlerts(user.id, showHistory);
-        const mapped = cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[];
+        const mapped = (cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[])
+          .filter(a => showHistory || isLiveAlert(a));
         setAlerts(mapped);
         setUnreadCount(mapped.filter(a => a.status === 'PENDING' || a.status === 'DELIVERED').length);
       } catch {}
@@ -218,9 +220,12 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
             const newAlert = payload.new as ProactiveAlert;
             setAlerts(prev => [newAlert, ...prev]);
             setUnreadCount(prev => prev + 1);
+            // The evaluator expires the rows this one supersedes; re-read so they leave the screen.
+            fetchAlerts();
 
-            const title = getAlertTitle(newAlert, lang);
-            const message = getAlertMessage(newAlert, lang);
+            // A toast cannot wait for translation: the row's own language, else English.
+            const title = alertSourceText(newAlert, 'title', lang).text;
+            const message = alertSourceText(newAlert, 'message', lang).text;
             const priorityEmoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
             const emoji = priorityEmoji[newAlert.priority] || '📢';
 
@@ -235,11 +240,7 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
               const msg = `🌾 *KisanShakti AI*${landName}\n\n🔴 *${title}*\n\n${message}`;
               const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
               setTimeout(() => {
-                if (window.confirm(
-                  lang === 'mr' ? 'गंभीर सूचना! WhatsApp वर पाठवायचे?' :
-                  lang === 'hi' ? 'गंभीर सूचना! WhatsApp पर भेजें?' :
-                  'Critical alert! Share on WhatsApp?'
-                )) {
+                if (window.confirm(t('alerts.share_critical_confirm', 'Important alert. Share it on WhatsApp?'))) {
                   window.open(waUrl, '_blank');
                 }
               }, 1500);
@@ -289,7 +290,7 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
       }
       retryAttemptRef.current = 0;
     };
-  }, [user?.id, fetchAlerts, lang, skipRealtime]);
+  }, [user?.id, fetchAlerts, lang, skipRealtime, t]);
 
   const markSeen = useCallback(async (alertId: string) => {
     await supabase

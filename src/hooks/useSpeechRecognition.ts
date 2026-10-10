@@ -1,4 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+/**
+ * useSpeechRecognition — the chat mic.
+ *
+ * Runs on nativeSpeechRecognition, the one STT service (Capacitor plugin on
+ * Android/iOS, Web Speech API in the browser), so the chat mic and voice
+ * navigation share a single engine. The previous version used
+ * window.webkitSpeechRecognition only, which the Android WebView and iOS
+ * WKWebView do not provide, so the mic was dead in the installed app.
+ *
+ * `language` is the app language ('mr', 'kn', ...) or a locale; the service
+ * resolves it through the language SSOT. Nothing here defaults to another
+ * language.
+ */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { nativeSpeechRecognition } from '@/services/voice/nativeSpeechRecognition';
+import type { SpeechRecognitionResult } from '@/services/voice/nativeSpeechRecognition';
 
 interface UseSpeechRecognitionProps {
   onTranscript: (transcript: string, confidence?: number) => void;
@@ -6,88 +21,65 @@ interface UseSpeechRecognitionProps {
   language?: string;
 }
 
-export function useSpeechRecognition({ onTranscript, onPartial, language = 'hi-IN' }: UseSpeechRecognitionProps) {
+export function useSpeechRecognition({ onTranscript, onPartial, language = 'hi' }: UseSpeechRecognitionProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
-  const recognitionRef = useRef<any>(null);
+
+  // Latest callbacks without re-binding the recogniser on every render.
+  const callbacksRef = useRef({ onTranscript, onPartial });
+  callbacksRef.current = { onTranscript, onPartial };
 
   useEffect(() => {
-    // Check if Speech Recognition is supported
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    if (SpeechRecognition) {
-      setIsSupported(true);
-      const recognition = new SpeechRecognition();
-      
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = language;
-      
-      // iOS Safari has limited support - log warning
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (isIOS) {
-        console.warn('iOS Safari has limited speech recognition support. Feature may not work reliably.');
+    let alive = true;
+    nativeSpeechRecognition.initialize().then((ok) => {
+      if (alive) setIsSupported(ok && nativeSpeechRecognition.isSupported());
+    });
+    return () => {
+      alive = false;
+      if (nativeSpeechRecognition.getIsListening()) {
+        nativeSpeechRecognition.stopListening();
       }
-      
-      recognition.onresult = (event: any) => {
-        const lastResult = event.results[event.results.length - 1];
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0])
-          .map((result: any) => result.transcript)
-          .join('');
-        
-        const confidence = typeof lastResult[0].confidence === 'number' 
-          ? lastResult[0].confidence 
-          : undefined;
-        
-        if (lastResult.isFinal) {
-          onTranscript(transcript, confidence);
-        } else if (onPartial) {
-          onPartial(transcript);
-        }
-      };
-      
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-        
-        // Provide user-friendly error messages for iOS
-        if (event.error === 'not-allowed') {
-          console.warn('Microphone access denied. Please enable in Settings > Safari > Microphone');
-        } else if (event.error === 'no-speech') {
-          console.warn('No speech detected. Please try again.');
-        }
-      };
-      
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-      
-      recognitionRef.current = recognition;
-    }
-  }, [language, onTranscript]);
+    };
+  }, []);
 
-  const startListening = () => {
-    if (recognitionRef.current && !isListening) {
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
-  };
-
-  const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-  };
-
-  const toggleListening = () => {
-    if (isListening) {
-      stopListening();
+  const handleResult = useCallback((result: SpeechRecognitionResult) => {
+    if (result.isFinal) {
+      callbacksRef.current.onTranscript(result.transcript, result.confidence);
     } else {
-      startListening();
+      callbacksRef.current.onPartial?.(result.transcript);
     }
-  };
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (isListening || nativeSpeechRecognition.getIsListening()) return;
+
+    const granted = await nativeSpeechRecognition.requestPermission();
+    if (!granted) {
+      console.warn('[SpeechRecognition] Microphone permission not granted');
+      return;
+    }
+
+    const started = await nativeSpeechRecognition.startListening(
+      { language, continuous: false, interimResults: true },
+      handleResult,
+      () => setIsListening(false),
+      (error) => {
+        console.error('[SpeechRecognition] error:', error);
+        setIsListening(false);
+      }
+    );
+    setIsListening(started);
+  }, [isListening, language, handleResult]);
+
+  const stopListening = useCallback(() => {
+    nativeSpeechRecognition.stopListening();
+    setIsListening(false);
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) stopListening();
+    else void startListening();
+  }, [isListening, startListening, stopListening]);
 
   return {
     isListening,

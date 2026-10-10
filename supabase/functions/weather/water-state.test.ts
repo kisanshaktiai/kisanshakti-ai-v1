@@ -217,3 +217,13 @@ Deno.test("9. canonical multilingual crop resolution (label exact / synonym)", a
   const none = await resolveCropCanonical(sb, "कुठलीही अज्ञात पीक");
   assertEquals(none, null);
 });
+
+// (10) 2026-10-04 — the NDVI-adjusted Kc floor is min(Kc_ini, Kc_end): rice
+// (ini 1.05 > end 0.90) could never go below 1.05 in its late season.
+Deno.test("10. late-season Kc with NDVI can fall to Kc_end when Kc_end < Kc_ini", () => {
+  const kc = resolveKc("rice", "end", 0.5, methods);
+  assert(kc !== null);
+  assertAlmostEquals(kc!.kcStatic, 0.90, 1e-9);
+  // 0.90 · (0.3 + 1.2 · 0.5) = 0.81 → floor 0.90 (was 1.05)
+  assertAlmostEquals(kc!.kcAdjusted, 0.90, 1e-9);
+});

@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+//   2026-09-26 16:15 UTC — Filled previously-missing required SymbolicFact fields (all_observations, has_pest_evidence, soil micronutrient ppm fields) with safe defaults in the legacy non-authoritative fact-builder branch so the literal satisfies SymbolicFact (type-only; this branch never sourced those values before either).
 // RULE EVALUATION LAYER - Layer 3 in 5-Layer Symbolic Brain Architecture
 
 import { SymbolicReasoner, type SymbolicFact, type InferenceResult } from '../decision/symbolic-reasoner.ts';
@@ -316,7 +318,13 @@ function buildFactsFromInput(
     distribution: distribution,
     severity: severity,
     progression: 'unknown',
-    
+
+    // EVIDENCE — this legacy (non-authoritative) fact-builder path does not
+    // derive canonical observation-code evidence, so it reports none rather
+    // than fabricating values (matches pre-existing behavior of this branch).
+    all_observations: [],
+    has_pest_evidence: false,
+
     // Environmental facts
     ndvi: landState?.ndvi.latest_value ?? null,
     ndvi_trend: landState?.ndvi.trend?.toUpperCase() || 'UNKNOWN',
@@ -334,7 +342,15 @@ function buildFactsFromInput(
     soil_k: landState?.soil.potassium_kg_per_ha ?? null,
     soil_k_status: getNutrientStatus(landState?.soil.potassium_kg_per_ha, 120, 280),
     soil_ph: landState?.soil.ph ?? null,
-    
+
+    // Soil facts — micronutrients (not sourced by this legacy fact-builder path)
+    soil_zn_ppm: null,
+    soil_fe_ppm: null,
+    soil_mn_ppm: null,
+    soil_mg_cmol: null,
+    soil_s_ppm: null,
+    soil_b_ppm: null,
+
     // Derived facts
     stress_level: calculateStressLevel(landState?.ndvi.latest_value),
     critical_stage: isCriticalStage(landState?.crop.growth_stage),

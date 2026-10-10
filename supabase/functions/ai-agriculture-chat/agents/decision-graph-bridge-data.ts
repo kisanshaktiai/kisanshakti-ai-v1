@@ -1,5 +1,10 @@
 // IPM RECOMMENDATIONS — FALLBACK DATA
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:50 UTC — Added missing import of CropStageCode and SeverityLevel from rule-module-types.ts (used by IPMRecommendation but never imported).
+
+import type { CropStageCode, SeverityLevel } from './rule-module-types.ts';
+
 interface IPMRecommendation {
   crop_codes: string[];
   pest_codes: string[];

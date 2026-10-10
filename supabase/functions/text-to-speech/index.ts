@@ -14,7 +14,7 @@
  */
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { checkRateLimit } from '../_shared/rateGuard.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
 
 // Bhashini (Digital India Bhashini Division). Contract per the official docs at
 // dibd-bhashini.gitbook.io/bhashini-apis: a Pipeline Config call, then a
@@ -30,9 +30,25 @@ const BHASHINI_API_KEY = Deno.env.get('BHASHINI_API_KEY');
 const BHASHINI_PIPELINE_ID = Deno.env.get('BHASHINI_PIPELINE_ID');
 const BHASHINI_INFERENCE_KEY = Deno.env.get('BHASHINI_INFERENCE_KEY');
 const BHASHINI_CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
+// A compute call that has not answered in this time is abandoned so the next
+// vendor can speak; the gateway itself only gives up after 60 s, which is far
+// longer than a farmer will wait for the first word.
+const BHASHINI_COMPUTE_TIMEOUT_MS = 12_000;
 const GOOGLE_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
 const MAX_TEXT_LENGTH = 5000;
+
+/**
+ * Spoken-language names. A generative voice needs the language named for it,
+ * otherwise it reads Marathi text with a Hindi speaker's accent.
+ */
+const LANGUAGE_NAMES: Record<string, string> = {
+  'hi-IN': 'Hindi', 'mr-IN': 'Marathi', 'bn-IN': 'Bengali', 'gu-IN': 'Gujarati',
+  'kn-IN': 'Kannada', 'ml-IN': 'Malayalam', 'ta-IN': 'Tamil', 'te-IN': 'Telugu',
+  'ur-IN': 'Urdu', 'pa-IN': 'Punjabi', 'or-IN': 'Odia', 'as-IN': 'Assamese',
+  'en-IN': 'Indian English',
+};
 
 /**
  * Chirp 3: HD is Google's current generative voice tier and is what makes the
@@ -91,6 +107,21 @@ interface BhashiniConfig {
 let bhashiniConfig: BhashiniConfig | null = null;
 const BHASHINI_CONFIG_TTL_MS = 6 * 60 * 60 * 1000;
 
+/** Container from the first bytes of base64 audio: MP3 (ID3 tag or frame sync), WAV, OGG. */
+function sniffAudioMime(base64: string): string | null {
+  let head = '';
+  try {
+    head = atob(base64.slice(0, 16));
+  } catch {
+    return null;
+  }
+  if (head.startsWith('ID3')) return 'audio/mpeg';
+  if (head.charCodeAt(0) === 0xff && (head.charCodeAt(1) & 0xe0) === 0xe0) return 'audio/mpeg';
+  if (head.startsWith('RIFF')) return 'audio/wav';
+  if (head.startsWith('OggS')) return 'audio/ogg';
+  return null;
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -102,7 +133,33 @@ function configuredVendors(): string[] {
   const vendors: string[] = [];
   if (BHASHINI_API_KEY && BHASHINI_USER_ID && BHASHINI_PIPELINE_ID) vendors.push('bhashini');
   if (GOOGLE_API_KEY) vendors.push('google');
+  if (LOVABLE_API_KEY) vendors.push('lovable');
   return vendors;
+}
+
+/**
+ * Vendors that just failed permanently (bad pipeline id, API disabled, bad
+ * credentials) are skipped for a while. Without this, every single paragraph
+ * paid for the same two failing round trips before reaching a working voice,
+ * which is what made Read Aloud slow to start.
+ */
+const vendorCooldown = new Map<string, number>();
+const VENDOR_COOLDOWN_MS = 15 * 60 * 1000;
+
+function isPermanentFailure(message: string): boolean {
+  return /\b(400|401|403|404)\b/.test(message) || /not been used|does not exist|missing/i.test(message);
+}
+
+function coolDown(vendor: string) {
+  vendorCooldown.set(vendor, Date.now() + VENDOR_COOLDOWN_MS);
+}
+
+function usableVendors(): string[] {
+  const now = Date.now();
+  const all = configuredVendors();
+  const usable = all.filter((v) => (vendorCooldown.get(v) ?? 0) <= now);
+  // Never end up with nothing to try: if everything is cooling down, retry all.
+  return usable.length > 0 ? usable : all;
 }
 
 /**
@@ -175,7 +232,12 @@ async function synthesiseBhashini(text: string, locale: string) {
   if (!service) throw new Error(`Bhashini has no TTS service for ${sourceLanguage}`);
   if (!cfg.inferenceKey) throw new Error('Bhashini inference key missing');
 
-  const gender = service.voices.includes('female') ? 'female' : service.voices[0] || 'female';
+  // Farmers in this app hear a woman's voice. Bhashini takes gender in the
+  // compute config, so ask for female unless the service exposes no female
+  // voice at all.
+  const gender = service.voices.length === 0 || service.voices.includes('female')
+    ? 'female'
+    : service.voices[0];
 
   const compute = async (withProcessors: boolean) => {
     const config: Record<string, unknown> = {
@@ -196,11 +258,14 @@ async function synthesiseBhashini(text: string, locale: string) {
         pipelineTasks: [{ taskType: 'tts', config }],
         inputData: { input: [{ source: text }], audio: [{ audioContent: null }] },
       }),
+      signal: AbortSignal.timeout(BHASHINI_COMPUTE_TIMEOUT_MS),
     });
   };
 
   let response = await compute(true);
-  if (!response.ok) {
+  // Only a rejection of the optional processors (4xx) is worth a plain retry.
+  // A gateway timeout or 5xx would just repeat the same wait.
+  if (!response.ok && response.status >= 400 && response.status < 500) {
     const firstError = (await response.text()).slice(0, 200);
     console.warn('[text-to-speech] Bhashini with processors failed, retrying plain:', firstError);
     response = await compute(false);
@@ -214,8 +279,9 @@ async function synthesiseBhashini(text: string, locale: string) {
   const audio = tts?.audio?.[0]?.audioContent;
   if (!audio) throw new Error('Bhashini returned no audio');
 
-  const format = String(tts?.config?.audioFormat || 'wav').toLowerCase();
-  const mimeType = format === 'mp3' ? 'audio/mpeg' : format === 'ogg' ? 'audio/ogg' : 'audio/wav';
+  // Bhashini does not report audioFormat; with high-compression the bytes are
+  // MP3 even though the docs default to WAV. Read the real container.
+  const mimeType = sniffAudioMime(audio) ?? 'audio/wav';
 
   return { audioContent: audio, mimeType, vendor: 'bhashini', tier: service.serviceId };
 }
@@ -258,6 +324,37 @@ async function synthesiseGoogle(text: string, locale: string) {
   };
 }
 
+/**
+ * Last-resort natural voice. This is the tier the app was using before Bhashini
+ * was wired in, so it must stay: it is what keeps the reading human-sounding
+ * when Bhashini has no service for the language and Google is unavailable.
+ */
+async function synthesiseLovable(text: string, locale: string) {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/audio/speech', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'openai/gpt-4o-mini-tts',
+      input: text,
+      voice: 'shimmer',
+      response_format: 'mp3',
+      instructions: `You are a woman from rural India who speaks ${LANGUAGE_NAMES[locale] || locale} as her mother tongue. Read the text in ${LANGUAGE_NAMES[locale] || locale} only, with a native accent and native pronunciation — never with the accent of another Indian language and never with an English accent. Warm, calm, unhurried, like a helpful agriculture advisor talking to a farmer.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Lovable AI ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+
+  return { audioContent: btoa(binary), mimeType: 'audio/mpeg', vendor: 'lovable', tier: 'gpt-4o-mini-tts' };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -268,14 +365,20 @@ Deno.serve(async (req) => {
     if (action === 'status') {
       const available = configuredVendors();
       let languages: string[] = [];
-      if (available[0] === 'bhashini') {
+      // Only ask Bhashini when it is not cooling down; a failing config call
+      // here delayed the very first tap on the speaker icon.
+      if (available[0] === 'bhashini' && usableVendors().includes('bhashini')) {
         try {
           const cfg = await loadBhashiniConfig();
           languages = Object.keys(cfg.services).map((l) => `${l}-IN`);
         } catch (e) {
+          coolDown('bhashini');
           console.error('[text-to-speech] Bhashini config failed:', e);
         }
-      } else if (available[0] === 'google') {
+      }
+      // Never report an empty language list while another vendor can still
+      // speak: the app would wrongly conclude no cloud voice exists.
+      if (languages.length === 0 && (available.includes('google') || available.includes('lovable'))) {
         languages = Object.keys(GOOGLE_VOICES);
       }
       return json({ available, languages });
@@ -288,16 +391,19 @@ Deno.serve(async (req) => {
       return json({ callbackUrl: cfg.callbackUrl, services: cfg.services, hasInferenceKey: !!cfg.inferenceKey });
     }
 
-    const rateLimited = await checkRateLimit(req, 'text-to-speech', 60);
+    const rateLimited = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60 });
     if (rateLimited) return rateLimited;
 
     const { text, language } = body;
     if (!text || typeof text !== 'string') return json({ error: 'text is required' }, 400);
+    // format: 'binary' returns the audio bytes as the response body. The app
+    // plays them from an object URL: no base64 decode, one third less data.
+    const wantsBinary = body.format === 'binary';
 
     const locale = typeof language === 'string' && language ? language : 'hi-IN';
     const trimmed = text.slice(0, MAX_TEXT_LENGTH);
 
-    const vendors = configuredVendors();
+    const vendors = usableVendors();
     if (vendors.length === 0) {
       // Not an error: the app simply stays on device speech.
       return json({ error: 'no-vendor-configured', available: [] }, 200);
@@ -305,17 +411,43 @@ Deno.serve(async (req) => {
 
     let lastError = '';
     for (const vendor of vendors) {
+      const startedAt = Date.now();
       try {
         const result =
           vendor === 'bhashini'
             ? await synthesiseBhashini(trimmed, locale)
-            : await synthesiseGoogle(trimmed, locale);
+            : vendor === 'google'
+              ? await synthesiseGoogle(trimmed, locale)
+              : await synthesiseLovable(trimmed, locale);
+        // One metering line per successful synthesis. Values only, never the text.
+        console.log(
+          `[text-to-speech] ok vendor=${result.vendor} tier=${result.tier} locale=${locale} chars=${trimmed.length} ms=${Date.now() - startedAt} tenant=${req.headers.get('x-tenant-id') ?? '-'} farmer=${req.headers.get('x-farmer-id') ?? '-'}`,
+        );
+        if (wantsBinary) {
+          // supabase-js hands the body back as a Blob only for
+          // application/octet-stream; an audio/* content type is returned as
+          // text and cannot be played. The real type travels in X-TTS-Mime.
+          const bytes = Uint8Array.from(atob(result.audioContent), (c) => c.charCodeAt(0));
+          return new Response(bytes, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/octet-stream',
+              'Content-Length': String(bytes.byteLength),
+              'X-TTS-Mime': result.mimeType,
+              'X-TTS-Vendor': result.vendor,
+              'X-TTS-Tier': result.tier,
+            },
+          });
+        }
         return json(result);
       } catch (e) {
         lastError = e instanceof Error ? e.message : String(e);
+        if (isPermanentFailure(lastError)) coolDown(vendor);
         console.error(`[text-to-speech] ${vendor} failed:`, lastError);
       }
     }
+
 
     return json({ error: lastError || 'synthesis failed' }, 502);
   } catch (error) {

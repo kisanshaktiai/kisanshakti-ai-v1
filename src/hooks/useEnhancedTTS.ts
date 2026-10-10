@@ -18,7 +18,7 @@ interface UseEnhancedTTSOptions {
 }
 
 export function useEnhancedTTS(options: UseEnhancedTTSOptions = {}) {
-  const { language = 'hi', onEnd, onError } = options;
+  const { language, onEnd, onError } = options;
   const [promptDismissed, setPromptDismissed] = useState(false);
 
   const s = useSpeech({ language, onEnd, onError });

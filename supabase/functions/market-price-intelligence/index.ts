@@ -1,11 +1,22 @@
+// CHANGE LOG (newest first)
+// 2026-09-27 — AI model SSOT: getAIAnalysis calls callAITask task 'market.advice'; the model
+//   comes from ai_task_route_step (was the literal 'gpt-4o-mini' posted straight to the OpenAI
+//   endpoint with OPENAI_API_KEY). Request knobs unchanged: max 1000 output tokens,
+//   temperature 0.7 (sent where the model's contract allows it), no JSON mode, no reasoning
+//   effort. Result handling unchanged: an HTTP error or empty reply parses as '{}' (success
+//   with an empty analysis, as the old unchecked response did), a transport failure goes to
+//   the 500 catch, no provider key gives the same 500 "not configured" response.
+//   Differences: that key check now happens after the market_prices read instead of before
+//   it; the call now has the router's 55 s budget (there was no timeout); every call writes
+//   one ai_model_metrics row.
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { callAITask } from '../_shared/aiConfig.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
 // Haversine formula to calculate distance between two points in km
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -287,16 +298,6 @@ serve(async (req) => {
       case 'getAIAnalysis': {
         const { crop, district, market, currentPrice, historicalData } = params;
 
-        if (!openaiApiKey) {
-          return new Response(JSON.stringify({ 
-            success: false, 
-            error: 'OpenAI API key not configured' 
-          }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-
         // Fetch recent market data for context - FIXED: removed state filter
         let query = supabase
           .from('market_prices')
@@ -338,28 +339,44 @@ Provide analysis in JSON format with these fields:
 
 Respond ONLY with valid JSON, no markdown.`;
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: 'You are an agricultural market analyst. Always respond with valid JSON only.' },
-              { role: 'user', content: prompt }
-            ],
-            max_tokens: 1000,
-            temperature: 0.7,
-          }),
+        // 2026-09-27 — AI model SSOT: model from registry task market.advice (was 'gpt-4o-mini').
+        // Same request: max 1000 output tokens, temperature 0.7.
+        const aiResponse = await callAITask({
+          db: supabase,
+          task: 'market.advice',
+          functionName: 'market-price-intelligence',
+          messages: [
+            { role: 'system', content: 'You are an agricultural market analyst. Always respond with valid JSON only.' },
+            { role: 'user', content: prompt }
+          ],
+          farmerId: null,
+          maxOutputTokens: 1000,
+          temperature: 0.7,
+          metadata: { caller: 'market-price-intelligence' },
         });
 
-        const aiResponse = await response.json();
+        if (!aiResponse.ok) {
+          // Every model skipped for a missing provider key ⇒ the old "not configured" response.
+          if (aiResponse.errorClass === 'no_provider_available' && aiResponse.attempts.every((a) => a.outcome === 'skipped_no_key')) {
+            return new Response(JSON.stringify({ 
+              success: false, 
+              error: 'OpenAI API key not configured' 
+            }), {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          console.error('[market-price-intelligence] AI call failed:', aiResponse.httpStatus ?? '-', aiResponse.errorClass, aiResponse.detail);
+          // No HTTP response at all was a thrown fetch before ⇒ the 500 catch. An HTTP error
+          // or an empty reply was parsed as '{}' below, unchanged.
+          if (!aiResponse.httpStatus && aiResponse.errorClass !== 'empty_output') {
+            throw new Error(`AI API error: ${aiResponse.errorClass}`);
+          }
+        }
         let analysis;
         
         try {
-          const content = aiResponse.choices?.[0]?.message?.content || '{}';
+          const content = (aiResponse.ok ? aiResponse.content : '') || '{}';
           analysis = JSON.parse(content.replace(/```json\n?|\n?```/g, ''));
         } catch (e) {
           console.error('Failed to parse AI response:', e);

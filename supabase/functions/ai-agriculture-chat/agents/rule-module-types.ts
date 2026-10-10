@@ -1,5 +1,8 @@
 // RULE MODULE MAPPING TYPES - INTEGRATION WITH DECISION GRAPH
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:51 UTC — Added optional reason_en alias to BlockingRuleInfo for consumers reading a language-suffixed field name.
+
 // PRIORITY LEVELS (Matching decision-graph/types.ts)
 
 export type RulePriority = 
@@ -290,6 +293,8 @@ export interface BlockingRuleInfo {
   rule_id: string;
   priority: RulePriority;
   reason: string;
+  /** Optional — English-specific alias some callers read directly */
+  reason_en?: string;
   alternatives?: string[];
 }
 

@@ -1,4 +1,11 @@
 // CHANGE LOG
+// 2026-09-16 — v2.2.0: SCHEDULE IDENTITY. Decisions are applied only when the schedule being reconciled
+//   IS the land's lands.active_schedule_id, and current live decisions still carrying a stale (cancelled)
+//   schedule_id/task_id are rebound to the active schedule with task_id cleared before task matching.
+//   Identity only — no agronomy, thresholds, dates or quantities changed.
+
+// 2026-09-16 — v2.1.1: an OVERDUE scouting card is re-dated to today when risk is reported (previously only a
+//   future-dated card moved; the live rice card stayed dated 8 Sept at priority critical).
 // 2026-09-13 — v2.1.0 AGRONOMIC RESPONSE TO PROACTIVE ALERTS. The alert → decision → task chain
 //   existed but responded to only four situations. The response table is now complete for what the
 //   field-state engine actually reports, using only the decision keys and statuses the DB already
@@ -33,7 +40,7 @@
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
-export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.1.0";
+export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.2.0";
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
 const addDays = (dateIso: string, n: number) => iso(new Date(new Date(dateIso).getTime() + n * 86400000));
@@ -83,20 +90,29 @@ export interface TaskOutcome { task_id: string; task_type: string; decision_id: 
 export interface FieldDecisionOutcome {
   applied: boolean; skipped: string | null;
   adjustments: Array<Record<string, unknown>>; failedTaskIds: string[];
-  counters: { deferred: number; advanced: number; flagged: number; unflagged: number; linked: number; stated: number };
+  counters: { deferred: number; advanced: number; flagged: number; unflagged: number; linked: number; stated: number; rebound: number };
   state_snapshot: Record<string, unknown> | null;
   decisions_evaluated: Array<Record<string, unknown>>;
   outcomes: TaskOutcome[];
   decision_engine_version: string | null;
 }
 
-const emptyCounters = () => ({ deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0 });
+const emptyCounters = () => ({ deferred: 0, advanced: 0, flagged: 0, unflagged: 0, linked: 0, stated: 0, rebound: 0 });
 
 export async function applyFieldDecisions(supabase: SupabaseClient, input: FieldDecisionInput): Promise<FieldDecisionOutcome> {
   const counters = emptyCounters();
   const adjustments: Array<Record<string, unknown>> = [];
   const failedTaskIds: string[] = [];
   const outcomes: TaskOutcome[] = [];
+
+  // 0. AUTHORITATIVE SCHEDULE GATE (lands.active_schedule_id is the land's current schedule SSOT).
+  //    INVARIANT: only the land's ACTIVE schedule may apply or re-link current live decisions. A run
+  //    for a stale / cancelled schedule must never steal or rebind a current decision.
+  const { data: landRow } = await supabase.from("lands").select("active_schedule_id").eq("id", input.landId).maybeSingle();
+  const activeScheduleId = (landRow?.active_schedule_id ?? null) as string | null;
+  if (activeScheduleId && activeScheduleId !== input.scheduleId) {
+    return { applied: false, skipped: "not_active_schedule", adjustments, failedTaskIds, counters, state_snapshot: null, decisions_evaluated: [], outcomes, decision_engine_version: null };
+  }
 
   // 1. Crop-state snapshot (DB engine) — latest on or before today.
   const { data: fs } = await supabase
@@ -122,6 +138,30 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   const evaluated = decisions.map((d) => ({ id: d.id, decision_date: d.decision_date, key: d.decision_key, category: d.category, status: d.status, priority: d.priority, rule_id: d.rule_id, source: d.source, title: d.title_en }));
   const decisionDay = String(dayRow.decision_date);
   const byKey = (prefix: string) => decisions.filter((d) => String(d.decision_key ?? "").startsWith(prefix));
+
+  // 2b. STALE-SCHEDULE REBIND (identity only — no agronomy, no dates, no quantities).
+  //     derive_farm_decisions upserts with p_sched/p_task NULL, so a live decision written before a new
+  //     schedule was generated can still carry the OLD (now cancelled) schedule_id and one of its task ids.
+  //     INVARIANT: after this land's ACTIVE schedule is reconciled, no current live decision (DUE / WATCH /
+  //     INFO / BLOCKED, not past valid_until) may remain linked to a non-active schedule. A link into a
+  //     different schedule is cleared so the matching logic below can re-link it to a task of THIS schedule.
+  //     Terminal / historical decisions (DONE, MISSED, DISMISSED, EXPIRED, SUPERSEDED, expired validity)
+  //     are never selected here and stay exactly as they are.
+  for (const d of decisions) {
+    if (d.schedule_id === input.scheduleId) continue;
+    if (d.schedule_id === null && d.task_id === null) continue; // never linked — normal linking handles it
+    if (!input.dryRun) {
+      const { error: rErr } = await supabase
+        .from("farm_decision")
+        .update({ schedule_id: input.scheduleId, task_id: null, updated_at: new Date().toISOString() })
+        .eq("id", d.id);
+      if (rErr) throw rErr;
+    }
+    d.schedule_id = input.scheduleId;
+    d.task_id = null; // re-matched below only against a task that belongs to this schedule
+    counters.rebound += 1;
+  }
+
 
   // 3. Pending tasks of this schedule.
   const { data: rows, error } = await supabase
@@ -157,6 +197,10 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   };
 
   // ── IRRIGATION ──────────────────────────────────────────────────────────────
+  // 2026-09-16 — set true ONLY when a water-stress decision actually produced an irrigation action
+  // today. The scouting section below suppresses the stress signal on this flag, never on the mere
+  // presence of a water decision, so a stress warning is never silently dropped.
+  let stressHandledByIrrigation = false;
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   const irrigate = byKey(KEY.IRRIGATE).find((d) => d.status === "DUE") ?? null;
   const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? null;
@@ -194,6 +238,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
       if (windowOpen && (await state(next, irrigate, "DUE", "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, `Field-state decision: ${why} — next declared irrigation event brought forward to today`, { task_date: input.todayIso, projected_date: input.todayIso, original_date: next.original_date ?? next.task_date, auto_rescheduled: true, adjustment_reason: stressConfirmed ? "decision_water_stress_confirmed" : "decision_irrigate_urgent", resources: { ...(next.resources ?? {}), dynamic: { ...dyn(next), advanced_on: decisionDay, advanced_from: next.task_date, advanced_by: irrigate.id, stress_confirmed: stressConfirmed } } }))) {
         record(next, "ADVANCE", { task_date: next.task_date }, { task_date: input.todayIso }, why + " per farm_decision " + String(irrigate.decision_key), irrigate);
         counters.advanced += 1;
+        if (stressConfirmed) stressHandledByIrrigation = true;
       }
     }
   } else if (noWaterData) {
@@ -257,12 +302,11 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   }
 
   // ── SCOUTING ────────────────────────────────────────────────────────────────
-  // Risk = pest/disease scouting decisions, episode ONSET, or canopy stress WITHOUT a water deficit
-  // (with a deficit it was handled as irrigation above). DECLINING never counts as risk.
-  const waterDeficitToday = decisions.some((d) => String(d.decision_key ?? "").startsWith(KEY.IRRIGATE));
+  // Risk = pest/disease scouting decisions, episode ONSET, or canopy stress that was NOT already
+  // acted on as irrigation above. DECLINING never counts as risk.
   const risk = [...byKey(KEY.SCOUT), ...byKey(KEY.STRESS)]
     .filter((d) => (d.status === "WATCH" || d.status === "DUE") && !hasSignal(d, SIGNAL.EPISODE_DECLINING))
-    .filter((d) => !(String(d.decision_key ?? "").startsWith(KEY.STRESS) && waterDeficitToday));
+    .filter((d) => !(String(d.decision_key ?? "").startsWith(KEY.STRESS) && stressHandledByIrrigation));
   const scouting = tasks.filter((t) => SCOUTING_TASK_TYPES.has(t.task_type) && !t.is_pinned);
   const covering = scouting.find((t) => { const rec = (t.resources?.recurrence ?? null) as Record<string, unknown> | null; const a = Number(rec?.window_start), b = Number(rec?.window_end); return todayDas != null && Number.isFinite(a) && Number.isFinite(b) ? todayDas >= a && todayDas <= b : t.task_date >= input.todayIso; }) ?? scouting.find((t) => t.task_date >= input.todayIso) ?? null;
   if (covering) {
@@ -278,7 +322,10 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
         // Bring the scouting card to TODAY when it is dated later: the farmer must look now, and the
         // card already carries "if you see X → apply Y" for this stage. Its date is remembered so
         // UNFLAG can restore it when the risk clears.
-        const bringForward = covering.task_date > input.todayIso;
+        // Any date other than today is wrong for "check the field now": a future card is brought
+        // forward, and an OVERDUE card (the common case — the stage's scouting card dated a week ago
+        // and still pending) is re-dated to today as well, so the farmer sees it as today's job.
+        const bringForward = covering.task_date !== input.todayIso;
         const datePatch = bringForward ? { task_date: input.todayIso, projected_date: input.todayIso, original_date: covering.original_date ?? covering.task_date, auto_rescheduled: true, adjustment_reason: onset ? "decision_episode_onset" : "decision_risk_scout_now" } : {};
         const reason = onset ? "Pest/disease episode onset reported — check the field today and treat only what you find" : "Field-state decisions report risk — scouting raised so the farmer checks the crop now";
         if (await state(covering, lead, "DUE", bringForward ? "ADVANCE" : "FLAG", { priority: covering.priority, task_date: covering.task_date }, { priority: raised, task_date: bringForward ? input.todayIso : covering.task_date }, reason, { ...datePatch, priority: raised, resources: { ...(covering.resources ?? {}), dynamic: { ...current, field_verdict: "scout_now", risk_keys: keys, previous_priority: previousPriority, previous_date: bringForward ? covering.task_date : (current.previous_date ?? null), as_of: decisionDay } } })) {

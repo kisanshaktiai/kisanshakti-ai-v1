@@ -22,6 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Skeleton } from '@/components/ui/skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LandsSkeleton } from '@/components/skeletons';
+import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
 
 interface Land {
   id: string;
@@ -54,6 +55,7 @@ interface Land {
 
 export default function LandManagement() {
   const { t } = useTranslation();
+  const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
@@ -157,7 +159,7 @@ export default function LandManagement() {
                 <div className="min-w-0">
                   <h3 className="font-semibold truncate">{land.name}</h3>
                   <p className="text-sm text-muted-foreground truncate">
-                    {land.village && `${land.village}, `}{land.taluka}
+                    {joinPlace(land, ['village','taluka'])}
                   </p>
                 </div>
               </div>

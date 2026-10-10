@@ -11,125 +11,15 @@
 
 import { Capacitor } from '@capacitor/core';
 import { prepareForSpeech } from '@/services/tts/ttsTextPrepare';
-
-// ALL Indian languages with native TTS codes
-// 22 Official Languages + major dialects
-const ALL_INDIAN_LANGUAGES: Record<string, { code: string; name: string; nativeName: string }> = {
-  // Scheduled Languages (22 Official)
-  'hi': { code: 'hi-IN', name: 'Hindi', nativeName: 'हिंदी' },
-  'bn': { code: 'bn-IN', name: 'Bengali', nativeName: 'বাংলা' },
-  'te': { code: 'te-IN', name: 'Telugu', nativeName: 'తెలుగు' },
-  'mr': { code: 'mr-IN', name: 'Marathi', nativeName: 'मराठी' },
-  'ta': { code: 'ta-IN', name: 'Tamil', nativeName: 'தமிழ்' },
-  'gu': { code: 'gu-IN', name: 'Gujarati', nativeName: 'ગુજરાતી' },
-  'ur': { code: 'ur-IN', name: 'Urdu', nativeName: 'اردو' },
-  'kn': { code: 'kn-IN', name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
-  'or': { code: 'or-IN', name: 'Odia', nativeName: 'ଓଡ଼ିଆ' },
-  'ml': { code: 'ml-IN', name: 'Malayalam', nativeName: 'മലയാളം' },
-  'pa': { code: 'pa-IN', name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ' },
-  'as': { code: 'as-IN', name: 'Assamese', nativeName: 'অসমীয়া' },
-  'mai': { code: 'mai-IN', name: 'Maithili', nativeName: 'मैथिली' },
-  'sa': { code: 'sa-IN', name: 'Sanskrit', nativeName: 'संस्कृतम्' },
-  'ne': { code: 'ne-IN', name: 'Nepali', nativeName: 'नेपाली' },
-  'sd': { code: 'sd-IN', name: 'Sindhi', nativeName: 'سنڌي' },
-  'kok': { code: 'kok-IN', name: 'Konkani', nativeName: 'कोंकणी' },
-  'doi': { code: 'doi-IN', name: 'Dogri', nativeName: 'डोगरी' },
-  'mni': { code: 'mni-IN', name: 'Manipuri', nativeName: 'মৈতৈলোন্' },
-  'sat': { code: 'sat-IN', name: 'Santali', nativeName: 'ᱥᱟᱱᱛᱟᱲᱤ' },
-  'ks': { code: 'ks-IN', name: 'Kashmiri', nativeName: 'कॉशुर' },
-  'bo': { code: 'bo-IN', name: 'Bodo', nativeName: 'बड़ो' },
-
-  // English variants
-  'en': { code: 'en-IN', name: 'English (India)', nativeName: 'English' },
-  'en-US': { code: 'en-US', name: 'English (US)', nativeName: 'English' },
-  'en-GB': { code: 'en-GB', name: 'English (UK)', nativeName: 'English' },
-
-  // Regional dialects commonly used
-  'bh': { code: 'bh-IN', name: 'Bhojpuri', nativeName: 'भोजपुरी' },
-  'raj': { code: 'raj-IN', name: 'Rajasthani', nativeName: 'राजस्थानी' },
-  'awa': { code: 'awa-IN', name: 'Awadhi', nativeName: 'अवधी' },
-  'mag': { code: 'mag-IN', name: 'Magahi', nativeName: 'मगही' },
-  'hne': { code: 'hne-IN', name: 'Chhattisgarhi', nativeName: 'छत्तीसगढ़ी' },
-  'gom': { code: 'gom-IN', name: 'Goan Konkani', nativeName: 'गोंयची कोंकणी' },
-};
-
-// Fallback mapping for ALL Indian languages when voice not available on device
-// Priority: Same script family → Hindi → English (NEVER direct to English for Indian languages)
-const FALLBACK_LANGUAGES: Record<string, string> = {
-  // === DEVANAGARI SCRIPT LANGUAGES → Hindi ===
-  'mr': 'hi-IN',     // Marathi → Hindi (same Devanagari script)
-  'mai': 'hi-IN',    // Maithili → Hindi
-  'bh': 'hi-IN',     // Bhojpuri → Hindi
-  'awa': 'hi-IN',    // Awadhi → Hindi
-  'mag': 'hi-IN',    // Magahi → Hindi
-  'hne': 'hi-IN',    // Chhattisgarhi → Hindi
-  'raj': 'hi-IN',    // Rajasthani → Hindi
-  'sa': 'hi-IN',     // Sanskrit → Hindi
-  'ne': 'hi-IN',     // Nepali → Hindi
-  'doi': 'hi-IN',    // Dogri → Hindi
-  'kok': 'hi-IN',    // Konkani → Hindi
-  'gom': 'hi-IN',    // Goan Konkani → Hindi
-  'bo': 'hi-IN',     // Bodo → Hindi
-  'sat': 'hi-IN',    // Santali → Hindi
-
-  // === DRAVIDIAN LANGUAGES → Hindi (as last resort) ===
-  'ta': 'hi-IN',     // Tamil → Hindi
-  'te': 'hi-IN',     // Telugu → Hindi
-  'kn': 'hi-IN',     // Kannada → Hindi
-  'ml': 'hi-IN',     // Malayalam → Hindi
-
-  // === BENGALI SCRIPT LANGUAGES → Bengali → Hindi ===
-  'bn': 'hi-IN',     // Bengali → Hindi (when Bengali not available)
-  'as': 'bn-IN',     // Assamese → Bengali (similar script)
-  'mni': 'bn-IN',    // Manipuri → Bengali
-
-  // === GURMUKHI SCRIPT ===
-  'pa': 'hi-IN',     // Punjabi → Hindi
-
-  // === GUJARATI SCRIPT ===
-  'gu': 'hi-IN',     // Gujarati → Hindi
-
-  // === ODIA SCRIPT ===
-  'or': 'hi-IN',     // Odia → Hindi
-
-  // === PERSO-ARABIC SCRIPT → Urdu → Hindi ===
-  'ur': 'hi-IN',     // Urdu → Hindi
-  'ks': 'ur-IN',     // Kashmiri → Urdu
-  'sd': 'ur-IN',     // Sindhi → Urdu
-
-  // === HINDI ITSELF → English (only if Hindi not available) ===
-  'hi': 'en-IN',     // Hindi → English (last resort)
-};
+import { TTS_LANGUAGES, TTS_FALLBACK, scriptOf } from '@/services/tts/ttsLanguages';
 
 /**
- * Writing system per language.
- *
- * FALLBACK_LANGUAGES above states its own rule as "same script family → Hindi
- * → English", but the map cannot express that on its own: it would send Tamil
- * to a Hindi voice and Hindi to an English voice, and a voice cannot read a
- * script it was not built for. This table enforces the rule the map describes —
- * a fallback is only taken when the two languages share a script.
+ * Language catalogue, fallback chain and script table come from the TTS
+ * language SSOT (ttsLanguages.ts). The aliases keep this file's historical
+ * export names working for existing importers.
  */
-const SCRIPT_BY_LANGUAGE: Record<string, string> = {
-  // Devanagari
-  'hi': 'deva', 'mr': 'deva', 'mai': 'deva', 'bh': 'deva', 'awa': 'deva',
-  'mag': 'deva', 'hne': 'deva', 'raj': 'deva', 'sa': 'deva', 'ne': 'deva',
-  'doi': 'deva', 'kok': 'deva', 'gom': 'deva', 'bo': 'deva',
-  // Bengali-Assamese
-  'bn': 'beng', 'as': 'beng', 'mni': 'beng',
-  // Other Indic scripts
-  'pa': 'guru', 'gu': 'gujr', 'or': 'orya',
-  'ta': 'taml', 'te': 'telu', 'kn': 'knda', 'ml': 'mlym',
-  'sat': 'olck',
-  // Perso-Arabic
-  'ur': 'arab', 'sd': 'arab', 'ks': 'arab',
-  // Latin
-  'en': 'latn',
-};
-
-function scriptOf(language: string): string | null {
-  return SCRIPT_BY_LANGUAGE[language.split('-')[0].toLowerCase()] || null;
-}
+const ALL_INDIAN_LANGUAGES: Record<string, { code: string; name: string; nativeName: string }> = TTS_LANGUAGES;
+const FALLBACK_LANGUAGES: Record<string, string> = TTS_FALLBACK;
 
 export interface TTSConfig {
   rate: number;       // 0.5 - 2.0
@@ -399,7 +289,7 @@ class NativeTTSService {
   async speak(
     text: string,
     language: string = 'hi',
-    config: Partial<TTSConfig> & { voiceIndex?: number } = {},
+    config: Partial<TTSConfig> & { voiceIndex?: number; prepared?: boolean } = {},
     callbacks: TTSCallbacks = {}
   ): Promise<TTSResult> {
     const startTime = performance.now();
@@ -463,7 +353,9 @@ class NativeTTSService {
       };
     }
 
-    const { chunks } = prepareForSpeech(text);
+    // deviceProvider hands over chunks that ttsEngine has already prepared;
+    // running the normaliser twice on them is wasted work.
+    const { chunks } = config.prepared ? { chunks: [text.trim()] } : prepareForSpeech(text);
     if (chunks.length === 0) {
       return { success: false, provider: 'none', error: 'No speakable text' };
     }

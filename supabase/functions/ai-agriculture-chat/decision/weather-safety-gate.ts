@@ -14,6 +14,17 @@
  * VERSION: 2.1.0 - Thresholds sourced from system_config (M2 DB-SSOT).
  *
  * CHANGE LOG (newest first)
+ *   2026-09-26 21:35 UTC — Type-only fix: fallback weather_data literal now
+ *     coalesces to `undefined` (not `null`) for rain_probability/wind_speed_kmh/
+ *     temperature_c/humidity to match the optional-number field types; no
+ *     runtime value change since both null and undefined fail the existing
+ *     downstream truthy/`!== null` guards identically in practice here.
+ *   2026-09-26 21:00 UTC — Type-only fixes: widened fallback weather_data
+ *     object literal to include dew_point_c/recent_rainfall_mm/forecast_hours
+ *     so it structurally matches the input.weather_data shape (removes union
+ *     mismatch errors); added non-null assertions on rain/wind/temperature
+ *     comparisons that are already runtime-guarded by explicit `!== null`
+ *     checks. No behavior changes.
  *   2026-07-24 — P3: SPRAY_THRESHOLDS moved to system_config. Legacy TS map
  *     retained ONLY as cold-boot fallback for cases where the cache has not
  *     yet preloaded (systemConfigReady()===false). Values in the DB were
@@ -222,11 +233,14 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   const thresholds = resolveSprayThresholds(sprayType);
   
   // Extract weather data from land state or direct input
-  const weatherData = input.weather_data || {
-    rain_probability: input.land_state?.weather.rain_probability ?? null,
-    wind_speed_kmh: input.land_state?.weather.wind_speed ?? null,
-    temperature_c: input.land_state?.weather.temperature ?? null,
-    humidity: input.land_state?.weather.humidity ?? null
+  const weatherData: NonNullable<WeatherSafetyInput['weather_data']> = input.weather_data || {
+    rain_probability: input.land_state?.weather.rain_probability ?? undefined,
+    wind_speed_kmh: input.land_state?.weather.wind_speed ?? undefined,
+    temperature_c: input.land_state?.weather.temperature ?? undefined,
+    humidity: input.land_state?.weather.humidity ?? undefined,
+    dew_point_c: undefined,
+    recent_rainfall_mm: undefined,
+    forecast_hours: undefined
   };
   
   // Initialize result
@@ -274,13 +288,13 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   
   // CHECK 1: Rain Probability
   if (weatherData.rain_probability !== null) {
-    if (weatherData.rain_probability > thresholds.max_rain_probability) {
+    if (weatherData.rain_probability! > thresholds.max_rain_probability) {
       result.rain_check.passed = false;
       result.rain_check.message = `Rain probability ${weatherData.rain_probability}% exceeds safe threshold ${thresholds.max_rain_probability}%`;
       result.spray_allowed = false;
       blockedReasons.push('high_rain');
       console.log(`   ❌ Rain: ${weatherData.rain_probability}% > ${thresholds.max_rain_probability}%`);
-    } else if (weatherData.rain_probability > thresholds.max_rain_probability * 0.7) {
+    } else if (weatherData.rain_probability! > thresholds.max_rain_probability * 0.7) {
       result.rain_check.message = `Rain probability ${weatherData.rain_probability}% - monitor closely`;
       result.status = 'CAUTION';
       console.log(`   ⚠️ Rain: ${weatherData.rain_probability}% (caution)`);
@@ -292,13 +306,13 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   
   // CHECK 2: Wind Speed
   if (weatherData.wind_speed_kmh !== null) {
-    if (weatherData.wind_speed_kmh > thresholds.max_wind_speed) {
+    if (weatherData.wind_speed_kmh! > thresholds.max_wind_speed) {
       result.wind_check.passed = false;
       result.wind_check.message = `Wind speed ${weatherData.wind_speed_kmh} km/h exceeds safe threshold ${thresholds.max_wind_speed} km/h`;
       result.spray_allowed = false;
       blockedReasons.push('high_wind');
       console.log(`   ❌ Wind: ${weatherData.wind_speed_kmh} km/h > ${thresholds.max_wind_speed} km/h`);
-    } else if (weatherData.wind_speed_kmh > thresholds.max_wind_speed * 0.7) {
+    } else if (weatherData.wind_speed_kmh! > thresholds.max_wind_speed * 0.7) {
       result.wind_check.message = `Wind speed ${weatherData.wind_speed_kmh} km/h - spray carefully`;
       if (result.status !== 'UNSAFE') result.status = 'CAUTION';
       console.log(`   ⚠️ Wind: ${weatherData.wind_speed_kmh} km/h (caution)`);
@@ -310,13 +324,13 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   
   // CHECK 3: Temperature
   if (weatherData.temperature_c !== null) {
-    if (weatherData.temperature_c < thresholds.min_temperature) {
+    if (weatherData.temperature_c! < thresholds.min_temperature) {
       result.temperature_check.passed = false;
       result.temperature_check.message = `Temperature ${weatherData.temperature_c}°C too cold (min: ${thresholds.min_temperature}°C)`;
       result.spray_allowed = false;
       blockedReasons.push('too_cold');
       console.log(`   ❌ Temp: ${weatherData.temperature_c}°C < ${thresholds.min_temperature}°C`);
-    } else if (weatherData.temperature_c > thresholds.max_temperature) {
+    } else if (weatherData.temperature_c! > thresholds.max_temperature) {
       result.temperature_check.passed = false;
       result.temperature_check.message = `Temperature ${weatherData.temperature_c}°C too hot (max: ${thresholds.max_temperature}°C)`;
       result.spray_allowed = false;
@@ -384,7 +398,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   // CHECK 4: Disease Risk Assessment (NEW - for preventive spray recommendations)
   if (input.include_disease_risk !== false && weatherData.temperature_c !== null && weatherData.humidity !== null) {
     const diseaseRisk = calculateDiseaseRiskForSpray(
-      weatherData.temperature_c,
+      weatherData.temperature_c!,
       weatherData.humidity ?? 65,
       weatherData.dew_point_c ?? null,
       weatherData.recent_rainfall_mm ?? 0

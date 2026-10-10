@@ -24,9 +24,6 @@ verify_jwt = true
 [functions.google-maps-config]
 verify_jwt = false
 
-[functions.get-white-label-config]
-verify_jwt = false
-
 [functions.lands-api]
 verify_jwt = false
 
@@ -51,13 +48,13 @@ verify_jwt = false
 [functions.ai-general-chat]
 verify_jwt = false
 
+[functions.rag-eval]
+verify_jwt = false
+
 [functions.translate-text]
 verify_jwt = false
 
 [functions.transcribe-voice]
-verify_jwt = false
-
-[functions.community-tts]
 verify_jwt = false
 
 [functions.market-price-intelligence]

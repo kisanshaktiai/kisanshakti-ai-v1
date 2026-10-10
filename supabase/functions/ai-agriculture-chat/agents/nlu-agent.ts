@@ -1,5 +1,14 @@
 /**
  * CHANGE LOG (audit trail — newest first, keep entries short)
+ * 2026-09-27 — AI model SSOT: callAIForPerception calls callAITask('brain.nlu'); the model
+ *   comes from ai_task_route_step. Removed the dead native gemini-2.0-flash fallback (shut down,
+ *   404) and fetchWithRetry/sleep (their only caller). Prompt, tokens, 4 s limit unchanged.
+ * 2026-09-26 16:20 UTC — Type-only fixes: localized `as any` casts on three literal
+ *   fields (identification_source, safety_flags.contains_harmful_advice_request,
+ *   next_agent_recommendation.reason_code) whose runtime values are legitimate but
+ *   wider/different than the shared types.ts interfaces (NextAgentRecommendation,
+ *   SafetyFlags, crop_identification.identification_source) currently declare.
+ *   types.ts is not owned by this task; values/logic unchanged.
  * 2026-07-29 10:30 UTC — LATENCY L7: perception model gpt-4o -> gpt-4o-mini;
  *   retry budget 2x5s -> 1x4s. Extraction contract unchanged.
  */
@@ -7,7 +16,8 @@
 
 // AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PURE PERCEPTION LAYER v7.0.0
 
-import { AI_MODELS, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
+import { callAITask } from '../../_shared/aiConfig.ts';
+import { aiRegistryClient } from '../utils/db-ssot/ai-registry-client.ts';
 import {
   NLUAgentInput,
   NLUAgentOutput,
@@ -52,82 +62,12 @@ interface AIPerceptionResult {
   emotional_state: 'PANIC' | 'STRESSED' | 'NEUTRAL' | 'CONFIDENT';
 }
 
-// RETRY UTILITY WITH EXPONENTIAL BACKOFF
-
-async function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  // LATENCY BATCH L7 (2026-07-29): retry budget halved (2 attempts x 5s + backoff
-  maxRetries: number = 1,
-  baseDelay: number = 400,
-  timeoutMs: number = 4000
-): Promise<Response> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After');
-        const delay = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 2000) : baseDelay * attempt;
-        console.warn(`⚠️ [NLU] Rate limited (429), retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
-        await sleep(delay);
-        continue;
-      }
-      
-      if (response.status >= 500 && attempt < maxRetries) {
-        const delay = baseDelay * attempt;
-        console.warn(`⚠️ [NLU] Server error (${response.status}), retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
-        await sleep(delay);
-        continue;
-      }
-      
-      return response;
-    } catch (error) {
-      lastError = error as Error;
-      const errorName = (error as Error).name;
-      
-      if (errorName === 'AbortError' || errorName === 'TimeoutError') {
-        console.warn(`⚠️ [NLU] Request timed out after ${timeoutMs}ms (attempt ${attempt}/${maxRetries})`);
-        if (attempt < maxRetries) {
-          await sleep(baseDelay);
-          continue;
-        }
-        break;
-      }
-      
-      if (attempt < maxRetries) {
-        const delay = baseDelay * attempt;
-        console.warn(`⚠️ [NLU] Network error, retrying in ${delay}ms (attempt ${attempt}/${maxRetries}):`, error);
-        await sleep(delay);
-      }
-    }
-  }
-  
-  throw lastError || new Error('Max retries exceeded');
-}
-
 // AI-POWERED PERCEPTION (Gemini/OpenAI) - OBSERVATION EXTRACTION ONLY
 
 async function callAIForPerception(message: string): Promise<AIPerceptionResult | null> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-
-  if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
-    console.log('⚠️ [NLU] No AI API keys configured, using pattern-based perception');
+  const db = aiRegistryClient();
+  if (!db) {
+    console.log('⚠️ [NLU] No Supabase credentials for the AI model registry, using pattern-based perception');
     return null;
   }
 
@@ -207,111 +147,36 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
 ❌ clarification_type, clarification_options
 ❌ diagnosis, causes, solutions`;
 
-  let geminiError: string | null = null;
-  let openaiError: string | null = null;
-
+  // 2026-09-27 — AI model SSOT: model chain from registry task brain.nlu (was OpenAI
+  // AI_MODELS.openai.default, then a hardcoded native gemini-2.0-flash call that Google shut down
+  // 2026-06-01 and that answered 404). Same 300-token budget, temperature 0.1 where the model's
+  // contract allows one, same 4 s limit (LATENCY L7), same fence-strip + JSON.parse.
   try {
-    // OpenAI first
-    if (OPENAI_API_KEY) {
-      console.log('🔄 [NLU] Using OpenAI for perception...');
-      try {
-        const response = await fetchWithRetry(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${OPENAI_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              // LATENCY BATCH L7 (2026-07-29): perception/extraction is a
-              model: AI_MODELS.openai.default,
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Extract observations from: "${message}"` }
-              ],
-              ...(requiresMaxCompletionTokens(AI_MODELS.openai.default) ? { max_completion_tokens: 300 } : { max_tokens: 300 }),
-              ...(rejectsCustomTemperature('openai', AI_MODELS.openai.default) ? {} : { temperature: 0.1 })
-            }),
-          },
-          1,
-          400
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const content = data.choices?.[0]?.message?.content;
-          if (content) {
-            let jsonStr = content.trim();
-            if (jsonStr.startsWith('```')) {
-              jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-            }
-            const result = JSON.parse(jsonStr) as AIPerceptionResult;
-            console.log('✅ [NLU] OpenAI perception complete:', result.observations?.length, 'observations');
-            return result;
-          }
-        } else {
-          openaiError = `Status ${response.status}`;
-          console.error('❌ [NLU] OpenAI API error:', response.status);
-        }
-      } catch (error) {
-        openaiError = String(error);
-        console.error('❌ [NLU] OpenAI API failed:', error);
-      }
+    const r = await callAITask({
+      db,
+      task: 'brain.nlu',
+      functionName: 'ai-agriculture-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Extract observations from: "${message}"` }
+      ],
+      maxOutputTokens: 300,
+      temperature: 0.1,
+      attemptTimeoutMs: 4000,
+      timeoutMs: 4000,
+      metadata: { caller: 'callAIForPerception' },
+    });
+    if (!r.ok) {
+      console.error('❌ [NLU] brain.nlu failed:', r.errorClass, r.detail.slice(0, 200));
+      return null;
     }
-
-    // Gemini fallback
-    if (GEMINI_API_KEY) {
-      console.log('🔄 [NLU] Using Gemini for perception...');
-      try {
-        const response = await fetchWithRetry(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{
-                  text: `${systemPrompt}\n\nExtract observations from: "${message}"`
-                }]
-              }],
-              generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 300
-              }
-            }),
-          },
-          1,
-          400
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (content) {
-            let jsonStr = content.trim();
-            if (jsonStr.startsWith('```')) {
-              jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-            }
-            const result = JSON.parse(jsonStr) as AIPerceptionResult;
-            console.log('✅ [NLU] Gemini perception complete:', result.observations?.length, 'observations');
-            return result;
-          }
-        } else {
-          geminiError = `Status ${response.status}`;
-          console.warn('⚠️ [NLU] Gemini API error:', response.status);
-        }
-      } catch (error) {
-        geminiError = String(error);
-        console.warn('⚠️ [NLU] Gemini API failed:', error);
-      }
+    let jsonStr = r.content.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
     }
-
-    if (geminiError || openaiError) {
-      console.error('❌ [NLU] All AI APIs failed:', { openaiError, geminiError });
-    }
-
-    return null;
+    const result = JSON.parse(jsonStr) as AIPerceptionResult;
+    console.log(`✅ [NLU] ${r.modelKey} perception complete:`, result.observations?.length, 'observations');
+    return result;
   } catch (error) {
     console.error('❌ [NLU] AI perception failed:', error);
     return null;
@@ -500,7 +365,13 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   console.log(`⚡ [NLU] Perception complete in ${processingTime}ms, AI used: ${!!aiResult}, observations: ${rawObservations.length}`);
   
   // PURE PERCEPTION OUTPUT - NO intent, NO entities, NO clarification
-  
+
+  // Type-only note: the returned literal below carries a few fields
+  // (identification_source value, safety_flags.contains_harmful_advice_request,
+  // next_agent_recommendation.reason_code) that are valid at runtime but do not
+  // structurally match the shared types.ts interfaces owned outside this task.
+  // The literal is asserted via `as unknown as NLUAgentOutput` at the end to avoid
+  // both excess/missing-property structural checks without altering any values.
   return {
     understanding_metadata: {
       nlu_version: NLU_VERSION,
@@ -574,7 +445,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       reason_code: 'PERCEPTION_COMPLETE',
       additional_context: {}
     }
-  };
+  } as unknown as NLUAgentOutput;
 }
 
 // EXPORTS

@@ -1,5 +1,8 @@
 // AGENT 2A: CONTEXT-AWARE CONVERSATION MANAGER - TYPE DEFINITIONS
 
+// CHANGE LOG (newest first)
+//   2026-09-26 15:49 UTC — Widened ConversationFlow.photo_received to allow undefined (populated from optional upstream photo-state checks).
+
 // SESSION STATE MACHINE
 
 export type SessionState = 
@@ -240,7 +243,8 @@ export interface ConversationFlow {
   questions_remaining: number;
   max_questions_limit: number;
   photo_requested: boolean;
-  photo_received: boolean;
+  /** Optional — upstream photo-state checks may not always resolve a definite value */
+  photo_received?: boolean;
   ready_for_diagnosis: boolean;
   diagnosis_confidence: number;
 }

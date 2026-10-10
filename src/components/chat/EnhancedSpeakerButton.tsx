@@ -383,6 +383,7 @@ export function EnhancedSpeakerButton({
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         currentLanguage={language}
+        previewText={content}
       />
 
       {/* Sentence Highlighting Overlay - Uses CSS variable for theming */}

@@ -28,6 +28,7 @@
 - Farmer/tenant identity is server-verified ONLY via `x-session-token` → `verified_session_context()`; never trust `x-farmer-id`/`x-tenant-id` headers (see mem://security/server-verified-farmer-identity).
 
 ## Memories
+- [Narration voice](mem://preferences/narration-voice) — No officer persona/self-intro, plain respectful tone, single script, no extra token spend
 - [Server-verified farmer identity](mem://security/server-verified-farmer-identity) — Session-token identity, farmer-auth core, PIN rules, edge-function slot cap.
 - [Crop Schedule DB-SSOT](mem://architecture/crop-schedule-db-ssot) — Schedule pipeline is DB-only; no hardcoded seed/NPK/price/labor constants; gaps instead of invented values.
 - [Edge Deploy Size = Source Bytes](mem://architecture/edge-deploy-size-is-source-not-bundle) — Measured bundle 2.76 MB vs 4.57 MB source upload; comment compaction is the only lever.

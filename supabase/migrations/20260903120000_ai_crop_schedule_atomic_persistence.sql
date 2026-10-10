@@ -98,7 +98,7 @@ begin
     schedule_id, farmer_id, tenant_id, task_name, task_description,
     task_type, task_date, projected_date, days_from_sowing, anchor_type,
     anchor_stage, gdd_target, stage_key, stage_uuid, stage_name, stage_order,
-    priority, weather_dependent, status, sequence_order, instructions,
+    priority, weather_dependent, status, original_date, reschedule_reason, auto_rescheduled, sequence_order, instructions,
     precautions, resources, estimated_cost, currency, rule_ids,
     trigger_rule_id, confidence, source_refs, language, is_pinned
   )
@@ -122,6 +122,9 @@ begin
     x.priority,
     x.weather_dependent,
     x.status,
+    x.original_date,
+    x.reschedule_reason,
+    x.auto_rescheduled,
     x.sequence_order,
     x.instructions,
     x.precautions,
@@ -153,6 +156,9 @@ begin
     priority text,
     weather_dependent boolean,
     status text,
+    original_date date,
+    reschedule_reason text,
+    auto_rescheduled boolean,
     sequence_order integer,
     instructions text[],
     precautions text[],

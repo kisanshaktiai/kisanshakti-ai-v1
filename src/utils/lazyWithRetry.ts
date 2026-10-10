@@ -1,4 +1,5 @@
 import { lazy, ComponentType } from 'react';
+import { waitForPwaReloadSafe } from '@/utils/pwaActivity';
 
 /**
  * lazyWithRetry — wraps React.lazy with:
@@ -59,14 +60,15 @@ export function lazyWithRetry<T extends ComponentType<any>>(
         const already = sessionStorage.getItem(RELOAD_KEY);
         if (!already) {
           sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+          // Wait until no active app work is in progress before replacing
+          // the document. This recovery path is automatic.
+          await waitForPwaReloadSafe(1000, 5000);
+
           // Clear any caches that might be serving stale index/chunks
           try {
             if ('caches' in window) {
               const names = await caches.keys();
               await Promise.all(names.map((n) => caches.delete(n)));
-            }
-            if (navigator.serviceWorker?.controller) {
-              navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
             }
           } catch {
             /* ignore */

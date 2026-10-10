@@ -44,7 +44,7 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentLanguage } = useLanguageStore();
-  const { speak: ttsSpeak, stop: ttsStop, isSpeaking } = useTTS();
+  const { speak: ttsSpeak, stop: ttsStop, isSpeaking } = useTTS({ allowCloud: false });
 
   const [state, setState] = useState<VoiceNavigationState>({
     isListening: false,
@@ -107,12 +107,10 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
         await nativeSpeechRecognition.stopListening();
         setState(prev => ({ ...prev, isListening: false }));
 
-        // Announce action
-        if (intent.announcement) {
-          await ttsSpeak(intent.announcement);
-        }
-
-        // Execute action
+        // Open the screen FIRST, then announce without waiting. Awaiting the
+        // announcement made navigation wait for the cloud (Bhashini) voice —
+        // seconds online, and a stall on weak/no network. The short
+        // confirmation always uses the handset voice so it works offline.
         if (intent.action === 'navigate' && intent.route) {
           navigate(intent.route);
           toast({
@@ -121,6 +119,10 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
           });
         } else if (intent.action === 'back') {
           navigate(-1);
+        }
+
+        if (intent.announcement) {
+          void ttsSpeak(intent.announcement).catch(() => undefined);
         }
 
         console.log(`[VoiceNav] Intent executed: ${intent.intentId} in ${totalLatency.toFixed(0)}ms`);
@@ -188,9 +190,11 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
     setState(prev => ({
       ...prev,
       isListening: false,
-      error: error === 'not-allowed' 
-        ? 'Microphone permission denied' 
-        : 'Recognition failed, please try again',
+      error: error === 'not-allowed'
+        ? 'Microphone permission denied'
+        : error === 'offline' || error === 'network'
+          ? 'No internet — browser voice needs internet. The installed app works offline.'
+          : 'Recognition failed, please try again',
     }));
 
     if (error === 'not-allowed') {
@@ -206,10 +210,20 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
   const startListening = useCallback(async () => {
     if (state.isListening) return;
 
+    // Open the listening panel INSTANTLY (optimistic). Permission checks and
+    // recogniser start-up run behind it and revert this on failure.
+    startTimeRef.current = performance.now();
+    setState(prev => ({ ...prev, isListening: true, error: null, transcript: '', partialTranscript: '', lastIntent: null }));
+    ttsStop();
+
+    // Make sure the native plugin is loaded before any permission call, so the
+    // installed app never falls into the browser microphone path.
+    await nativeSpeechRecognition.initialize();
+
     // Check permission first
     const permission = await nativeSpeechRecognition.checkPermission();
     if (permission === 'denied') {
-      setState(prev => ({ ...prev, error: 'Microphone permission denied' }));
+      setState(prev => ({ ...prev, isListening: false, error: 'Microphone permission denied' }));
       toast({
         title: 'Permission Required',
         description: 'Please enable microphone in settings',
@@ -221,24 +235,12 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
     if (permission === 'prompt') {
       const granted = await nativeSpeechRecognition.requestPermission();
       if (!granted) {
-        setState(prev => ({ ...prev, error: 'Microphone permission denied' }));
+        setState(prev => ({ ...prev, isListening: false, error: 'Microphone permission denied' }));
         return;
       }
     }
 
-    // Clear previous state
-    setState(prev => ({
-      ...prev,
-      transcript: '',
-      partialTranscript: '',
-      error: null,
-      lastIntent: null,
-    }));
     lastProcessedRef.current = '';
-    startTimeRef.current = performance.now();
-
-    // Stop any ongoing TTS
-    ttsStop();
 
     // Start recognition
     const started = await nativeSpeechRecognition.startListening(
@@ -252,8 +254,8 @@ export function useNativeVoiceNavigation(): UseNativeVoiceNavigationReturn {
       handleError
     );
 
-    if (started) {
-      setState(prev => ({ ...prev, isListening: true }));
+    if (!started) {
+      setState(prev => ({ ...prev, isListening: false }));
     }
   }, [state.isListening, currentLanguage, handleResult, handleEnd, handleError, ttsStop, toast]);
 

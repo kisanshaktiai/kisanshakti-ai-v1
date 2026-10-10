@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+// 2026-09-26 00:00 UTC — Type fix: gave unknownTranslations/unknownGuidance explicit {en,mr,hi} type; typed indexed photo_confirmation lookup via Record cast (no runtime change)
 // DIAGNOSIS-ONLY MODE (v3.0.0) - RULE-GRANTED AUTHORITY
 
 import type { CanonicalContext } from './canonical-context-contract.ts';
@@ -909,12 +911,16 @@ function createUnknownDiagnosis(
   canonicalContext: CanonicalContext,
   language: string
 ): DiagnosisResult {
-  const unknownTranslations = {
-    en: 'Unknown cause - investigation required'
+  const unknownTranslations: { en: string; mr: string; hi: string } = {
+    en: 'Unknown cause - investigation required',
+    mr: 'Unknown cause - investigation required',
+    hi: 'Unknown cause - investigation required'
   };
   
-  const unknownGuidance = {
-    en: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.'
+  const unknownGuidance: { en: string; mr: string; hi: string } = {
+    en: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.',
+    mr: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.',
+    hi: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.'
   };
   
   return {
@@ -985,7 +991,7 @@ export function formatDiagnosisForLLM(
   });
   
   // Photo prompt
-  parts.push(output.photo_confirmation[`prompt_${language}`] || output.photo_confirmation.prompt_en);
+  parts.push((output.photo_confirmation as Record<string, string | boolean>)[`prompt_${language}`] as string || output.photo_confirmation.prompt_en);
   
   return parts.join('\n');
 }

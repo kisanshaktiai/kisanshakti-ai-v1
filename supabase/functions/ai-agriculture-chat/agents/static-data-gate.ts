@@ -1,4 +1,7 @@
 // STATIC DATA GATE - Zero-AI Cost Response for Land Attribute Queries
+// CHANGE LOG (newest first)
+//   2026-09-26 15:35 UTC — Cast lang to keyof typeof responses to fix TS7053 index errors
+
 
 export interface LandContext {
   land_id: string;
@@ -207,7 +210,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'CROP_NAME',
           confidence: 0.95,
           processing_time_ms: performance.now() - startTime
@@ -260,7 +263,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'CROP_NAME',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime
@@ -283,7 +286,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         };
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'LAND_AREA',
           confidence: 0.9,
           processing_time_ms: performance.now() - startTime
@@ -300,7 +303,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'LAND_AREA',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime
@@ -324,7 +327,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         };
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'SOWING_DATE',
           confidence: 0.9,
           processing_time_ms: performance.now() - startTime
@@ -352,7 +355,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'SOWING_DATE',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime
@@ -378,7 +381,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         };
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'CROP_STAGE',
           confidence: 0.85,
           processing_time_ms: performance.now() - startTime
@@ -425,7 +428,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'CROP_STAGE',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime
@@ -448,7 +451,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         };
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'SOIL_TYPE',
           confidence: 0.9,
           processing_time_ms: performance.now() - startTime
@@ -463,7 +466,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'SOIL_TYPE',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime
@@ -487,7 +490,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         };
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'IRRIGATION',
           confidence: 0.9,
           processing_time_ms: performance.now() - startTime
@@ -502,7 +505,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'IRRIGATION',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime
@@ -526,7 +529,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
         };
         return {
           handled: true,
-          response: responses[lang] || responses.en,
+          response: responses[(lang as keyof typeof responses)] || responses.en,
           response_type: 'LOCATION',
           confidence: 0.9,
           processing_time_ms: performance.now() - startTime
@@ -547,7 +550,7 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       
       return {
         handled: true,
-        response: responses[lang] || responses.en,
+        response: responses[(lang as keyof typeof responses)] || responses.en,
         response_type: 'LOCATION',
         confidence: 1.0,
         processing_time_ms: performance.now() - startTime

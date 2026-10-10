@@ -4,6 +4,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
+import { toLocale } from '@/services/tts/ttsLanguages';
 
 // Dynamic import for Capacitor Speech Recognition to avoid build errors when not installed
 let SpeechRecognitionPlugin: any = null;
@@ -103,19 +104,8 @@ export async function startCapacitorListening(
   }
 
   try {
-    // Map language codes
-    const langMap: Record<string, string> = {
-      'en': 'en-US',
-      'hi': 'hi-IN',
-      'mr': 'mr-IN',
-      'ta': 'ta-IN',
-      'pa': 'pa-IN',
-      'te': 'te-IN',
-      'bn': 'bn-IN',
-      'gu': 'gu-IN',
-      'kn': 'kn-IN',
-    };
-    const recognitionLang = langMap[language] || 'en-US';
+    // Recognition locale from the app's language SSOT, never a default to another language
+    const recognitionLang = toLocale(language);
 
     // Add listener for partial results
     SpeechRecognitionPlugin.addListener('partialResults', (data: any) => {

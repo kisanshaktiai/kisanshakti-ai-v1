@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CropManagementDialog } from './CropManagementDialog';
 import { format } from 'date-fns';
+import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
 
 interface LandCardProps {
   land: {
@@ -57,6 +58,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const { apiKey, isLoaded } = useGoogleMapsApi();
   const { t } = useTranslation();
+  const { join: joinPlace, place: placeName } = useLocalizedPlace();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
@@ -158,10 +160,10 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
           <div className="flex items-start gap-2">
             <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">{land.village || t('lands.wizard.form.location_details')}</p>
+              <p className="font-medium">{placeName(land.village, 'village') || t('lands.wizard.form.location_details')}</p>
               {(land.district || land.state) && (
                 <p className="text-muted-foreground">
-                  {[land.district, land.state].filter(Boolean).join(', ')}
+                  {joinPlace(land, ['district','state'])}
                 </p>
               )}
             </div>

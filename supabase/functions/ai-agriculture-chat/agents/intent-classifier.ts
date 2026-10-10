@@ -36,7 +36,8 @@
  *   emitted code is gated through the same canonical Set before return.
  */
 
-import { getAPIEndpoint, getBestAvailableProvider, requiresMaxCompletionTokens, rejectsCustomTemperature } from '../../_shared/aiConfig.ts';
+import { callAITask } from '../../_shared/aiConfig.ts';
+import { aiRegistryClient } from '../utils/db-ssot/ai-registry-client.ts';
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { registerIntentCodeSet } from '../runtime/graph-runtime.ts';
 import { getIntentCodesForCrop, getIntentCodesForLane } from '../utils/observation-mapping-cache.ts';
@@ -337,20 +338,6 @@ Return JSON ONLY (no markdown, no prose):
 
 // HTTP / PARSING HELPERS
 
-async function callLLMWithRetry(endpoint: string, payload: RequestInit, maxRetries = 2): Promise<Response> {
-  let attempt = 0; let delay = 300;
-  while (true) {
-    const response = await fetch(endpoint, payload);
-    if (response.status === 429 && attempt < maxRetries) {
-      const jitter = Math.random() * 200;
-      await new Promise(res => setTimeout(res, delay + jitter));
-      delay *= 2; attempt++;
-      continue;
-    }
-    return response;
-  }
-}
-
 function extractFirstBalancedJSON(str: string): string | null {
   let depth = 0, start = -1;
   for (let i = 0; i < str.length; i++) {
@@ -380,44 +367,38 @@ function safeExtractJson(content: string): { intent_code: string; confidence: nu
   return null;
 }
 
+// 2026-09-27 — model chain from registry task brain.classify (was getBestAvailableProvider():
+// AI_MODELS.openai.default, else AI_MODELS.gemini.default, one provider, no fallback).
+// Request knobs unchanged: 1024 tokens, temperature 0 / 0.1 where the model's contract allows one,
+// JSON mode for every provider except Gemini (the old `!isGemini` rule). The old same-model 429
+// retry loop is replaced by the route's next model.
 async function callClassifierLLM(prompt: string, strict: boolean): Promise<{ intent_code: string; confidence: number } | null> {
-  const { provider, model, apiKey } = getBestAvailableProvider();
-  const endpoint = getAPIEndpoint(provider);
-  const isGemini = provider === 'gemini' || provider === 'google';
-  const requestBody: any = {
-    model,
+  const db = aiRegistryClient();
+  if (!db) {
+    console.error('[intent-classifier] Missing Supabase credentials — cannot reach the AI model registry');
+    return null;
+  }
+  const r = await callAITask({
+    db,
+    task: 'brain.classify',
+    functionName: 'ai-agriculture-chat',
     messages: [
       { role: 'system', content: strict
         ? 'You are a JSON-only classifier. Output MUST be valid JSON containing intent_code and confidence. Nothing else.'
         : 'You are an intent classifier. Return only JSON: {"intent_code": "...", "confidence": 0.0-1.0}. No prose, no markdown.' },
       { role: 'user', content: prompt }
     ],
-  };
-  // FIX (outage 2026-09-04): this payload is hand-built (not via buildAIRequest), so it
-  // did not get the shared fix. gpt-5.x / o-series reject `max_tokens` (need
-  // `max_completion_tokens`) and reject any non-default temperature — the 400 was
-  // swallowed by `if (!response.ok) return null` below, silently pushing every land-chat
-  // turn into the keyword/template fallback. Same model-family rules as aiConfig.
-  if (!rejectsCustomTemperature(provider, model)) requestBody.temperature = strict ? 0 : 0.1;
-  if (provider === 'openai' && requiresMaxCompletionTokens(model)) requestBody.max_completion_tokens = 1024;
-  else requestBody.max_tokens = 1024;
-  if (!isGemini) requestBody.response_format = { type: 'json_object' };
-
-  const response = await callLLMWithRetry(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify(requestBody),
+    maxOutputTokens: 1024,
+    temperature: strict ? 0 : 0.1,
+    jsonModeProviders: ['openai', 'lovable'],
+    metadata: { caller: 'callClassifierLLM', strict },
   });
-  if (!response.ok) {
-    // Was a silent null — make the failure visible in function logs (body truncated, no key echo).
-    const errTxt = await response.text().catch(() => '');
-    console.warn(`[intent-classifier] LLM ${response.status} (${provider}/${model}): ${errTxt.slice(0, 200)}`);
+  if (!r.ok) {
+    // Was a silent null — keep the failure visible in function logs.
+    console.warn(`[intent-classifier] brain.classify ${r.errorClass}: ${r.detail.slice(0, 200)}`);
     return null;
   }
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) return null;
-  return safeExtractJson(content);
+  return safeExtractJson(r.content);
 }
 
 // MAIN CLASSIFY

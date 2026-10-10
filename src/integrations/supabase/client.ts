@@ -4,7 +4,7 @@ import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
 
 const SUPABASE_URL = "https://qfklkkzxemsbeniyugiz.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbYomw1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
+const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -36,13 +36,35 @@ export function getSessionToken(): string | null {
 }
 
 function applySharedAuthHeaders() {
-  const headers: Record<string, string> = {};
-  if (globalAuthData?.userId) headers['x-farmer-id'] = globalAuthData.userId;
-  if (globalAuthData?.tenantId) headers['x-tenant-id'] = globalAuthData.tenantId;
-  if (globalSessionToken) headers['x-session-token'] = globalSessionToken;
+  // IMPORTANT: in supabase-js v2 / postgrest-js v2.100+, `rest.headers` is a real
+  // `Headers` instance holding the built-in apikey/Authorization. Never replace it
+  // (and never spread it — spreading a Headers object yields {}), otherwise every
+  // request from the shared client loses its API key and fails with 401.
+  const rest = (supabase as any).rest;
+  if (!rest) return;
 
-  (supabase as any).rest.headers = headers;
+  const custom: Record<string, string | null> = {
+    'x-farmer-id': globalAuthData?.userId ?? null,
+    'x-tenant-id': globalAuthData?.tenantId ?? null,
+    'x-session-token': globalSessionToken ?? null,
+  };
+
+  if (typeof rest.headers?.set === 'function' && typeof rest.headers?.delete === 'function') {
+    for (const [name, value] of Object.entries(custom)) {
+      if (value) rest.headers.set(name, value);
+      else rest.headers.delete(name);
+    }
+    return;
+  }
+
+  // Fallback for plain-object header bags (older clients).
+  const bag = rest.headers as Record<string, string>;
+  for (const [name, value] of Object.entries(custom)) {
+    if (value) bag[name] = value;
+    else delete bag[name];
+  }
 }
+
 
 export function setSessionToken(token: string | null) {
   globalSessionToken = token || null;

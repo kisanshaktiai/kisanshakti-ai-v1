@@ -2,6 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * CHANGE LOG (audit trail — newest first, keep entries short)
  * ───────────────────────────────────────────────────────────────────────────
+ * 2026-09-26 15:44 UTC — Type-only fixes: cast ndviData.trend access; coerce
+ *   days_after_sowing_exact null to undefined to match CanonicalState type.
+ *   No behavior changed.
+ * ───────────────────────────────────────────────────────────────────────────
  * 2026-07-09 03:15 UTC — FIX 1 (STATE_SYNC). Added
  *   `syncCanonicalStateFromSnapshot(state, snapshot, opts)` — the ONLY
  *   writer of `candidate_hypothesis_count` / `matched_rules_count` /
@@ -813,7 +817,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   
   // 4. NDVI SOURCE (per requirement: NOT_AVAILABLE vs UNKNOWN distinction)
   const ndviValue = ndviData?.value ?? ndviData?.mean_ndvi ?? input.ndviValue;
-  const ndviTrend = ndviData?.trend || ndviData?.ndvi_trend || input.ndviTrend;
+  const ndviTrend = (ndviData as { trend?: string } | undefined)?.trend || ndviData?.ndvi_trend || input.ndviTrend;
   const ndviTimestamp = ndviData?.captured_at || input.ndviDataTimestamp;
   const ndviAvailable = ndviValue !== undefined && ndviValue !== null;
   
@@ -1018,7 +1022,7 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     crop_type: cropType,
     crop_stage: cropStage,
     days_after_sowing: mapDaysToSowingBucket(daysAfterSowing),
-    days_after_sowing_exact: daysAfterSowing,
+    days_after_sowing_exact: daysAfterSowing ?? undefined,
     days_after_transplant: daysAfterTransplant,
     
     // Observation codes (FIRST-CLASS ontology passthrough — SSOT for rules)

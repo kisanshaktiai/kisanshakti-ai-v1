@@ -200,6 +200,7 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
   // Priority: 1) Show SVG fallback immediately while loading
   //           2) Upgrade to static map when API key is ready + online
   //           3) Fall back to SVG if image fails or offline
+  // My Land always shows the parcel map. NDVI imagery belongs only in analysis views.
   const shouldUseFallback = !isOnline || !mapUrl || imageError;
   const displayUrl = shouldUseFallback ? fallbackSvg : mapUrl;
 

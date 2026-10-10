@@ -1,5 +1,9 @@
 // MULTI-MODAL FUSION ENGINE - Type Definitions
 
+// CHANGE LOG (newest first)
+//   2026-09-26 16:20 UTC — Added optional legacy aliases 'humidity', 'wind_speed', 'precipitation' (WeatherData.current); 'precipitation_probability', 'wind_speed_max' (WeatherData.forecast_24h); optional legacy 'forecast' array (WeatherData) for pre-refactor consumer shapes. Added optional 'name' and 'growth_stage' to UnifiedCropContext to accommodate historical_data-derived crop naming/stage fields used by multimodal-fusion.ts.
+//   2026-09-26 15:47 UTC — Added optional legacy aliases 'temperature' (WeatherData.current) and 'temperature_max' (WeatherData.forecast_24h) for consumer back-compat with pre-refactor field names.
+
 // INPUT SOURCES
 
 export interface MultiModalInput {
@@ -85,6 +89,14 @@ export interface WeatherData {
     rainfall_last_72h_mm?: number;
     uv_index?: number;
     cloud_cover_percent?: number;
+    /** @deprecated legacy alias for temperature_c, kept for back-compat reads */
+    temperature?: number;
+    /** @deprecated legacy alias for humidity_percent, kept for back-compat reads */
+    humidity?: number;
+    /** @deprecated legacy alias for wind_speed_kmh, kept for back-compat reads */
+    wind_speed?: number;
+    /** @deprecated legacy alias for rainfall_last_24h_mm, kept for back-compat reads */
+    precipitation?: number;
   };
   forecast_24h: {
     rain_probability_percent: number;
@@ -93,6 +105,12 @@ export interface WeatherData {
     temperature_min_c?: number;
     wind_max_kmh: number;
     humidity_avg_percent?: number;
+    /** @deprecated legacy alias for temperature_max_c, kept for back-compat reads */
+    temperature_max?: number;
+    /** @deprecated legacy alias for rain_probability_percent, kept for back-compat reads */
+    precipitation_probability?: number;
+    /** @deprecated legacy alias for wind_max_kmh, kept for back-compat reads */
+    wind_speed_max?: number;
   };
   forecast_72h: Array<{
     date: string;
@@ -102,6 +120,15 @@ export interface WeatherData {
   }>;
   data_source?: string;
   last_updated?: string;
+  /** @deprecated legacy alias array for forecast_24h, kept for back-compat reads (some producers emit a forecast array instead of forecast_24h) */
+  forecast?: Array<{
+    rain_probability_percent?: number;
+    precipitation_probability?: number;
+    temperature_max_c?: number;
+    temperature_max?: number;
+    wind_max_kmh?: number;
+    wind_speed_max?: number;
+  }>;
 }
 
 export interface SatelliteData {
@@ -248,8 +275,12 @@ export interface UnifiedCropContext {
   code: string;
   name_en?: string;
   name_mr?: string;
+  /** Optional — free-text crop name derived from historical/land context (legacy consumer field) */
+  name?: string;
   stage: string;
   stage_code?: string;
+  /** Optional — growth stage label derived from gap-filling/historical context (legacy consumer field) */
+  growth_stage?: string;
   days_after_sowing: number;
   confidence: number;
   source: string;

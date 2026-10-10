@@ -1,8 +1,39 @@
+// CHANGE LOG (newest first)
+// 2026-10-06 — SECURITY: farmerId/tenantId come from the DB-verified x-session-token (service role may
+//   pass them in the body); a supplied landId must belong to that farmer. Body IDs no longer establish identity.
+// 2026-09-27 — AI model SSOT: all three AI calls take their model from the AI model registry through
+//   callAITask (_shared/aiConfig.ts) instead of literals in this file:
+//   * growth_tracking photo analysis → task vision.crop_scan. Previously literal OpenAI 'gpt-4o' with a
+//     native Gemini 'gemini-2.0-flash' generateContent fallback (that model is retired and returned 404).
+//     The fallback chain is now the route's steps. crop_growth_analysis.ai_model_used is the served
+//     model's api id instead of the literal mapping; the response's provider field is the serving provider.
+//   * targeted_solution → task crop_scan.solution (previously literal 'gpt-4o-mini').
+//   * full crop photo diagnosis → task vision.crop_scan (previously literal 'gpt-4o').
+//   Same messages, images (OpenAI image_url format), token limits (4000 / 2000 / 8000, sent under the
+//   parameter the catalog contract names) and JSON mode as before; no temperature, as before.
+//   Unavoidable differences: each call now has the router's default 55 s timeout (previously none); the
+//   "no OPENAI_API_KEY and no GEMINI_API_KEY → 500 'AI service not configured'" check is gone — the router
+//   skips steps without a key and each mode answers with its own failure response; after a 429 the router
+//   cools the provider for 5-8 s, and a call inside that window fails without reaching the provider (the
+//   generic failure response, not the 429 one); full diagnosis: a 429 whose body says the quota is
+//   exhausted now gets the quotaExceeded body (status 429) instead of the rateLimited body, and the
+//   generic error message carries the first 300 characters of the provider body instead of all of it;
+//   growth_tracking: a 200 answer with empty content is now a failure (503) instead of a success with
+//   empty analysis text (the router moves on to the next step, and the served model is unknown then).
+//   Each call is recorded in ai_model_metrics.
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { rateGuard } from '../_shared/rateGuard.ts';
+import { callAITask } from '../_shared/aiConfig.ts';
+import { resolveVerifiedCaller, sessionRequiredResponse } from '../_shared/sessionVerify.ts';
+
+// Service-role client for the AI model registry and usage ledger (created once per isolate).
+const aiRegistryDb = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+);
 
 
 interface ScanRequest {
@@ -121,138 +152,41 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    // Try OpenAI first, fall back to Gemini
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    
-    // Determine available providers
-    const hasOpenAI = !!openAIApiKey;
-    const hasGemini = !!geminiApiKey;
-    
-    if (!hasOpenAI && !hasGemini) {
-      console.error('No AI API key configured (OPENAI_API_KEY or GEMINI_API_KEY)');
-      return new Response(
-        JSON.stringify({ success: false, error: 'AI service not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Helper function to call AI with fallback
+    // Helper: one registry call for the vision.crop_scan task (the route's steps are the fallback chain).
+    // Keeps the old return shape: { success, data: { choices: [{ message: { content } }] }, provider }.
     const callAIWithFallback = async (
       systemPrompt: string,
       userContent: any[],
       maxTokens: number = 4000
     ): Promise<any> => {
-      // Try OpenAI first if available
-      if (hasOpenAI) {
-        try {
-          console.log('🤖 [AI] Trying OpenAI gpt-4o...');
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openAIApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o',
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userContent }
-              ],
-              max_tokens: maxTokens,
-              response_format: { type: 'json_object' }
-            }),
-          });
+      console.log('🤖 [AI] Calling task vision.crop_scan...');
+      const r = await callAITask({
+        db: aiRegistryDb,
+        task: 'vision.crop_scan',
+        functionName: 'ai-crop-scan',
+        farmerId: null,
+        metadata: { caller: 'crop-scan-growth', land_id: landId ?? null, upload_id: uploadId ?? null },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent }
+        ],
+        maxOutputTokens: maxTokens,
+        jsonMode: true,
+      });
 
-          if (response.ok) {
-            const data = await response.json();
-            console.log('✅ [AI] OpenAI succeeded');
-            return { success: true, data, provider: 'openai' };
-          }
-
-          if (response.status === 429) {
-            console.warn('⚠️ [AI] OpenAI rate limited, trying Gemini fallback...');
-          } else {
-            const errorText = await response.text();
-            console.warn(`⚠️ [AI] OpenAI error ${response.status}: ${errorText.substring(0, 200)}`);
-          }
-        } catch (e) {
-          console.warn('⚠️ [AI] OpenAI failed:', e);
-        }
+      if (r.ok) {
+        console.log(`✅ [AI] ${r.modelKey} succeeded`);
+        return {
+          success: true,
+          data: { choices: [{ message: { content: r.content } }] },
+          provider: r.provider,
+          apiModelId: r.apiModelId
+        };
       }
 
-      // Fallback to Gemini
-      if (hasGemini) {
-        try {
-          console.log('🤖 [AI] Trying Gemini gemini-2.0-flash...');
-          
-          // Convert image_url format to Gemini format
-          const geminiContent = userContent.map((item: any) => {
-            if (item.type === 'image_url') {
-              const url = item.image_url.url;
-              if (url.startsWith('data:')) {
-                const [meta, base64] = url.split(',');
-                const mimeType = meta.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
-                return {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64
-                  }
-                };
-              }
-            }
-            return { text: item.text || JSON.stringify(item) };
-          });
-
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [
-                  { role: 'user', parts: [{ text: systemPrompt }, ...geminiContent] }
-                ],
-                generationConfig: {
-                  maxOutputTokens: maxTokens,
-                  responseMimeType: 'application/json'
-                }
-              }),
-            }
-          );
-
-          if (response.ok) {
-            const geminiData = await response.json();
-            const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            console.log('✅ [AI] Gemini succeeded');
-            
-            // Parse Gemini response
-            let parsed;
-            try {
-              parsed = JSON.parse(content);
-            } catch {
-              const jsonMatch = content.match(/\{[\s\S]*\}/);
-              parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: content };
-            }
-            
-            return { 
-              success: true, 
-              data: { choices: [{ message: { content: JSON.stringify(parsed) } }] },
-              provider: 'gemini' 
-            };
-          }
-
-          const errorText = await response.text();
-          console.error('❌ [AI] Gemini error:', response.status, errorText.substring(0, 200));
-        } catch (e) {
-          console.error('❌ [AI] Gemini failed:', e);
-        }
-      }
-
+      console.error(`❌ [AI] vision.crop_scan failed: ${r.errorClass} ${r.httpStatus ?? ''} ${r.detail.substring(0, 200)}`);
       return { success: false, error: 'All AI providers failed' };
     };
-
-    const apiEndpoint = 'https://api.openai.com/v1/chat/completions';
 
     const requestData: ScanRequest = await req.json();
     const { 
@@ -260,8 +194,8 @@ serve(async (req) => {
       videoFrames,
       userNotes, 
       language = 'en', 
-      farmerId, 
-      tenantId, 
+      farmerId: bodyFarmerId,
+      tenantId: bodyTenantId,
       landId,
       landCrop,
       mode = 'full',
@@ -276,6 +210,20 @@ serve(async (req) => {
       ndviData,
       soilData
     } = requestData;
+
+    // Identity: verified session (farmer) or service role. Body IDs are not identity.
+    const caller = await resolveVerifiedCaller(req);
+    if (!caller) return sessionRequiredResponse(corsHeaders);
+    const farmerId = caller.kind === 'farmer' ? caller.farmerId : bodyFarmerId;
+    const tenantId = caller.kind === 'farmer' ? (caller.tenantId ?? undefined) : bodyTenantId;
+    if (caller.kind === 'farmer' && landId) {
+      const ownClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const { data: ownLand } = await ownClient.from('lands').select('farmer_id').eq('id', landId).maybeSingle();
+      if (!ownLand || ownLand.farmer_id !== farmerId) {
+        return new Response(JSON.stringify({ success: false, error: 'Land does not belong to this farmer', code: 'LAND_OWNERSHIP_MISMATCH' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
 
     // Handle growth_tracking mode
     if (mode === 'growth_tracking') {
@@ -480,7 +428,7 @@ Return JSON:
             schedule_updates: analysisResult.schedule_updates,
             farmer_message: analysisResult.farmer_message,
             farmer_message_language: language,
-            ai_model_used: aiResult.provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o',
+            ai_model_used: aiResult.apiModelId,
             processing_time_ms: Date.now() - startTime,
             confidence_score: (analysisResult.growth_stage_analysis?.stage_confidence || 70) / 100
           });
@@ -521,7 +469,7 @@ Return JSON:
       );
     }
 
-    // Handle targeted_solution mode (no images needed) - use gpt-4o-mini for text-only
+    // Handle targeted_solution mode (no images needed) - text-only model from task crop_scan.solution
     if (mode === 'targeted_solution' && suggestionType && diagnosis) {
       console.log('🎯 Targeted Solution Request:', { suggestionType, landArea, cropDetected: cropDetected?.name });
       
@@ -569,38 +517,34 @@ Return JSON with this structure:
   }
 }`;
 
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini', // Use cheaper model for text-only
-          messages: [
-            { role: 'system', content: 'You are an expert agricultural scientist. Provide specific, actionable product recommendations with exact quantities.' },
-            { role: 'user', content: targetedPrompt }
-          ],
-          max_tokens: 2000,
-        }),
+      const r = await callAITask({
+        db: aiRegistryDb,
+        task: 'crop_scan.solution',
+        functionName: 'ai-crop-scan',
+        farmerId: null,
+        metadata: { caller: 'crop-scan-solution', land_id: landId ?? null, suggestion_type: suggestionType },
+        messages: [
+          { role: 'system', content: 'You are an expert agricultural scientist. Provide specific, actionable product recommendations with exact quantities.' },
+          { role: 'user', content: targetedPrompt }
+        ],
+        maxOutputTokens: 2000,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('OpenAI API error:', response.status, errorText);
+      // Empty model content (router: empty_output) keeps the old empty-summary result below.
+      if (!r.ok && r.errorClass !== 'empty_output') {
+        console.error('OpenAI API error:', r.httpStatus ?? null, r.errorClass, r.detail);
         
-        if (response.status === 429) {
+        if (r.httpStatus === 429) {
           return new Response(
             JSON.stringify({ success: false, error: 'Rate limit exceeded. Please try again.', rateLimited: true }),
             { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
         
-        throw new Error(`OpenAI API error: ${response.status}`);
+        throw new Error(`OpenAI API error: ${r.httpStatus ?? r.errorClass}`);
       }
 
-      const aiResponse = await response.json();
-      const content = aiResponse.choices?.[0]?.message?.content || '';
+      const content = (r.ok ? r.content : '') || '';
       
       try {
         const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -865,28 +809,29 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       }
     ];
 
-    console.log('📡 Calling OpenAI Vision API (gpt-4o)...');
+    console.log('📡 Calling vision model (task vision.crop_scan)...');
     
-    // Use gpt-4o for vision tasks
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o', // Vision model
-        messages,
-        max_tokens: 8000,
-        response_format: { type: "json_object" }
-      }),
+    // Vision model comes from the AI model registry
+    const r = await callAITask({
+      db: aiRegistryDb,
+      task: 'vision.crop_scan',
+      functionName: 'ai-crop-scan',
+      farmerId: null,
+      metadata: { caller: 'crop-scan-full', land_id: landId ?? null },
+      messages,
+      maxOutputTokens: 8000,
+      jsonMode: true,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API Error:', response.status, errorText);
+    // Empty model content: same error as before.
+    if (!r.ok && r.errorClass === 'empty_output') {
+      throw new Error('No content in AI response');
+    }
+
+    if (!r.ok) {
+      console.error('OpenAI API Error:', r.httpStatus ?? null, r.errorClass, r.detail);
       
-      if (response.status === 429) {
+      if (r.errorClass === 'rate_limited') {
         return new Response(
           JSON.stringify({ 
             success: false, 
@@ -897,26 +842,21 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
         );
       }
       
-      if (response.status === 402 || response.status === 401) {
+      if (r.errorClass === 'quota_exhausted' || r.httpStatus === 402 || r.httpStatus === 401) {
         return new Response(
           JSON.stringify({ 
             success: false, 
             error: 'OpenAI API authentication/billing error.',
             quotaExceeded: true 
           }),
-          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: r.httpStatus ?? 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
+      throw new Error(`OpenAI API error: ${r.httpStatus ?? r.errorClass} ${r.detail}`);
     }
 
-    const aiResponse = await response.json();
-    const aiContent = aiResponse.choices?.[0]?.message?.content;
-    
-    if (!aiContent) {
-      throw new Error('No content in AI response');
-    }
+    const aiContent = r.content;
 
     console.log('🤖 Raw AI Response length:', aiContent.length);
 

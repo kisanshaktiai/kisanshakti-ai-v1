@@ -1,6 +1,19 @@
+// CHANGE LOG (newest first)
+// 2026-10-06 — SECURITY: identity from the DB-verified x-session-token (_shared/sessionVerify.ts); headers trusted only for service role.
+// 2026-09-27 — AI model SSOT: the natural-language fallback calls callAITask task
+//   'voice.navigate'; the model comes from ai_task_route_step (was the literal 'gpt-4o-mini'
+//   posted straight to the OpenAI endpoint with OPENAI_API_KEY). Request knobs unchanged:
+//   max 150 output tokens, no temperature, no JSON mode, no reasoning effort. Responses
+//   unchanged: 500 "AI service not configured" when no provider key is set, 429 on rate
+//   limit, 401/402 passed through, other failures to the 500 catch, unparsable or empty
+//   content to the suggestions fallback. farmer_id is not sent to the ledger (the x-farmer-id
+//   header is not validated here). Differences: the call now has the router's 55 s budget
+//   (there was no timeout); every call writes one ai_model_metrics row.
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { rateGuard } from '../_shared/rateGuard.ts';
+import { callAITask } from '../_shared/aiConfig.ts';
+import { resolveVerifiedCaller } from '../_shared/sessionVerify.ts';
 
 
 interface VoiceRequest {
@@ -39,8 +52,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
+    // 2026-10-06 — identity from the DB-verified session token; headers trusted only for service role.
+    const caller = await resolveVerifiedCaller(req);
+    const tenantId = caller?.kind === 'farmer' ? caller.tenantId : caller?.kind === 'service' ? req.headers.get('x-tenant-id') : null;
+    const farmerId = caller?.kind === 'farmer' ? caller.farmerId : caller?.kind === 'service' ? req.headers.get('x-farmer-id') : null;
 
     if (!tenantId) {
       return new Response(
@@ -102,21 +117,6 @@ Deno.serve(async (req) => {
     // AI Fallback: Use OpenAI to understand natural language
     console.log('[Voice Agent] Using OpenAI fallback for:', transcript);
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY not configured');
-      return new Response(
-        JSON.stringify({ 
-          matched: false,
-          error: 'AI service not configured',
-          response: getErrorMessage(language),
-          suggestions: getSuggestions(language),
-          confidence: 0
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Optimized prompt - shorter to save tokens
     const aiPrompt = `User said in ${language}: "${transcript}"
 
@@ -138,26 +138,42 @@ App routes:
 Match intent and return JSON:
 {"intent":"navigate.X","route":"/app/X","suggestions":["p1","p2","p3"],"response":"msg in ${language}"}`;
 
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'user', content: aiPrompt }
-        ],
-        max_tokens: 150,
-      }),
+    // 2026-09-27 — AI model SSOT: model from registry task voice.navigate (was 'gpt-4o-mini').
+    // Same request: max 150 output tokens, no temperature.
+    const aiResponse = await callAITask({
+      db: supabase,
+      task: 'voice.navigate',
+      functionName: 'voice-navigation-agent',
+      messages: [
+        { role: 'user', content: aiPrompt }
+      ],
+      farmerId: null,
+      maxOutputTokens: 150,
+      metadata: { caller: 'voice-navigation-agent' },
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('OpenAI API error:', aiResponse.status, errorText);
+    // Every model skipped for a missing provider key ⇒ the old "not configured" response.
+    if (!aiResponse.ok && aiResponse.errorClass === 'no_provider_available' && aiResponse.attempts.every((a) => a.outcome === 'skipped_no_key')) {
+      console.error('AI provider key not configured');
+      return new Response(
+        JSON.stringify({ 
+          matched: false,
+          error: 'AI service not configured',
+          response: getErrorMessage(language),
+          suggestions: getSuggestions(language),
+          confidence: 0
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // An empty reply was parsed (and failed) as JSON before; keep that path below.
+    if (!aiResponse.ok && aiResponse.errorClass !== 'empty_output') {
+      console.error('OpenAI API error:', aiResponse.httpStatus ?? '-', aiResponse.errorClass, aiResponse.detail);
       
-      if (aiResponse.status === 429) {
+      // A provider still cooling down after a 429 is skipped by the router: same 429 response.
+      if (aiResponse.errorClass === 'rate_limited' || aiResponse.errorClass === 'quota_exhausted'
+        || (aiResponse.errorClass === 'no_provider_available' && aiResponse.attempts.some((a) => a.outcome === 'skipped_cooldown'))) {
         return new Response(
           JSON.stringify({ 
             matched: false,
@@ -170,7 +186,7 @@ Match intent and return JSON:
         );
       }
       
-      if (aiResponse.status === 402 || aiResponse.status === 401) {
+      if (aiResponse.httpStatus === 402 || aiResponse.httpStatus === 401) {
         return new Response(
           JSON.stringify({ 
             matched: false,
@@ -179,15 +195,14 @@ Match intent and return JSON:
             suggestions: getSuggestions(language),
             confidence: 0
           }),
-          { status: aiResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: aiResponse.httpStatus, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      throw new Error(`AI API error: ${aiResponse.status}`);
+      throw new Error(`AI API error: ${aiResponse.httpStatus ?? aiResponse.errorClass}`);
     }
 
-    const aiData = await aiResponse.json();
-    const aiContent = aiData.choices[0].message.content;
+    const aiContent = aiResponse.ok ? aiResponse.content : '';
     
     // Parse AI response
     let aiResult: any;
@@ -233,7 +248,7 @@ Match intent and return JSON:
     console.error('[Voice Agent] Error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         matched: false,
         suggestions: ['Try again', 'प्रयास करें', 'மீண்டும் முயற்சி செய்யவும்'],
       }),

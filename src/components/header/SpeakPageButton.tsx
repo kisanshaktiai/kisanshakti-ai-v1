@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useTTSFacade } from '@/hooks/useTTSFacade';
+import { useSpeech } from '@/hooks/useSpeech';
 import { useLanguageStore } from '@/stores/languageStore';
 import { ScrollContext } from '@/components/layout/ScrollContext';
 import { hapticFeedback } from '@/lib/haptics';
@@ -37,7 +37,7 @@ export function SpeakPageButton() {
   const location = useLocation();
   const mainRef = useContext(ScrollContext);
 
-  const { speak, stop, isSpeaking, isLoading } = useTTSFacade({
+  const { speak, stop, isSpeaking, isLoading } = useSpeech({
     language: currentLanguage,
   });
 

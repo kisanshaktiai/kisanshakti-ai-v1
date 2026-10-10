@@ -35,10 +35,7 @@ export const VoiceInput = React.forwardRef<HTMLInputElement, VoiceInputProps>(
       isSupported: speechSupported,
     } = useSpeechRecognition({
       onTranscript: handleTranscript,
-      language: currentLanguage === 'hi' ? 'hi-IN' : 
-                currentLanguage === 'pa' ? 'pa-IN' :
-                currentLanguage === 'mr' ? 'mr-IN' :
-                currentLanguage === 'ta' ? 'ta-IN' : 'en-IN',
+      language: currentLanguage,
     });
 
     const handleVoiceToggle = () => {

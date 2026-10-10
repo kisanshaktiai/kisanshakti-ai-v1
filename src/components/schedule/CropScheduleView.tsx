@@ -8,10 +8,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { cloudProvider } from '@/services/tts/providers/cloudProvider';
 import { useTranslation } from 'react-i18next';
 import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -82,6 +83,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   // Indian-script text with an English voice.
   const { speak, stop, isSpeaking, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: i18n.language });
+
+  // Warm the natural-voice check when the screen opens, so the speaker icon
+  // starts speaking immediately.
+  useEffect(() => { cloudProvider.warmUp(); }, []);
+
+
   
   // Land stage SSOT (lands.stage_uuid) — read-only; tasks never compute their own stage
   const { stage: landStage, phaseOfTask, hasStageDisagreement } = useLandStage(landId);
@@ -283,7 +290,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         const { supabase } = await import('@/integrations/supabase/client');
         await supabase.functions.invoke('ai-smart-schedule', {
           body: { action: 'narrate', scheduleId },
-          headers: { 'x-tenant-id': user.tenantId as string, 'x-farmer-id': user.id as string },
+          headers: { 'x-tenant-id': user.tenantId as string, 'x-farmer-id': user.id as string, 'x-session-token': getSessionToken() || '', },
         });
         if (!cancelled) await fetchTasks(scheduleId);
       } catch (err) {
@@ -475,7 +482,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
 
   const filteredTasks = getFilteredTasks();
-  const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
+  const isHistoricalUnconfirmed = (task: ScheduleTask) => task.resources?.timeline?.state === 'HISTORICAL_UNCONFIRMED';
+  const pendingTasks = filteredTasks.filter(t => t.status === 'pending' && !isHistoricalUnconfirmed(t));
   const completedTasks = filteredTasks.filter(t => t.status === 'completed');
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
 
