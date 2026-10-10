@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { landsApi } from '@/services/landsApi';
 
 /**
  * Signed read of one field picture from the private satellite bucket.
@@ -13,7 +13,6 @@ import { supabaseWithAuth } from '@/integrations/supabase/client';
  * Signed URLs are remembered for their lifetime, so switching between dates
  * on the map (or playing them) signs each picture once.
  */
-const BUCKET = 'ndvi-thumbnails';
 const SIGNED_TTL = 3600;
 
 export type SignedImageStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -37,13 +36,15 @@ export function useSignedSatelliteImage(path: string | null | undefined, farmerI
     const cached = signedCache.get(clean);
     if (cached && cached.expiresAt > Date.now()) { setState({ url: cached.url, status: 'ready' }); return; }
     setState({ url: null, status: 'loading' });
-    supabaseWithAuth(farmerId, tenantId).storage.from(BUCKET).createSignedUrl(clean, SIGNED_TTL)
-      .then(({ data, error }) => {
+    // Signed by lands-api (owned land only): the bucket's rules refuse the browser's anon role.
+    landsApi.signSatellite([clean])
+      .then((urls) => {
         if (cancelled) return;
-        if (error || !data?.signedUrl) { console.error('[satellite image] sign failed', error?.message); setState({ url: null, status: 'error' }); return; }
+        const signedUrl = urls[clean];
+        if (!signedUrl) { console.error('[satellite image] sign failed', clean); setState({ url: null, status: 'error' }); return; }
         // keep a safety margin so a cached URL is never handed out moments before it expires
-        signedCache.set(clean, { url: data.signedUrl, expiresAt: Date.now() + (SIGNED_TTL - 300) * 1000 });
-        setState({ url: data.signedUrl, status: 'ready' });
+        signedCache.set(clean, { url: signedUrl, expiresAt: Date.now() + (SIGNED_TTL - 300) * 1000 });
+        setState({ url: signedUrl, status: 'ready' });
       })
       .catch((e) => { if (cancelled) return; console.error('[satellite image] sign exception', e); setState({ url: null, status: 'error' }); });
     return () => { cancelled = true; };
