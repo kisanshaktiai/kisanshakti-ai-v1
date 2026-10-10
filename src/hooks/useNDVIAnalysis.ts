@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
+import { landsApi } from '@/services/landsApi';
+/** Raw satellite rows for one land as returned by lands-api?action=satellite. */
+export interface SatelliteBundle { decision:any[]; assets:any[]; logs:any[]; intel:any[]; radar:any[]; schedule:any|null; canopy:any[]; surface:any[]; }
 
 export interface NDVIMetadata { alerts?: string[]; health_label?: string; ndvi_trend?: number; ndre_trend?: number; ndvi_geotiff_url?: string; valid_observations?: number; [key: string]: unknown; }
 export interface NDVIDataComplete { id:string; land_id:string; date:string; acquisition_time?:string|null; ndvi_value:number; evi_value:number|null; ndwi_value:number|null; savi_value:number|null; ndre_value?:number|null; ndmi_value?:number|null; min_ndvi:number|null; max_ndvi:number|null; ndvi_min?:number|null; ndvi_max?:number|null; mean_ndvi:number|null; median_ndvi:number|null; ndvi_std:number|null; ndvi_spatial_min?:number|null; ndvi_spatial_max?:number|null; ndvi_spatial_median?:number|null; ndvi_spatial_std?:number|null; ndvi_p10?:number|null; ndvi_p90?:number|null; quality_score:number|null; confidence_level:string|null; cloud_coverage:number|null; cloud_cover?:number|null; coverage_percentage:number|null; coverage?:number|null; valid_pixels:number|null; total_pixels:number|null; effective_pixel_count?:number|null; coverage_weighted_purity?:number|null; boundary_contamination_fraction?:number|null; ndvi_spatial_se?:number|null; evidence_confidence?:string|null; measurement_status?:string|null; spatial_stat_method?:string|null; age_days?:number|null; is_fresh?:boolean|null; satellite_source:string|null; collection_id:string|null; scene_id:string|null; processing_level:string|null; spatial_resolution:number|null; tile_id:string|null; image_url:string|null; metadata:NDVIMetadata|null; created_at:string; updated_at:string|null; computed_at:string|null; soil_moisture:number|null; tenant_id:string; }
@@ -9,27 +12,19 @@ export interface NDVIProcessingLog { id:string; land_id:string|null; processing_
 export interface NDVIProcessingThumbnail { url:string; date:string; geotiffUrl?:string; }
 /** Compatibility only. Client-side predictions are deliberately disabled. */
 export interface NDVIPrediction { days7:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; days14:{predicted_ndvi:number;trend_direction:'improving'|'declining'|'stable';confidence:number}; risk_level:'low'|'medium'|'high'|'critical'; recommended_action_keys:string[]; is_indicative:true; }
-export interface NDVIAnalysisResult { current:NDVIDataComplete|null; history:NDVIDataComplete[]; latestRaw:NDVIDataComplete|null; latestProcessingLog:NDVIProcessingLog|null; processingThumbnail:NDVIProcessingThumbnail|null; prediction:NDVIPrediction|null; isLoading:boolean; error:Error|null; refetch:()=>void; }
+export interface NDVIAnalysisResult { current:NDVIDataComplete|null; history:NDVIDataComplete[]; latestRaw:NDVIDataComplete|null; latestProcessingLog:NDVIProcessingLog|null; processingThumbnail:NDVIProcessingThumbnail|null; prediction:NDVIPrediction|null; bundle:SatelliteBundle|null; isLoading:boolean; error:Error|null; refetch:()=>void; }
 const SIX_HOURS=6*60*60*1000; const ONE_HOUR=60*60*1000; const DECISION_VIEW='v_ndvi_decision_grade';
 const DECISION_COLUMNS='land_id,tenant_id,acquisition_date,acquisition_time,scene_id,ndvi_value,savi_value,ndre_value,ndmi_value,uniformity_cv,quality_score,confidence_level,cloud_cover,observation_source,effective_pixel_count,coverage_weighted_purity,boundary_contamination_fraction,ndvi_spatial_se,evidence_confidence,measurement_status,spatial_stat_method,age_days,is_fresh';
 export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
   const {tenant}=useTenant(); const {session}=useAuthStore(); const tenantId=session?.tenantId??tenant?.id; const farmerId=session?.farmerId; const sessionToken=session?.token;
-  const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v2',landId,tenantId,sessionToken],queryFn:async()=>{
-    if(!landId||!tenantId)return{current:null,history:[],latestRaw:null,latestProcessingLog:null,processingThumbnail:null};
-    // 90-day window: Sentinel-2 revisit plus cloud loss often leaves fewer than two
-    // usable observations inside 45 days, which made the trend permanently unavailable.
-    const client=supabaseWithAuth(farmerId,tenantId); const cutoffDate=new Date(Date.now()-90*86400000); const cutoffDay=cutoffDate.toISOString().slice(0,10);
-    const [decisionResult,logResult]=await Promise.all([
-      client.from(DECISION_VIEW).select(DECISION_COLUMNS).eq('land_id',landId).eq('tenant_id',tenantId).gte('acquisition_date',cutoffDay).order('acquisition_date',{ascending:false}).limit(60),
-      client.from('ndvi_processing_logs').select('id,land_id,processing_step,step_status,completed_at,created_at,error_message,metadata').eq('land_id',landId).eq('tenant_id',tenantId).gte('created_at',cutoffDate.toISOString()).order('created_at',{ascending:false}).limit(30)
-    ]); if(decisionResult.error)throw decisionResult.error;
-    let decisionRows=(decisionResult.data||[]) as any[];
-    // The 90-day window feeds the trend. When it holds nothing, the land can still have an older
-    // decision-grade pass in the view: read that one row so `current` is the real last measurement
-    // (shown with its age) instead of the screen saying the satellite has never seen the field.
-    if(!decisionRows.length){const olderResult=await client.from(DECISION_VIEW).select(DECISION_COLUMNS).eq('land_id',landId).eq('tenant_id',tenantId).order('acquisition_date',{ascending:false}).limit(1);if(olderResult.error)throw olderResult.error;decisionRows=olderResult.data||[];}
-    const sceneIds=decisionRows.map(r=>r.scene_id).filter(Boolean); let assetRows:any[]=[];
-    if(sceneIds.length){const assetResult=await client.from('ndvi_data').select('land_id,tenant_id,date,scene_id,image_url,metadata,evi_value,ndwi_value,min_ndvi,max_ndvi,mean_ndvi,median_ndvi,ndvi_std,ndvi_spatial_min,ndvi_spatial_max,ndvi_spatial_median,ndvi_spatial_std,ndvi_p10,ndvi_p90,valid_pixels,total_pixels,satellite_source,collection_id,processing_level,spatial_resolution,tile_id,created_at,updated_at,computed_at,soil_moisture').eq('land_id',landId).eq('tenant_id',tenantId).in('scene_id',sceneIds);if(assetResult.error)throw assetResult.error;assetRows=assetResult.data||[];}
+  const {data,isLoading,error,refetch}=useQuery({queryKey:['ndvi-analysis','access-v3',landId,tenantId,sessionToken],queryFn:async()=>{
+    if(!landId||!tenantId)return{current:null,history:[],latestRaw:null,latestProcessingLog:null,processingThumbnail:null,bundle:null};
+    // 2026-10-10: read through lands-api (server verifies land ownership). Direct browser reads of
+    // these tables are refused by their row rules (42501) and blanked the whole satellite screen.
+    const cutoffDay=new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+    const bundle:SatelliteBundle=await landsApi.fetchSatellite(landId);
+    const decisionRows=(bundle.decision||[]) as any[]; const logResult={data:bundle.logs||[]};
+    const assetRows:any[]=bundle.assets||[];
     const assetsByScene=new Map<string,any>(); for(const row of assetRows){if(row.scene_id&&!assetsByScene.has(row.scene_id))assetsByScene.set(row.scene_id,row);}
     const parsed=decisionRows.map((d:any,index:number)=>{const a=assetsByScene.get(d.scene_id)||{};const metadata=a.metadata?(typeof a.metadata==='string'?JSON.parse(a.metadata):a.metadata):null;return{...a,...d,id:`${d.land_id}:${d.scene_id||d.acquisition_date}:${index}`,date:d.acquisition_date,cloud_coverage:d.cloud_cover??null,coverage_percentage:null,metadata} as NDVIDataComplete;});
     const latestRaw=parsed[0]||null;
@@ -39,9 +34,9 @@ export function useNDVIAnalysis(landId:string|null):NDVIAnalysisResult {
     const history=parsed; const current=latestRaw;
     const logs=((logResult.data||[])as any[]).map(item=>({...item,metadata:item.metadata?(typeof item.metadata==='string'?JSON.parse(item.metadata):item.metadata):null}))as NDVIProcessingLog[];
     const latestProcessingLog=logs[0]||null; const successfulThumb=logs.find(log=>log.processing_step==='PROCESS_END'&&log.step_status==='completed'&&!!log.metadata?.thumbnail_url); const processingThumbnail=successfulThumb?.metadata?.thumbnail_url?{url:successfulThumb.metadata.thumbnail_url,date:successfulThumb.completed_at||successfulThumb.created_at||cutoffDay,geotiffUrl:successfulThumb.metadata.geotiff_url}:null;
-    return{current,history,latestRaw,latestProcessingLog,processingThumbnail};
+    return{current,history,latestRaw,latestProcessingLog,processingThumbnail,bundle};
   },enabled:!!landId&&!!farmerId&&!!tenantId,staleTime:SIX_HOURS,refetchOnWindowFocus:false,refetchInterval:false});
-  return{current:data?.current??null,history:data?.history??[],latestRaw:data?.latestRaw??null,latestProcessingLog:data?.latestProcessingLog??null,processingThumbnail:data?.processingThumbnail??null,prediction:null,isLoading,error:error as Error|null,refetch};
+  return{current:data?.current??null,history:data?.history??[],latestRaw:data?.latestRaw??null,latestProcessingLog:data?.latestProcessingLog??null,processingThumbnail:data?.processingThumbnail??null,prediction:null,bundle:data?.bundle??null,isLoading,error:error as Error|null,refetch};
 }
 export interface NDVIMicroTile{id:string;land_id:string;acquisition_date:string;bbox:any;cloud_cover:number|null;ndvi_mean:number|null;ndvi_min:number|null;ndvi_max:number|null;ndvi_std_dev:number|null;ndvi_thumbnail_url:string|null;resolution_meters:number|null;is_reliable:boolean;}
 /** Legacy compatibility hook. New surfaces must use decision-grade observations. */
