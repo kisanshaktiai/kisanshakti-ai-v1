@@ -182,15 +182,19 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         return;
       }
       
-      // Try to fetch from API first with authenticated client
+      // Tasks come through the session-verified schedules-api (direct PostgREST
+      // reads of schedule_tasks / crop_schedules are denied for the anon role).
       const { supabaseWithAuth } = await import('@/integrations/supabase/client');
+      const { schedulesApi } = await import('@/services/schedulesApi');
       const client = supabaseWithAuth(user.id, user.tenantId);
-      
-      const { data: tasksData, error: tasksError } = await client
-        .from('schedule_tasks')
-        .select('*')
-        .eq('schedule_id', scheduleId)
-        .order('task_date', { ascending: true });
+
+      let tasksData: any[] | null = null;
+      let tasksError: unknown = null;
+      try {
+        tasksData = await schedulesApi.fetchTasks(scheduleId, { limit: 500 });
+      } catch (e) {
+        tasksError = e;
+      }
 
       if (tasksError) {
         console.warn('⚠️ [CropScheduleView] Failed to fetch tasks online:', tasksError);
@@ -222,11 +226,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       // lifetime, no writer). Climate context now comes from the weather
       // pipeline via land_weather_state, keyed by land_id rather than
       // schedule_id.
-      const { data: schedule } = await client
-        .from('crop_schedules')
-        .select('land_id')
-        .eq('id', scheduleId)
-        .maybeSingle();
+      const schedule =
+        (schedules as any[] | undefined)?.find((s) => s.id === scheduleId) ??
+        (await schedulesApi.fetchScheduleById(scheduleId));
 
       let climateMonitoring = null;
       if (schedule?.land_id) {
