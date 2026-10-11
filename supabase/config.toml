@@ -83,3 +83,7 @@ verify_jwt = false
 
 [functions.farmer-auth]
 verify_jwt = false
+
+# 2026-10-11 — Decision Brain concept index (ops-only; service-role bearer checked in code, same as rag-eval)
+[functions.brain-concept-indexer]
+verify_jwt = false

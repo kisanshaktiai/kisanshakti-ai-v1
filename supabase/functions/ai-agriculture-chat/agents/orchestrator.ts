@@ -1,4 +1,11 @@
 // CHANGE LOG (newest first)
+// 2026-10-11 — TARGET FLOW STEP 1, SHADOW ONLY (agents/concept-retriever.ts):
+//   when feature flag `brain_concept_shadow` is on for the farmer, orchestrate()
+//   starts a detached concept retrieval (registry route brain.embed + RPC
+//   brain_concept_search) after the boot caches, and at exit hands one
+//   brain_concept_shadow_log row (candidates next to the turn's intent and graph
+//   observations) to EdgeRuntime.waitUntil. Nothing reads it on the answer path;
+//   the response is neither changed nor delayed. Flag off ⇒ no embedding call.
 // 2026-10-10 — SURGICAL BRAIN FIX (live audit of deployed v102):
 //   (1) ReferenceError `currentObservations is not defined`: commit c1939d6
 //       renamed the hypothesis-graph input to the GraphTruth-locked
@@ -187,6 +194,7 @@ import { computeCoverage, isInformative as isInformativeObs } from '../runtime/e
 import { emitBrainTrace } from '../runtime/brain-trace.ts';
 import { reconcilePhenology } from '../runtime/phenology-reconciler.ts';
 import { isFlagEnabled } from '../../_shared/featureFlags.ts';
+import { startConceptShadow, finishConceptShadow } from './concept-retriever.ts';
 import { emitNodeTrace } from '../runtime/graph-node-trace.ts';
 import { checkGraphInvariants, emitFinalResponseContract, type InvariantSnapshot } from '../runtime/graph-invariants.ts';
 import { classifyEvidence, isRealObservation } from '../runtime/evidence-classifier.ts';
@@ -1284,6 +1292,7 @@ export class AIAgentOrchestrator {
 
     (this as any).__observationCandidateCodes = [];
     (this as any).__observationRouterReason = null;
+    (this as any).__conceptShadowIntent = null; // 2026-10-11 — step 1 shadow: this turn's intent only
     const requestMemo = new Map<string, Promise<any>>();
     const run = async (): Promise<OrchestratorResponse> => {
     // P0-A — boot caches.
@@ -1314,6 +1323,11 @@ export class AIAgentOrchestrator {
         }
       });
     }
+    // 2026-10-11 — TARGET FLOW STEP 1 (SHADOW): detached; never awaited on the answer path.
+    const _conceptShadow = startConceptShadow({
+      supabase: this.supabase, text: farmerMessage, farmerId, tenantId, sessionId, traceId,
+      language: options?.language ?? null,
+    });
     let response: OrchestratorResponse;
     try {
       response = await this._orchestrateImpl(farmerMessage, sessionId, farmerId, tenantId, options);
@@ -1664,6 +1678,18 @@ export class AIAgentOrchestrator {
       }
     } catch (_closeErr) {
       // non-blocking
+    }
+
+    // 2026-10-11 — TARGET FLOW STEP 1 (SHADOW): log candidates next to what the brain used.
+    // Off the request path (EdgeRuntime.waitUntil inside); never throws.
+    try {
+      void finishConceptShadow(_conceptShadow, {
+        intentCode: (this as any).__conceptShadowIntent ?? null,
+        observationCodes: ((response as any)?.graph_snapshot?.observations as string[] | undefined) ?? null,
+        responseType: (response as any)?.type ?? null,
+      });
+    } catch (_shadowErr) {
+      // shadow evidence only — never affects the answer
     }
 
     return response;
@@ -4062,6 +4088,7 @@ export class AIAgentOrchestrator {
       var intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
       // Expose for [ORCHESTRATOR_EXIT] boundary audit in index.ts
       (this as any)._lastIntentCode = intentCode;
+      (this as any).__conceptShadowIntent = intentCode; // 2026-10-11 — step 1 shadow log only
       const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
         ? semanticExtraction.intent_confidence : 0;
       const obsCodesList = expandedObservationCodes || [];
