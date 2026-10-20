@@ -191,10 +191,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       let tasksData: any[] | null = null;
       let tasksError: unknown = null;
       try {
-        tasksData = await schedulesApi.fetchTasks(scheduleId, { limit: 500 });
+        // No limit: a limit switches schedules-api into delta mode (updated_at order).
+        tasksData = await schedulesApi.fetchTasks(scheduleId);
       } catch (e) {
         tasksError = e;
       }
+
+      const byDate = (a: any, b: any) =>
+        String(a.task_date || '').localeCompare(String(b.task_date || ''));
 
       if (tasksError) {
         console.warn('⚠️ [CropScheduleView] Failed to fetch tasks online:', tasksError);
@@ -216,10 +220,10 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           currency: t.currency,
         }));
         console.log(`📦 [CropScheduleView] Loaded ${mappedTasks.length} tasks from localDB`);
-        setTasks(mappedTasks);
+        setTasks([...mappedTasks].sort(byDate));
       } else {
         console.log(`✅ [CropScheduleView] Loaded ${tasksData?.length || 0} tasks from API`);
-        setTasks(tasksData || []);
+        setTasks([...(tasksData || [])].sort(byDate));
       }
 
       // schedule_climate_monitoring was retired (0 rows for its entire
