@@ -111,7 +111,7 @@ export default function NDVIAnalysis() {
       </TabsContent>
 
       {/* forceMount: Radix unmounts inactive tabs, and every remount of the Google map is a billable load. Keep it alive, hide it. */}
-      <TabsContent value="map" forceMount className={cn('flex-1 px-0 pt-1 pb-16 mt-0', tab !== 'map' && 'hidden')}>
+      <TabsContent value="map" forceMount className={cn('flex-1 min-h-0 flex flex-col px-0 pt-1 pb-2 mt-0', tab !== 'map' && 'hidden')}>
         {mapOpened && selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} />}
       </TabsContent>
 

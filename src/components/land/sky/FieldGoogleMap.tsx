@@ -205,10 +205,10 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
   }, [p.boundary, p.highlightQuarter, isLoaded]);
 
   if (loadError) return <div className="rounded-2xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{t('sky.map.google_error', 'The map could not load. Check your connection and try again.')}</div>;
-  if (!isLoaded) return <Skeleton className={cn('w-full rounded-2xl', p.fullscreen ? 'h-screen' : 'h-[calc(100vh-180px)] min-h-[460px]')} />;
+  if (!isLoaded) return <Skeleton className={cn('w-full rounded-2xl', p.fullscreen ? 'h-screen' : 'flex-1 min-h-0')} />;
 
   return (
-    <div className={cn('relative w-full overflow-hidden bg-card', p.fullscreen ? 'fixed inset-0 z-[60]' : 'rounded-2xl mx-2 h-[calc(100vh-180px)] min-h-[460px] border border-border/40')}>
+    <div className={cn('relative w-full overflow-hidden bg-card', p.fullscreen ? 'fixed inset-0 z-[60]' : 'rounded-2xl mx-2 flex-1 min-h-0 border border-border/40')}>
       <div ref={hostRef} className="absolute inset-0" />
 
       {/* direction words — the map is locked north-up */}

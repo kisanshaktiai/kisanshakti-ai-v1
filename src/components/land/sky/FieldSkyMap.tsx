@@ -128,7 +128,7 @@ export function FieldSkyMap(props: {
   );
 
   return (
-    <div className={cn('flex flex-col', fullscreen && 'fixed inset-0 z-[60] bg-background')}>
+    <div className={cn('flex flex-col h-full min-h-0', fullscreen && 'fixed inset-0 z-[60] bg-background')}>
       {layers.length > 1 && (
         <div className={cn('px-3 pb-2', fullscreen && 'absolute top-2 left-2 right-2 z-[70] px-0 pb-0')}>
           <div className="grid gap-1.5 rounded-2xl bg-background/95 shadow p-1" style={{ gridTemplateColumns: `repeat(${layers.length}, minmax(0, 1fr))` }}>
@@ -144,7 +144,7 @@ export function FieldSkyMap(props: {
       {/* The Google Maps script is loaded by the SAME provider the Add-Land / Edit-Land map uses:
           same script id, same key, same libraries. If the farmer opened a land map earlier in this
           session the script is already there and this is instant; the script itself is never billed. */}
-      <GoogleMapsScriptProvider loadingComponent={<Skeleton className={cn('w-full', fullscreen ? 'h-screen' : 'h-[calc(100vh-180px)] min-h-[460px] rounded-2xl mx-2')} />}>
+      <GoogleMapsScriptProvider loadingComponent={<Skeleton className={cn('w-full', fullscreen ? 'h-screen' : 'flex-1 min-h-0 rounded-2xl mx-2')} />}>
         <FieldGoogleMap landId={props.landId} farmerId={props.farmerId} tenantId={props.tenantId} boundary={props.boundary} centerLat={props.centerLat} centerLng={props.centerLng}
           imagePath={frame?.path ?? null} imageBounds={frame?.bounds ?? null} highlightQuarter={active.quarter}
           legend={legend} legendTitle={t('sky.map.legend_title', 'What the colours mean')}

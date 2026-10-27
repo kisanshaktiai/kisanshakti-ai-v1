@@ -48,7 +48,6 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
   }
 
   return (<>
-    {figure}
     <Card className="rounded-3xl border-border/40">
       <CardContent className="p-4">
         <p className="text-[13px] font-semibold text-muted-foreground mb-2">{t('sky.season.title', 'Season so far')}</p>
@@ -74,5 +73,6 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
         <p className="text-sm font-medium mt-2">{caption}</p>
       </CardContent>
     </Card>
+    {figure}
   </>);
 }

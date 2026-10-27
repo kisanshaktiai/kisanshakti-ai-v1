@@ -14,7 +14,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed left-0 right-0 top-[calc(env(safe-area-inset-top,0px)+4rem)] z-[100] flex max-h-[calc(100dvh-5rem)] w-full flex-col-reverse gap-2 px-3 sm:bottom-4 sm:left-auto sm:right-4 sm:top-auto sm:w-[min(420px,calc(100vw-2rem))] sm:flex-col sm:p-0",
+      "fixed left-0 right-0 bottom-[calc(var(--nav-height,4.5rem)+env(safe-area-inset-bottom,0px)+0.5rem)] z-[100] flex max-h-[calc(100dvh-8rem)] w-full flex-col gap-2 px-3 sm:bottom-4 sm:left-auto sm:right-4 sm:top-auto sm:w-[min(420px,calc(100vw-2rem))] sm:flex-col sm:p-0",
       className,
     )}
     {...props}
@@ -23,7 +23,7 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-2xl border p-4 pr-8 shadow-xl transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-2xl border p-4 pr-8 shadow-xl transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-bottom-full",
   {
     variants: {
       variant: {
