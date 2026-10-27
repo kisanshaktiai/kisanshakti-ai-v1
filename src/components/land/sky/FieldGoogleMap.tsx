@@ -18,8 +18,10 @@ import { cn } from '@/lib/utils';
  * Every image is signed on read through the private bucket (tenant/land
  * ownership enforced by RLS) — see useSignedSatelliteImage.
  *
- * The legend is handed in already built from the picture's own colours (zone
- * classes, or the layer's colour ramp), so it always describes what is drawn.
+ * The map itself carries only what must sit on the picture: the north mark and
+ * two round buttons (full screen, my field). The day chips and the legend live
+ * outside the map (FieldSkyMap) so they never cover the field; only in full
+ * screen are they handed in as `footer` and floated at the bottom.
  */
 export type FieldMapBounds = { west: number; south: number; east: number; north: number };
 export type Quarter = 'NE' | 'NW' | 'SE' | 'SW';
@@ -36,10 +38,8 @@ export interface FieldGoogleMapProps {
   imagePath: string | null;           // storage path of the layer PNG
   imageBounds: FieldMapBounds | null; // bounds_wgs84 written by the pipeline
   highlightQuarter: Quarter | null;
-  legend: MapLegend;
-  legendTitle: string;
   fullscreen: boolean; onToggleFullscreen: () => void;
-  /** shown on the map just above the legend (the day strip, when the map fills the screen) */
+  /** floated at the bottom of the map — the day chips and legend, only when the map fills the screen */
   footer?: ReactNode;
 }
 
@@ -92,7 +92,7 @@ function getSharedMap(): { container: HTMLDivElement; map: google.maps.Map } {
       mapTypeId: 'satellite',          // imagery only: the crop colours must not fight road labels
       disableDefaultUI: true,
       zoomControl: true,
-      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
+      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP }, // moved per screen mode below
       gestureHandling: 'greedy',       // pinch-zoom on iOS WebView (same reason as the land drawer)
       isFractionalZoomEnabled: true,
       tilt: 0, heading: 0,             // north-up: the direction words depend on it
@@ -119,8 +119,13 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
     const map = mapRef.current; if (!map || !p.boundary.length) return;
     const b = new google.maps.LatLngBounds();
     p.boundary.forEach((pt) => b.extend(pt));
-    map.fitBounds(b, { top: 72, bottom: 160, left: 24, right: 56 });
-  }, [p.boundary]);
+    // Padding keeps the field clear of what sits on the map: north mark (top), round buttons (left),
+    // Google zoom (right); in full screen also the layer row (top) and the day/legend card (bottom).
+    map.fitBounds(b, p.fullscreen ? { top: 128, bottom: 220, left: 64, right: 56 } : { top: 44, bottom: 20, left: 60, right: 52 });
+  }, [p.boundary, p.fullscreen]);
+  // the ResizeObserver below is created once; it must always call the CURRENT fit (current land, current mode)
+  const fitRef = useRef(fitToField);
+  fitRef.current = fitToField;
 
   // attach the shared map into this host; detach (never destroy) on unmount
   useEffect(() => {
@@ -140,7 +145,7 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
       if (w > 0 && h > 0 && (w !== lastW || h !== lastH)) {
         lastW = w; lastH = h;
         google.maps.event.trigger(map, 'resize');
-        fitToField();
+        fitRef.current();
       }
     }) : null;
     ro?.observe(host);
@@ -156,6 +161,13 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
   }, [isLoaded]);
 
   useEffect(() => { if (mapRef.current) { google.maps.event.trigger(mapRef.current, 'resize'); fitToField(); } }, [fitToField, p.fullscreen]);
+
+  // Google's zoom buttons: top-right on the in-page map (bottom-right is under the floating mic),
+  // right-centre in full screen (the layer row takes the top).
+  useEffect(() => {
+    const map = mapRef.current; if (!map || !isLoaded) return;
+    map.setOptions({ zoomControlOptions: { position: p.fullscreen ? google.maps.ControlPosition.RIGHT_CENTER : google.maps.ControlPosition.RIGHT_TOP } });
+  }, [p.fullscreen, isLoaded]);
 
   // field outline
   useEffect(() => {
@@ -205,64 +217,46 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
   }, [p.boundary, p.highlightQuarter, isLoaded]);
 
   if (loadError) return <div className="rounded-2xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">{t('sky.map.google_error', 'The map could not load. Check your connection and try again.')}</div>;
-  if (!isLoaded) return <Skeleton className={cn('w-full rounded-2xl', p.fullscreen ? 'h-screen' : 'flex-1 min-h-0')} />;
+  if (!isLoaded) return <Skeleton className={cn('w-full rounded-2xl', p.fullscreen ? 'h-screen' : 'flex-1 min-h-[200px]')} />;
+
+  const fullLabel = p.fullscreen ? t('sky.map.exit_fullscreen', 'Exit full screen') : t('sky.map.fill_screen', 'Fill screen');
+  const recenterLabel = t('sky.map.recenter', 'My field');
 
   return (
-    <div className={cn('relative w-full overflow-hidden bg-card', p.fullscreen ? 'fixed inset-0 z-[60]' : 'rounded-2xl mx-2 flex-1 min-h-0 border border-border/40')}>
+    <div className={cn('relative w-full overflow-hidden bg-card', p.fullscreen ? 'fixed inset-0 z-[60]' : 'flex-1 min-h-[200px] rounded-2xl border border-border/40')}>
       <div ref={hostRef} className="absolute inset-0" />
 
-      {/* direction words — the map is locked north-up */}
-      <div className="pointer-events-none absolute inset-0 z-[3]" aria-hidden>
-        <span className={cn('absolute left-1/2 -translate-x-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow', p.fullscreen ? 'top-[72px]' : 'top-3')}>{t('sky.map.north', 'north')} ↑</span>
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow">{t('sky.map.west', 'west')}</span>
-        <span className="absolute right-14 top-1/2 -translate-y-1/2 rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow">{t('sky.map.east', 'east')}</span>
-      </div>
+      {/* north — the map is locked north-up, so one mark is enough to read every direction */}
+      <span aria-hidden className={cn('pointer-events-none absolute left-1/2 -translate-x-1/2 z-[3] rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow', p.fullscreen ? 'top-[72px]' : 'top-2')}>
+        {t('sky.map.north', 'north')} ↑
+      </span>
 
-      {/* controls: full screen + re-centre. In full screen they sit below the layer buttons, which take the top row. */}
-      <div className={cn('absolute right-2 z-[4] flex flex-col gap-2', p.fullscreen ? 'top-[68px]' : 'top-2')}>
-        <Button type="button" size="sm" variant="secondary" onClick={p.onToggleFullscreen} className="min-h-11 min-w-11 rounded-xl shadow bg-background text-foreground gap-1.5" aria-label={p.fullscreen ? t('sky.map.exit_fullscreen', 'Exit full screen') : t('sky.map.fill_screen', 'Fill screen')}>
-          {p.fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          <span className="text-xs font-semibold">{p.fullscreen ? t('sky.map.exit_fullscreen', 'Exit full screen') : t('sky.map.fill_screen', 'Fill screen')}</span>
+      {/* full screen + back to my field: round thumb-size buttons, top-left (Google zoom is top-right) */}
+      <div className={cn('absolute left-2 z-[4] flex flex-col gap-2', p.fullscreen ? 'top-[68px]' : 'top-2')}>
+        <Button type="button" size="icon" variant="secondary" onClick={p.onToggleFullscreen} aria-label={fullLabel} title={fullLabel} className="h-11 w-11 rounded-full shadow bg-background text-foreground">
+          {p.fullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
         </Button>
-        <Button type="button" size="sm" variant="secondary" onClick={fitToField} className="min-h-11 min-w-11 rounded-xl shadow bg-background text-foreground gap-1.5" aria-label={t('sky.map.recenter', 'My field')}>
-          <LocateFixed className="h-4 w-4" /><span className="text-xs font-semibold">{t('sky.map.recenter', 'My field')}</span>
+        <Button type="button" size="icon" variant="secondary" onClick={fitToField} aria-label={recenterLabel} title={recenterLabel} className="h-11 w-11 rounded-full shadow bg-background text-foreground">
+          <LocateFixed className="h-5 w-5" />
         </Button>
       </div>
 
       {/* what is happening with the picture, when it is not simply on the map */}
       {p.imagePath && (image.status === 'loading' || image.status === 'error' || (image.status === 'ready' && !p.imageBounds)) && (
-        <div className="pointer-events-none absolute left-1/2 top-28 z-[4] -translate-x-1/2 w-max max-w-[80%] rounded-full bg-background/95 shadow px-3 py-1.5 flex items-center gap-2 text-[13px] font-medium" role="status">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-[4] -translate-x-1/2 -translate-y-1/2 w-max max-w-[80%] rounded-full bg-background/95 shadow px-3 py-1.5 flex items-center gap-2 text-[13px] font-medium" role="status">
           {image.status === 'loading'
             ? <><Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />{t('sky.map.image_loading', 'Opening the picture…')}</>
             : <><ImageOff className="h-4 w-4 text-destructive shrink-0" />{image.status === 'error' ? t('sky.map.image_error', 'This picture could not be opened. Tap refresh and try again.') : t('sky.map.no_bounds', 'This picture has no position on the map yet.')}</>}
         </div>
       )}
 
-      {/* bottom of the map, stacked so nothing overlaps whatever the legend's height: south, the day strip (full screen), the legend */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[4] px-3 flex flex-col gap-2">
-        <span className="self-center rounded-full bg-background/95 px-3 py-1 text-[13px] font-bold shadow" aria-hidden>{t('sky.map.south', 'south')}</span>
-        {p.footer && <div className="pointer-events-auto">{p.footer}</div>}
-      {/* legend: the picture's own colours */}
-      <div className="self-start w-full max-w-xs rounded-2xl bg-background/95 shadow px-3 py-2">
-        <p className="text-[12px] font-semibold text-muted-foreground mb-1.5">{p.legendTitle}</p>
-        {p.legend.kind === 'classes' ? (
-          <ul className="space-y-1">
-            {p.legend.items.map((it) => (
-              <li key={it.label} className="flex items-center gap-2 text-[13px] font-medium">
-                <i className="h-3.5 w-3.5 rounded-sm shrink-0 border border-border/40" style={{ backgroundColor: it.color }} />
-                <span className="flex-1 min-w-0 truncate">{it.label}</span>
-                {it.sharePct != null && <span className="tabular-nums text-muted-foreground">{it.sharePct}%</span>}
-              </li>))}
-          </ul>
-        ) : (
-          <div>
-            {p.legend.css && <div className="h-3 w-full rounded-full border border-border/40" style={{ backgroundImage: p.legend.css }} />}
-            <div className="flex justify-between text-[13px] font-medium mt-1"><span>{p.legend.low}</span><span>{p.legend.high}</span></div>
-          </div>
-        )}
-        <p className="text-[12px] text-muted-foreground mt-1.5">{t('sky.map.north_hint', 'Top of the map is north. Your field is outlined.')}</p>
-      </div>
-      </div>
+      {/* full screen only: the day chips + legend card, floated above the bottom edge — high enough
+          that Google's logo and "Map Data" line under it stay visible */}
+      {p.footer && (
+        <div className="absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+2rem)] z-[4] px-3">
+          {p.footer}
+        </div>
+      )}
     </div>
   );
 }
