@@ -101,7 +101,7 @@ export function FieldSkyMap(props: {
   const dayStrip = (
     <>
         {frameCount ? (
-          <div className={cn(fullscreen && 'rounded-2xl bg-background/95 shadow p-2')}>
+          <div className="rounded-2xl bg-background/95 shadow p-2">
             {/* which day's picture is on the map, and how old it is */}
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <p className="text-[13px] min-w-0">
@@ -128,7 +128,7 @@ export function FieldSkyMap(props: {
   );
 
   return (
-    <div className={cn('flex flex-col h-full min-h-0', fullscreen && 'fixed inset-0 z-[60] bg-background')}>
+    <div className={cn('flex flex-col', fullscreen ? 'fixed inset-0 z-[60] bg-background' : 'h-sky-map min-h-0')}>
       {layers.length > 1 && (
         <div className={cn('px-3 pb-2', fullscreen && 'absolute top-2 left-2 right-2 z-[70] px-0 pb-0')}>
           <div className="grid gap-1.5 rounded-2xl bg-background/95 shadow p-1" style={{ gridTemplateColumns: `repeat(${layers.length}, minmax(0, 1fr))` }}>
@@ -148,10 +148,8 @@ export function FieldSkyMap(props: {
         <FieldGoogleMap landId={props.landId} farmerId={props.farmerId} tenantId={props.tenantId} boundary={props.boundary} centerLat={props.centerLat} centerLng={props.centerLng}
           imagePath={frame?.path ?? null} imageBounds={frame?.bounds ?? null} highlightQuarter={active.quarter}
           legend={legend} legendTitle={t('sky.map.legend_title', 'What the colours mean')}
-          fullscreen={fullscreen} onToggleFullscreen={() => setFullscreen((f) => !f)} footer={fullscreen ? dayStrip : undefined} />
+          fullscreen={fullscreen} onToggleFullscreen={() => setFullscreen((f) => !f)} footer={dayStrip} />
       </GoogleMapsScriptProvider>
-
-      {!fullscreen && <div className="px-3 pt-2">{dayStrip}</div>}
     </div>
   );
 }

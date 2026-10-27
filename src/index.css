@@ -816,7 +816,18 @@ button, a, [role="button"], input, select, textarea, label,
     max-height: 100vh;
     max-height: 100dvh;
   }
-  
+
+  /* Field-sky map viewport fit: the map has no intrinsic height, and the app's
+     single scroll container (<main>) does not pass a definite height down a
+     flex-fill chain, so the map must size itself from the viewport. 19rem is the
+     chrome around it (app header 3.5 + page header 2.75 + land strip 3.75 +
+     tabs 3.25 + tab padding 0.75 + bottom-nav clearance 5), plus any
+     subscription banner. rem-based so it adapts to the farmer's text size. */
+  .h-sky-map {
+    height: calc(100vh - 19rem - var(--banner-h, 0px));
+    height: calc(100dvh - 19rem - var(--banner-h, 0px));
+  }
+
   /* Safe Area Padding Utilities */
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0);
