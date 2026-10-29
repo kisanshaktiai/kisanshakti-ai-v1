@@ -186,12 +186,15 @@ export default function CropGrowthTracking() {
 
               <TabsContent value="history" className="mt-4">
                 <CropGrowthHistory
-                  uploads={(uploads || []) as any}
-                  analyses={(analysisHistory || []) as any}
+                  uploads={(uploads || []).filter((upload): upload is typeof upload & { file_type: 'image' | 'video' } => upload.file_type === 'image' || upload.file_type === 'video')}
+                  analyses={analysisHistory || []}
                   onViewAnalysis={(id) => {
                     console.log('View analysis:', id);
                   }}
-                  onAnalyze={(upload) => analyzeUpload(upload as any)}
+                  onAnalyze={(upload) => {
+                    const original = uploads?.find((item) => item.id === upload.id);
+                    if (original) void analyzeUpload(original);
+                  }}
                   isAnalyzing={isAnalyzing}
                 />
               </TabsContent>
