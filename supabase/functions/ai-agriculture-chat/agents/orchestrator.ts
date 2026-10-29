@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-29 07:20 UTC — Keep GENERAL/KNOWLEDGE informational queries out of rule fallback; preserve explicit observation authority.
 // 2026-10-27 17:50 UTC — Restore GraphTruth observation references and enforce DB direct-intent scope on both advisory lanes and recovery.
 // 2026-10-09 12:25 UTC — TDZ FIX: KNOWLEDGE_PLANE_GATE log referenced cropFromAnyLayer
 //   (declared ~200 lines later) before initialization — every GENERAL intent /
@@ -4069,7 +4070,8 @@ export class AIAgentOrchestrator {
           const salvaged = realObsCountForSalvage > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
           console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCountForSalvage})`);
           intentCode = salvaged;
-        } else if (isAdvisoryLike && realObsCountForSalvage > 0) {
+        } else if (isAdvisoryLike && realObsCountForSalvage > 0 &&
+                   String((semanticExtraction as any)?.execution_mode ?? '').toUpperCase() !== 'KNOWLEDGE') {
           console.log(`[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${intentCode} → DIAGNOSTIC_INQUIRY reason=real_symptoms_present codes=[${ec.real_codes.slice(0, 6).join(',')}]`);
           intentCode = 'DIAGNOSTIC_INQUIRY';
         }
@@ -4477,8 +4479,8 @@ export class AIAgentOrchestrator {
         !!intentMetaFromDB &&
         dbExecutionLane === 'KNOWLEDGE' &&
         String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
-        realObsCountForSalvage === 0 &&
-        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
+        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0) &&
+        (realObsCountForSalvage === 0 || nluExecutionMode === 'KNOWLEDGE');
 
       if (knowledgePlaneEligible) {
         // TDZ FIX (2026-10-09): cropFromAnyLayer is declared further below (line ~4643);
@@ -4500,6 +4502,37 @@ export class AIAgentOrchestrator {
         );
         agentsUsed.push('KNOWLEDGE_PLANE_GATE');
 
+        const knowledgeGapResponse = (reason: string): any => {
+          const lang = String(options.language || normalizedInput.detected_language || 'en');
+          const text = String(getConfigRaw<string>(
+            'knowledge_gap_' + lang,
+            getConfigRaw<string>('knowledge_gap_en', 'Verified information is unavailable for this question.'),
+          ));
+          const id = 'knowledge_gap_' + Date.now();
+          agentsUsed.push('KNOWLEDGE_EVIDENCE_GAP');
+          console.warn('[KNOWLEDGE_GAP] trace=' + traceId + ' reason=' + reason);
+          return {
+            type: 'DECISION_PROVIDED', session_id: sessionId,
+            communication: {
+              message_id: crypto.randomUUID(), decision_id: id, session_id: sessionId,
+              farmer_id: farmerId, language: lang, format: 'RICH_TEXT', tone: 'FRIENDLY',
+              created_at: new Date().toISOString(),
+              main_message: { full_text: { [lang]: text, en: text } }, quick_actions: [],
+              metadata: { source: 'KNOWLEDGE_PLANE', response_type: 'KNOWLEDGE_GAP', confidence_score: 0 },
+            },
+            decision_output: {
+              decision_id: id, session_id: sessionId, status: 'KNOWLEDGE_GAP',
+              decision_brain_source: true, actions_returned: [], matched_responses: [],
+              metadata: { trace_id: traceId, response_source: 'KNOWLEDGE_PLANE',
+                brain_execution_mode: 'KNOWLEDGE', authority_status: 'EVIDENCE_GAP',
+                final_resolution_type: 'KNOWLEDGE_GAP', rules_applied: 0 },
+            },
+            metadata: { confidence: 0, safety_status: 'SAFE', rules_applied: 0, trace_id: traceId,
+              response_source: 'KNOWLEDGE_PLANE', brain_execution_mode: 'KNOWLEDGE',
+              authority_status: 'EVIDENCE_GAP', final_resolution_type: 'KNOWLEDGE_GAP',
+              agents_used: [...agentsUsed] },
+          };
+        };
         try {
           const knowledgeResult = await queryKnowledgePlane({
             farmer_message: farmerMessage,
@@ -4622,17 +4655,14 @@ export class AIAgentOrchestrator {
             } as any;
           }
 
-          console.log(
-            '↩️ [KNOWLEDGE_PLANE] not handled; reason=' +
-            (knowledgeResult.reason || 'UNKNOWN') +
-            ' → existing decision pipeline',
-          );
+          console.warn('[KNOWLEDGE_PLANE_GAP] trace=' + traceId +
+            ' reason=' + String(knowledgeResult.reason || 'NOT_HANDLED') +
+            ' — returning information-only gap');
+          return knowledgeGapResponse('KNOWLEDGE_NOT_HANDLED');
         } catch (knowledgeErr) {
-          console.error(
-            '[KNOWLEDGE_PLANE_ERROR] trace=' + traceId +
-            ' ' + ((knowledgeErr as Error)?.message || String(knowledgeErr)) +
-            ' → existing pipeline preserved',
-          );
+          console.error('[KNOWLEDGE_PLANE_ERROR] trace=' + traceId +
+            ' ' + ((knowledgeErr as Error)?.message || String(knowledgeErr)));
+          return knowledgeGapResponse('KNOWLEDGE_PROVIDER_ERROR');
         }
       }
 
