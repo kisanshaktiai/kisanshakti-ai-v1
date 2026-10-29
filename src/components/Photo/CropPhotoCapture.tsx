@@ -189,10 +189,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
   const send = async () => {
     if (!landId || !canSend) return;
+    const generation = captureGeneration.current;
     setProblem(null);
     setPhase('working');
     try {
       const location = await getCurrentLocation();
+      if (generation !== captureGeneration.current) return;
       if (requireLocation && !location) {
         toast.error(t('cropGrowth.pleaseAddLocation'));
         setPhase('capture');
@@ -205,6 +207,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
           id: identity, landId, purpose, shotRole: s.role,
           scheduleId: scheduleId ?? null, taskId: taskId ?? null, subjectType: uploadType ?? null, location,
         }));
+        if (generation !== captureGeneration.current) return;
       }
       if (!navigator.onLine) {
         toast.success(t(`${K}.savedOffline`));
@@ -216,6 +219,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       const uploads = [];
       for (let i = 0; i < queued.length; i++) {
         uploads.push({ upload_id: await uploadQueued(queued[i]), shot_role: shots[i].role });
+        if (generation !== captureGeneration.current) return;
       }
       // 3. Perception.
       setWorkLabel(t(`${K}.diagnosing`));
@@ -224,6 +228,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
         id: identity, landId, purpose, photos: uploads, taskId: taskId ?? null,
         sessionId: sessionId ?? null, language, farmerText: text,
       });
+      if (generation !== captureGeneration.current) return;
       if (d.status === 'retake_requested') {
         const idx = d.retake?.photo_index ?? 0;
         setShots((prev) => prev.map((s, i) => (i === idx ? { ...s, retake: d.retake?.reason_code ?? 'generic' } : s)));
@@ -244,10 +249,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       const answer = await askDecisionBrain({
         id: identity, landId, sessionId: sessionId ?? null, language, diagnosisId: d.diagnosis_id, farmerText: text,
       });
+      if (generation !== captureGeneration.current) return;
       setAnswerText(typeof answer?.response === 'string' ? answer.response : '');
       setPhase('result');
       onAnswer?.({ diagnosisId: d.diagnosis_id, landId, answer });
     } catch (e) {
+      if (generation !== captureGeneration.current) return;
       console.error('[CropPhotoCapture] send failed', e);
       setProblem(t(`${K}.failed`));
       setPhase('capture');
