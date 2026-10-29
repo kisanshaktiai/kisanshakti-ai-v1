@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Sprout, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sprout, RefreshCw, Loader2, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -8,12 +8,12 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useCropGrowthTracking } from '@/hooks/useCropGrowthTracking';
-import { CropGrowthUploader } from '@/components/crop-growth/CropGrowthUploader';
+import { CropPhotoCapture } from '@/components/Photo/CropPhotoCapture';
 import { CropGrowthAnalysisCard } from '@/components/crop-growth/CropGrowthAnalysisCard';
 import { CropGrowthAlerts } from '@/components/crop-growth/CropGrowthAlerts';
 import { CropGrowthHistory } from '@/components/crop-growth/CropGrowthHistory';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { landsApi } from '@/services/landsApi';
 import { cn } from '@/lib/utils';
 
 export default function CropGrowthTracking() {
@@ -23,19 +23,14 @@ export default function CropGrowthTracking() {
   const { tenant } = useTenant();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [captureOpen, setCaptureOpen] = useState(false);
 
   // Fetch user's lands
   const { data: lands, isLoading: landsLoading } = useQuery({
-    queryKey: ['farmer-lands', user?.id],
+    queryKey: ['farmer-lands', user?.id, user?.tenantId],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { data, error } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('farmer_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as any[];
+      return (await landsApi.fetchLands()).filter((land): land is typeof land & { id: string } => !!land.id);
     },
     enabled: !!user?.id
   });
@@ -54,9 +49,7 @@ export default function CropGrowthTracking() {
     analysisLoading,
     analysisHistory,
     alerts,
-    isUploading,
     isAnalyzing,
-    uploadMedia,
     analyzeUpload,
     markAlertRead,
     markAlertActioned,
@@ -64,15 +57,6 @@ export default function CropGrowthTracking() {
   } = useCropGrowthTracking(selectedLandId || undefined, user?.id, tenant?.id);
 
   const selectedLand = lands?.find(l => l.id === selectedLandId);
-
-  const handleUpload = async (file: File, notes?: string, location?: { lat: number; lng: number }) => {
-    const upload = await uploadMedia(file, notes, location);
-    if (upload) {
-      // Auto-analyze after upload
-      await analyzeUpload(upload);
-    }
-    return upload;
-  };
 
   return (
     <div className="min-h-full bg-background">
@@ -114,11 +98,11 @@ export default function CropGrowthTracking() {
                 variant={selectedLandId === land.id ? "default" : "outline"}
                 size="sm"
                 className="shrink-0"
-                onClick={() => setSelectedLandId(land.id)}
+                onClick={() => { setCaptureOpen(false); setSelectedLandId(land.id); }}
               >
                 {land.name}
-                {land.crop_name && (
-                  <span className="ml-1 text-xs opacity-70">({land.crop_name})</span>
+                {land.current_crop && (
+                  <span className="ml-1 text-xs opacity-70">({land.current_crop})</span>
                 )}
               </Button>
             ))}
@@ -145,10 +129,20 @@ export default function CropGrowthTracking() {
         {selectedLandId && (
           <>
             {/* Upload Section */}
-            <CropGrowthUploader
-              onUpload={handleUpload}
-              isUploading={isUploading || isAnalyzing}
-            />
+            <Button className="w-full min-h-12 whitespace-normal" onClick={() => setCaptureOpen(true)} disabled={!selectedLand || !user?.tenantId}>
+              <Camera className="h-5 w-5 mr-2 shrink-0" />{t('cropGrowth.takePhoto')}
+            </Button>
+            {selectedLand && user?.tenantId && (
+              <CropPhotoCapture
+                isOpen={captureOpen}
+                onClose={() => setCaptureOpen(false)}
+                purpose="growth_tracking"
+                farmerId={user.id}
+                tenantId={user.tenantId}
+                landId={selectedLand.id}
+                onAnswer={() => refetch()}
+              />
+            )}
 
             {/* Alerts */}
             {alerts && alerts.length > 0 && (
