@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Satellite, Sun, Map as MapIcon, LineChart, CloudOff } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Satellite, Sun, Map as MapIcon, LineChart, CloudOff, Sprout } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,16 +24,15 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useLandCropIcons } from '@/hooks/useLandCropIcons';
 import { cn } from '@/lib/utils';
 
-interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; boundary_polygon_old?: { coordinates?: number[][][] } | null; center_point_old?: { coordinates?: number[] } | null; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
-const CROP_EMOJI: Record<string, string> = { sugarcane: '🎋', maize: '🌽', corn: '🌽', wheat: '🌾', rice: '🌾', cotton: '🪻' };
+interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; current_crop_id?: string | null; stage_uuid?: string | null; boundary_polygon_old?: { coordinates?: number[][][] } | null; center_point_old?: { coordinates?: number[] } | null; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
 // Every satellite query the screen is built from (see useFieldSky); the refresh button reloads all of them.
 const SKY_QUERY_KEYS = ['ndvi-analysis', 'field-sky-intel', 'field-sky-radar', 'field-sky-schedule', 'land-weather-state'];
 // One short sequence when a field's cards arrive (and again when the farmer picks another field).
 const CARD_SEQUENCE = { hidden: {}, shown: { transition: { staggerChildren: 0.06 } } };
 const CARD_ITEM = { hidden: { opacity: 0, y: 10 }, shown: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } } };
-function cropEmoji(crop?: string) { if (!crop) return '🌱'; const k = crop.toLowerCase(); for (const key of Object.keys(CROP_EMOJI)) if (k.includes(key)) return CROP_EMOJI[key]; return '🌱'; }
 
 /**
  * "My field from the sky." Every card shows a picture, a comparison and one
@@ -60,6 +59,8 @@ export default function NDVIAnalysis() {
   const landsWithData = useMemo(() => lands.filter(hasSatellite), [lands]);
   useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId((landsWithData[0] ?? lands[0]).id); }, [lands, landsWithData, selectedLandId]);
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
+  // each land's crop icon comes from the crops master (crops.icon), not from a crop list in code
+  const cropIcons = useLandCropIcons(lands);
 
   const sky = useFieldSky(selectedLandId, reloadKey);
 
@@ -84,7 +85,7 @@ export default function NDVIAnalysis() {
     <ScrollArea className="w-full shrink-0 border-b border-border/40 bg-card/40"><div className="flex gap-1.5 px-2 py-2">
       {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-11 w-[110px] rounded-xl shrink-0" />) : lands.map(land => (
         <button key={land.id} onClick={() => setSelectedLandId(land.id)} className={cn('shrink-0 flex items-center gap-2 px-3 h-11 rounded-xl border text-left transition', land.id === selectedLandId ? 'bg-primary/10 border-primary text-foreground' : 'bg-card border-border/40 text-muted-foreground')}>
-          <span className="text-base">{cropEmoji(land.current_crop)}</span>
+          {cropIcons[land.id] ? <span className="text-base" aria-hidden>{cropIcons[land.id]}</span> : <Sprout className="h-4 w-4 text-primary shrink-0" aria-hidden />}
           <span className="min-w-0"><span className="block text-xs font-semibold truncate max-w-[96px]">{land.name}</span><span className="block text-[10px] opacity-70">{land.area_acres} ac</span></span>
         </button>))}
     </div><ScrollBar orientation="horizontal" /></ScrollArea>
@@ -105,7 +106,7 @@ export default function NDVIAnalysis() {
           {selectedLandId && session?.farmerId && tenantId && <motion.div variants={CARD_ITEM} className="empty:hidden"><AttentionCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} onShowOnMap={() => setTab('map')} /></motion.div>}
           <motion.div variants={CARD_ITEM}><NeighbourCard sky={sky} /></motion.div>
           <motion.div variants={CARD_ITEM}><WaterCard sky={sky} /></motion.div>
-          {selectedLandId && session?.farmerId && tenantId && <motion.div variants={CARD_ITEM}><AskCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} /></motion.div>}
+          {selectedLandId && session?.farmerId && tenantId && <motion.div variants={CARD_ITEM} className="empty:hidden"><AskCard sky={sky} landId={selectedLandId} cropName={selectedLand?.current_crop} farmerId={session.farmerId} tenantId={tenantId} /></motion.div>}
           <motion.div variants={CARD_ITEM}><DetailsCard sky={sky} /></motion.div>
         </motion.div>}
       </TabsContent>

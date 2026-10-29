@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CropPhotoCapture } from '@/components/Photo/CropPhotoCapture';
 import { cn } from '@/lib/utils';
-import type { FieldSky } from '@/hooks/useFieldSky';
+import { attentionLevel, type FieldSky } from '@/hooks/useFieldSky';
 
 /**
  * "Needs your attention." Shown only when the governed sources themselves say
@@ -19,13 +19,17 @@ export function AttentionCard({ sky, landId, cropName, farmerId, tenantId, onSho
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
-  const severe = sky.state === 'something_wrong' || sky.water.agreeing >= 3;
-  const watch = sky.state === 'slower' || sky.neighbours.state === 'well_behind' || sky.water.agreeing >= 1;
-  if (!severe && !watch) return null;
+  const level = attentionLevel(sky);
+  if (!level) return null;
+  const severe = level === 'severe';
+  // say what the sign actually is: a watch raised only by the water balance is about water, not about the crop slipping behind
+  const waterOnly = !severe && sky.state !== 'slower' && sky.neighbours.state !== 'well_behind';
 
   const sentence = severe
     ? t('sky.attention.severe', 'The satellite view of this field has changed and more than one sign agrees. Please walk the field today.')
-    : t('sky.attention.watch', 'One sign says this field is slipping behind. Please have a look when you can.');
+    : waterOnly
+      ? t('sky.water.depleted', 'The soil water balance says the field needs water. The satellite has not seen a change yet.')
+      : t('sky.attention.watch', 'One sign says this field is slipping behind. Please have a look when you can.');
 
   return (
     <Card className={cn('rounded-3xl border', severe ? 'border-destructive/40 bg-destructive/5' : 'border-warning/40 bg-warning/5')}>

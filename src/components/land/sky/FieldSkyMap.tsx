@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Leaf, Droplets, Waves, Play, Square } from 'lucide-react';
 import { FieldGoogleMap, type MapLegend } from '@/components/land/sky/FieldGoogleMap';
@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { formatSkyDay, type FieldSky, type LayerFrame, type Quarter } from '@/hooks/useFieldSky';
 import { useSatelliteLayerConfig } from '@/hooks/useSatelliteLayerConfig';
+import { useSignedSatelliteImage } from '@/hooks/useSignedSatelliteImage';
 import { NDVI_COLOR_STOPS, ZONE_CLASS_COLOURS, colourRampCss } from '@/lib/ndviScience';
 
 type LayerCode = 'vigour' | 'moisture' | 'standing';
@@ -62,13 +63,24 @@ export function FieldSkyMap(props: {
   const frame = active.frames[dateIdx] ?? active.frames[0] ?? null;
   const frameCount = active.frames.length;
 
-  // play: frames are newest-first, so the run goes from the last index down to 0 and stops on the newest day
+  // the picture the map has finished drawing (or could not draw): play only moves on from a day the farmer has seen
+  const [drawnPath, setDrawnPath] = useState<string | null>(null);
+  const onImageReady = useCallback((path: string) => setDrawnPath(path), []);
+
+  // play: frames are newest-first, so the run goes from the last index down to 0 and stops on the newest day.
+  // Each day stays PLAY_STEP_MS on screen AFTER its picture is drawn, however slow the connection is.
   useEffect(() => {
     if (!playing) return;
     if (dateIdx <= 0) { setPlaying(false); return; }
+    if (!frame || drawnPath !== frame.path) return; // still downloading this day's picture
     const id = window.setTimeout(() => setDateIdx((i) => Math.max(0, i - 1)), PLAY_STEP_MS);
     return () => window.clearTimeout(id);
-  }, [playing, dateIdx]);
+  }, [playing, dateIdx, drawnPath, frame]);
+
+  // while one day is on screen, sign and download the next one, so the step to it is instant
+  const upcoming = playing && dateIdx > 0 ? active.frames[dateIdx - 1] ?? null : null;
+  const upcomingImage = useSignedSatelliteImage(upcoming?.path ?? null, props.farmerId, props.tenantId, props.landId);
+  useEffect(() => { if (upcomingImage.url) { const pic = new Image(); pic.src = upcomingImage.url; } }, [upcomingImage.url]);
   // keep the day that is on the map visible in the strip while the days play
   const activeChipRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { activeChipRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [dateIdx]);
@@ -210,7 +222,7 @@ export function FieldSkyMap(props: {
       <GoogleMapsScriptProvider loadingComponent={<Skeleton className={cn('w-full', fullscreen ? 'h-screen' : 'flex-1 min-h-[200px] rounded-2xl')} />}>
         <FieldGoogleMap landId={props.landId} farmerId={props.farmerId} tenantId={props.tenantId} boundary={props.boundary} centerLat={props.centerLat} centerLng={props.centerLng}
           imagePath={frame?.path ?? null} imageBounds={frame?.bounds ?? null} highlightQuarter={active.quarter}
-          fullscreen={fullscreen} onToggleFullscreen={() => setFullscreen((f) => !f)}
+          fullscreen={fullscreen} onToggleFullscreen={() => setFullscreen((f) => !f)} onImageReady={onImageReady}
           footer={fullscreen ? <div className="rounded-2xl bg-background/95 shadow p-2.5 flex flex-col gap-2">{dayRow}{legendView}</div> : undefined} />
       </GoogleMapsScriptProvider>
 

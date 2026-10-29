@@ -41,6 +41,8 @@ export interface FieldGoogleMapProps {
   fullscreen: boolean; onToggleFullscreen: () => void;
   /** floated at the bottom of the map — the day chips and legend, only when the map fills the screen */
   footer?: ReactNode;
+  /** called once the picture for `imagePath` is fully drawn on the map (ok) or could not be (not ok) — lets "play" wait for it */
+  onImageReady?: (path: string, ok: boolean) => void;
 }
 
 const OVERLAY_OPACITY = 0.85;
@@ -179,30 +181,48 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
     return () => { fieldPolyRef.current?.setMap(null); };
   }, [p.boundary, isLoaded]);
 
-  // the layer image: one GroundOverlay, replaced when the URL or bounds change
+  // who to tell when a picture is on screen (refs: the overlay effect below must not re-run when these change)
+  const readyRef = useRef(p.onImageReady); readyRef.current = p.onImageReady;
+  const pathRef = useRef(p.imagePath); pathRef.current = p.imagePath;
+
+  // the layer image: one GroundOverlay, replaced when the URL or bounds change. The picture is downloaded
+  // first and only then laid on the map (from the browser cache), so on a slow connection the farmer never
+  // sees an empty field while "play" moves on — it reports ready only after the fade-in has finished.
   useEffect(() => {
     const map = mapRef.current; if (!map || !isLoaded) return;
     overlayRef.current?.setMap(null); overlayRef.current = null;
     if (!signedUrl || !p.imageBounds) return;
     const b = p.imageBounds;
     const bounds = new google.maps.LatLngBounds({ lat: b.south, lng: b.west }, { lat: b.north, lng: b.east });
-    // fade the picture in, so changing the day reads as one picture replacing another
-    const ov = new google.maps.GroundOverlay(signedUrl, bounds, { clickable: false, opacity: 0 });
-    ov.setMap(map); overlayRef.current = ov;
+    const forPath = pathRef.current;
     const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let raf = 0;
-    if (reduce) ov.setOpacity(OVERLAY_OPACITY);
-    else {
+    let raf = 0; let cancelled = false; let ov: google.maps.GroundOverlay | null = null;
+    const done = (ok: boolean) => { if (!cancelled && forPath) readyRef.current?.(forPath, ok); };
+    const pic = new Image();
+    pic.onerror = () => done(false);
+    pic.onload = () => {
+      if (cancelled) return;
+      // fade the picture in, so changing the day reads as one picture replacing another
+      ov = new google.maps.GroundOverlay(signedUrl, bounds, { clickable: false, opacity: 0 });
+      ov.setMap(map); overlayRef.current = ov;
+      if (reduce) { ov.setOpacity(OVERLAY_OPACITY); done(true); return; }
       const t0 = performance.now();
       const step = (now: number) => {
         const k = Math.min(1, (now - t0) / OVERLAY_FADE_MS);
-        ov.setOpacity(OVERLAY_OPACITY * k);
-        if (k < 1) raf = requestAnimationFrame(step);
+        ov?.setOpacity(OVERLAY_OPACITY * k);
+        if (k < 1) raf = requestAnimationFrame(step); else done(true);
       };
       raf = requestAnimationFrame(step);
-    }
-    return () => { cancelAnimationFrame(raf); ov.setMap(null); };
+    };
+    pic.src = signedUrl;
+    return () => { cancelled = true; pic.onload = null; pic.onerror = null; cancelAnimationFrame(raf); ov?.setMap(null); };
   }, [signedUrl, p.imageBounds, isLoaded]);
+
+  // a picture that cannot be signed, or has no position on the map, will never be drawn: say so, so "play" does not wait forever
+  useEffect(() => {
+    if (!p.imagePath) return;
+    if (image.status === 'error' || (image.status === 'ready' && !p.imageBounds)) readyRef.current?.(p.imagePath, false);
+  }, [image.status, p.imagePath, p.imageBounds]);
 
   // where-to-check quarter
   useEffect(() => {

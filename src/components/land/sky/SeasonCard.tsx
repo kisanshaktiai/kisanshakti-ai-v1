@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ComposedChart, Area, Line, XAxis, YAxis, ReferenceArea, ResponsiveContainer, Tooltip } from 'recharts';
 import { Card, CardContent } from '@/components/ui/card';
-import type { FieldSky } from '@/hooks/useFieldSky';
+import { stageKey, type FieldSky } from '@/hooks/useFieldSky';
 import { CropStageFigure } from '@/components/land/sky/CropStageFigure';
 
 /**
@@ -33,11 +33,14 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
   }, [sky.history, sky.forecast]);
 
   const band = sky.stage.expectedMin != null && sky.stage.expectedMax != null;
+  // the stage's name in the farmer's language (sky.stage.<name>), the table's own word only as the fallback
+  const stage = sky.stage.stageName ? t(stageKey(sky.stage.stageName), sky.stage.stageName) : '';
   const caption = (() => {
     if (sky.stage.state === 'no_sowing_date') return t('sky.season.need_sowing', 'Add your sowing date to see what the crop should look like at each stage.');
-    if (sky.stage.state === 'below') return t('sky.season.below', 'Below the expected range for {{stage}}.', { stage: sky.stage.stageName ?? '' });
-    if (sky.stage.state === 'within') return t('sky.season.within', 'Within the expected range for {{stage}}.', { stage: sky.stage.stageName ?? '' });
-    if (sky.stage.state === 'above') return t('sky.season.above', 'Above the expected range for {{stage}}.', { stage: sky.stage.stageName ?? '' });
+    if (sky.stage.state === 'not_resolved') return t('sky.season.not_resolved', 'The stage of your crop has not been worked out yet. Check the sowing date in your crop schedule.');
+    if (sky.stage.state === 'below') return t('sky.season.below', 'Below the expected range for {{stage}}.', { stage });
+    if (sky.stage.state === 'within') return t('sky.season.within', 'Within the expected range for {{stage}}.', { stage });
+    if (sky.stage.state === 'above') return t('sky.season.above', 'Above the expected range for {{stage}}.', { stage });
     return t('sky.season.no_band', 'No expected range is set for this stage yet.');
   })();
 

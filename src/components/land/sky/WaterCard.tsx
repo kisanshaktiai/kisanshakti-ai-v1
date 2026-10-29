@@ -9,12 +9,13 @@ import { formatSkyDay, type FieldSky } from '@/hooks/useFieldSky';
  * balance the `weather` edge function derives (irrigation_needed, water
  * deficit, effective rain, balance status) confirmed or contradicted by the
  * satellite moisture signal (NDMI).
- * The sentence strengthens only as independent sources agree.
+ * The sentence strengthens only as independent sources agree: water.agreeing counts the satellite and
+ * the FAO-56 balance once each, so "warn" means both say the field is drying.
  */
 export function WaterCard({ sky }: { sky: FieldSky }) {
   const { t, i18n } = useTranslation();
   const w = sky.water;
-  const level: 'ok' | 'watch' | 'warn' = w.agreeing >= 3 ? 'warn' : w.agreeing >= 1 ? 'watch' : 'ok';
+  const level: 'ok' | 'watch' | 'warn' = w.agreeing >= 2 ? 'warn' : w.agreeing >= 1 ? 'watch' : 'ok';
 
   const sentence = (() => {
     if (level === 'warn') return t('sky.water.warn', 'Soil water is running low and the crop\'s moisture signal has fallen since the last view. Check for wilting and irrigate if you can.');
@@ -38,7 +39,8 @@ export function WaterCard({ sky }: { sky: FieldSky }) {
         <div className="flex flex-wrap gap-1.5 mt-3">
           <Chip on={w.ndmiDrop != null && w.ndmiDrop >= 0.05} label={t('sky.water.chip_sat', 'satellite moisture')} />
           <Chip on={w.irrigationNeeded === true} label={t('sky.water.chip_soil', 'soil water')} />
-          <Chip on={w.rainMm != null && w.rainMm < 1} label={t('sky.water.chip_rain', 'no recent rain')} />
+          {/* a fact from the balance, not a judgement: lit only when the balance recorded no effective rain */}
+          <Chip on={w.rainMm === 0} label={t('sky.water.chip_rain', 'no recent rain')} />
           {w.surfaceEvidencePx != null && w.surfaceEvidencePx > 0 && <Chip on label={t('sky.water.chip_standing', 'standing water seen')} />}
           {w.surfaceEvidencePx === 0 && <Chip on={false} label={t('sky.water.chip_no_standing', 'no standing water seen')} />}
         </div>
