@@ -17,7 +17,7 @@ function stub(rows: Array<{ intent_code: string; rule_category: string; is_activ
           return this;
         },
         order() { return this; },
-        async limit() { return { data: rows.filter((row) => filters.every((f) => f(row)), error: error ? { message: error } : null }; },
+        async limit() { return { data: rows.filter((row) => filters.every((f) => f(row))), error: error ? { message: error } : null }; },
       };
     },
   };
