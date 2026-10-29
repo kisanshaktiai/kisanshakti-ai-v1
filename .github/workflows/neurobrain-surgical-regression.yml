@@ -15,10 +15,5 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci
       - name: Run direct-scope and safety regressions
-        run: deno test -A tests/edge/ai-agriculture-chat/tests/direct-intent-scope_test.ts tests/edge/ai-agriculture-chat/tests/decision-gate-safety_test.ts
+        run: deno test --no-check -A tests/edge/ai-agriculture-chat/tests/direct-intent-scope_test.ts tests/edge/ai-agriculture-chat/tests/decision-gate-safety_test.ts
