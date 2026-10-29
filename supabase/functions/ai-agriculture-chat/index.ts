@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-10-29 16:20 UTC — Pass verified tenant into photo ownership guards; no decision changes.
 // 2026-10-06 10:05 UTC — forceTranslate: neutral voice (no persona/self-intro), script-purity gate rejects garbled rewrites.
 // 2026-10-06 09:30 UTC — Persist data_audit in stored assistant metadata; forward dataAudit on
 //   CLARIFICATION_QUESTION and PHOTO_REQUEST so the land card shows on every land turn and after reload.
@@ -570,7 +571,7 @@ serve(async (req) => {
       return await handlePhotoAction(
         action,
         requestBody,
-        { supabase, farmerId: finalFarmerId, isServiceRole: !!guard.isServiceRole },
+        { supabase, farmerId: finalFarmerId, tenantId: finalTenantId, isServiceRole: !!guard.isServiceRole },
         corsHeaders,
       );
     }

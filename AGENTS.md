@@ -9,3 +9,7 @@
 
 ## Land imagery
 - My Land cards render the saved parcel boundary/center as a satellite map and must never consume `lands.ndvi_thumbnail_url`; NDVI imagery is reserved for analysis views. Why: vegetation-index rasters are analytical evidence, not parcel-identification thumbnails.
+
+## Shared crop camera
+- Active crop-photo entry points use CropPhotoCapture and cropPhotoService, not legacy WebRTC or direct-storage uploaders; why: consistent capture, private signed uploads, and land-bound evidence.
+- Photo queue work and policy caches are scoped to the active verified farmer/tenant session, with identity rechecked across asynchronous boundaries; why: logout or tenant switches must not consume another identity's media.

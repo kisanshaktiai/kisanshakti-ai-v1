@@ -66,7 +66,6 @@ interface CropGrowthAlert {
 export function useCropGrowthTracking(landId?: string, farmerId?: string, tenantId?: string) {
   const { i18n } = useTranslation();
   const queryClient = useQueryClient();
-  const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Fetch uploads for a land
@@ -148,73 +147,6 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     },
     enabled: !!landId
   });
-
-  // Upload photo/video
-  const uploadMedia = useCallback(async (
-    file: File,
-    notes?: string,
-    captureLocation?: { lat: number; lng: number }
-  ): Promise<CropGrowthUpload | null> => {
-    if (!landId || !farmerId || !tenantId) {
-      toast.error('Missing required context');
-      return null;
-    }
-
-    setIsUploading(true);
-
-    try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase();
-      const fileName = `${farmerId}/${landId}/${Date.now()}.${fileExt}`;
-      const fileType = file.type.startsWith('video/') ? 'video' : 'image';
-
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage
-        .from('crop-growth-media')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) throw uploadError;
-
-      // Get signed URL
-      const { data: urlData } = await supabase.storage
-        .from('crop-growth-media')
-        .createSignedUrl(fileName, 60 * 60 * 24 * 7); // 7 days
-
-      const fileUrl = urlData?.signedUrl;
-      if (!fileUrl) throw new Error('Failed to get file URL');
-
-      // Create upload record
-      const { data: upload, error: insertError } = await supabase
-        .from('crop_growth_uploads')
-        .insert({
-          land_id: landId,
-          farmer_id: farmerId,
-          tenant_id: tenantId,
-          file_url: fileUrl,
-          file_type: fileType,
-          notes: notes,
-          capture_location: captureLocation,
-          is_processed: false
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      await refetchUploads();
-      toast.success('Photo uploaded successfully');
-      
-      return upload as CropGrowthUpload;
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error('Failed to upload photo');
-      return null;
-    } finally {
-      setIsUploading(false);
-    }
-  }, [landId, farmerId, tenantId, refetchUploads]);
 
   // Analyze uploaded media — R2-P1 (2026-08-30): the server (ai-crop-scan growth_tracking)
   // derives crop, cycle, expected stage, NDVI and geofence itself from the upload + land rows.
@@ -314,9 +246,7 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     analysisLoading,
     analysisHistory,
     alerts,
-    isUploading,
     isAnalyzing,
-    uploadMedia,
     analyzeUpload,
     markAlertRead: markAlertRead.mutate,
     markAlertActioned: markAlertActioned.mutate,
