@@ -1,6 +1,7 @@
 // CAUSAL HYPOTHESIS ARBITRATION ENGINE v1.0.0
 
 // CHANGE LOG (newest first)
+// 2026-10-29 11:20 UTC — Stage compatibility unknown is SKIPPED_NO_DATA, not PASSED; preserve exact/family matches and mismatch failures.
 // 2026-09-26 00:00 UTC — Type fix: widened decision_path/clarification_reason unions to include ORPHAN_HYPOTHESIS_FALLBACK and dynamic reason strings (no runtime change)
 
 import { SymbolContract } from '../runtime/symbol-contract.ts';
@@ -397,7 +398,11 @@ function evaluateCondition(
 
       const crop = canonicalState.crop_code || canonicalState.crop || canonicalState.crop_group;
       const compatibility = stageCompatibility(currentStage, stages, crop ?? null);
-      return compatibility.unknown || compatibility.exact || compatibility.family
+      // Unknown graph compatibility is missing stage evidence, never a passed match.
+      // Keep it as SKIPPED so clarification/scoring can distinguish absent evidence
+      // from a proven incompatible biological stage.
+      if (compatibility.unknown) return HypothesisConditionStatus.SKIPPED_NO_DATA;
+      return compatibility.exact || compatibility.family
         ? HypothesisConditionStatus.PASSED
         : HypothesisConditionStatus.FAILED;
     }
