@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+// 2026-10-29 07:20 UTC — Keep GENERAL/KNOWLEDGE informational queries out of rule fallback; preserve explicit observation authority.
+// 2026-10-27 17:50 UTC — Restore GraphTruth observation references and enforce DB direct-intent scope on both advisory lanes and recovery.
 // 2026-10-09 12:25 UTC — TDZ FIX: KNOWLEDGE_PLANE_GATE log referenced cropFromAnyLayer
 //   (declared ~200 lines later) before initialization — every GENERAL intent /
 //   SYMBOLIC_BRAIN / zero-observation turn threw ReferenceError and fell into
@@ -4068,7 +4070,8 @@ export class AIAgentOrchestrator {
           const salvaged = realObsCountForSalvage > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
           console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCountForSalvage})`);
           intentCode = salvaged;
-        } else if (isAdvisoryLike && realObsCountForSalvage > 0) {
+        } else if (isAdvisoryLike && realObsCountForSalvage > 0 &&
+                   String((semanticExtraction as any)?.execution_mode ?? '').toUpperCase() !== 'KNOWLEDGE') {
           console.log(`[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${intentCode} → DIAGNOSTIC_INQUIRY reason=real_symptoms_present codes=[${ec.real_codes.slice(0, 6).join(',')}]`);
           intentCode = 'DIAGNOSTIC_INQUIRY';
         }
@@ -4476,8 +4479,8 @@ export class AIAgentOrchestrator {
         !!intentMetaFromDB &&
         dbExecutionLane === 'KNOWLEDGE' &&
         String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
-        realObsCountForSalvage === 0 &&
-        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0);
+        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0) &&
+        (realObsCountForSalvage === 0 || nluExecutionMode === 'KNOWLEDGE');
 
       if (knowledgePlaneEligible) {
         // TDZ FIX (2026-10-09): cropFromAnyLayer is declared further below (line ~4643);
@@ -4499,6 +4502,37 @@ export class AIAgentOrchestrator {
         );
         agentsUsed.push('KNOWLEDGE_PLANE_GATE');
 
+        const knowledgeGapResponse = (reason: string): any => {
+          const lang = String(options.language || normalizedInput.detected_language || 'en');
+          const text = String(getConfigRaw<string>(
+            'knowledge_gap_' + lang,
+            getConfigRaw<string>('knowledge_gap_en', 'Verified information is unavailable for this question.'),
+          ));
+          const id = 'knowledge_gap_' + Date.now();
+          agentsUsed.push('KNOWLEDGE_EVIDENCE_GAP');
+          console.warn('[KNOWLEDGE_GAP] trace=' + traceId + ' reason=' + reason);
+          return {
+            type: 'DECISION_PROVIDED', session_id: sessionId,
+            communication: {
+              message_id: crypto.randomUUID(), decision_id: id, session_id: sessionId,
+              farmer_id: farmerId, language: lang, format: 'RICH_TEXT', tone: 'FRIENDLY',
+              created_at: new Date().toISOString(),
+              main_message: { full_text: { [lang]: text, en: text } }, quick_actions: [],
+              metadata: { source: 'KNOWLEDGE_PLANE', response_type: 'KNOWLEDGE_GAP', confidence_score: 0 },
+            },
+            decision_output: {
+              decision_id: id, session_id: sessionId, status: 'KNOWLEDGE_GAP',
+              decision_brain_source: true, actions_returned: [], matched_responses: [],
+              metadata: { trace_id: traceId, response_source: 'KNOWLEDGE_PLANE',
+                brain_execution_mode: 'KNOWLEDGE', authority_status: 'EVIDENCE_GAP',
+                final_resolution_type: 'KNOWLEDGE_GAP', rules_applied: 0 },
+            },
+            metadata: { confidence: 0, safety_status: 'SAFE', rules_applied: 0, trace_id: traceId,
+              response_source: 'KNOWLEDGE_PLANE', brain_execution_mode: 'KNOWLEDGE',
+              authority_status: 'EVIDENCE_GAP', final_resolution_type: 'KNOWLEDGE_GAP',
+              agents_used: [...agentsUsed] },
+          };
+        };
         try {
           const knowledgeResult = await queryKnowledgePlane({
             farmer_message: farmerMessage,
@@ -4621,17 +4655,14 @@ export class AIAgentOrchestrator {
             } as any;
           }
 
-          console.log(
-            '↩️ [KNOWLEDGE_PLANE] not handled; reason=' +
-            (knowledgeResult.reason || 'UNKNOWN') +
-            ' → existing decision pipeline',
-          );
+          console.warn('[KNOWLEDGE_PLANE_GAP] trace=' + traceId +
+            ' reason=' + String(knowledgeResult.reason || 'NOT_HANDLED') +
+            ' — returning information-only gap');
+          return knowledgeGapResponse('KNOWLEDGE_NOT_HANDLED');
         } catch (knowledgeErr) {
-          console.error(
-            '[KNOWLEDGE_PLANE_ERROR] trace=' + traceId +
-            ' ' + ((knowledgeErr as Error)?.message || String(knowledgeErr)) +
-            ' → existing pipeline preserved',
-          );
+          console.error('[KNOWLEDGE_PLANE_ERROR] trace=' + traceId +
+            ' ' + ((knowledgeErr as Error)?.message || String(knowledgeErr)));
+          return knowledgeGapResponse('KNOWLEDGE_PROVIDER_ERROR');
         }
       }
 
@@ -6554,7 +6585,7 @@ export class AIAgentOrchestrator {
               directModeBypass = false;
               console.log(
                 `[OBS_TO_HYP_GAP] trace=${traceId} intent=${intentCode} ` +
-                `confirmed_obs=${conversationState.confirmed.length} real_obs=${currentObservations.length} ` +
+                `confirmed_obs=${conversationState.confirmed.length} real_obs=${_graphObservations.length} ` +
                 `hypotheses=0 action=route_to_clarification_question`
               );
               agentsUsed.push('OBS_TO_HYP_GAP_CLARIFICATION');
@@ -6608,7 +6639,7 @@ export class AIAgentOrchestrator {
                 : null;
               const merged = buildGraphRuntimeSnapshot({
                 trace_id: traceId,
-                observations: (currentObservations ?? []) as string[],
+                observations: (_graphObservations ?? []) as string[],
                 engineA: engineAForMerge as any,
                 engineB: { candidates: graphOut.candidates as any },
                 edges: { ruleToHypothesis },
@@ -6696,7 +6727,7 @@ export class AIAgentOrchestrator {
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
               // a single grep on trace= reconstructs the full edge chain.
-              const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
+              const obsSample = (_graphObservations ?? []).slice(0, 12).join(',');
               const hypSample = hypIds.slice(0, 12).join(',');
               assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
               console.log(
@@ -6747,7 +6778,7 @@ export class AIAgentOrchestrator {
                 (this as any)._graphHypothesisResult = {
                   candidates: [],
                   eliminated: [],
-                  input_observations: currentObservations,
+                  input_observations: _graphObservations,
                   trace_id: traceId,
                   timings_ms: 0,
                 };
@@ -6763,7 +6794,7 @@ export class AIAgentOrchestrator {
               } catch {}
               (this as any)._graphExhaustedReason = graphErrMessage;
               console.warn(
-                `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
+                `[OBS_TO_HYP] trace=${traceId} obs=[${(_graphObservations ?? []).slice(0, 12).join(',')}] ` +
                 `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
                 `reason=GRAPH_CONTEXT_EXHAUSTED`,
               );
@@ -6801,7 +6832,7 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
-          console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
+          console.log(`   📊 Observations (${_graphObservations.length}): ${_graphObservations.slice(0, 5).join(', ') || 'none'}`);
 
           // T1 — GraphTruth integrity check before hypothesis engine
           assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
@@ -6810,9 +6841,9 @@ export class AIAgentOrchestrator {
           const _gtForHyp = (this as any)._graphTruth as import('../runtime/graph-truth.ts').GraphTruth | null;
           const hypObservations: string[] = _gtForHyp
             ? [..._gtForHyp.canonical_observations]
-            : currentObservations;
+            : _graphObservations;
           if (_gtForHyp) {
-            const a = [...currentObservations].sort().join(',');
+            const a = [..._graphObservations].sort().join(',');
             const b = [..._gtForHyp.canonical_observations].sort().join(',');
             if (a !== b) {
               console.warn(`[GRAPH_OBS_DRIFT] site=PRE_HYPOTHESIS pipe=[${a}] graph=[${b}] — using GraphTruth`);
@@ -6858,7 +6889,7 @@ export class AIAgentOrchestrator {
             }
             const snap = buildGraphRuntimeSnapshot({
               trace_id: traceId,
-              observations: (currentObservations ?? []) as string[],
+              observations: (_graphObservations ?? []) as string[],
               engineA: { candidates: hypothesisResult.candidates as any },
               engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
               edges: { ruleToHypothesis },
@@ -6914,7 +6945,7 @@ export class AIAgentOrchestrator {
               hypotheses: hypothesisResult.candidates,
               crop_code: cropCode,
               growth_stage: growthStage,
-              current_observations: currentObservations,
+              current_observations: _graphObservations,
                language: options.language || 'mr',
               damage_observations: cropDamageResult.damage_observations,
               trace_id: traceId,
@@ -8792,6 +8823,16 @@ export class AIAgentOrchestrator {
         // This block is intentionally a no-op (single-source preload upstream).
         console.log('[KNOWLEDGE_PRELOAD] using request-init caches (Phase H Fix 7)');
         
+        // DIRECT INTENT: governed DB authorization for advice categories.
+        // This is not a new diagnostic graph/clarification authority.
+        const { loadDirectIntentScope, filterDirectIntentCandidates } =
+          await import('../decision/direct-intent-rule-scope.ts');
+        const _directIntentScope = await loadDirectIntentScope(
+          this.supabase, intentCode,
+          String(intentMetaFromDB?.clarification_mode ?? '').toUpperCase() === 'DIRECT',
+          traceId,
+        );
+
         // PHASE C, GATE #2 — INTENT FILTER before scoring
         const activeIntentForRules = (typeof intentCode !== 'undefined' && intentCode)
           ? String(intentCode) : 'GENERAL_QUERY';
@@ -8867,12 +8908,12 @@ export class AIAgentOrchestrator {
             if (_recoveredEdges.length > 0) {
               const _scopedRecovered = rulesAfterIntent.filter((r: any) =>
                 _recoveredEdges.includes(String(r?.rule_id ?? r?.id ?? '')));
-              rulesForEvaluator = _scopedRecovered.length > 0 ? _scopedRecovered : rulesAfterIntent;
+              rulesForEvaluator = _scopedRecovered; // No recovered graph edge => no widened diagnostic pool.
               (this as any)._graphHypothesisRuleIds = _recoveredEdges;
               try { _grsForScope?.setHypothesisRuleIds(_recoveredEdges); } catch {}
             } else {
               // Survivors exist but no rule edges known — do NOT block the turn.
-              rulesForEvaluator = rulesAfterIntent;
+              rulesForEvaluator = []; // Surviving hypothesis without an authored edge cannot execute rules.
             }
             console.warn(
               `[HYP_GRAPH_SCOPE_RECOVERED] trace=${traceId} survivors=${_survivorCount} ` +
@@ -8933,7 +8974,8 @@ export class AIAgentOrchestrator {
         try {
           const _confirmedForRecovery: string[] = Array.isArray(confirmedObsCodes) ? confirmedObsCodes : [];
           if ((!Array.isArray(rulesForEvaluator) || (rulesForEvaluator as any[]).length === 0) &&
-              _confirmedForRecovery.length > 0) {
+              _confirmedForRecovery.length > 0 &&
+              !(_graphExecutedFlag && _isDiagnosticIntentForScope)) {
             const _confSet = new Set(
               _confirmedForRecovery.map((c) => String(c ?? '').trim().toLowerCase()).filter(Boolean),
             );
@@ -8963,6 +9005,16 @@ export class AIAgentOrchestrator {
           }
         } catch (e) {
           console.warn(`[CONDITION_CODE_RULE_RECOVERY_FAILED] trace=${traceId} err=${(e as Error).message}`);
+        }
+
+        // Revalidate after every legacy recovery path: a candidate is not
+        // authorized solely by intent degradation, crop/stage or condition_code.
+        const _beforeDirectScope = rulesForEvaluator.length;
+        rulesForEvaluator = filterDirectIntentCandidates(rulesForEvaluator, _directIntentScope);
+        if (_directIntentScope.state !== 'NOT_DIRECT') {
+          console.log('[DIRECT_INTENT_SCOPE] trace=' + traceId
+            + ' state=' + _directIntentScope.state
+            + ' candidates=' + _beforeDirectScope + '→' + rulesForEvaluator.length);
         }
 
         // PR-7 F4: forensic snapshot of what actually reaches the layered
@@ -9080,6 +9132,10 @@ export class AIAgentOrchestrator {
             } catch (relErr) {
               console.warn(`[LANE_B_INTENT_RELEVANCE] non-fatal failure: ${(relErr as Error)?.message ?? relErr}`);
             }
+            // Enforce the identical positive direct-intent category authority
+            // on Lane B; stage_general and IOM rank alone are never permission.
+            (ctxSel as any).applicable =
+              filterDirectIntentCandidates(ctxSel.applicable, _directIntentScope);
             if (ctxSel.applicable.length > 0) {
               // FIX 7 (2026-08-28): Lane B is ADDITIVE. Context rules never
               // replace the canonical candidate stream and never overwrite

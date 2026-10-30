@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+// 2026-10-27 17:56 UTC — Clarification-round exhaustion without predicates produces insufficient evidence, never PROCEED.
 // DECISION GRAPH NAVIGATOR — v3 SOLE reasoning owner
 
 export interface GraphNode {
@@ -158,8 +160,8 @@ export function navigate(input: NavigatorInput): NavigationResult {
 
   if (turnsExhausted) {
     return Object.freeze({
-      decision: 'PROCEED' as const,
-      reason: 'max_clarification_rounds_exhausted_returning_top',
+      decision: 'INSUFFICIENT_EVIDENCE' as const,
+      reason: 'max_clarification_rounds_exhausted_without_predicates',
       ranked: [],
       stopping: freezeStopping({
         confidence: top.posterior ?? 0,
