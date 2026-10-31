@@ -59,6 +59,7 @@ interface RuleFromJSON {
   active_ingredient?: string;
   organic_alternative?: string;
   scientific_source: string;
+  reason_text?: string;
   icar_package_ref?: string;
   response_en: string;
   response_hi: string;
@@ -110,7 +111,7 @@ Deno.serve(async (req) => {
         allRules.push(...fileRules);
         console.log(`✅ Loaded ${fileRules.length} rules from ${filePath}`);
       } catch (e) {
-        console.warn(`⚠️ Could not load ${filePath}: ${e.message}`);
+        console.warn(`⚠️ Could not load ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
