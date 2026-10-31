@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
         icar_package_ref: rule.icar_package_ref || null,
         // WHAT → HOW → WHY columns (these may not exist in DB yet - will be ignored if missing)
         // action_text: rule.action_text || null,
-        reason_text: (rule as any).reason_text || null,
+        reason_text: rule.reason_text || null,
         knowledge_text: (rule as any).knowledge_text || null,
         // Normalized observable_characteristics (always array)
         observable_characteristics: normalizeObservableChars((rule as any).observable_characteristics),
