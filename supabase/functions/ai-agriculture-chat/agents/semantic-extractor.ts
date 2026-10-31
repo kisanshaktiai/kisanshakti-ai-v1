@@ -2,7 +2,7 @@
 
 import { classifyFarmerIntent, type IntentLandContext } from './intent-classifier.ts';
 
-export const SEMANTIC_EXTRACTOR_VERSION = '5.1.0';
+export const SEMANTIC_EXTRACTOR_VERSION = '5.2.0';
 
 // OUTPUT INTERFACE - PURE INTENT + BACKWARD-COMPATIBLE DEFAULTS
 
@@ -11,6 +11,9 @@ export interface SemanticExtraction {
   // PRIMARY OUTPUT (v5.0.0+)
   intent_code: string;
   intent_confidence: number;
+  /** NLU-only routing mode; facts/actions remain authoritative in DB/graph. */
+  execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED';
+  knowledge_subject: 'CROP' | 'STAGE' | 'FERTILIZER' | 'PEST' | 'WEED' | 'CHEMICAL' | 'NONE';
   
   // BACKWARD-COMPATIBLE DEFAULTS (all deprecated, but safe to access)
   
@@ -44,12 +47,16 @@ export interface SemanticExtraction {
 // Build a SemanticExtraction with all required fields having safe defaults.
 function buildSafeSemanticExtraction(
   intent_code: string,
-  intent_confidence: number
+  intent_confidence: number,
+  execution_mode: 'KNOWLEDGE' | 'DECISION' | 'MIXED' = 'DECISION',
+  knowledge_subject: SemanticExtraction['knowledge_subject'] = 'NONE'
 ): SemanticExtraction {
   return {
     // Primary output
     intent_code,
     intent_confidence,
+    execution_mode,
+    knowledge_subject,
     
     // Backward-compatible defaults (all safe to access)
     farmer_concern: '',                    // Empty string - safe for .substring()
@@ -97,7 +104,7 @@ export async function extractSemanticMeaning(
     
     console.log(`   🎯 Intent: ${intent_code} (${(intentResult.confidence * 100).toFixed(0)}%)`);
     
-    return buildSafeSemanticExtraction(intent_code, intentResult.confidence);
+    return buildSafeSemanticExtraction(intent_code, intentResult.confidence, intentResult.execution_mode, intentResult.knowledge_subject);
     
   } catch (error) {
     console.error(`   ❌ [SemanticExtractor] Error: ${error}`);

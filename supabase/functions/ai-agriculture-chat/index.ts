@@ -338,6 +338,12 @@ async function persistRuntimeTraceSafetyNet(params: {
   detectedLanguage: string;
   startTime: number;
   responseType?: string | null;
+  responseSource?: string | null;
+  brainExecutionMode?: string | null;
+  knowledgeProvider?: string | null;
+  authorityStatus?: string | null;
+  finalResolutionType?: string | null;
+  inferredIntent?: string | null;
   agentsUsed?: string[];
   cropCode?: string | null;
   growthStage?: string | null;
@@ -419,13 +425,18 @@ async function persistRuntimeTraceSafetyNet(params: {
         actions_filtered_out: [],
         validation_passed: true,
         validation_errors: [],
-        response_source: params.responseType === 'CLARIFICATION_QUESTION' || params.responseType === 'clarification' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE',
+        response_source:
+          params.responseSource ||
+          (params.responseType === 'CLARIFICATION_QUESTION' || params.responseType === 'clarification' ? 'CLARIFICATION' : 'SYMBOLIC_TEMPLATE'),
         response_language_match: true,
         processing_time_ms: Date.now() - params.startTime,
         agents_used: params.agentsUsed ?? [],
         land_id: params.landId ?? null,
         crop_code: params.cropCode ?? null,
         growth_stage: params.growthStage ?? null,
+        // Only response_source is a physical audit column today; the richer
+        // Knowledge Plane fields live in ai_chat_messages.metadata until a
+        // schema migration is explicitly approved.
         ..._auditPatch,
       };
       let { error: _auditInsertError } = await params.supabase.from('ai_chat_audit_logs').insert(_auditInsertData);
@@ -1578,6 +1589,12 @@ serve(async (req) => {
       detectedLanguage,
       startTime,
       responseType: orchestratorResponse.type,
+      responseSource: (orchestratorResponse.metadata as any)?.response_source ?? null,
+      brainExecutionMode: (orchestratorResponse.metadata as any)?.brain_execution_mode ?? null,
+      knowledgeProvider: (orchestratorResponse.metadata as any)?.knowledge_provider ?? null,
+      authorityStatus: (orchestratorResponse.metadata as any)?.authority_status ?? null,
+      finalResolutionType: (orchestratorResponse.metadata as any)?.final_resolution_type ?? null,
+      inferredIntent: (orchestratorResponse.metadata as any)?.inferred_intent ?? null,
       agentsUsed: (orchestratorResponse.metadata as any)?.agents_used ?? [],
       cropCode: orchestratorResponse.dataAudit?.land?.current_crop ?? null,
       growthStage: (orchestratorResponse.dataAudit?.land as any)?.current_crop_stage ?? null,
@@ -1639,8 +1656,13 @@ serve(async (req) => {
             !!(ruleId && SAFETY_GATE_RULE_PATTERN.test(ruleId));
           
           const isLayeredSafetyGate = isSafetyGateRule(layeredPrimaryDecision?.rule_id);
+          const isContextConstraint = (row: any) => {
+            const actionType = String(row?.action_type ?? '').trim().toUpperCase();
+            const triggerClass = String(row?.trigger_class ?? '').trim().toUpperCase();
+            return actionType === 'BLOCK' || triggerClass === 'CONTEXT_BLOCK';
+          };
           
-          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && (layeredPrimaryDecision as any).action_type && !isLayeredSafetyGate) {
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && (layeredPrimaryDecision as any).action_type && !isLayeredSafetyGate && !isContextConstraint(layeredPrimaryDecision)) {
             console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
             
             // BUG-1 FIX: Never set placeholder product_name — leave null for formatter
@@ -1690,7 +1712,7 @@ serve(async (req) => {
             const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
             const isPrimaryMatchSafetyGate = isSafetyGateRule(primaryMatchedResponse?.rule_id);
             
-            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && (primaryMatchedResponse as any).action_type && !isPrimaryMatchSafetyGate) {
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && (primaryMatchedResponse as any).action_type && !isPrimaryMatchSafetyGate && !isContextConstraint(primaryMatchedResponse)) {
               console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
               (rawDecisionOutput as any).primary_decision = {
@@ -1733,7 +1755,11 @@ serve(async (req) => {
               
               // PRODUCTION FIX: Align eligibility with layered-rule-evaluator.ts
               const eligibleResponses = matchedResponses.filter((r: any) => 
-                r.rule_id && r.action_type && (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text) && !isSafetyGateRule(r.rule_id)
+                r.rule_id &&
+                r.action_type &&
+                (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text) &&
+                !isSafetyGateRule(r.rule_id) &&
+                !isContextConstraint(r)
               );
               
               if (eligibleResponses.length > 0) {
@@ -1780,38 +1806,28 @@ serve(async (req) => {
                   console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
                   console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
                 }
-                console.error(`   generating SYSTEM_FALLBACK`);
-                
-                (rawDecisionOutput as any).status = 'SYSTEM_FALLBACK';
-                (rawDecisionOutput as any).primary_decision = {
-                  action_type: 'MONITOR_ONLY',
-                  rule_id: 'INVARIANT_FALLBACK',
-                  specific_action: 'CONTINUE_MONITORING',
-                  target: {},
-                  urgency: 'NON_URGENT',
-                  timing: {
-                    recommended_start: new Date().toISOString(),
-                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    weather_dependency: false,
-                    reason: 'System fallback - primary decision invariant violated'
-                  },
-                  application_details: {
-                    product_name: 'Continue monitoring',
-                    product_type: 'CULTURAL',
-                    concentration: 'Daily observation',
-                    coverage_instructions: 'Monitor crop health and look for symptoms',
-                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
-                    reason_text: 'Insufficient information to provide specific recommendation.',
-                    rule_id: 'INVARIANT_FALLBACK'
-                  },
-                  expected_outcomes: {
-                    efficacy_percent: 100,
-                    time_to_visible_effect_days: 'Ongoing',
-                    success_indicators: ['Early detection of issues']
-                  }
+                console.error(`   NO_AUTHORIZED_DECISION — no graph-authorized decision is available.`);
+                // Never manufacture a MONITOR / CULTURAL action merely because
+                // the primary-decision shape is missing. That would turn a system
+                // integrity failure into an agronomic recommendation.
+                (rawDecisionOutput as any).status = 'NO_AUTHORIZED_DECISION';
+                (rawDecisionOutput as any).primary_decision = undefined;
+                (rawDecisionOutput as any).secondary_actions = [];
+                (rawDecisionOutput as any).actions_returned = [];
+                (rawDecisionOutput as any).prescription_allowed = false;
+                (rawDecisionOutput as any).prescription_gate_reason = 'NO_AUTHORIZED_DECISION';
+                (rawDecisionOutput as any).graph_gap =
+                  (rawDecisionOutput as any).graph_gap ?? 'NO_AUTHORIZED_DECISION';
+                (orchestratorResponse as any).type = 'CLARIFICATION_NEEDED';
+                (orchestratorResponse as any).question = undefined;
+                (orchestratorResponse as any).metadata = {
+                  ...((orchestratorResponse as any).metadata ?? {}),
+                  orchestrator_type: 'CLARIFICATION_NEEDED',
+                  no_authorized_decision: true,
+                  graph_gap: (rawDecisionOutput as any).graph_gap,
+                  prescription_allowed: false,
                 };
-                
-                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+                console.log(`   📋 NO_AUTHORIZED_DECISION emitted; no synthetic agronomic action generated`);
               }
             }
           }
@@ -1902,9 +1918,14 @@ serve(async (req) => {
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
     // CRITICAL FIX: Check if Static Data Gate already handled this query
-    const isStaticGateResponse = 
+    const isStaticGateResponse =
       (orchestratorResponse.decision_output as any)?.metadata?.template_type === 'STATIC_DIRECT' ||
       (orchestratorResponse.communication as any)?.metadata?.source === 'STATIC_DATA_GATE';
+
+    const isKnowledgePlaneResponse =
+      (orchestratorResponse.decision_output as any)?.metadata?.brain_execution_mode === 'KNOWLEDGE' ||
+      (orchestratorResponse.communication as any)?.metadata?.source === 'KNOWLEDGE_PLANE' ||
+      (orchestratorResponse.decision_output as any)?.metadata?.response_source === 'KNOWLEDGE_PLANE';
     
     if (isStaticGateResponse) {
       // Static Gate already generated the response - use it directly
@@ -1912,6 +1933,17 @@ serve(async (req) => {
       responseContent = (orchestratorResponse.communication as any)?.main_message?.full_text?.[detectedLanguage] ||
                         (orchestratorResponse.communication as any)?.main_message?.full_text?.en ||
                         'Information not available';
+    } else if (isKnowledgePlaneResponse) {
+      // Knowledge Plane is deterministic DB knowledge. Do not send it through
+      // decision-action formatting, advisor cards, or decision-only heuristics.
+      console.log(`   📚 [KnowledgePlane] Using deterministic response provider=${
+        (orchestratorResponse.decision_output as any)?.metadata?.knowledge_provider || 'unknown'
+      }`);
+      responseContent =
+        (orchestratorResponse.communication as any)?.main_message?.full_text?.[detectedLanguage] ||
+        (orchestratorResponse.communication as any)?.main_message?.full_text?.en ||
+        String((orchestratorResponse.decision_output as any)?.knowledge_result?.response || '').trim() ||
+        'Verified information is not available for this question.';
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
@@ -2583,15 +2615,15 @@ serve(async (req) => {
       const _translated = await forceTranslateResponse(responseContent, detectedLanguage, { db: supabase, farmerId: finalFarmerId, traceId });
       // Deterministic safety gate: never ship a rewrite that altered/dropped a
       // dosage number or symbolic product name.
-      responseContent = verifyTranslationFidelity(_preTranslate, _translated, actions_returned)
-        ? _translated
-        : _preTranslate;
+      responseContent = isKnowledgePlaneResponse
+        ? (verifyKnowledgeTranslationFidelity(_preTranslate, _translated) ? _translated : _preTranslate)
+        : (verifyTranslationFidelity(_preTranslate, _translated, actions_returned) ? _translated : _preTranslate);
     }
 
     
     // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
     const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
-    if (symbolicProducts.length === 0 && responseContent) {
+    if (!isKnowledgePlaneResponse && symbolicProducts.length === 0 && responseContent) {
       const dosagePattern = /\d+\s*(ml|g|kg|l|gm|gram|liter|litre|मिली|ग्रॅम|किलो|लिटर)\b/gi;
       const dosageMatches = responseContent.match(dosagePattern);
       if (dosageMatches && dosageMatches.length > 0) {
@@ -2664,8 +2696,9 @@ serve(async (req) => {
     
     let validationResult = { passed: true, errors: [] as string[] };
     
-    if (isDecisionResponse && !isClarificationOrPhotoResponse) {
-      // Only validate actual decision/treatment responses
+    if (isDecisionResponse && !isClarificationOrPhotoResponse && !isKnowledgePlaneResponse) {
+      // Only validate actual decision/treatment responses. Knowledge Plane
+      // responses are fact answers with zero action rows by design.
       validationResult = validateResponseBeforeSave({
         decision_brain_source,
         actions_returned,
@@ -2788,7 +2821,8 @@ serve(async (req) => {
         message_type: photoDiagnosisId ? 'image_analysis' : 'text',
         image_urls: null,
         is_training_candidate: true,
-        inferred_intent: (orchestratorResponse.metadata as any)?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+        inferred_intent: (orchestratorResponse.metadata as any)?.inferred_intent ??
+          ((orchestratorResponse.metadata as any)?.agents_used?.includes('NLU') ? 'PROCESSED' : null),
         conversation_turn_number: messages.length,
         metadata: {
           source: 'orchestrator_v1',
@@ -2874,6 +2908,15 @@ serve(async (req) => {
           actions_filtered_count: actions_filtered_out?.length || 0,
           all_actions_filtered: allActionsFiltered,
           filter_categories: audit_log.filter_categories,
+          // Knowledge Plane observability
+          response_source: (orchestratorResponse.metadata as any)?.response_source ?? null,
+          inferred_intent: (orchestratorResponse.metadata as any)?.inferred_intent ?? null,
+          brain_execution_mode: (orchestratorResponse.metadata as any)?.brain_execution_mode ?? null,
+          knowledge_provider: (orchestratorResponse.metadata as any)?.knowledge_provider ?? null,
+          authority_status: (orchestratorResponse.metadata as any)?.authority_status ?? null,
+          final_resolution_type: (orchestratorResponse.metadata as any)?.final_resolution_type ?? null,
+          knowledge_provenance: (orchestratorResponse.decision_output as any)?.knowledge_result?.provenance ?? [],
+          knowledge_facts: (orchestratorResponse.decision_output as any)?.knowledge_result?.facts ?? {},
           // PHASE 5: LLM formatter tracking
           llm_formatter_used: !!llmFormatterOutput,
           llm_formatter_source: llmFormatterOutput?.source,
@@ -3544,6 +3587,19 @@ function verifyTranslationFidelity(
   return true;
 }
 
+
+function verifyKnowledgeTranslationFidelity(original: string, translated: string): boolean {
+  if (typeof original !== 'string' || typeof translated !== 'string' || !translated.trim()) return false;
+  const numberTokens = toAsciiDigits(original).match(/\d+(?:[.,]\d+)?/g) ?? [];
+  const translatedNorm = toAsciiDigits(translated).replace(/[\s,]/g, '');
+  for (const token of numberTokens) {
+    if (!translatedNorm.includes(token.replace(/,/g, ''))) {
+      console.error(`[KNOWLEDGE_TRANSLATION_FIDELITY] numeric token lost: ${token}`);
+      return false;
+    }
+  }
+  return true;
+}
 
 // Force translate response to target language.
 // Force-translate response to target language using LLM.

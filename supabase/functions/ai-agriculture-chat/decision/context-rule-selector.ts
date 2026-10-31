@@ -446,9 +446,17 @@ export function resolveContextGateOutcome(
   const nextMatched = [
     ...gate.hardBlockResponses, ...gate.kept, ...gate.overlayResponses, ...gate.advisoryResponses,
   ];
+  // A zero-candidate Lane-B advisory may lead only when it is genuinely
+  // advisory. A CONTEXT_BLOCK row with action_type=block is a constraint,
+  // not a complete positive decision. Keeping it out of primary prevents a
+  // "do not apply X" guard from masquerading as the answer to "what should I apply?"
   const advisoryLead =
     zeroCandidateLaneB && gate.kept.length === 0 && gate.hardBlockResponses.length === 0
-      ? (gate.advisoryResponses.find((r: any) => r?.is_safety_block !== true) ?? null)
+      ? (gate.advisoryResponses.find((r: any) => {
+          if (r?.is_safety_block === true) return false;
+          const actionType = String(r?.action_type ?? r?.actions?.action_type ?? '').trim().toUpperCase();
+          return actionType !== 'BLOCK';
+        }) ?? null)
       : null;
   const suppressedIds = new Set(gate.suppressed.map((s: any) => String(s?.rule_id ?? '')));
   const priorId = String(priorPrimary?.rule_id ?? '');

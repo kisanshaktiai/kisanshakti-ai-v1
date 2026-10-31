@@ -1,0 +1,19 @@
+name: Neurobrain surgical regression
+on:
+  push:
+    branches: [fix/neurobrain-direct-intent-graph-20261027]
+  pull_request:
+    branches: [surgical-ai-chat-neurobrain-fix-20261007]
+permissions:
+  contents: read
+jobs:
+  decision-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run direct-scope and safety regressions
+        run: deno test --no-check -A tests/edge/ai-agriculture-chat/tests/direct-intent-scope_test.ts tests/edge/ai-agriculture-chat/tests/decision-gate-safety_test.ts

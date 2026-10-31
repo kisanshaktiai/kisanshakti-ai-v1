@@ -1,4 +1,11 @@
 // CHANGE LOG (newest first)
+// 2026-10-29 07:20 UTC — Keep GENERAL/KNOWLEDGE informational queries out of rule fallback; preserve explicit observation authority.
+// 2026-10-27 17:50 UTC — Restore GraphTruth observation references and enforce DB direct-intent scope on both advisory lanes and recovery.
+// 2026-10-09 12:25 UTC — TDZ FIX: KNOWLEDGE_PLANE_GATE log referenced cropFromAnyLayer
+//   (declared ~200 lines later) before initialization — every GENERAL intent /
+//   SYMBOLIC_BRAIN / zero-observation turn threw ReferenceError and fell into
+//   handleOrchestrationError. Gate log now derives the crop inline from
+//   landContext/canonicalContext; no behavior change on other lanes.
 // 2026-10-06 10:05 UTC — ROUTE_AUTHORITY invariant exempts DB DIRECT/0 contract intents.
 //   2026-10-06 08:40 UTC — Data-audit land card carries season-cumulative GDD (lands.current_gdd).
 //   2026-10-05 11:40 UTC — Data-audit weather card reads the canonical weather shape (temperature_c/humidity_percent/rainfall_last_24h_mm/forecast_24h) and falls back to the per-land weather reading on fused-intelligence paths; previously always showed "Weather data unavailable".
@@ -407,6 +414,7 @@ import {
 import { routeQuery, getRouteRequirements } from './query-router.ts';
 import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authority-resolver.ts';
 import { checkStaticDataGate } from './static-data-gate.ts';
+import { queryKnowledgePlane } from './knowledge-query-engine.ts';
 import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, UnderstandingConfidence } from './understanding-completeness-checker.ts';
@@ -3699,89 +3707,56 @@ export class AIAgentOrchestrator {
             }
           }
 
-          // PHASE-14: Generate stage-aware fallback response
-          const stageFallback = this.generateStageAwareFallback(
-            cropName || 'UNKNOWN',
-            growthStage || 'UNKNOWN',
-            matchResult.matched_option || farmerMessage,
-            landContextForOptionSelection?.days_since_sowing || 0,
-            options.language || 'mr'
+          // PHASE-14: Zero-rule option selection must not fabricate a stage advisory.
+          // The graph has confirmed evidence but no authoritative rule matched.
+          console.warn(
+            `🛑 [OPTION_SELECTED_GRAPH_GAP] trace=${traceId} crop=${cropName} ` +
+            `stage=${growthStage} observation=${mappedObservationKey ?? 'none'}`
           );
-
-          
-          // SESSION STATE: Stage fallback still transitions decision state
           const sessionStateUpdateNoRules = {
             decision_state: 'decision_in_progress',
             pending_options: 0,
             pending_action: false,
-            last_action_source: 'FARMER_SELECTION_STAGE_FALLBACK',
+            last_action_source: 'GRAPH_NEEDS_MORE_EVIDENCE',
             clarification_answered: true,
             clarification_resolved_at: new Date().toISOString(),
             session_ssot: (this as any)._sessionSSOT ?? null
           };
-          
-          console.log(`\n🔄 [SESSION_STATE] ═══ DECISION STATE TRANSITION (Stage Fallback) ═══`);
-          console.log(`   session_decision_state: ${sessionStateUpdateNoRules.decision_state}`);
-          console.log(`   clarification_active: false (answered with stage fallback)`);
-          console.log(`   option_selected: "${matchResult.matched_option}"`);
-          console.log(`   ═══════════════════════════════════════════════`);
+          const optionConfirmed = Array.isArray(optionEvidence?.real_codes)
+            ? [...optionEvidence.real_codes]
+            : (mappedObservationKey ? [mappedObservationKey] : []);
+          (this as any)._lastRealObservations = optionConfirmed;
+          try {
+            ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(optionConfirmed);
+          } catch {}
 
-          // Mirror confirmed observations onto the enforcer-visible field so
-          {
-            const _rc = Array.isArray(optionEvidence?.real_codes)
-              ? [...optionEvidence.real_codes]
-              : (mappedObservationKey ? [mappedObservationKey] : []);
-            (this as any)._lastRealObservations = _rc;
-            try { ((this as any).__graphRuntimeState as GraphRuntimeState | undefined)?.setLastRealObservations(_rc); } catch {}
-          }
-
+          agentsUsed.push('GRAPH_NEEDS_MORE_EVIDENCE');
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
             session_state_update: sessionStateUpdateNoRules as any,
-            decision_output: {
-              decision_id: `option_selected_stage_fallback_${Date.now()}`,
-              session_id: sessionId,
-              status: 'STAGE_FALLBACK',
-              decision_brain_source: true,
-              // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
-              authority_decision: authorityDecision,
-              // PHASE-14: Include stage-aware fallback message
-              stage_fallback_message: (stageFallback as any).message,
-              stage_fallback_actions: (stageFallback as any).actions,
-              photo_requested: stageFallback.photoRequested,
-              actions_returned: [],
-              metadata: {
-                confidence: 0.6, // Lower confidence since no rules matched
-                trace_id: traceId,
-                processing_time_ms: Date.now() - startTime,
-                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
-                clarification_resolved: true,
-                selected_option: matchResult.matched_option,
-                mapped_observation: mappedObservationKey,
-                rules_evaluated: ruleResult.rules_evaluated,
-                rules_matched: 0,
-                no_rules_matched_reason: `Stage-aware fallback for ${cropName}/${growthStage}`,
-                // FIX: Include locked crop context in metadata
-                lockedCropContext: finalLockedCropContextNoRules,
-                session_state_update: sessionStateUpdateNoRules
-              }
-            } as any,
-            // FIX: Include dataAudit to preserve land context
+            decision_output: this.buildStructuredNoDecision({
+              trace_id: traceId,
+              graph_gap: 'NO_RULE_MATCHED',
+              confirmed: optionConfirmed,
+              hypotheses_partial: (this as any).__winningHypothesisId ? [(this as any).__winningHypothesisId] : [],
+              attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+              candidate_rules: []
+            }) as any,
             dataAudit: dataAuditNoRules,
             metadata: {
-              confidence: 0.6,
-              safety_status: 'SAFE',
+              confidence: 0,
+              safety_status: 'GRAPH_NEEDS_MORE_EVIDENCE',
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
-              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
+              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
               lockedCropContext: finalLockedCropContextNoRules,
               session_state_update: sessionStateUpdateNoRules
             }
-          };
+          } as any;
         } else {
           // PHASE-9.1-FIX: Farmer did NOT select a valid option - RETURN REMINDER IMMEDIATELY
           // DO NOT continue to NLU pipeline - this is the HARD GATE
@@ -3980,10 +3955,16 @@ export class AIAgentOrchestrator {
         'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN', 'UNKNOWN_OBSERVATION'
       ];
       const currentIntentForGate = semanticExtraction?.intent_code || 'UNKNOWN';
+      const earlyExecutionMode = String((semanticExtraction as any)?.execution_mode || '').toUpperCase();
       const isSymptomBasedIntent = symptomBasedIntents.includes(currentIntentForGate);
       const zeroCodeGateExemptRoutes = new Set(['FERTILIZER_NUTRITION', 'IRRIGATION_SCHEDULING', 'WEATHER_SPRAY_TIMING', 'CROP_HEALTH', 'GENERAL_INFO']);
-      // Fix 7: also exempt when the canonical intent code is advisory.
-      const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route) || isAdvisoryRoute(currentIntentForGate);
+      // KNOWLEDGE is a separate evidence class: zero observations are expected.
+      // Do not convert a factual knowledge turn into a diagnostic clarification.
+      // Existing DECISION/OBSERVATION safety behavior remains unchanged.
+      const isZeroCodeGateExempt =
+        earlyExecutionMode === 'KNOWLEDGE' ||
+        zeroCodeGateExemptRoutes.has(queryRoute.route) ||
+        isAdvisoryRoute(currentIntentForGate);
 
       
       if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
@@ -4089,7 +4070,8 @@ export class AIAgentOrchestrator {
           const salvaged = realObsCountForSalvage > 0 ? 'DIAGNOSTIC_INQUIRY' : 'GENERAL_CROP_INFO';
           console.log(`[INTENT_SALVAGE][${traceId}] ${intentCode} → ${salvaged} (crop=${cropPresent} real_obs=${realObsCountForSalvage})`);
           intentCode = salvaged;
-        } else if (isAdvisoryLike && realObsCountForSalvage > 0) {
+        } else if (isAdvisoryLike && realObsCountForSalvage > 0 &&
+                   String((semanticExtraction as any)?.execution_mode ?? '').toUpperCase() !== 'KNOWLEDGE') {
           console.log(`[INTENT_OVERRIDE_BY_EVIDENCE][${traceId}] ${intentCode} → DIAGNOSTIC_INQUIRY reason=real_symptoms_present codes=[${ec.real_codes.slice(0, 6).join(',')}]`);
           intentCode = 'DIAGNOSTIC_INQUIRY';
         }
@@ -4433,7 +4415,7 @@ export class AIAgentOrchestrator {
       }
       
       // PATCH 2: STAGE CONTEXT GUARD
-      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number } | null = null;
+      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string; max_clarification_rounds?: number; intent_category?: string } | null = null;
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -4441,7 +4423,7 @@ export class AIAgentOrchestrator {
         
         const { data: intentRow } = await supabaseClient
           .from('observation_intent_master')
-          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode, max_clarification_rounds')
+          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode, max_clarification_rounds, intent_category')
           .eq('intent_code', intentCode)
           .eq('is_active', true)
           .maybeSingle();
@@ -4454,6 +4436,236 @@ export class AIAgentOrchestrator {
         console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
       }
       
+      // KNOWLEDGE PLANE — SURGICAL P0 FIX
+      // DB intent category GENERAL is the current semantic contract for
+      // general agronomic knowledge. Real symptom evidence never enters
+      // this lane. The existing observation invariant remains unchanged.
+      const nluExecutionMode = String((semanticExtraction as any)?.execution_mode || '').toUpperCase();
+      const nluKnowledgeSubject = String((semanticExtraction as any)?.knowledge_subject || 'NONE').toUpperCase();
+
+      // FINAL MODE AUTHORITY: the database intent contract decides the lane.
+      // GENERAL intent_category is the deterministic Knowledge Plane contract;
+      // clarification_mode remains authoritative for decision/observation lanes.
+      // The LLM execution_mode is retained as a routing/observability signal and
+      // can never upgrade a DB decision intent into knowledge mode.
+      const dbClarificationMode = String(intentMetaFromDB?.clarification_mode || '').toUpperCase();
+      const dbIntentCategory = String(intentMetaFromDB?.intent_category || '').toUpperCase();
+      const dbExecutionLane =
+        dbIntentCategory === 'GENERAL'
+          ? 'KNOWLEDGE'
+          : dbClarificationMode === 'DIRECT'
+            ? 'DIRECT'
+            : dbClarificationMode === 'SYMPTOM_DRIVEN'
+              ? 'OBSERVATION'
+              : dbClarificationMode === 'DIFFERENTIAL'
+                ? 'DIFFERENTIAL'
+                : (dbClarificationMode === 'AUTO' || dbClarificationMode === 'NONE')
+                  ? 'AUTO'
+                  : 'DECISION';
+
+      if (nluExecutionMode !== dbExecutionLane) {
+        console.log(
+          '[MODE_AUTHORITY] intent=' + intentCode +
+          ' db_category=' + dbIntentCategory +
+          ' db_clarification_mode=' + dbClarificationMode +
+          ' db_lane=' + dbExecutionLane +
+          ' nlu_lane=' + (nluExecutionMode || 'NONE') +
+          ' → DB contract wins',
+        );
+        agentsUsed.push('DB_MODE_AUTHORITY');
+      }
+
+      const knowledgePlaneEligible =
+        !!intentMetaFromDB &&
+        dbExecutionLane === 'KNOWLEDGE' &&
+        String(intentMetaFromDB?.routing_target || '').toUpperCase() === 'SYMBOLIC_BRAIN' &&
+        ((((this as any).__embeddedConfirmedObs || []) as string[]).length === 0) &&
+        (realObsCountForSalvage === 0 || nluExecutionMode === 'KNOWLEDGE');
+
+      if (knowledgePlaneEligible) {
+        // TDZ FIX (2026-10-09): cropFromAnyLayer is declared further below (line ~4643);
+        // referencing it here threw ReferenceError: Cannot access before initialization,
+        // crashing every GENERAL/SYMBOLIC_BRAIN/zero-observation turn at the knowledge gate.
+        const knowledgeGateCrop =
+          (landContext as any)?.current_crop ||
+          (canonicalContext as any)?.crop ||
+          (landContext as any)?.crop_schedule?.crop_name ||
+          (landContext as any)?.crop_name;
+        console.log(
+          '\n📚 [KNOWLEDGE_PLANE_GATE] trace=' + traceId +
+          ' intent=' + intentCode +
+          ' category=' + intentMetaFromDB?.intent_category +
+          ' crop=' + (knowledgeGateCrop || 'UNKNOWN') +
+          ' realObs=' + realObsCountForSalvage +
+          ' subject=' + nluKnowledgeSubject +
+          ' → deterministic knowledge resolution',
+        );
+        agentsUsed.push('KNOWLEDGE_PLANE_GATE');
+
+        const knowledgeGapResponse = (reason: string): any => {
+          const lang = String(options.language || normalizedInput.detected_language || 'en');
+          const text = String(getConfigRaw<string>(
+            'knowledge_gap_' + lang,
+            getConfigRaw<string>('knowledge_gap_en', 'Verified information is unavailable for this question.'),
+          ));
+          const id = 'knowledge_gap_' + Date.now();
+          agentsUsed.push('KNOWLEDGE_EVIDENCE_GAP');
+          console.warn('[KNOWLEDGE_GAP] trace=' + traceId + ' reason=' + reason);
+          return {
+            type: 'DECISION_PROVIDED', session_id: sessionId,
+            communication: {
+              message_id: crypto.randomUUID(), decision_id: id, session_id: sessionId,
+              farmer_id: farmerId, language: lang, format: 'RICH_TEXT', tone: 'FRIENDLY',
+              created_at: new Date().toISOString(),
+              main_message: { full_text: { [lang]: text, en: text } }, quick_actions: [],
+              metadata: { source: 'KNOWLEDGE_PLANE', response_type: 'KNOWLEDGE_GAP', confidence_score: 0 },
+            },
+            decision_output: {
+              decision_id: id, session_id: sessionId, status: 'KNOWLEDGE_GAP',
+              decision_brain_source: true, actions_returned: [], matched_responses: [],
+              metadata: { trace_id: traceId, response_source: 'KNOWLEDGE_PLANE',
+                brain_execution_mode: 'KNOWLEDGE', authority_status: 'EVIDENCE_GAP',
+                final_resolution_type: 'KNOWLEDGE_GAP', rules_applied: 0 },
+            },
+            metadata: { confidence: 0, safety_status: 'SAFE', rules_applied: 0, trace_id: traceId,
+              response_source: 'KNOWLEDGE_PLANE', brain_execution_mode: 'KNOWLEDGE',
+              authority_status: 'EVIDENCE_GAP', final_resolution_type: 'KNOWLEDGE_GAP',
+              agents_used: [...agentsUsed] },
+          };
+        };
+        try {
+          const knowledgeResult = await queryKnowledgePlane({
+            farmer_message: farmerMessage,
+            language: options.language || normalizedInput.detected_language || 'en',
+            intent_code: intentCode,
+            intent_category: intentMetaFromDB?.intent_category ?? null,
+            execution_mode: 'KNOWLEDGE',
+
+            knowledge_subject: nluKnowledgeSubject as 'CROP' | 'STAGE' | 'FERTILIZER' | 'PEST' | 'WEED' | 'CHEMICAL' | 'NONE',
+            land_context: landContext
+              ? {
+                  current_crop: landContext.current_crop ?? null,
+                  growth_stage: landContext.growth_stage ?? (canonicalContext as any)?.growth_stage ?? null,
+                  days_since_sowing: landContext.days_since_sowing ?? (canonicalContext as any)?.days_since_sowing ?? null,
+                  state: (landContext as any)?.state ?? null,
+                  soil_type: (landContext as any)?.soil_type ?? null,
+                  cultivation_method:
+                    (landContext as any)?.cultivation_method ??
+                    (canonicalContext as any)?.cultivation_method ??
+                    null,
+                }
+              : null,
+            supabase: this.supabase,
+          });
+
+          if (knowledgeResult.handled) {
+            agentsUsed.push(knowledgeResult.provider || 'KNOWLEDGE_PROVIDER');
+            const knowledgeDecisionId = 'knowledge_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const knowledgeText = String(knowledgeResult.response || '').trim();
+            const knowledgeLanguage = options.language || normalizedInput.detected_language || 'en';
+
+            console.log(
+              '✅ [KNOWLEDGE_PLANE] provider=' + (knowledgeResult.provider || 'unknown') +
+              ' status=' + (knowledgeResult.authority_status || 'UNKNOWN') +
+              ' type=' + (knowledgeResult.response_type || 'UNKNOWN') +
+              ' latency=' + knowledgeResult.processing_time_ms.toFixed(1) + 'ms',
+            );
+
+            return {
+              type: 'DECISION_PROVIDED',
+              session_id: sessionId,
+              dataAudit: landContext
+                ? {
+                    land: {
+                      found: true,
+                      land_id: landContext.land_id ?? null,
+                      current_crop: landContext.current_crop ?? null,
+                      growth_stage: landContext.growth_stage ?? null,
+                      days_since_sowing: landContext.days_since_sowing ?? null,
+                    },
+                  }
+                : undefined,
+              communication: {
+                message_id: crypto.randomUUID(),
+                decision_id: knowledgeDecisionId,
+                session_id: sessionId,
+                farmer_id: farmerId,
+                language: knowledgeLanguage,
+                format: 'RICH_TEXT',
+                tone: 'FRIENDLY',
+                created_at: new Date().toISOString(),
+                main_message: {
+                  full_text: {
+                    [knowledgeLanguage]: knowledgeText,
+                    en: knowledgeText,
+                  },
+                },
+                quick_actions: [],
+                metadata: {
+                  word_count: knowledgeText.split(/\s+/).filter(Boolean).length,
+                  reading_time_seconds: Math.max(5, Math.ceil(knowledgeText.split(/\s+/).filter(Boolean).length / 3)),
+                  confidence_score: knowledgeResult.confidence,
+                  source: 'KNOWLEDGE_PLANE',
+                  response_type: knowledgeResult.response_type,
+                  provider: knowledgeResult.provider,
+                  authority_status: knowledgeResult.authority_status,
+                },
+              } as any,
+              decision_output: {
+                decision_id: knowledgeDecisionId,
+                session_id: sessionId,
+                status: knowledgeResult.authority_status === 'EVIDENCE_GAP'
+                  ? 'KNOWLEDGE_GAP'
+                  : 'KNOWLEDGE_ANSWERED',
+                decision_brain_source: true,
+                actions_returned: [],
+                matched_responses: [],
+                knowledge_result: knowledgeResult,
+                metadata: {
+                  confidence: knowledgeResult.confidence,
+                  trace_id: traceId,
+                  processing_time_ms: Date.now() - startTime,
+                  agents_used: [...agentsUsed],
+                  template_type: 'KNOWLEDGE_DIRECT',
+                  brain_execution_mode: 'KNOWLEDGE',
+                  knowledge_provider: knowledgeResult.provider || null,
+                  authority_status: knowledgeResult.authority_status || 'EVIDENCE_GAP',
+                  final_resolution_type: knowledgeResult.response_type || 'KNOWLEDGE_GAP',
+                  response_source: 'KNOWLEDGE_PLANE',
+                  inferred_intent: intentCode,
+                  rules_applied: 0,
+                  knowledge_provenance: knowledgeResult.provenance || [],
+                  knowledge_facts: knowledgeResult.facts || {},
+                },
+              } as any,
+              metadata: {
+                confidence: knowledgeResult.confidence,
+                safety_status: 'SAFE',
+                rules_applied: 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: [...agentsUsed],
+                trace_id: traceId,
+                response_source: 'KNOWLEDGE_PLANE',
+                brain_execution_mode: 'KNOWLEDGE',
+                knowledge_provider: knowledgeResult.provider || null,
+                authority_status: knowledgeResult.authority_status || 'EVIDENCE_GAP',
+                final_resolution_type: knowledgeResult.response_type || 'KNOWLEDGE_GAP',
+                inferred_intent: intentCode,
+              },
+            } as any;
+          }
+
+          console.warn('[KNOWLEDGE_PLANE_GAP] trace=' + traceId +
+            ' reason=' + String(knowledgeResult.reason || 'NOT_HANDLED') +
+            ' — returning information-only gap');
+          return knowledgeGapResponse('KNOWLEDGE_NOT_HANDLED');
+        } catch (knowledgeErr) {
+          console.error('[KNOWLEDGE_PLANE_ERROR] trace=' + traceId +
+            ' ' + ((knowledgeErr as Error)?.message || String(knowledgeErr)));
+          return knowledgeGapResponse('KNOWLEDGE_PROVIDER_ERROR');
+        }
+      }
+
       // FIX 1: DIRECT-MODE INTENT BYPASS
       let directModeBypass = false;
       // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
@@ -4465,7 +4677,11 @@ export class AIAgentOrchestrator {
         'CROP_HEALTH',
         'GENERAL_INFO'
       ]);
-      const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
+      // The keyword router is only a hint. It may authorize DIRECT behavior only
+      // when the DB intent contract independently says clarification_mode=DIRECT.
+      const routeDirectModeBypass =
+        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) &&
+        String(intentMetaFromDB?.clarification_mode || '').toUpperCase() === 'DIRECT';
       // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
       const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
       const cropFromAnyLayer =
@@ -5794,7 +6010,7 @@ export class AIAgentOrchestrator {
 
       // Phase H — Canonical ConversationState (frozen, single runtime authority)
       const __advisoryIntentForState =
-        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
+        String(intentMetaFromDB?.clarification_mode || '').toUpperCase() === 'DIRECT' ||
         isAdvisoryRoute(intentCode);
       const __stageForState =
         (landContext as any)?.growth_stage ||
@@ -6095,9 +6311,6 @@ export class AIAgentOrchestrator {
             canonicalContext?.growth_stage ||
             landContext?.growth_stage ||
             'UNKNOWN';
-          const graphGrowthStage = growthStage && String(growthStage).toUpperCase() !== 'UNKNOWN'
-            ? growthStage
-            : null;
 
           // Phase Y — Fix C: bridge generic NLU codes (poor_germination,
           const { bridgeCodesDb, resolveCropCanonicalObservations } = await import('../decision/concept-bridge.ts');
@@ -6216,56 +6429,114 @@ export class AIAgentOrchestrator {
             bridgedCanonical,
           );
           const resolvedCanonicalCodes: string[] = resolved.map((r) => r.code);
-          const canonical_observation_codes: string[] = resolvedCanonicalCodes.filter((code) => isRealObservation(code));
           const ignoredCanonicalCodes: string[] = resolvedCanonicalCodes.filter((code) => !isRealObservation(code));
+
+          // EVIDENCE PROVENANCE CONTRACT:
+          // deriveTrustedEvidence() has already separated farmer-confirmed and
+          // trusted perceived evidence from INFERRED / IOM / synthetic space.
+          // IOM peers remain clarification candidates only; they never become
+          // GraphTruth.canonical_observations.
+          const trustedEvidence = (this as any)._trustedEvidence as
+            | { confirmed?: string[]; perceived?: string[] }
+            | null;
+          const trustedCanonicalSet = new Set(
+            [
+              ...(trustedEvidence?.confirmed ?? []),
+              ...(trustedEvidence?.perceived ?? []),
+            ]
+              .map((code) => canonicalObsCode(code))
+              .filter(Boolean),
+          );
+
+          const canonical_observation_codes: string[] = resolved
+            .filter((r) => r.source === 'input')
+            .map((r) => canonicalObsCode(r.code))
+            .filter((code): code is string => !!code && trustedCanonicalSet.has(code));
+
+          const iomCandidateObservationCodes: string[] = Array.from(
+            new Set(
+              resolved
+                .filter((r) => r.source === 'iom_literal_peer')
+                .map((r) => canonicalObsCode(r.code))
+                .filter((code): code is string => !!code),
+            ),
+          );
+          (this as any).__observationCandidateCodes = iomCandidateObservationCodes;
+
           const frozenContext = {
             ...evidenceContext,
             metadata: Array.from(new Set([...evidenceContext.metadata, ...ignoredCanonicalCodes])),
           };
-          for (const r of resolved) {
-            if (r.source === 'iom_literal_peer') {
-              authoredObservations.add(
-                r.code,
-                ObservationAuthority.INFERRED,
-                'IOM_LITERAL_PEER',
-              );
-            }
-          }
 
           Object.freeze(real_codes);
           Object.freeze(canonical_observation_codes);
-          console.log(`   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} canonical=${canonical_observation_codes.length}`);
+          Object.freeze(iomCandidateObservationCodes);
+          console.log(
+            `   🔒 [TURN_EVIDENCE_LOCK] real=${real_codes.length} bridged=${bridgedCanonical.length} ` +
+            `trusted=${canonical_observation_codes.length} iom_candidates=${iomCandidateObservationCodes.length}`,
+          );
 
           // STEP 8 — EVIDENCE_FREEZE ledger trace (single SSOT for the turn)
+          const confirmedSet = new Set((trustedEvidence?.confirmed ?? []).map((code) => canonicalObsCode(code)));
           const ledger = canonical_observation_codes.map((c) => ({
             code: c,
-            source: real_codes.includes(c) ? 'FARMER_LITERAL' : 'INFERRED',
-            confidence: real_codes.includes(c) ? 1 : 0.8,
+            source: confirmedSet.has(c) ? 'FARMER_CONFIRMED' : 'TRUSTED_PERCEIVED',
+            confidence: confirmedSet.has(c) ? 1 : 0.7,
           }));
           assertDecisionGraphOrder(this as any, traceId, 'POST_EVIDENCE_FREEZE');
           (this as any)._evidenceFrozen = true;
           // P4: from here on, the turn is committed to producing a populated
           // decision_output (real decision OR structured no-decision).
-          (this as any)._graphExecutionStarted = true;
-          // P1: the frozen canonical set is the SSOT every downstream stage
-          (this as any)._lastRealObservations = [...canonical_observation_codes];
-          (this as any)._lastIntentCode = intentCode;
-          console.log(
-            `[POST_EVIDENCE_FREEZE] trace=${traceId} sequence=1 observations=[${canonical_observation_codes.slice(0, 12).join(',')}] ` +
-              `context=${JSON.stringify(frozenContext)} source=farmer count=${ledger.length}`,
-          );
-          console.log(
-            `[STAGE_BOUNDARY] stage=evidence_freeze trace=${traceId} confirmed=${canonical_observation_codes.length} ` +
-              `hyp=0 rules_pre=0 rules_post=0 winner=none`,
-          );
-
-
-          const currentObservations = canonical_observation_codes;
-          if (real_codes.length !== currentObservations.length ||
-              real_codes.some((c, i) => c !== currentObservations[i])) {
-            console.log(`   🔗 [CONCEPT_BRIDGE] ${cropCode}: ${real_codes.join(',')} → ${currentObservations.join(',')}`);
+          // T1 — BUILD IMMUTABLE GRAPH TRUTH BEFORE ANY HYPOTHESIS EVALUATION.
+          // The first graph pass must never consume mutable pre-lock pipeline values.
+          try {
+            const existingGraphTruth = (this as any)._graphTruth as GraphTruth | null;
+            if (existingGraphTruth) {
+              assertGraphTruthIntegrity(existingGraphTruth, 'PRE_HYPOTHESIS_GRAPH');
+            } else {
+              const bioState: BiologicalState | null = (landContext as any)?.biological_state ?? null;
+              const graphTruth = buildGraphTruth({
+                land_id: options.landId ?? landContext?.id ?? null,
+                crop_code: canonicalContext?.crop_code ?? cropCode ?? landContext?.current_crop ?? null,
+                variety_id: canonicalContext?.variety_id
+                  ?? (landContext as any)?.current_crop_variety_id
+                  ?? (landContext as any)?.crop_variety_id
+                  ?? null,
+                biological_stage: canonicalContext?.growth_stage
+                  ?? bioState?.growth_stage
+                  ?? landContext?.growth_stage
+                  ?? null,
+                stage_uuid: bioState?.stage_uuid ?? canonicalContext?.biological_state?.stage_uuid ?? null,
+                DAS: typeof canonicalContext?.days_since_sowing === 'number'
+                  ? canonicalContext.days_since_sowing
+                  : (typeof bioState?.das === 'number' ? bioState.das : null),
+                GDD: typeof bioState?.gdd_accumulated === 'number'
+                  ? bioState.gdd_accumulated
+                  : (typeof (landContext as any)?.current_gdd === 'number'
+                    ? (landContext as any).current_gdd
+                    : null),
+                canonical_observations: canonical_observation_codes,
+                evidence_sources: canonical_observation_codes.map((code) => ({
+                  code,
+                  authority: confirmedSet.has(code) ? ('CONFIRMED' as const) : ('INFERRED' as const),
+                  source: confirmedSet.has(code) ? 'TRUSTED_CONFIRMED_EVIDENCE' : 'TRUSTED_PERCEIVED_EVIDENCE',
+                })),
+                decision_context: canonicalContext ?? null,
+              });
+              (this as any)._graphTruth = graphTruth;
+              assertGraphTruthIntegrity(graphTruth, 'POST_GRAPH_TRUTH_BUILD');
+            }
+          } catch (graphTruthError) {
+            (this as any)._graphTruth = null;
+            console.error(`[GRAPH_TRUTH_REQUIRED] trace=${traceId} intent=${intentCode} err=${(graphTruthError as Error).message}`);
+            throw new Error(`GRAPH_TRUTH_REQUIRED: unable to create the locked graph context for intent=${intentCode}: ${(graphTruthError as Error).message}`);
           }
 
+          const _gtForGraph = (this as any)._graphTruth as GraphTruth;
+          const _graphCrop = _gtForGraph.crop_code;
+          const _graphStage = _gtForGraph.biological_stage;
+          const _graphDas = _gtForGraph.DAS;
+          const _graphObservations = [..._gtForGraph.canonical_observations];
           // STEP 8 — HYPOTHESIS GRAPH EVALUATOR (DB graph discovery)
           let graphHypothesisRuleIds: string[] = [];
           let graphHypothesisEdgeMissing: string[] = [];
@@ -6275,15 +6546,11 @@ export class AIAgentOrchestrator {
               | { predicted_stage_confidence?: number }
               | undefined;
             const graphInput = {
-              crop_code: cropCode ?? null,
-              crop_group: cropCode ?? null,
-              growth_stage: graphGrowthStage,
-              das: (typeof (canonicalContext as any)?.days_since_sowing === 'number'
-                ? (canonicalContext as any).days_since_sowing
-                : ((typeof (landContext as any)?.days_since_sowing === 'number')
-                  ? (landContext as any).days_since_sowing
-                  : null)),
-              observation_codes: currentObservations,
+              crop_code: _graphCrop,
+              crop_group: _graphCrop,
+              growth_stage: _graphStage,
+              das: _graphDas,
+              observation_codes: _graphObservations,
               supabase: this.supabase,
               trace_id: traceId,
               canonical_context: canonicalContext,
@@ -6318,7 +6585,7 @@ export class AIAgentOrchestrator {
               directModeBypass = false;
               console.log(
                 `[OBS_TO_HYP_GAP] trace=${traceId} intent=${intentCode} ` +
-                `confirmed_obs=${conversationState.confirmed.length} real_obs=${currentObservations.length} ` +
+                `confirmed_obs=${conversationState.confirmed.length} real_obs=${_graphObservations.length} ` +
                 `hypotheses=0 action=route_to_clarification_question`
               );
               agentsUsed.push('OBS_TO_HYP_GAP_CLARIFICATION');
@@ -6372,7 +6639,7 @@ export class AIAgentOrchestrator {
                 : null;
               const merged = buildGraphRuntimeSnapshot({
                 trace_id: traceId,
-                observations: (currentObservations ?? []) as string[],
+                observations: (_graphObservations ?? []) as string[],
                 engineA: engineAForMerge as any,
                 engineB: { candidates: graphOut.candidates as any },
                 edges: { ruleToHypothesis },
@@ -6460,7 +6727,7 @@ export class AIAgentOrchestrator {
 
               // PATCH 3 (BUG 3) — Orchestrator-boundary [OBS_TO_HYP] trace so
               // a single grep on trace= reconstructs the full edge chain.
-              const obsSample = (currentObservations ?? []).slice(0, 12).join(',');
+              const obsSample = (_graphObservations ?? []).slice(0, 12).join(',');
               const hypSample = hypIds.slice(0, 12).join(',');
               assertDecisionGraphOrder(this as any, traceId, 'OBS_TO_HYP');
               console.log(
@@ -6511,7 +6778,7 @@ export class AIAgentOrchestrator {
                 (this as any)._graphHypothesisResult = {
                   candidates: [],
                   eliminated: [],
-                  input_observations: currentObservations,
+                  input_observations: _graphObservations,
                   trace_id: traceId,
                   timings_ms: 0,
                 };
@@ -6527,7 +6794,7 @@ export class AIAgentOrchestrator {
               } catch {}
               (this as any)._graphExhaustedReason = graphErrMessage;
               console.warn(
-                `[OBS_TO_HYP] trace=${traceId} obs=[${(currentObservations ?? []).slice(0, 12).join(',')}] ` +
+                `[OBS_TO_HYP] trace=${traceId} obs=[${(_graphObservations ?? []).slice(0, 12).join(',')}] ` +
                 `hyp=[] sequence=2 survived=0 eliminated=unknown edge_missing=0 ` +
                 `reason=GRAPH_CONTEXT_EXHAUSTED`,
               );
@@ -6550,48 +6817,12 @@ export class AIAgentOrchestrator {
 
 
 
-          // T1/T9 · BUILD IMMUTABLE GRAPH TRUTH + CANONICAL HASH
-          try {
-            const bioState: any = (landContext as any)?.biological_state ?? null;
-            const graphTruth = buildGraphTruth({
-              land_id: options.landId ?? landContext?.id ?? null,
-              crop_code: cropCode ?? landContext?.current_crop ?? null,
-              variety_id: (landContext as any)?.crop_variety_id
-                ?? (landContext as any)?.crop_variety
-                ?? null,
-              biological_stage: bioState?.growth_stage
-                ?? canonicalContext?.growth_stage
-                ?? landContext?.growth_stage
-                ?? null,
-              stage_uuid: bioState?.stage_uuid ?? null,
-              DAS: (typeof canonicalContext?.days_since_sowing === 'number'
-                ? canonicalContext.days_since_sowing
-                : (typeof landContext?.days_since_sowing === 'number'
-                    ? landContext.days_since_sowing
-                    : null)),
-              GDD: (typeof bioState?.gdd_accumulated === 'number' ? bioState.gdd_accumulated : null),
-              canonical_observations: canonical_observation_codes,
-              evidence_sources: real_codes.map((c) => ({
-                code: c,
-                authority: 'CONFIRMED' as const,
-                source: 'EXTRACTOR',
-              })),
-            });
-            // Attach to closure state for downstream stages
-            (this as any)._graphTruth = graphTruth;
-          } catch (e) {
-            // RC-1 FIX: do NOT let a stale prior-turn _graphTruth survive when
-            (this as any)._graphTruth = null;
-            console.error(
-              `[GRAPH_TRUTH_BUILD_FAILED] trace=${traceId} intent=${intentCode} obs_in=${canonical_observation_codes.length} err=${(e as Error).message}`,
-            );
-            if (isDiagnosticIntent) {
-              throw new Error(`GRAPH_TRUTH_BUILD_FAILED: diagnostic intent=${intentCode} obs=${canonical_observation_codes.length}: ${(e as Error).message}`);
-            }
-          }
-
-
-
+          // T1/T9 — REUSE THE SINGLE LOCKED GRAPH TRUTH FOR THE TURN.
+          // No second GraphTruth build: rebuilding here would create a second authority.
+          assertGraphTruthIntegrity(
+            (this as any)._graphTruth as GraphTruth,
+            'PRE_HYPOTHESIS_ENGINE',
+          );
           // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
           const resolvedDAS = canonicalContext?.days_since_sowing 
             ?? landContext?.days_since_sowing 
@@ -6601,7 +6832,7 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
-          console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
+          console.log(`   📊 Observations (${_graphObservations.length}): ${_graphObservations.slice(0, 5).join(', ') || 'none'}`);
 
           // T1 — GraphTruth integrity check before hypothesis engine
           assertGraphTruthIntegrity((this as any)._graphTruth, 'PRE_HYPOTHESIS_ENGINE');
@@ -6610,9 +6841,9 @@ export class AIAgentOrchestrator {
           const _gtForHyp = (this as any)._graphTruth as import('../runtime/graph-truth.ts').GraphTruth | null;
           const hypObservations: string[] = _gtForHyp
             ? [..._gtForHyp.canonical_observations]
-            : currentObservations;
+            : _graphObservations;
           if (_gtForHyp) {
-            const a = [...currentObservations].sort().join(',');
+            const a = [..._graphObservations].sort().join(',');
             const b = [..._gtForHyp.canonical_observations].sort().join(',');
             if (a !== b) {
               console.warn(`[GRAPH_OBS_DRIFT] site=PRE_HYPOTHESIS pipe=[${a}] graph=[${b}] — using GraphTruth`);
@@ -6658,7 +6889,7 @@ export class AIAgentOrchestrator {
             }
             const snap = buildGraphRuntimeSnapshot({
               trace_id: traceId,
-              observations: (currentObservations ?? []) as string[],
+              observations: (_graphObservations ?? []) as string[],
               engineA: { candidates: hypothesisResult.candidates as any },
               engineB: engineB ? { candidates: engineB.candidates ?? [] } : null,
               edges: { ruleToHypothesis },
@@ -6714,7 +6945,7 @@ export class AIAgentOrchestrator {
               hypotheses: hypothesisResult.candidates,
               crop_code: cropCode,
               growth_stage: growthStage,
-              current_observations: currentObservations,
+              current_observations: _graphObservations,
                language: options.language || 'mr',
               damage_observations: cropDamageResult.damage_observations,
               trace_id: traceId,
@@ -6938,8 +7169,9 @@ export class AIAgentOrchestrator {
       }
       
       // STAGE 4B: UNDERSTANDING-BASED CLARIFICATION GATE
+      // DB intent contract is authoritative; routeQuery can never veto or grant
+      // clarification bypass on its own.
       const isAdvisoryRouteForGate =
-        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
         intentMetaFromDB?.clarification_mode === 'DIRECT' ||
         isAdvisoryRoute(intentCode); // Fix 7: canonical-intent bypass
       if (isAdvisoryRouteForGate && understandingResult.clarification_required) {
@@ -8190,10 +8422,10 @@ export class AIAgentOrchestrator {
 
         // Strip metadata (CROP_IDENTIFIED, *_UNKNOWN, PHOTO_NOT_PROVIDED, ACTION_*, CONTEXT_*)
         // so downstream rule/hypothesis engines never see it as evidence.
-        const _rawObsForBuild = allObservationsForPreAuth && allObservationsForPreAuth.size > 0
-          ? Array.from(allObservationsForPreAuth)
-          : (uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms);
-        const _realObsForBuild = classifyEvidence(_rawObsForBuild).real_codes;
+        const _graphTruthForBuild = (this as any)._graphTruth as GraphTruth | null;
+        const _realObsForBuild = _graphTruthForBuild
+          ? [..._graphTruthForBuild.canonical_observations]
+          : [];
 
         canonicalState = buildCanonicalState({
           landContext,
@@ -8212,91 +8444,42 @@ export class AIAgentOrchestrator {
         // Phase 5 — GraphTruth is the sole authority for crop / stage / observations.
         projectCanonicalStateFromGraphTruth(canonicalState, (this as any)._graphTruth);
 
-        // FIX 2 (2026-08-26) — LOCKED BIOLOGICAL STATE OWNS STAGE + DAS.
-        // When landContext.biological_state is locked it is the SSOT for the turn;
-        // neither lands.crop_stage nor crop_schedules DAS may override it.
-        {
-          const _bioLock: any = (landContext as any)?.biological_state ?? null;
-          if (_bioLock?.growth_stage) {
-            const _prevStage = (canonicalState as any).crop_stage ?? (canonicalState as any).growth_stage ?? null;
-            const _prevDas = (canonicalState as any).days_since_sowing ?? null;
-            (canonicalState as any).crop_stage = _bioLock.growth_stage;
-            (canonicalState as any).growth_stage = _bioLock.growth_stage;
-            if (typeof _bioLock.das === 'number' && isFinite(_bioLock.das)) {
-              (canonicalState as any).days_since_sowing = _bioLock.das;
-              (canonicalState as any).das = _bioLock.das;
-            }
-            if (_prevStage !== _bioLock.growth_stage || _prevDas !== _bioLock.das) {
-              console.log(
-                `🔒 [BIO_STATE_STAGE_ENFORCE] stage ${_prevStage ?? 'null'}→${_bioLock.growth_stage} ` +
-                `das ${_prevDas ?? 'null'}→${_bioLock.das ?? 'null'} source=biological_state_ssot`,
-              );
-            }
-          }
-        }
+        // FIX 2 (2026-08-26): biological_state is an input to GraphTruth,
+        // not a post-freeze writer. CanonicalState must never be rewritten here.
+        // GraphTruth already owns stage + DAS and projection below enforces it.
 
-        // Step 2 — POST-PROJECTION MUTATION BLOCK COLLAPSED (was lines 6252-6277).
+        // Step 2 — GRAPH TRUTH PROJECTION INVARIANT.
+        // GraphTruth is the sole authority after evidence freeze. No fallback,
+        // induction result, crop schedule, or land-context value may rewrite
+        // crop/stage after projection. Unknown means the graph genuinely lacks
+        // authoritative evidence and must remain unknown until the graph resolves it.
         {
           const _gtForAudit = (this as any)._graphTruth as
             | import('../runtime/graph-truth.ts').GraphTruth
             | null;
-          const projectedCrop = canonicalState.crop_type as unknown as string | null;
-          const projectedStage = canonicalState.growth_stage as unknown as string | null;
+          const projectedCrop = String(canonicalState.crop_type ?? '').trim();
+          const projectedStage = String(
+            (canonicalState as any).growth_stage ?? (canonicalState as any).crop_stage ?? ''
+          ).trim();
+          const gtCrop = String(_gtForAudit?.crop_code ?? '').trim();
+          const gtStage = String(_gtForAudit?.biological_stage ?? '').trim();
 
-          // FIX H1 (DB-SSOT backfill for stage): the prior refusal blocked BOTH
-          const _cropAuthorityIsSSOT =
-            cropContextAuthority?.source === 'crop_schedules';
-
-          if (!projectedCrop || projectedCrop === 'UNKNOWN') {
-            if (
-              _cropAuthorityIsSSOT &&
-              cropContextAuthority?.crop_name &&
-              cropContextAuthority.crop_name !== 'UNKNOWN'
-            ) {
-              (canonicalState as any).crop_type = cropContextAuthority.crop_name;
-              console.log(
-                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION crop was UNKNOWN — ` +
-                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
-                  `crop=${cropContextAuthority.crop_name}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            } else {
-              console.warn(
-                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION crop is UNKNOWN after GraphTruth projection ` +
-                  `— refusing to overwrite from induction (${inductionCrop}) or cropContextAuthority ` +
-                  `(${cropContextAuthority?.crop_name ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'} — downstream must emit GRAPH_NEEDS_MORE_EVIDENCE.`,
-              );
-            }
+          if (gtCrop && projectedCrop.toLowerCase() !== gtCrop.toLowerCase()) {
+            throw new Error(
+              `GRAPH_PROJECTION_DRIFT: trace=${traceId} crop projected=${projectedCrop || 'EMPTY'} graph=${gtCrop}`
+            );
           }
-          if (!projectedStage || projectedStage === 'UNKNOWN') {
-            if (
-              _cropAuthorityIsSSOT &&
-              cropContextAuthority?.growth_stage &&
-              cropContextAuthority.growth_stage !== 'UNKNOWN'
-            ) {
-              (canonicalState as any).growth_stage = cropContextAuthority.growth_stage;
-              // Some downstream call sites read `.crop_stage`; keep parity.
-              (canonicalState as any).crop_stage = cropContextAuthority.growth_stage;
-              console.log(
-                `[GRAPH_TRUTH_BACKFILL] site=POST_PROJECTION stage was UNKNOWN — ` +
-                  `backfilling from cropContextAuthority (source=crop_schedules, ` +
-                  `stage=${cropContextAuthority.growth_stage}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            } else {
-              console.warn(
-                `[GRAPH_TRUTH_ENFORCED] site=POST_PROJECTION stage is UNKNOWN after GraphTruth projection ` +
-                  `— refusing to overwrite from cropContextAuthority ` +
-                  `(${cropContextAuthority?.growth_stage ?? 'null'}, source=${cropContextAuthority?.source ?? 'null'}). ` +
-                  `graph_hash=${_gtForAudit?.hash ?? 'null'}.`,
-              );
-            }
+          if (gtStage && projectedStage.toLowerCase() !== gtStage.toLowerCase()) {
+            throw new Error(
+              `GRAPH_PROJECTION_DRIFT: trace=${traceId} stage projected=${projectedStage || 'EMPTY'} graph=${gtStage}`
+            );
           }
+          console.log(
+            `[CANONICAL_PROJECTION_ONLY] trace=${traceId} crop=${projectedCrop || 'UNKNOWN'} ` +
+            `stage=${projectedStage || 'UNKNOWN'} graph_hash=${_gtForAudit?.hash ?? 'null'}`
+          );
         }
 
-
-        
         // NEURO-SYMBOLIC CONTRACT: CanonicalState transports symbols only.
         if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE') && uniqueSymptomCodes.length > 0) {
           const firstRealCode = uniqueSymptomCodes[0];
@@ -8640,6 +8823,16 @@ export class AIAgentOrchestrator {
         // This block is intentionally a no-op (single-source preload upstream).
         console.log('[KNOWLEDGE_PRELOAD] using request-init caches (Phase H Fix 7)');
         
+        // DIRECT INTENT: governed DB authorization for advice categories.
+        // This is not a new diagnostic graph/clarification authority.
+        const { loadDirectIntentScope, filterDirectIntentCandidates } =
+          await import('../decision/direct-intent-rule-scope.ts');
+        const _directIntentScope = await loadDirectIntentScope(
+          this.supabase, intentCode,
+          String(intentMetaFromDB?.clarification_mode ?? '').toUpperCase() === 'DIRECT',
+          traceId,
+        );
+
         // PHASE C, GATE #2 — INTENT FILTER before scoring
         const activeIntentForRules = (typeof intentCode !== 'undefined' && intentCode)
           ? String(intentCode) : 'GENERAL_QUERY';
@@ -8715,12 +8908,12 @@ export class AIAgentOrchestrator {
             if (_recoveredEdges.length > 0) {
               const _scopedRecovered = rulesAfterIntent.filter((r: any) =>
                 _recoveredEdges.includes(String(r?.rule_id ?? r?.id ?? '')));
-              rulesForEvaluator = _scopedRecovered.length > 0 ? _scopedRecovered : rulesAfterIntent;
+              rulesForEvaluator = _scopedRecovered; // No recovered graph edge => no widened diagnostic pool.
               (this as any)._graphHypothesisRuleIds = _recoveredEdges;
               try { _grsForScope?.setHypothesisRuleIds(_recoveredEdges); } catch {}
             } else {
               // Survivors exist but no rule edges known — do NOT block the turn.
-              rulesForEvaluator = rulesAfterIntent;
+              rulesForEvaluator = []; // Surviving hypothesis without an authored edge cannot execute rules.
             }
             console.warn(
               `[HYP_GRAPH_SCOPE_RECOVERED] trace=${traceId} survivors=${_survivorCount} ` +
@@ -8781,7 +8974,8 @@ export class AIAgentOrchestrator {
         try {
           const _confirmedForRecovery: string[] = Array.isArray(confirmedObsCodes) ? confirmedObsCodes : [];
           if ((!Array.isArray(rulesForEvaluator) || (rulesForEvaluator as any[]).length === 0) &&
-              _confirmedForRecovery.length > 0) {
+              _confirmedForRecovery.length > 0 &&
+              !(_graphExecutedFlag && _isDiagnosticIntentForScope)) {
             const _confSet = new Set(
               _confirmedForRecovery.map((c) => String(c ?? '').trim().toLowerCase()).filter(Boolean),
             );
@@ -8811,6 +9005,16 @@ export class AIAgentOrchestrator {
           }
         } catch (e) {
           console.warn(`[CONDITION_CODE_RULE_RECOVERY_FAILED] trace=${traceId} err=${(e as Error).message}`);
+        }
+
+        // Revalidate after every legacy recovery path: a candidate is not
+        // authorized solely by intent degradation, crop/stage or condition_code.
+        const _beforeDirectScope = rulesForEvaluator.length;
+        rulesForEvaluator = filterDirectIntentCandidates(rulesForEvaluator, _directIntentScope);
+        if (_directIntentScope.state !== 'NOT_DIRECT') {
+          console.log('[DIRECT_INTENT_SCOPE] trace=' + traceId
+            + ' state=' + _directIntentScope.state
+            + ' candidates=' + _beforeDirectScope + '→' + rulesForEvaluator.length);
         }
 
         // PR-7 F4: forensic snapshot of what actually reaches the layered
@@ -8928,6 +9132,10 @@ export class AIAgentOrchestrator {
             } catch (relErr) {
               console.warn(`[LANE_B_INTENT_RELEVANCE] non-fatal failure: ${(relErr as Error)?.message ?? relErr}`);
             }
+            // Enforce the identical positive direct-intent category authority
+            // on Lane B; stage_general and IOM rank alone are never permission.
+            (ctxSel as any).applicable =
+              filterDirectIntentCandidates(ctxSel.applicable, _directIntentScope);
             if (ctxSel.applicable.length > 0) {
               // FIX 7 (2026-08-28): Lane B is ADDITIVE. Context rules never
               // replace the canonical candidate stream and never overwrite
@@ -8942,16 +9150,25 @@ export class AIAgentOrchestrator {
                 .filter((m: any) => !existingIds.has(String(m?.rule_id ?? '')));
               const merged = [...existing, ...matched];
               const streamWasEmpty = existing.length === 0;
+              const nonConstraintMatched = merged.find((m: any) => {
+                const at = String(m?.action_type ?? '').trim().toUpperCase();
+                const trigger = String(m?.trigger_class ?? '').trim().toUpperCase();
+                return at !== 'BLOCK' && trigger !== 'CONTEXT_BLOCK';
+              }) ?? null;
               layeredRuleResult = {
                 ...(layeredRuleResult ?? {}),
                 matched_responses: merged,
+                // A context-only zero-candidate lane may expose advisory/constraint
+                // rows, but cannot promote a BLOCK/CONTEXT_BLOCK into primary.
                 primary_decision: streamWasEmpty
-                  ? (merged[0] ?? null)
+                  ? nonConstraintMatched
                   : (layeredRuleResult?.primary_decision ?? existing[0] ?? null),
                 rules_evaluated: (layeredRuleResult?.rules_evaluated ?? 0) + ctxSel.applicable.length,
                 rules_matched: merged.length,
                 rules_applied: merged.map((m: any) => m.rule_id),
-                prescription_allowed: streamWasEmpty ? true : (layeredRuleResult?.prescription_allowed ?? true),
+                prescription_allowed: streamWasEmpty
+                  ? !!nonConstraintMatched
+                  : (layeredRuleResult?.prescription_allowed ?? true),
                 safety_blocks: Array.isArray(layeredRuleResult?.safety_blocks)
                   ? layeredRuleResult.safety_blocks : [],
                 lane: streamWasEmpty ? 'CONTEXT' : (layeredRuleResult as any)?.lane,
@@ -8976,19 +9193,18 @@ export class AIAgentOrchestrator {
         // (G1) context-eligible AND (G2) semantically relevant to this turn
         // (hypothesis edge / intent→observation mapping / observation / same
         // condition_code as a candidate). It suppresses a candidate only via an
-        // EXPLICIT graph edge (G3). It may lead the response and enter
-        // safety_blocks only when is_safety_block=true (G4); otherwise it is an
-        // advisory appended AFTER the kept candidates. primary_decision is
-        // always taken from the kept candidate lane unless a hard block exists.
+        // EXPLICIT graph edge (G3). Safety blocks may lead only when
+        // is_safety_block=true (G4); non-safety BLOCK constraints remain
+        // constraints/advisories and cannot become primary without a valid
+        // graph-backed decision.
         try {
           const _cbCandidates = Array.isArray(layeredRuleResult?.matched_responses)
             ? layeredRuleResult.matched_responses : [];
           // 2026-09-03 — a Lane-B (zero-symptom advisory) turn with NO candidate
-          // still runs the gate: an intent-relevant CONTEXT_BLOCK (e.g.
-          // RICE_NUTR_LATE_N_BLOCK_001 for FERTILIZER_SCHEDULE at grain_filling —
-          // relevance proven through intent_observation_mapping, G2) is the only
-          // DB-authorised answer for that turn and must not be lost to a photo
-          // request. Non-Lane-B turns keep the original candidates>0 condition.
+          // still runs the gate so intent-relevant CONTEXT_BLOCK constraints are
+          // preserved for the final response and audit trail. A non-safety BLOCK
+          // is a constraint, not a positive prescription, and therefore cannot
+          // become primary when no hypothesis-backed decision survives.
           const _cbZeroCandidateLaneB =
             _cbCandidates.length === 0 && (this as any).__laneBEligible === true;
           if (_cbCandidates.length > 0 || _cbZeroCandidateLaneB) {
@@ -9125,13 +9341,19 @@ export class AIAgentOrchestrator {
             ? layeredRuleResult.matched_responses
             : [];
           const candidateIds = new Set<string>();
-          for (const id of safeApplied) {
-            const s = typeof id === 'string' ? id : String(id ?? '');
-            if (s) candidateIds.add(s);
-          }
-          for (const r of safeMatched) {
-            const s = String((r as any)?.rule_id ?? (r as any)?.id ?? '');
-            if (s) candidateIds.add(s);
+          // HYPOTHESIS_GRAPH provenance invariant:
+          // only rules explicitly authorized by surviving hypothesis→rule edges
+          // may be materialized into the hypothesis graph. Context-lane rules
+          // (including CONTEXT_BLOCK/CONTEXT_SCHEDULE) do not become hypotheses.
+          if (graphRuleIdSet.size > 0) {
+            for (const id of safeApplied) {
+              const s = typeof id === 'string' ? id : String(id ?? '');
+              if (s && graphRuleIdSet.has(s)) candidateIds.add(s);
+            }
+            for (const r of safeMatched) {
+              const s = String((r as any)?.rule_id ?? (r as any)?.id ?? '');
+              if (s && graphRuleIdSet.has(s)) candidateIds.add(s);
+            }
           }
           const existingIds = new Set(graph.hypothesis_graph.map((c) => c.rule_id));
           for (const rid of candidateIds) {
@@ -9254,7 +9476,15 @@ export class AIAgentOrchestrator {
 
         // PHASE C, GATE #3 — SCIENTIFIC VALIDATOR (after rules, before authority)
         try {
+          // Scientific validation is a treatment/diagnosis gate. A context-only
+          // BLOCK constraint is neither a diagnosis nor a treatment and must
+          // not promote prescription_allowed.
           const candidates: CandidateRecommendation[] = (layeredRuleResult.matched_responses || [])
+            .filter((r: any) => {
+              const actionType = String(r?.action_type ?? '').trim().toUpperCase();
+              const triggerClass = String(r?.trigger_class ?? '').trim().toUpperCase();
+              return actionType !== 'BLOCK' && triggerClass !== 'CONTEXT_BLOCK';
+            })
             .map((r: any) => ({
               rule_id: r?.rule_id || r?.id || 'unknown',
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
@@ -9276,6 +9506,25 @@ export class AIAgentOrchestrator {
         } catch (sciErr) {
           console.warn('[SCIENTIFIC_GATE] non-fatal failure', sciErr instanceof Error ? sciErr.message : sciErr);
         }
+        // A non-safety context constraint with no graph-backed primary decision
+        // is not a treatment authorization. Keep it visible as a constraint but
+        // fail closed for prescription.
+        if (
+          !layeredRuleResult?.primary_decision &&
+          Array.isArray(layeredRuleResult?.matched_responses) &&
+          layeredRuleResult.matched_responses.some((r: any) =>
+            String(r?.action_type ?? '').trim().toUpperCase() === 'BLOCK' ||
+            String(r?.trigger_class ?? '').trim().toUpperCase() === 'CONTEXT_BLOCK'
+          )
+        ) {
+          layeredRuleResult.prescription_allowed = false;
+          layeredRuleResult.prescription_gate_reason = 'CONTEXT_CONSTRAINT_ONLY_NO_GRAPH_DECISION';
+          console.warn(
+            `[PRESCRIPTION_GATE_FAIL_CLOSED] trace=${traceId} ` +
+            `reason=CONTEXT_CONSTRAINT_ONLY_NO_GRAPH_DECISION matched=${layeredRuleResult.matched_responses.length}`
+          );
+        }
+
 // @ts-ignore type-only widen (bulk pass 2026-09-26)
         requestCtx.chain.set('rules',
           (layeredRuleResult.rules_matched || 0) > 0 ? 0.85 : 0.4);
@@ -10677,60 +10926,35 @@ export class AIAgentOrchestrator {
         !!landContext?.current_crop;
       
       if (shouldUseStageAdvisoryFallback) {
-        const cropName = landContext.current_crop || 'crop';
-        const stageName = landContext.growth_stage || 'current stage';
-        const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
-        const userLanguage = options.language || 'mr';
-        const _grsForStageAdvisory = (this as any).__graphRuntimeState as GraphRuntimeState | undefined;
-        const _stageRealFromGraph = _grsForStageAdvisory?.last_real_observations;
-        const stageAdvisoryRealObservations = _stageRealFromGraph && _stageRealFromGraph.length > 0
-          ? [..._stageRealFromGraph]
-          : (Array.isArray((this as any)._lastRealObservations)
-              ? [...(this as any)._lastRealObservations]
-              : []);
-        const stageFallback = this.generateStageAwareFallback(
-          cropName,
-          stageName,
-          'stage_advisory',
-          landContext.days_since_sowing || 0,
-          userLanguage
+        console.log(
+          `🛑 [GRAPH_NEEDS_MORE_EVIDENCE] trace=${traceId} route=${queryRoute.route} ` +
+          `crop=${landContext?.current_crop ?? 'UNKNOWN'} reason=ZERO_RULES_NO_OBSERVATION`
         );
-        const fallbackMessage = userLanguage === 'mr'
-          ? `तुमच्या ${cropName} पिकाची अवस्था ${stageName}${dasText} आहे. सध्या खत/फवारणीचा निर्णय पिकाची अवस्था, माती परीक्षण, NDVI आणि हवामान पाहून घ्या. स्पष्ट कीड/रोगाची लक्षणे दिसत नसतील तर अनावश्यक रासायनिक फवारणी टाळा; नियोजित पोषण, पाणी व्यवस्थापन आणि निरीक्षण चालू ठेवा.`
-          : userLanguage === 'hi'
-            ? `आपकी ${cropName} फसल अभी ${stageName}${dasText} अवस्था में है। अभी खाद/स्प्रे का निर्णय फसल अवस्था, मिट्टी परीक्षण, NDVI और मौसम देखकर लें। कीट/रोग के स्पष्ट लक्षण न हों तो अनावश्यक रासायनिक स्प्रे टालें; नियोजित पोषण, पानी प्रबंधन और निगरानी जारी रखें।`
-            : `Your ${cropName} crop is at ${stageName}${dasText}. Use crop stage, soil test, NDVI and weather before deciding fertilizer or spray. If there are no clear pest/disease symptoms, avoid unnecessary chemical spray; continue scheduled nutrition, water management and monitoring.`;
-        agentsUsed.push('STAGE_ADVISORY_FALLBACK');
+        agentsUsed.push('GRAPH_NEEDS_MORE_EVIDENCE');
+        const confirmed = Array.isArray((this as any)._lastRealObservations)
+          ? [...(this as any)._lastRealObservations]
+          : [];
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
-          decision_output: {
-            decision_id: `stage_advisory_${Date.now()}`,
-            session_id: sessionId,
-            status: 'STAGE_FALLBACK',
-            decision_brain_source: true,
-            stage_fallback_message: fallbackMessage,
-            action_codes: stageFallback.action_codes,
-            rules_applied: [],
-            metadata: {
-              ...stageFallback.metadata,
-              route: queryRoute.route,
-              reason: 'ZERO_RULES_FOR_SYMPTOM_FREE_ADVISORY',
-              i18n_key: stageFallback.i18n_key,
-              real_observations: stageAdvisoryRealObservations
-            }
-          } as any,
+          decision_output: this.buildStructuredNoDecision({
+            trace_id: traceId,
+            graph_gap: 'NO_RULE_MATCHED',
+            confirmed,
+            hypotheses_partial: [],
+            attempted_edges: (this as any)._graphObsToHypEdges ?? [],
+            candidate_rules: []
+          }) as any,
           dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
           metadata: {
-            confidence: 0.65,
-            safety_status: 'SAFE_STAGE_ADVISORY',
+            confidence: 0,
+            safety_status: 'GRAPH_NEEDS_MORE_EVIDENCE',
             rules_applied: 0,
             processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
+            agents_used: [...agentsUsed],
             trace_id: traceId,
-            response_source: 'STAGE_ADVISORY_FALLBACK',
+            response_source: 'GRAPH_NEEDS_MORE_EVIDENCE',
             symptomKeys: Array.from(allObservationsForPreAuth || []),
-            real_observations: stageAdvisoryRealObservations,
             isEmergency: false
           }
         } as any;
