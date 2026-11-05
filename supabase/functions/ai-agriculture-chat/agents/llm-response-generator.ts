@@ -73,6 +73,8 @@ export interface SymbolicNarrationInput {
     crop_stage?: string;
     village?: string;
     district?: string;
+    expected_harvest_date?: string;
+    days_to_expected_harvest?: number | null;
   };
 }
 
@@ -362,6 +364,13 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
     
     prompt += `AUTHORITATIVE_CONTEXT (IMMUTABLE — DO NOT MODIFY):\n`;
     prompt += JSON.stringify(authContext, null, 2) + '\n\n';
+    if (land_context.expected_harvest_date) {
+      prompt += 'AUTHORITATIVE_LAND_FACTS (IMMUTABLE):\n';
+      prompt += JSON.stringify({
+        expected_harvest_date: land_context.expected_harvest_date,
+        days_to_expected_harvest: land_context.days_to_expected_harvest ?? null
+      }, null, 2) + '\n\n';
+    }
     prompt += `CRITICAL: You MUST use "${cropLocalName}" as the crop name. DO NOT use any other crop name.\n\n`;
   }
   
