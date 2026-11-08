@@ -19,7 +19,9 @@ CREATE POLICY "Verified farmers can view owned completions" ON public.task_compl
     AND EXISTS (
       SELECT 1 FROM public.schedule_tasks t
       JOIN public.crop_schedules s ON s.id = t.schedule_id
-      WHERE t.id = task_id AND s.farmer_id = farmer_id
+      WHERE t.id = task_id
+        AND s.farmer_id = (SELECT public.get_current_farmer_id())
+        AND t.farmer_id = (SELECT public.get_current_farmer_id())
     )
   );
 
@@ -792,7 +794,12 @@ BEGIN
    WHERE id = p_task_id RETURNING * INTO v_task;
 
   -- Only ACTUAL user-entered measurement feeds the weather bucket.
-  IF p_completed AND v_task.task_type = 'irrigation' AND p_actual_resources IS NOT NULL THEN
+  -- The weather derive pipeline currently uses event.created_at to choose the
+  -- water-bucket day. A retrospectively entered operation must NOT be applied
+  -- to today's water balance; keep it in the completion ledger only until
+  -- the historical event/replay model is explicitly implemented.
+  IF p_completed AND v_task.task_type = 'irrigation'
+     AND p_actual_resources IS NOT NULL AND v_action_at::date = current_date THEN
     IF (p_actual_resources ? 'applied_depth_mm')
        AND jsonb_typeof(p_actual_resources->'applied_depth_mm') = 'number' THEN
       v_applied_depth := (p_actual_resources->>'applied_depth_mm')::numeric;
