@@ -314,7 +314,9 @@ serve(async (req) => {
         adjustmentReason: null,
         resources: {
           ...(task.resources ?? {}),
-          ...(projection?.resources?.timeline ? { timeline: projection.resources.timeline } : {}),
+          // No pre-generation timeline state: a land may still hold the previous
+          // crop's provisional stage until the new schedule is committed. Dynamic
+          // reconciliation calculates this only AFTER the new crop becomes active.
         },
       };
     });
