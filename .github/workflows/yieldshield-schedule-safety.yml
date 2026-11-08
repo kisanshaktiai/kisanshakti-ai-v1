@@ -26,5 +26,19 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Verify YieldShield decision guards
         run: bun run test -- tests/schedule/yieldshield_decision_contract.test.ts
+      - name: Validate staged SQL migration syntax (does not touch database)
+        run: |
+          python3 -m pip install --quiet pglast
+          python3 - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+          files = [
+            Path('supabase/migrations/20261108153000_yieldshield_schedule_integrity.sql'),
+            Path('supabase/migrations/20261108154500_yieldshield_weekly_yield_array_fix.sql'),
+          ]
+          for path in files:
+            parse_sql(path.read_text())
+            print(f"SQL syntax OK: {path}")
+          PY
       - name: Production build without deploying
         run: bun run build
