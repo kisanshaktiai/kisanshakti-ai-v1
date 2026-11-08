@@ -88,6 +88,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { applyFieldDecisions, DECISION_APPLICATION_VERSION } from "./decision-application.ts";
+import { isServiceRoleBearer } from "../_shared/sessionVerify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -176,6 +177,15 @@ serve(async (req) => {
 
   const invokedAt = Date.now();
   try {
+    // The scheduled cron uses the Vault-backed schedule_reconciler_key.
+    // Reject all anonymous/farmer callers before any service-role mutation.
+    const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    let authorized = isServiceRoleBearer(req);
+    if (!authorized && bearer) {
+      const { data: secret, error: secretError } = await supabase.rpc("get_sweep_key", { p_name: "schedule_reconciler_key" });
+      authorized = !secretError && typeof secret === "string" && secret.length > 0 && bearer === secret;
+    }
+    if (!authorized) return json({ success: false, error: "Internal schedule service authentication required" }, 401);
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
     const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;
@@ -400,12 +410,17 @@ serve(async (req) => {
 
       const { data: tasks } = await supabase
         .from("schedule_tasks")
-        .select("id, task_name, task_date, projected_date, days_from_sowing, anchor_type, anchor_stage, status, is_pinned, original_date")
+        .select("id, task_name, task_date, projected_date, days_from_sowing, anchor_type, anchor_stage, status, is_pinned, original_date, decision_state, adjustment_reason")
         .eq("schedule_id", sched.id)
         .eq("status", "pending");
 
+      // Weather/soil decisions win over a generic biological-date shift.
+      // A stage-drift update must not undo an application safety deferral.
+      const fieldUpdated = new Set(adjustments.filter(a => ["DEFER","ADVANCE","FLAG"].includes(String(a.change_type))).map(a => String(a.task_id)));
       for (const task of tasks || []) {
         examined += 1;
+        if (fieldUpdated.has(String(task.id)) ||
+            (task.decision_state === "BLOCKED" && String(task.adjustment_reason ?? "").startsWith("decision_"))) { skipped += 1; continue; }
         if (task.is_pinned) { skipped += 1; continue; } // farmer-pinned dates are never moved
         if (task.anchor_type !== "STAGE" || !task.anchor_stage) { skipped += 1; continue; } // DAS-anchored tasks are never stage-shifted
         // Only re-anchor from the observed biological stage onward: tasks whose baseline

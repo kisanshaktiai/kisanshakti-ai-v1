@@ -453,7 +453,7 @@ serve(async (req) => {
     }));
     const schedulePayload = {
       land_id: landId, farmer_id: farmerId, tenant_id: tenantId, crop_name: inputs.cropLabel || cropName, crop_variety: inputs.varietyName,
-      variety_id: inputs.varietyId, cultivation_method: inputs.stageClockMethod ?? inputs.cultivationMethod, crop_cycle: inputs.cropCycle,
+      variety_id: inputs.varietyId, cultivation_method: inputs.cultivationMethod, crop_cycle: inputs.cropCycle,
       sowing_date: inputs.sowingDate, transplant_date: inputs.transplantDate, expected_harvest_date: harvestDateStr, is_active: true, status: "active",
       generation_language: language, ai_model: narration.narrated ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (${COMPOSER_VERSION})` : "none",
       input_soil_data: landContext.soil, input_weather_data: landContext.weather, input_land_coordinates: landContext.coordinates, agro_climatic_zone: landContext.agroClimaticZone,

@@ -49,7 +49,7 @@ const norm = (s: unknown) => String(s ?? "").trim().toUpperCase();
 /** Decision keys emitted by derive_farm_decisions (DB), matched by prefix. */
 const KEY = {
   IRRIGATE: "water:irrigate",
-  NO_IRRIGATION: "water:no_irrigation",
+  NO_IRRIGATION: "water:ok",
   NO_WATER_DATA: "water:no_data",
   NO_SPRAY: "info:ENV_NO_SPRAY_TODAY",
   SPRAY_OK: "info:ENV_SPRAY_WINDOW_GOOD",
@@ -203,7 +203,8 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   let stressHandledByIrrigation = false;
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   const irrigate = byKey(KEY.IRRIGATE).find((d) => d.status === "DUE") ?? null;
-  const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? null;
+  // Compatibility with historic decisions recorded before the contract fix.
+  const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? byKey("water:no_irrigation")[0] ?? null;
   const noWaterData = byKey(KEY.NO_WATER_DATA)[0] ?? null;
 
   if (noIrrigation) {
@@ -216,6 +217,15 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
         continue;
       }
       const next = addDays(task.task_date, step);
+      const end = Number(rec?.window_end);
+      if (Number.isFinite(end) && todayDas != null && todayDas > end) {
+        await state(task, noIrrigation, "INFO", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Irrigation stage window has ended; no new application scheduled");
+        continue;
+      }
+      if (Number.isFinite(end) && input.sowingDate && next > addDays(input.sowingDate, end)) {
+        await state(task, noIrrigation, "BLOCKED", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Next irrigation cadence would exceed the approved stage window; date not moved");
+        continue;
+      }
       if (await state(task, noIrrigation, "BLOCKED", "DEFER", { task_date: task.task_date }, { task_date: next }, "Field-state decision: no irrigation needed today — deferred by the task's declared cadence", { task_date: next, projected_date: next, original_date: task.original_date ?? task.task_date, auto_rescheduled: true, adjustment_reason: "decision_no_irrigation", resources: { ...(task.resources ?? {}), dynamic: { ...dyn(task), deferred_on: decisionDay, deferred_by: noIrrigation.id } } })) {
         record(task, "DEFER", { task_date: task.task_date }, { task_date: next }, "no irrigation needed per farm_decision " + String(noIrrigation.decision_key), noIrrigation);
         counters.deferred += 1;
@@ -286,7 +296,8 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     }
   } else {
     const deficiency = byKey(KEY.NUTRIENT).find((d) => d.status === "DUE" || d.status === "WATCH") ?? null;
-    if (deficiency) {
+    if (deficiency && deficiency.status === "DUE" && deficiency.action_code === "APPLY_NUTRIENT_VERIFIED") {
+      // WATCH/OBSERVE_BEFORE_INPUT never authorizes a fertilizer application.
       // The next nutrition card whose OWN window has opened comes forward; the quantity is untouched.
       const next = nutrition.find((t) => t.task_date > horizon) ?? null;
       if (next && !stampedToday(next, "advanced_on") && !stampedToday(next, "deferred_on")) {

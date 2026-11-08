@@ -108,9 +108,18 @@ export async function getSeedRate(
 
 export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance;cultivation_context:string|null; }
 export async function getFertilizerPlan(supabase:SupabaseClient,cropCode:string,regionCode:string|null,fertilityClass:string|null,methodTokens:string[]=[]):Promise<FertilizerPlan|null>{
-  const {data}=await supabase.from("fertilizer_recommendation_master").select("id, crop_code, region_code, soil_fertility_class, n_kg_ha, p2o5_kg_ha, k2o_kg_ha, split_schedule, source, authority, confidence, cultivation_context").ilike("crop_code",cropCode);const rows=data||[];if(!rows.length)return null;
+  const {data}=await supabase.from("fertilizer_recommendation_master").select("id, crop_code, region_code, soil_fertility_class, n_kg_ha, p2o5_kg_ha, k2o_kg_ha, split_schedule, source, authority, confidence, cultivation_context, review_status").ilike("crop_code",cropCode).eq("review_status","approved");const rows=data||[];if(!rows.length)return null;
   const tokens=[...new Set(methodTokens.filter(Boolean).map(t=>String(t).toLowerCase()))];const contextMatches=(r:Record<string,unknown>)=>{const c=String(r.cultivation_context??"").toLowerCase();return !!c&&tokens.some(t=>c.includes(t));};
-  const score=(r:Record<string,unknown>)=>(contextMatches(r)?4:0)+(regionCode&&String(r.region_code??"").toLowerCase()===regionCode.toLowerCase()?2:0)+(fertilityClass&&String(r.soil_fertility_class??"").toLowerCase()===fertilityClass.toLowerCase()?2:0)+(r.region_code==null?1:0);const best=[...rows].sort((a,b)=>score(b)-score(a))[0];const gaps:string[]=[];let splitParsed:unknown=best.split_schedule;
+  const score=(r:Record<string,unknown>)=>(contextMatches(r)?4:0)+(regionCode&&String(r.region_code??"").toLowerCase()===regionCode.toLowerCase()?2:0)+(fertilityClass&&String(r.soil_fertility_class??"").toLowerCase()===fertilityClass.toLowerCase()?2:0)+(r.region_code==null?1:0);// An unrelated district/soil/method recommendation is not a safe numeric dose.
+  // Free-text seasonal contexts (e.g. 'kharif', 'suru plant crop') are not
+  // automatically equivalent to a cultivation method. No guessing.
+  const eligible=rows.filter((r:Record<string,unknown>)=>
+    (!r.region_code || !!regionCode && String(r.region_code).toLowerCase()===regionCode.toLowerCase()) &&
+    (!r.soil_fertility_class || !!fertilityClass && String(r.soil_fertility_class).toLowerCase()===fertilityClass.toLowerCase()) &&
+    (!r.cultivation_context || contextMatches(r))
+  );
+  if(!eligible.length)return null;
+  const best=[...eligible].sort((a,b)=>score(b)-score(a))[0];const gaps:string[]=[];let splitParsed:unknown=best.split_schedule;
   if(tokens.length&&best.cultivation_context&&!contextMatches(best))gaps.push(`fertilizer_context_mismatch:${String(best.cultivation_context)}`);
   if(typeof splitParsed==="string"){const trimmed=splitParsed.trim();if(!trimmed)splitParsed=null;else{try{splitParsed=JSON.parse(trimmed);}catch{splitParsed=null;gaps.push("fertilizer_split_schedule_unparseable");}}}
   const splits=Array.isArray(splitParsed)?splitParsed:splitParsed&&typeof splitParsed==="object"?Object.values(splitParsed):[];return{n_kg_ha:best.n_kg_ha!=null?Number(best.n_kg_ha):null,p2o5_kg_ha:best.p2o5_kg_ha!=null?Number(best.p2o5_kg_ha):null,k2o_kg_ha:best.k2o_kg_ha!=null?Number(best.k2o_kg_ha):null,splits:splits as Array<Record<string,unknown>>,gaps,provenance:{table:"fertilizer_recommendation_master",row_id:best.id,source:best.source??null,authority:best.authority??null,confidence:best.confidence!=null?Number(best.confidence):null},cultivation_context:best.cultivation_context!=null?String(best.cultivation_context):null};
