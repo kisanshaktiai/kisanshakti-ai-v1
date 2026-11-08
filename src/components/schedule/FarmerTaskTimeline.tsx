@@ -48,6 +48,8 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
+  // Optional farmer MEASUREMENT; never default to the scheduled water volume.
+  const [actualIrrigationLitres, setActualIrrigationLitres] = useState<Record<string, string>>({});
   // The TTS service maps the app language to a device locale itself, so no
   // per-language map is kept here (a map silently sent every unlisted language
   // to en-US, which read Indian-script text with an English voice).
@@ -85,19 +87,30 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   }, [voiceUnavailable, canInstallVoice, openVoiceInstall, t]);
 
   const complete = async (taskId: string, completed: boolean) => {
+    const irrigationTask = tasks.find((task) => task.id === taskId && task.task_type === 'irrigation');
+    const rawLitres = actualIrrigationLitres[taskId]?.trim() ?? '';
+    const parsedLitres = rawLitres ? Number(rawLitres) : null;
+    if (completed && irrigationTask && rawLitres && (parsedLitres === null || !Number.isFinite(parsedLitres) || parsedLitres <= 0)) {
+      toast.error(t('schedule.irrigation.invalid_actual_litres', 'Enter a positive measured volume in litres, or leave blank if unknown.'));
+      throw new Error('Invalid measured irrigation volume');
+    }
+    const actualResources = completed && irrigationTask && parsedLitres != null
+      ? { volume_litres: parsedLitres } : null;
     const completedAt = completed ? new Date().toISOString() : undefined;
     onTaskUpdate?.(taskId, { status: completed ? 'completed' : 'pending', completed_at: completedAt });
     try {
       const { schedulesApi } = await import('@/services/schedulesApi');
-      const saved = await schedulesApi.setTaskCompletion(taskId, completed, completedAt);
-      // A recurring stage-level task can remain pending for its next occurrence.
-      // Always use the server's confirmed date/status, not the optimistic "done".
+      const saved = await schedulesApi.setTaskCompletion(taskId, completed, completedAt, actualResources);
+      // Recurring irrigation/scouting cards can remain pending after an event.
+      // Always render server-confirmed date/status rather than optimistic "done".
       if (saved) onTaskUpdate?.(taskId, saved);
+      if (completed && irrigationTask) setActualIrrigationLitres((prev) => ({ ...prev, [taskId]: '' }));
       onTaskComplete?.();
     } catch (error) {
       onTaskUpdate?.(taskId, { status: completed ? 'pending' : 'completed' });
       toast.error(t('schedule.toast.sync_failed'));
       console.error('Task completion sync failed', error);
+      throw error;
     }
   };
 
@@ -190,6 +203,24 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                               </Button>
                             </div>
                             {((task.product_recommendations?.length ?? 0) > 0 || Number(task.resources?.labor_cost) > 0) && <ProductRecommendationCard products={task.product_recommendations || []} landAreaAcres={1} laborCost={task.resources?.labor_cost || 0} laborDays={task.resources?.labor_days || 0} laborWorkers={task.resources?.labor_workers || 0} laborDaysPerAcre={task.resources?.labor_days_per_acre || 0} laborDailyWage={task.resources?.labor_daily_wage || 350} laborDescription={task.resources?.labor_description || ''} />}
+                            {!expired && task.task_type === 'irrigation' && task.status !== 'completed' && (
+                              <div className="space-y-2 rounded-lg border border-border p-3">
+                                <label className="block text-sm font-medium text-foreground" htmlFor={`irrigation-volume-${task.id}`}>
+                                  {t('schedule.irrigation.actual_litres_label', 'Actual water applied (litres, optional)')}
+                                </label>
+                                <input
+                                  id={`irrigation-volume-${task.id}`}
+                                  type="number" inputMode="decimal" min="0" step="any"
+                                  className="h-11 w-full rounded-md border border-input bg-background px-3 text-foreground"
+                                  value={actualIrrigationLitres[task.id] ?? ''}
+                                  onChange={(event) => setActualIrrigationLitres((prev) => ({ ...prev, [task.id]: event.target.value }))}
+                                  placeholder={t('schedule.irrigation.actual_litres_placeholder', 'Leave blank if not measured')}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  {t('schedule.irrigation.actual_litres_hint', 'Only enter water you measured. Planned amounts are not actual measurements.')}
+                                </p>
+                              </div>
+                            )}
                             {!expired && <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />}
                           </div>
                         </CollapsibleContent>
