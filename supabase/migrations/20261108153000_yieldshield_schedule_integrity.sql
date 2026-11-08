@@ -39,7 +39,7 @@ CREATE OR REPLACE FUNCTION public.persist_ai_crop_schedule_atomic(p_schedule jso
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
-AS $function$
+AS $function$;
 declare
   v_schedule_id uuid;
   v_task_count integer;
@@ -196,7 +196,7 @@ begin
 
   return query select v_schedule_id, v_task_count;
 end;
-$function$
+$function$;
 
 
 -- The selected cultivation method is recorded on crop_schedules.
@@ -206,7 +206,7 @@ CREATE OR REPLACE FUNCTION public.resolve_crop_phenology(p_land_id uuid)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$
+AS $function$;
 declare
   v_land               record;
   v_sched              record;
@@ -291,14 +291,14 @@ begin
     p_land_id            := p_land_id
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.resolve_biological_profile(p_land_id uuid, p_as_of date DEFAULT CURRENT_DATE)
  RETURNS TABLE(crop_code text, crop_cycle text, cultivation_method text, establishment_method text, production_system text, planting_method text, variety_id uuid, sowing_date date, sowing_source text, transplant_date date, current_gdd numeric, evidence text[])
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$
+AS $function$;
 DECLARE
   v_land              record;
   v_schedule_sow_date date;
@@ -360,7 +360,7 @@ BEGIN
     v_land.current_gdd,
     v_evidence;
 END;
-$function$
+$function$;
 
 
 -- Carry existing water confidence into the decision input. The 0.30 gate
@@ -371,7 +371,7 @@ CREATE OR REPLACE FUNCTION public.build_land_farm_state(p_land_id uuid, p_date d
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$
+AS $function$;
 DECLARE
   v_land record; v_phen record; v_w record; v_ndvi record;
   v_s_das_min integer; v_s_das_max integer; v_s_ref text; v_s_gdd_min numeric; v_s_gdd_max numeric;
@@ -483,14 +483,14 @@ BEGIN
      canopy = EXCLUDED.canopy, observations = EXCLUDED.observations, alerts_pending = EXCLUDED.alerts_pending,
      gaps = EXCLUDED.gaps, state = EXCLUDED.state, state_version = EXCLUDED.state_version, computed_at = now();
   RETURN v_state;
-END $function$
+END $function$;
 
 CREATE OR REPLACE FUNCTION public.derive_farm_decisions(p_land_id uuid, p_date date DEFAULT CURRENT_DATE, p_obs_lookback_days integer DEFAULT 7)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$
+AS $function$;
 DECLARE
   v_st record; v_ten uuid; v_far uuid; v_water jsonb; v_wdate date;
   v_moist boolean := false; v_prio text; v_al record; v_rule record; v_cat text; v_cls text;
@@ -663,7 +663,7 @@ BEGIN
 
   RETURN jsonb_build_object('ok', true, 'land_id', p_land_id, 'date', p_date, 'due', v_due, 'watch', v_watch,
                             'blocked', v_blocked, 'info', v_info, 'stage', v_st.stage_code, 'stage_source', v_st.stage_source, 'gaps', to_jsonb(v_st.gaps));
-END $function$
+END $function$;
 
 
 -- One transaction: verified server owner → status change → execution ledger
@@ -684,7 +684,7 @@ CREATE OR REPLACE FUNCTION public.complete_schedule_task_atomic(
   p_effectiveness_rating integer DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
-AS $function$
+AS $function$;
 DECLARE
   v_task public.schedule_tasks%ROWTYPE;
   v_owner record;

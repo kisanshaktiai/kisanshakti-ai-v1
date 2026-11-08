@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION public.compute_land_yield_estimate(p_land_id uuid, p_
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$
+AS $function$;
 DECLARE
   pol          jsonb;
   land         record;
@@ -192,6 +192,6 @@ BEGIN
 
   RETURN out_row;
 END;
-$function$
+$function$;
 
 COMMIT;
