@@ -217,7 +217,10 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
         await state(task, noIrrigation, "BLOCKED", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Field-state decision: no irrigation needed; task has no declared cadence so it is not moved");
         continue;
       }
-      const next = addDays(task.task_date, step);
+      // An overdue stage-level recurrence is a standing plan, not a backlog of
+      // missed irrigation events. Schedule from today rather than replaying each
+      // unconfirmed historical interval one day at a time.
+      const next = addDays(task.task_date > input.todayIso ? task.task_date : input.todayIso, step);
       const end = Number(rec?.window_end);
       if (Number.isFinite(end) && todayDas != null && todayDas > end) {
         await state(task, noIrrigation, "INFO", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Irrigation stage window has ended; no new application scheduled");
