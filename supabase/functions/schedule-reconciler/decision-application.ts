@@ -267,10 +267,19 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     for (const task of dueApplications) {
       if (stampedToday(task, "last_deferred_on")) continue;
       const next = addDays(input.todayIso, 1);
-      const stageEndDas = input.stageRow && task.anchor_stage && input.stageRow.stage_code && norm(task.anchor_stage) === norm(input.stageRow.stage_code) ? input.stageRow.das_max : null;
-      const stageEndIso = stageEndDas != null && input.sowingDate ? addDays(String(input.sowingDate).slice(0, 10), stageEndDas) : null;
+      // The task's own DB-authored window is more authoritative than the
+      // currently resolved stage. Never defer a plant-protection application
+      // beyond an approved window, and never guess that a missing window is
+      // unlimited permission to postpone.
+      const ownWindow = (task.resources?.window ?? null) as Record<string, unknown> | null;
+      const ownEnd = ownWindow?.to_das == null ? null : Number(ownWindow.to_das);
+      const observedStageEnd = input.stageRow && task.anchor_stage && input.stageRow.stage_code &&
+        norm(task.anchor_stage) === norm(input.stageRow.stage_code) ? input.stageRow.das_max : null;
+      const stageEndDas = ownEnd != null && Number.isFinite(ownEnd) ? ownEnd : observedStageEnd;
+      const stageEndIso = stageEndDas != null && input.sowingDate
+        ? addDays(String(input.sowingDate).slice(0, 10), stageEndDas) : null;
       const prior = Number(dyn(task).application_deferrals ?? 0);
-      if (stageEndIso && next > stageEndIso) {
+      if (!stageEndIso || next > stageEndIso) {
         if (await state(task, noSpray, "BLOCKED", "FLAG", { task_date: task.task_date }, { task_date: task.task_date, priority: "high" }, "No usable application window today and the stage window ends before tomorrow — kept today, flagged", { priority: task.priority && PRIORITY_RANK[task.priority] >= PRIORITY_RANK.high ? task.priority : "high", resources: { ...(task.resources ?? {}), dynamic: { ...dyn(task), field_verdict: "application_window_exhausted", as_of: decisionDay } } })) {
           record(task, "FLAG", { task_date: task.task_date }, { field_verdict: "application_window_exhausted" }, "no spray window and stage window exhausted per farm_decision " + String(noSpray.decision_key), noSpray);
           counters.flagged += 1;
