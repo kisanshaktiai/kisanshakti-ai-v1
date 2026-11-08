@@ -204,12 +204,19 @@ class SchedulesApiService {
     return result.data;
   }
 
-  async setTaskCompletion(taskId: string, completed: boolean, completedAt?: string): Promise<any> {
+  async setTaskCompletion(
+    taskId: string,
+    completed: boolean,
+    completedAt?: string,
+    actualResources?: Record<string, number> | null,
+  ): Promise<any> {
     const headers = await this.getHeaders();
+    // Keep the same operation key across fetchWithRetry attempts.
+    const operationId = crypto.randomUUID();
     const response = await this.fetchWithRetry(`${SCHEDULES_API_URL}/tasks/${taskId}/complete`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed, completed_at: completedAt }),
+      body: JSON.stringify({ completed, completed_at: completedAt, operation_id: operationId, actual_resources: actualResources ?? null }),
     });
 
     if (!response.ok) {

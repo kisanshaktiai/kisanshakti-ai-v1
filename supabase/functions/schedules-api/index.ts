@@ -287,8 +287,11 @@ serve(async (req) => {
         const body = await req.json().catch(() => ({}));
         const ALLOWED = [
           'task_name', 'task_description', 'task_date', 'priority',
-          'status', 'completed_at', 'instructions', 'is_pinned',
+          'instructions', 'is_pinned',
         ];
+        if ('status' in body || 'completed_at' in body) {
+          return json({ error: 'Use the authenticated /tasks/:taskId/complete operation for completion changes', code: 'COMPLETION_ENDPOINT_REQUIRED' }, 400);
+        }
         const updates: Record<string, unknown> = {};
         for (const key of ALLOWED) {
           if (key in body) updates[key] = body[key];
@@ -296,6 +299,8 @@ serve(async (req) => {
         if (Object.keys(updates).length === 0) {
           return json({ error: 'No updatable fields supplied' }, 400);
         }
+        // A farmer's manual date edit remains pinned against nightly automation.
+        if ('task_date' in updates) updates.is_pinned = true;
         updates.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase
@@ -321,53 +326,30 @@ serve(async (req) => {
 
         const body = await req.json().catch(() => ({}));
         const completed = body?.completed !== false;
-        const completedAt = completed ? (body?.completed_at || new Date().toISOString()) : null;
-        const { data, error } = await supabase
-          .from('schedule_tasks')
-          .update({
-            status: completed ? 'completed' : 'pending',
-            completed_at: completedAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', taskId)
-          .select('*')
-          .maybeSingle();
-
+        // Idempotency key is supplied by the client and reused by fetch retries.
+        // Older clients get a server-generated key; both routes use one DB transaction.
+        const operationId = typeof body?.operation_id === 'string' &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.operation_id)
+          ? body.operation_id : crypto.randomUUID();
+        const { data: outcome, error } = await supabase.rpc('complete_schedule_task_atomic', {
+          p_task_id: taskId,
+          p_farmer_id: farmerId,
+          p_operation_id: operationId,
+          p_completed: completed,
+          p_completed_at: body?.completed_at ?? null,
+          p_actual_resources: body?.actual_resources ?? null,
+          p_actual_cost: body?.actual_cost ?? null,
+          p_notes: body?.notes ?? null,
+          p_photos: Array.isArray(body?.photos) ? body.photos : null,
+          p_weather_conditions: body?.weather_conditions ?? null,
+          p_difficulty_rating: body?.difficulty_rating ?? null,
+          p_effectiveness_rating: body?.effectiveness_rating ?? null,
+        });
         if (error) {
-          console.error('❌ [SchedulesAPI] Task completion failed:', error);
-          return json({ error: 'Failed to update task status', details: error.message }, 500);
+          console.error('❌ [SchedulesAPI] Atomic completion failed:', error.message);
+          return json({ error: 'Failed to record task operation', code: 'TASK_OPERATION_FAILED' }, 409);
         }
-
-        // 2026-09-21 — EXECUTION LEDGER. schedule_tasks.status is the current UI state;
-        // task_completions is the durable farmer-action ledger used by downstream refinement.
-        // Do not copy planned quantities into actual_resources: an actual field dose must come
-        // from the farmer, not from the schedule's recommendation.
-        if (completed) {
-          const { error: ledgerError } = await supabase
-            .from('task_completions')
-            .insert({
-              task_id: taskId,
-              farmer_id: farmerId,
-              action: 'completed',
-              action_date: completedAt || new Date().toISOString(),
-              actual_resources: body?.actual_resources ?? null,
-              actual_cost: body?.actual_cost ?? null,
-              notes: body?.notes ?? null,
-              photos: Array.isArray(body?.photos) ? body.photos : null,
-              weather_conditions: body?.weather_conditions ?? null,
-              difficulty_rating: body?.difficulty_rating ?? null,
-              effectiveness_rating: body?.effectiveness_rating ?? null,
-            });
-          if (ledgerError) {
-            console.error('❌ [SchedulesAPI] Task completion ledger write failed:', ledgerError);
-            await supabase
-              .from('schedule_tasks')
-              .update({ status: 'pending', completed_at: null, updated_at: new Date().toISOString() })
-              .eq('id', taskId);
-            return json({ error: 'Failed to record task completion', details: ledgerError.message, code: 'TASK_COMPLETION_LEDGER_FAILED' }, 500);
-          }
-        }
-        return json({ data });
+        return json({ data: outcome?.task ?? null, idempotent: outcome?.idempotent === true, recurrence_open: outcome?.recurrence_open === true });
       }
 
       case 'DELETE': {
