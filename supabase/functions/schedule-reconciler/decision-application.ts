@@ -39,6 +39,7 @@
 //   No threshold, cadence, crop or language word lives here.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
+import { isNoIrrigationDecision, canAdvanceNutrient, irrigationDeferralWithinStage } from "./decision-contract.ts";
 
 export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.2.0";
 
@@ -204,7 +205,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   const irrigate = byKey(KEY.IRRIGATE).find((d) => d.status === "DUE") ?? null;
   // Compatibility with historic decisions recorded before the contract fix.
-  const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? byKey("water:no_irrigation")[0] ?? null;
+  const noIrrigation = decisions.find(d => isNoIrrigationDecision(d.decision_key)) ?? null;
   const noWaterData = byKey(KEY.NO_WATER_DATA)[0] ?? null;
 
   if (noIrrigation) {
@@ -222,7 +223,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
         await state(task, noIrrigation, "INFO", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Irrigation stage window has ended; no new application scheduled");
         continue;
       }
-      if (Number.isFinite(end) && input.sowingDate && next > addDays(input.sowingDate, end)) {
+      if (Number.isFinite(end) && !irrigationDeferralWithinStage(next, input.sowingDate, end)) {
         await state(task, noIrrigation, "BLOCKED", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Next irrigation cadence would exceed the approved stage window; date not moved");
         continue;
       }
@@ -296,7 +297,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     }
   } else {
     const deficiency = byKey(KEY.NUTRIENT).find((d) => d.status === "DUE" || d.status === "WATCH") ?? null;
-    if (deficiency && deficiency.status === "DUE" && deficiency.action_code === "APPLY_NUTRIENT_VERIFIED") {
+    if (canAdvanceNutrient(deficiency)) {
       // WATCH/OBSERVE_BEFORE_INPUT never authorizes a fertilizer application.
       // The next nutrition card whose OWN window has opened comes forward; the quantity is untouched.
       const next = nutrition.find((t) => t.task_date > horizon) ?? null;

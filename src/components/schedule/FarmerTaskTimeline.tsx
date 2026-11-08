@@ -89,7 +89,10 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
     onTaskUpdate?.(taskId, { status: completed ? 'completed' : 'pending', completed_at: completedAt });
     try {
       const { schedulesApi } = await import('@/services/schedulesApi');
-      await schedulesApi.setTaskCompletion(taskId, completed, completedAt);
+      const saved = await schedulesApi.setTaskCompletion(taskId, completed, completedAt);
+      // A recurring stage-level task can remain pending for its next occurrence.
+      // Always use the server's confirmed date/status, not the optimistic "done".
+      if (saved) onTaskUpdate?.(taskId, saved);
       onTaskComplete?.();
     } catch (error) {
       onTaskUpdate?.(taskId, { status: completed ? 'pending' : 'completed' });

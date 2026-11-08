@@ -447,7 +447,18 @@ serve(async (req) => {
       // stays on the card as the agronomic figure. Both are persisted.
       // A stage-total volume is NOT the per-event irrigation dose.
       water_required_liters: t.water_volume?.per_event_liters ?? null,
-      resources: { ...(preparedTasks[idx]?.resources ?? t.resources ?? {}), ...(preparedTasks[idx]?.originalDate ? { original_date: preparedTasks[idx].originalDate, auto_rescheduled: preparedTasks[idx].autoRescheduled, adjustment_reason: preparedTasks[idx].adjustmentReason } : {}), ...(t.quantity ? { quantity: t.quantity } : {}), ...(t.water_volume ? { water_volume: t.water_volume } : {}), ...(t.recurrence ? { recurrence: t.recurrence } : {}), ...(sanitized[idx]?.technical_details?.length ? { technical_details: sanitized[idx].technical_details } : {}), ...(narratedIdx.has(idx) ? {} : { needs_translation: true, source_language: null, target_language: language }) },
+      resources: { ...(preparedTasks[idx]?.resources ?? t.resources ?? {}),
+        baseline_snapshot: {
+          date: preparedTasks[idx]?.originalDate ?? null,
+          days_from_sowing: t.days_from_sowing,
+          stage_uuid: t.stage_uuid,
+          anchor_type: t.anchor_type,
+          anchor_stage: t.anchor_stage,
+          quantity: t.quantity ?? null,
+          recurrence: t.recurrence ?? null,
+          source_refs: t.source_refs,
+          generator_version: GENERATOR_VERSION,
+        }, ...(preparedTasks[idx]?.originalDate ? { original_date: preparedTasks[idx].originalDate, auto_rescheduled: preparedTasks[idx].autoRescheduled, adjustment_reason: preparedTasks[idx].adjustmentReason } : {}), ...(t.quantity ? { quantity: t.quantity } : {}), ...(t.water_volume ? { water_volume: t.water_volume } : {}), ...(t.recurrence ? { recurrence: t.recurrence } : {}), ...(sanitized[idx]?.technical_details?.length ? { technical_details: sanitized[idx].technical_details } : {}), ...(narratedIdx.has(idx) ? {} : { needs_translation: true, source_language: null, target_language: language }) },
       estimated_cost: t.estimated_cost, currency: "INR", rule_ids: t.rule_ids, trigger_rule_id: t.rule_ids[0] || null, confidence: t.confidence,
       source_refs: t.source_refs, language: narratedIdx.has(idx) ? language : null, is_pinned: false,
     }));
