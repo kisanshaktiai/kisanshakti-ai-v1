@@ -197,6 +197,26 @@ serve(async (req) => {
     const baseline = await generateBaseline(supabase, inputs);
     if (!baseline.tasks.length) return json({ error: "No schedule could be produced from the agronomic database for this crop", cropCode: inputs.cropCode, gaps: baseline.gaps, coverage: baseline.coverage }, 422);
     if (!baseline.coverage.stages) return json({ error: "No growth-stage graph is available for this crop and cultivation method", code: "STAGE_COVERAGE_MISSING", cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, stageClockMethod: inputs.stageClockMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: baseline.gaps, coverage: baseline.coverage }, 422);
+    // Verified against all 25 live crop/cycle graph groups: the sugarcane ratoon
+    // graph has only three establishment/tillering rows and NO maturity/harvest
+    // stage. Do not issue a fabricated season-long plan for an incomplete cycle.
+    // The check is crop-agnostic: the crop's own stage keys supply the milestone.
+    const { getStages: readCycleStages } = await import("./db/agronomy-repo.ts");
+    const cycleStages = await readCycleStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod);
+    const hasTerminalStage = cycleStages.some(stage =>
+      /(HARVEST|MATUR|RIPEN|CUTTING|PICKING)/i.test(String(stage.stage_code ?? "")) ||
+      /(HARVEST|MATUR|RIPEN|CUTTING|PICKING)/i.test(String(stage.growth_stage ?? ""))
+    );
+    if (!hasTerminalStage) {
+      return json({
+        success: false,
+        error: "This crop cycle's agronomy stage graph has no verified maturity/harvest milestone. A complete schedule cannot be generated safely.",
+        code: "INCOMPLETE_CROP_CYCLE_STAGE_GRAPH",
+        cropCode: inputs.cropCode, cropCycle: inputs.cropCycle,
+        stageClockMethod: inputs.stageClockMethod,
+        availableStages: cycleStages.map(stage => stage.stage_code),
+      }, 422);
+    }
     if (baseline.validation && baseline.validation.violations.length) return json({ error: "Generated schedule failed structural validation and was not persisted", code: "SCHEDULE_VALIDATION_FAILED", violations: baseline.validation.violations, warnings: baseline.validation.warnings, gaps: baseline.gaps }, 422);
     if (baseline.validation && baseline.validation.warnings.length) for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
 
