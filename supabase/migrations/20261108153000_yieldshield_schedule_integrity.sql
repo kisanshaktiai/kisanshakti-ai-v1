@@ -39,7 +39,7 @@ CREATE OR REPLACE FUNCTION public.persist_ai_crop_schedule_atomic(p_schedule jso
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
-AS $function$;
+AS $function$
 declare
   v_schedule_id uuid;
   v_task_count integer;
@@ -206,7 +206,7 @@ CREATE OR REPLACE FUNCTION public.resolve_crop_phenology(p_land_id uuid)
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$;
+AS $function$
 declare
   v_land               record;
   v_sched              record;
@@ -298,7 +298,7 @@ CREATE OR REPLACE FUNCTION public.resolve_biological_profile(p_land_id uuid, p_a
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$;
+AS $function$
 DECLARE
   v_land              record;
   v_schedule_sow_date date;
@@ -371,7 +371,7 @@ CREATE OR REPLACE FUNCTION public.build_land_farm_state(p_land_id uuid, p_date d
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$;
+AS $function$
 DECLARE
   v_land record; v_phen record; v_w record; v_ndvi record;
   v_s_das_min integer; v_s_das_max integer; v_s_ref text; v_s_gdd_min numeric; v_s_gdd_max numeric;
@@ -490,7 +490,7 @@ CREATE OR REPLACE FUNCTION public.derive_farm_decisions(p_land_id uuid, p_date d
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public'
-AS $function$;
+AS $function$
 DECLARE
   v_st record; v_ten uuid; v_far uuid; v_water jsonb; v_wdate date;
   v_moist boolean := false; v_prio text; v_al record; v_rule record; v_cat text; v_cls text;
@@ -684,7 +684,7 @@ CREATE OR REPLACE FUNCTION public.complete_schedule_task_atomic(
   p_effectiveness_rating integer DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
-AS $function$;
+AS $function$
 DECLARE
   v_task public.schedule_tasks%ROWTYPE;
   v_owner record;
