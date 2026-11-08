@@ -769,6 +769,13 @@ export async function generateBaseline(
     const organicAlt = String(rule.organic_alternative ?? "").trim() || null;
     const isProtection = PROTECTION_CATEGORIES.has(String(rule.category ?? "").toLowerCase());
     const isSynthetic = Boolean(chem) || Boolean(rule.dosage_per_acre);
+    // No unreviewed plant-protection or material input recommendation may
+    // become a scheduled farmer action. Lower-risk observation rules remain
+    // available in the separate scouting/OBSERVATION path.
+    if ((isProtection || isSynthetic) && rule.expert_approved !== true) {
+      gaps.push(`rule_blocked_pending_expert_approval:${rule.rule_id}`);
+      continue;
+    }
     let policyActionText: string | null = null;
 
     if (farmingPolicy === "organic_only" && isSynthetic) {
