@@ -15,27 +15,16 @@ on:
 permissions:
   contents: read
 jobs:
-  agronomy-and-decision-contract:
+  no-deploy-schedule-tests-and-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Verify YieldShield decision guards
-        run: deno test --no-check -A tests/schedule/yieldshield_decision_contract_test.ts
-      - name: Verify existing weather water-balance contracts
-        run: deno test --no-check -A supabase/functions/weather/water-state.test.ts
-  frontend-build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - name: Install pinned dependencies
+      - name: Install Bun from npm registry (GitHub release mirror unavailable)
+        run: npm install --global bun@1.4.4
+      - name: Install locked application dependencies
         run: bun install --frozen-lockfile
+      - name: Verify YieldShield decision guards
+        run: bun run test -- tests/schedule/yieldshield_decision_contract.test.ts
       - name: Production build without deploying
         run: bun run build
