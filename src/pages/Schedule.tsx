@@ -181,9 +181,9 @@ export default function Schedule() {
       // or raises a nursery; otherwise direct-seeded. An explicit farmer/land selection wins.
       const explicitCultivationMethod =
         (selectedLand as unknown as { cultivation_method?: string })?.cultivation_method || null;
-      const cultivationMethod =
-        explicitCultivationMethod ||
-        (isReadyMadePlant || (nurseryDays || 0) > 0 ? 'transplanted' : 'direct_seeded');
+      // Never guess a generic 'direct_seeded'/'transplanted' method for every crop.
+      // The server resolves the crop-specific method from approved DB metadata.
+      const cultivationMethod = explicitCultivationMethod;
       const cropCycle = (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
 
       const response = await supabase.functions.invoke('ai-smart-schedule', {
@@ -192,6 +192,7 @@ export default function Schedule() {
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
+          transplantDate: transplantDate ? format(transplantDate, 'yyyy-MM-dd') : null,
           isReadyMadePlant: isReadyMadePlant || false,
           nurseryDays: nurseryDays || 0,
           localizedCropName: localizedCropName || cropName,

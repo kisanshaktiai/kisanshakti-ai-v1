@@ -137,6 +137,11 @@ serve(async (req) => {
 
     const inputs = await resolveInputs(supabase, { landId, cropName, cropVariety, cultivationMethod, isReadyMadePlant, cropCycle, sowingDate, transplantDate, language, farmingType });
     inputs.language = language;
+    // A requested variety is a contractual farmer selection: do not silently
+    // degrade a variety-specific schedule to generic crop guidance.
+    if (typeof cropVariety === "string" && cropVariety.trim() && !inputs.varietyId) {
+      return json({ success: false, code: "VARIETY_UNRESOLVED", error: "Selected crop variety could not be verified; select a catalogued variety or explicitly select a generic crop schedule.", cropName, cropVariety }, 422);
+    }
     const landContext = await loadLandContext(supabase, landId);
     if (landContext.gaps.length) inputs.gaps.push(...landContext.gaps);
     resolvedCropCode = inputs.cropCode || null;
@@ -186,7 +191,7 @@ serve(async (req) => {
     // 2026-09-06 — a schedule is never persisted without a resolved cultivation method: the
     // method selects the stage graph, and the phenology resolver now refuses to guess it. This
     // closes the path that produced the legacy NULL-method schedule (b9f15e9e, generator 1.0.0).
-    if (!inputs.cultivationMethod) return json({ error: "Cultivation method could not be resolved for this crop", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
+    if (!inputs.cultivationMethod || !inputs.stageClockMethod) return json({ error: "Cultivation method has no approved compatible crop stage clock", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, requestedMethod: inputs.cultivationMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
     if (inputs.cropCycle === AMBIGUOUS_CROP_CYCLE) return json({ error: "Crop cycle is required for this crop", code: "CROP_CYCLE_REQUIRED", cropCode: inputs.cropCode, options: await getCropCycleOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
 
     const baseline = await generateBaseline(supabase, inputs);
@@ -292,18 +297,28 @@ serve(async (req) => {
       console.warn("[ai-smart-schedule] current biological stage lookup failed:", stageErr);
       baseline.gaps.push("current_biological_stage_unresolved");
     }
-    const preparedTasks = currentFieldPlan?.tasks ?? baseline.tasks.map((task) => {
-      const taskDate = inputs.sowingDate
-        ? new Date(new Date(inputs.sowingDate).getTime() + task.days_from_sowing * 86400000).toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0];
-      return { task, taskDate, projectedDate: taskDate, status: "pending" as const, originalDate: null, autoRescheduled: false, adjustmentReason: null, resources: task.resources ?? {} };
+    // Step 1 is the immutable agronomy blueprint. A backdated current-field
+    // projection may annotate historical tasks, but it MUST NOT mutate baseline
+    // task_date, quantities, original_date, or agronomic time windows.
+    // Step 2 (schedule-reconciler) owns every date/priority adaptation.
+    const preparedTasks = baseline.tasks.map((task, idx) => {
+      const baselineDate = new Date(new Date(inputs.sowingDate!).getTime() + task.days_from_sowing * 86400000).toISOString().split("T")[0];
+      const projection = currentFieldPlan?.tasks[idx] ?? null;
+      return {
+        task,
+        taskDate: baselineDate,
+        projectedDate: projection?.projectedDate ?? baselineDate,
+        status: "pending" as const,
+        originalDate: baselineDate,
+        autoRescheduled: false,
+        adjustmentReason: null,
+        resources: {
+          ...(task.resources ?? {}),
+          ...(projection?.resources?.timeline ? { timeline: projection.resources.timeline } : {}),
+        },
+      };
     });
-    const currentPlanSummary = currentFieldPlan ? { ...currentFieldPlan.summary } : null;
-    baseline.tasks.forEach((task, i) => {
-      const prepared = preparedTasks[i];
-      if (!prepared) return;
-      task.resources = prepared.resources;
-    });
+    const currentPlanSummary = currentFieldPlan ? { ...currentFieldPlan.summary, applied_to_baseline: false } : null;
 
     const planSummary = (() => {
       const byType = (type: string) => baseline.tasks.filter((t) => t.task_type === type);
@@ -430,7 +445,8 @@ serve(async (req) => {
       instructions: narrated[idx]?.instructions || t.instructions, precautions: t.precautions ?? [],
       // The UI shows a farmer-usable "how much water" only from water_required_liters; the depth
       // stays on the card as the agronomic figure. Both are persisted.
-      water_required_liters: t.water_volume?.per_event_liters ?? t.water_volume?.stage_total_liters ?? null,
+      // A stage-total volume is NOT the per-event irrigation dose.
+      water_required_liters: t.water_volume?.per_event_liters ?? null,
       resources: { ...(preparedTasks[idx]?.resources ?? t.resources ?? {}), ...(preparedTasks[idx]?.originalDate ? { original_date: preparedTasks[idx].originalDate, auto_rescheduled: preparedTasks[idx].autoRescheduled, adjustment_reason: preparedTasks[idx].adjustmentReason } : {}), ...(t.quantity ? { quantity: t.quantity } : {}), ...(t.water_volume ? { water_volume: t.water_volume } : {}), ...(t.recurrence ? { recurrence: t.recurrence } : {}), ...(sanitized[idx]?.technical_details?.length ? { technical_details: sanitized[idx].technical_details } : {}), ...(narratedIdx.has(idx) ? {} : { needs_translation: true, source_language: null, target_language: language }) },
       estimated_cost: t.estimated_cost, currency: "INR", rule_ids: t.rule_ids, trigger_rule_id: t.rule_ids[0] || null, confidence: t.confidence,
       source_refs: t.source_refs, language: narratedIdx.has(idx) ? language : null, is_pinned: false,
@@ -445,7 +461,7 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { generator_version: GENERATOR_VERSION, resolved_inputs: inputs, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      generation_params: { generator_version: GENERATOR_VERSION, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
       metadata: { coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
