@@ -1,0 +1,41 @@
+name: YieldShield surgical regression (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/ai-smart-schedule/**'
+      - 'supabase/functions/schedule-reconciler/**'
+      - 'supabase/functions/schedules-api/**'
+      - 'supabase/functions/weather/**'
+      - 'supabase/migrations/**'
+      - 'src/pages/Schedule.tsx'
+      - 'src/components/schedule/**'
+      - 'src/services/schedulesApi.ts'
+      - 'tests/schedule/**'
+      - '.github/workflows/yieldshield-schedule-safety.yml'
+permissions:
+  contents: read
+jobs:
+  agronomy-and-decision-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Verify YieldShield decision guards
+        run: deno test --no-check -A tests/schedule/yieldshield_decision_contract_test.ts
+      - name: Verify existing weather water-balance contracts
+        run: deno test --no-check -A supabase/functions/weather/water-state.test.ts
+  frontend-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install pinned dependencies
+        run: bun install --frozen-lockfile
+      - name: Production build without deploying
+        run: bun run build
