@@ -416,7 +416,7 @@ serve(async (req) => {
         resources: {
           ...(task.resources ?? {}),
           ...((projection?.resources?.timeline as {state?:string}|undefined)?.state === "HISTORICAL_UNCONFIRMED"
-             ? { timeline: projection.resources.timeline } :
+             ? { timeline: projection?.resources?.timeline } :
              baselineDate < new Date().toISOString().split("T")[0]
              ? { timeline: {state:"HISTORICAL_UNCONFIRMED",
                   as_of:new Date().toISOString().split("T")[0],
