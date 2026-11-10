@@ -29,7 +29,7 @@ jobs:
           python3 - <<'PY'
           from pglast import parse_sql
           from pathlib import Path
-          path = Path('supabase/migrations/20261110210000_yieldshield_anon_crop_method_catalog.sql')
+          path = Path('supabase/migrations/20261110163030_yieldshield_anon_crop_method_catalog.sql')
           parse_sql(path.read_text())
           print('SQL parsed:', path)
           PY
