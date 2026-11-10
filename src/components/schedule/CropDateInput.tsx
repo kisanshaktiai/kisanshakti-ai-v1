@@ -88,6 +88,20 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
   const [transplantDate, setTransplantDate] = useState<Date | undefined>(undefined);
+  const [sowingPickerOpen, setSowingPickerOpen] = useState(false);
+  const [transplantPickerOpen, setTransplantPickerOpen] = useState(false);
+  // Transplanting date = nursery sowing date + seedling age (days). Future result => not transplanted yet.
+  const syncTransplantFromAge = (sowing: Date | undefined, ageDays: number) => {
+    if (!sowing || !ageDays || ageDays < 1) return;
+    const tp = startOfDay(new Date(startOfDay(sowing).getTime() + ageDays * 86400000));
+    if (tp > startOfDay(new Date())) {
+      setTransplantDate(undefined);
+      setNotTransplantedYet(true);
+    } else {
+      setTransplantDate(tp);
+      setNotTransplantedYet(false);
+    }
+  };
   const [cropCycleOptions, setCropCycleOptions] = useState<string[]>([]);
   const [cropCycle, setCropCycle] = useState<string>('');
   const [cycleOptionsLoading, setCycleOptionsLoading] = useState(false);
@@ -677,7 +691,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                           <button
                             key={opt.key}
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); setSowingDate(chipDate); }}
+                            onClick={(e) => { e.stopPropagation(); setSowingDate(chipDate); if (isReadyMadePlant) syncTransplantFromAge(chipDate, nurseryDays); }}
                             className={cn(
                                'min-h-[44px] rounded-xl border px-2 text-xs font-medium transition-colors active:scale-[0.98]',
                               active
@@ -691,7 +705,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       })}
                     </div>
 
-                    <Popover>
+                    <Popover open={sowingPickerOpen} onOpenChange={setSowingPickerOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -710,7 +724,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         <Calendar
                           mode="single"
                           selected={sowingDate}
-                          onSelect={(date) => date && setSowingDate(date)}
+                          onSelect={(date) => { if (!date) return; setSowingDate(date); setSowingPickerOpen(false); if (isReadyMadePlant) syncTransplantFromAge(date, nurseryDays); }}
                           initialFocus
                           // Allow past dates up to 180 days (6 months) for existing crops
                           disabled={(date) => {
@@ -784,7 +798,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                           max={90}
                           placeholder={t('schedule.crop_input.nursery_days_placeholder', 'e.g., 25, 30, 45 days')}
                           value={nurseryDays || ''}
-                          onChange={(e) => setNurseryDays(parseInt(e.target.value) || 0)}
+                          onChange={(e) => { const v = parseInt(e.target.value) || 0; setNurseryDays(v); if (isReadyMadePlant) syncTransplantFromAge(sowingDate, v); }}
                           className="h-12 bg-card border-primary/30 focus:border-primary/50 transition-all rounded-xl"
                         />
                         <p className="text-xs text-muted-foreground">
@@ -800,7 +814,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                           <CalendarIcon className="h-3.5 w-3.5" />
                           {t('schedule.crop_input.transplant_date_label', 'Transplanting date')}
                         </Label>
-                        <Popover>
+                        <Popover open={transplantPickerOpen} onOpenChange={setTransplantPickerOpen}>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
@@ -821,7 +835,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                             <Calendar
                               mode="single"
                               selected={transplantDate}
-                              onSelect={(date) => date && setTransplantDate(date)}
+                              onSelect={(date) => { if (!date) return; setTransplantDate(date); setTransplantPickerOpen(false); if (sowingDate) { const d = differenceInDays(startOfDay(date), startOfDay(sowingDate)); if (d > 0) setNurseryDays(d); } }}
                               initialFocus
                               disabled={(date) => {
                                 const today = startOfDay(new Date());
