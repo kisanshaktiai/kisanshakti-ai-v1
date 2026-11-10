@@ -30,4 +30,4 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check AI crop schedule Edge Function without deploying
-        run: deno check supabase/functions/ai-smart-schedule/index.ts
+        run: deno check --node-modules-dir=auto supabase/functions/ai-smart-schedule/index.ts
