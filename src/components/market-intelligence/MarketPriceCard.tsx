@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { MarketPrice } from '@/hooks/useMarketPriceIntelligence';
-import { TrendingUp, TrendingDown, MapPin, CalendarDays } from 'lucide-react';
+import { MapPin, CalendarDays, Package, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MarketPriceCardProps {
@@ -35,8 +35,6 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
   const minPrice = price.min_price || modalPrice;
   const maxPrice = price.max_price || modalPrice;
   const spread = maxPrice - minPrice;
-  const trendPct = minPrice > 0 ? ((modalPrice - minPrice) / minPrice) * 100 : 0;
-  const isUp = trendPct >= 0;
   const groupIcon = getGroupIcon(price.commodity_category);
 
   return (
@@ -67,17 +65,14 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
             )}
           </div>
         </div>
-        <div
-          className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold flex-shrink-0',
-            isUp
-              ? 'bg-success/15 text-success'
-              : 'bg-destructive/15 text-destructive'
-          )}
-        >
-          {isUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-          {isUp ? '+' : ''}{trendPct.toFixed(1)}%
-        </div>
+        {price.arrival != null && Number(price.arrival) > 0 ? (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-muted text-muted-foreground flex-shrink-0 tabular-nums">
+            <Package className="w-3.5 h-3.5" />
+            आवक {Number(price.arrival).toLocaleString('en-IN')}
+          </div>
+        ) : (
+          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        )}
       </div>
 
       {/* Row 2: price */}

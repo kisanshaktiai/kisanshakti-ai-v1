@@ -13,6 +13,7 @@ interface NearbyMarketsSectionProps {
   farmerLocation: FarmerLocation | null;
   onRefresh: () => void;
   embedded?: boolean;
+  onSelect?: (m: MarketPrice) => void;
 }
 
 export function NearbyMarketsSection({
@@ -21,6 +22,7 @@ export function NearbyMarketsSection({
   farmerLocation,
   onRefresh,
   embedded = false,
+  onSelect,
 }: NearbyMarketsSectionProps) {
   const { t } = useTranslation();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
@@ -108,7 +110,7 @@ export function NearbyMarketsSection({
                 key={m.id || i}
                 className="w-[78%] sm:w-[60%] flex-shrink-0 snap-start"
               >
-                <MarketPriceCard price={m} />
+                <MarketPriceCard price={m} onClick={() => onSelect?.(m)} />
               </div>
             ))}
           </div>
@@ -116,7 +118,7 @@ export function NearbyMarketsSection({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {markets.map((m, i) => (
-            <MarketPriceCard key={m.id || i} price={m} />
+            <MarketPriceCard key={m.id || i} price={m} onClick={() => onSelect?.(m)} />
           ))}
         </div>
       )}

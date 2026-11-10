@@ -10,6 +10,8 @@ import { AISellingAdvisor } from './AISellingAdvisor';
 import { CropGroupButtons } from './CropGroupButtons';
 import { MarketLocationButtons } from './MarketLocationButtons';
 import { CropChips } from './CropChips';
+import { MarketCropDetailSheet } from './MarketCropDetailSheet';
+import type { MarketPrice } from '@/hooks/useMarketPriceIntelligence';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +39,7 @@ export function MarketPriceIntelligence() {
   const [selectedCrop, setSelectedCrop] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [detail, setDetail] = useState<MarketPrice | null>(null);
   const [openSections, setOpenSections] = useState<Record<Section, boolean>>({
     today: true,
     nearby: true,
@@ -263,7 +266,7 @@ export function MarketPriceIntelligence() {
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {(filteredGroupedPrices[date] || []).slice(0, 20).map((p, i) => (
-                    <MarketPriceCard key={p.id || i} price={p} />
+                    <MarketPriceCard key={p.id || i} price={p} onClick={() => setDetail(p)} />
                   ))}
                 </div>
               </div>
@@ -286,6 +289,7 @@ export function MarketPriceIntelligence() {
           isLoading={isLoading}
           farmerLocation={farmerLocation}
           embedded
+          onSelect={setDetail}
           onRefresh={() => {
             if (farmerLocation?.lat && farmerLocation?.lon) {
               fetchNearbyMarkets({
@@ -337,6 +341,20 @@ export function MarketPriceIntelligence() {
           embedded
         />
       </Section>
+      <MarketCropDetailSheet
+        open={!!detail}
+        onOpenChange={(o) => !o && setDetail(null)}
+        price={detail}
+        allPrices={[...prices, ...nearbyMarkets]}
+        historicalData={historicalData}
+        aiAnalysis={aiAnalysis && detail?.crop_name === selectedCrop ? aiAnalysis : null}
+        isLoading={isLoading}
+        onLoadHistory={(crop) => getHistoricalComparison({ crop })}
+        onGetAdvice={async (crop) => {
+          setSelectedCrop(crop);
+          await getAIAnalysis({ crop, currentPrice: detail ? (detail.modal_price || detail.price_per_unit) : undefined, historicalData });
+        }}
+      />
     </div>
   );
 }
