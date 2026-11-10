@@ -1,4 +1,10 @@
 // CHANGE LOG (newest first)
+// 2026-11-10 — Proximity feed: new action fetchRankedPrices ranks the latest price per
+//   market+crop by the farmer's land (same district / ≤100 km / ≤200 km / major terminal
+//   markets by data volume / rest). Market coordinates come from DB location tables
+//   (marketGeo.ts). getTopMarkets/getMarkets/getCrops/getCropGroups page past the
+//   1000-row cap over a recent window; history windows anchor to the latest price_date
+//   for the crop and keep the newest rows (was now() + ascending limit 200).
 // 2026-09-27 — AI model SSOT: getAIAnalysis calls callAITask task 'market.advice'; the model
 //   comes from ai_task_route_step (was the literal 'gpt-4o-mini' posted straight to the OpenAI
 //   endpoint with OPENAI_API_KEY). Request knobs unchanged: max 1000 output tokens,
@@ -14,6 +20,29 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
+import { resolveMarkets } from './marketGeo.ts';
+
+// deno-lint-ignore no-explicit-any
+async function pageRows(build: () => any, max = 30000): Promise<any[]> {
+  const size = 1000; const rows: any[] = [];
+  for (let from = 0; from < max; from += size * 4) {
+    const batch = await Promise.all([0, 1, 2, 3].map((i) => build().range(from + i * size, from + (i + 1) * size - 1)));
+    let done = false;
+    for (const r of batch) { if (r.error) throw r.error; rows.push(...(r.data || [])); if ((r.data || []).length < size) done = true; }
+    if (done) break;
+  }
+  return rows;
+}
+
+// deno-lint-ignore no-explicit-any
+async function latestDate(supabase: any, crop?: string): Promise<string | null> {
+  let q = supabase.from('market_prices').select('price_date').order('price_date', { ascending: false }).limit(1);
+  if (crop && crop !== 'all') q = q.ilike('crop_name', `%${crop}%`);
+  const { data } = await q;
+  return data?.[0]?.price_date ?? null;
+}
+function daysBefore(d: string, n: number) { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().split('T')[0]; }
+
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -175,6 +204,65 @@ serve(async (req) => {
         });
       }
 
+      case 'fetchRankedPrices': {
+        const { lat, lon, district: farmerDistrict, crop, group, corridor = 'all', limit = 120 } = params || {};
+        const anchor = await latestDate(supabase, crop);
+        if (!anchor) {
+          return new Response(JSON.stringify({ success: true, data: [], latestDate: null, tiers: {} }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const rows = await pageRows(() => {
+          let q = supabase.from('market_prices')
+            .select('id,crop_name,variety,price_per_unit,unit,market_location,district,state,price_date,min_price,max_price,modal_price,arrival,commodity_category')
+            .gte('price_date', daysBefore(anchor, 7)).order('price_date', { ascending: false });
+          if (crop && crop !== 'all') q = q.ilike('crop_name', `%${crop}%`);
+          if (group && group !== 'all') q = q.eq('commodity_category', group);
+          return q;
+        }, 20000);
+
+        // Newest row per market + crop + variety.
+        const latest = new Map<string, any>();
+        const volume = new Map<string, number>();
+        for (const r of rows) {
+          const key = `${r.market_location}|${r.crop_name}|${r.variety || ''}`;
+          if (!latest.has(key)) latest.set(key, r);
+          volume.set(r.market_location, (volume.get(r.market_location) || 0) + 1);
+        }
+        // Major terminal markets = the busiest markets in the data (data-driven, not a fixed list).
+        const majors = new Set([...volume.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([m]) => m));
+        const geo = await resolveMarkets(supabase, [...volume.keys()]);
+        const hasFarm = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon)) && lat !== null && lon !== null;
+        const fd = String(farmerDistrict || '').trim().toLowerCase();
+
+        const tierOrder: Record<string, number> = { near: 0, regional: 1, major: 2, other: 3 };
+        const items = [...latest.values()].map((r) => {
+          const g = geo.get(r.market_location) || null;
+          const distance = hasFarm && g ? Math.round(haversineDistance(Number(lat), Number(lon), g.lat, g.lon)) : undefined;
+          const sameDistrict = !!fd && !!g?.district && g.district.toLowerCase() === fd;
+          let tier = 'other';
+          if (sameDistrict || (distance !== undefined && distance <= 100)) tier = 'near';
+          else if (distance !== undefined && distance <= 200) tier = 'regional';
+          else if (majors.has(r.market_location)) tier = 'major';
+          return { ...r, district: r.district || g?.district || null, distance, tier, is_major_market: majors.has(r.market_location) };
+        });
+        const filtered = items.filter((i) =>
+          corridor === 'near' ? i.tier === 'near'
+          : corridor === 'regional' ? i.tier === 'near' || i.tier === 'regional'
+          : corridor === 'major' ? i.is_major_market
+          : true);
+        filtered.sort((a, b) =>
+          tierOrder[a.tier] - tierOrder[b.tier]
+          || (a.distance ?? 1e9) - (b.distance ?? 1e9)
+          || String(b.price_date).localeCompare(String(a.price_date))
+          || Number(b.arrival || 0) - Number(a.arrival || 0));
+        const tiers: Record<string, number> = { near: 0, regional: 0, major: 0, other: 0 };
+        for (const i of items) tiers[i.tier]++;
+
+        return new Response(JSON.stringify({
+          success: true, data: filtered.slice(0, limit), latestDate: anchor, tiers,
+          majorMarkets: [...majors], located: hasFarm,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
       case 'fetchNearbyMarkets': {
         const { lat, lon, radiusKm = 50, crop, limit = 50 } = params;
         
@@ -235,7 +323,8 @@ serve(async (req) => {
         // FIXED: Removed state filter
         const { crop, district, market, periods = ['week', 'month', 'year'] } = params;
         
-        const today = new Date();
+        const anchor = await latestDate(supabase, crop);
+        const today = anchor ? new Date(anchor) : new Date();
         const comparisons: Record<string, any> = {};
 
         for (const period of periods) {
@@ -251,14 +340,15 @@ serve(async (req) => {
             .from('market_prices')
             .select('crop_name, price_per_unit, min_price, max_price, modal_price, price_date, market_location, district')
             .gte('price_date', pastDateStr)
-            .order('price_date', { ascending: true });
+            .order('price_date', { ascending: false });
 
           if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
           if (district) query = query.ilike('district', `%${district}%`);
           if (market) query = query.ilike('market_location', `%${market}%`);
 
-          const { data, error } = await query.limit(200);
+          const { data: newest, error } = await query.limit(1000);
           if (error) throw error;
+          const data = (newest || []).slice().reverse();
 
           // Calculate trend
           if (data && data.length > 1) {
@@ -449,12 +539,9 @@ Respond ONLY with valid JSON, no markdown.`;
 
       case 'getMarkets': {
         // NEW: Fetch unique market locations
-        const { data, error } = await supabase
-          .from('market_prices')
-          .select('market_location')
-          .not('market_location', 'is', null);
-
-        if (error) throw error;
+        const anchorM = await latestDate(supabase);
+        const data = anchorM ? await pageRows(() => supabase.from('market_prices').select('market_location')
+          .not('market_location', 'is', null).gte('price_date', daysBefore(anchorM, 60))) : [];
 
         const uniqueMarkets = [...new Set((data || []).map((d: any) => d.market_location))].filter(Boolean).sort();
 
@@ -471,17 +558,13 @@ Respond ONLY with valid JSON, no markdown.`;
       case 'getCrops': {
         // Filter by group if provided
         const { group } = params;
-        let query = supabase
-          .from('market_prices')
-          .select('crop_name, commodity_category')
-          .not('crop_name', 'is', null);
-
-        if (group && group !== 'all') {
-          query = query.eq('commodity_category', group);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
+        const anchorC = await latestDate(supabase);
+        const data = anchorC ? await pageRows(() => {
+          let q = supabase.from('market_prices').select('crop_name, commodity_category')
+            .not('crop_name', 'is', null).gte('price_date', daysBefore(anchorC, 60));
+          if (group && group !== 'all') q = q.eq('commodity_category', group);
+          return q;
+        }) : [];
 
         const uniqueCrops = [...new Set((data || []).map((d: any) => d.crop_name))].filter(Boolean).sort();
         const categories = [...new Set((data || []).map((d: any) => d.commodity_category))].filter(Boolean);
@@ -499,11 +582,9 @@ Respond ONLY with valid JSON, no markdown.`;
 
       case 'getCropGroups': {
         // Get unique crop groups with counts
-        const { data, error } = await supabase
-          .from('market_prices')
-          .select('commodity_category');
-
-        if (error) throw error;
+        const anchorG = await latestDate(supabase);
+        const data = anchorG ? await pageRows(() => supabase.from('market_prices').select('commodity_category')
+          .gte('price_date', daysBefore(anchorG, 60))) : [];
 
         // Count crops per group
         const groupCounts: Record<string, number> = {};
@@ -547,11 +628,9 @@ Respond ONLY with valid JSON, no markdown.`;
         // Get top markets by record count for button display
         const { limit = 6 } = params;
         
-        const { data, error } = await supabase
-          .from('market_prices')
-          .select('market_location');
-
-        if (error) throw error;
+        const anchorT = await latestDate(supabase);
+        const data = anchorT ? await pageRows(() => supabase.from('market_prices').select('market_location')
+          .gte('price_date', daysBefore(anchorT, 30))) : [];
 
         // Count records per market
         const marketCounts: Record<string, number> = {};

@@ -106,7 +106,10 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
           <span className="truncate">
             {price.market_location || price.district}
             {price.distance !== undefined && (
-              <span className="ml-1 text-primary font-medium">• {price.distance} km</span>
+              <span className="ml-1 text-primary font-medium tabular-nums">• {price.distance} किमी</span>
+            )}
+            {price.is_major_market && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-accent/15 text-accent-foreground font-semibold">मोठा बाजार</span>
             )}
           </span>
         </span>

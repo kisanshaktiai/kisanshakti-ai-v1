@@ -17,6 +17,8 @@ export interface MarketPrice {
   arrival?: number;
   commodity_category?: string;
   distance?: number;
+  tier?: 'near' | 'regional' | 'major' | 'other';
+  is_major_market?: boolean;
 }
 
 export interface FarmerLocation {
@@ -186,6 +188,25 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     }
   }, [callEdgeFunction]);
 
+  /** Latest price per market+crop, nearest markets first (server-ranked by the land location). */
+  const fetchRankedPrices = useCallback(async (params: {
+    lat?: number; lon?: number; district?: string; crop?: string; group?: string;
+    corridor?: 'near' | 'regional' | 'major' | 'all'; limit?: number;
+  } = {}) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await callEdgeFunction('fetchRankedPrices', params);
+      setPrices(data.data || []);
+      return data as { data: MarketPrice[]; latestDate: string | null; tiers: Record<string, number> };
+    } catch (err: any) {
+      setError(err.message);
+      return { data: [], latestDate: null, tiers: {} };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [callEdgeFunction]);
+
   const fetchNearbyMarkets = useCallback(async (params: {
     lat: number;
     lon: number;
@@ -278,6 +299,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     fetchCropGroups,
     fetchCrops,
     fetchPrices,
+    fetchRankedPrices,
     fetchNearbyMarkets,
     getHistoricalComparison,
     getAIAnalysis,

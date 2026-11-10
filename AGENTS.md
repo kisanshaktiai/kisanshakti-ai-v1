@@ -13,3 +13,6 @@
 ## Shared crop camera
 - Active crop-photo entry points use CropPhotoCapture and cropPhotoService, not legacy WebRTC or direct-storage uploaders; why: consistent capture, private signed uploads, and land-bound evidence.
 - Photo queue work and policy caches are scoped to the active verified farmer/tenant session, with identity rechecked across asynchronous boundaries; why: logout or tenant switches must not consume another identity's media.
+
+## Market prices
+- Market coordinates are resolved at runtime from DB location tables (villages → taluka/district centroids) by `market-price-intelligence/marketGeo.ts`; never hand-code market coordinates or corridor lists. "Major markets" are derived from data volume. Why: keeps the market feed region-agnostic and DB-driven.

@@ -4,11 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { useMarketPriceIntelligence } from '@/hooks/useMarketPriceIntelligence';
 import { MarketPriceCard } from './MarketPriceCard';
-import { NearbyMarketsSection } from './NearbyMarketsSection';
 import { PriceComparisonChart } from './PriceComparisonChart';
 import { AISellingAdvisor } from './AISellingAdvisor';
 import { CropGroupButtons } from './CropGroupButtons';
-import { MarketLocationButtons } from './MarketLocationButtons';
+import { landsApi } from '@/services/landsApi';
 import { CropChips } from './CropChips';
 import { MarketCropDetailSheet } from './MarketCropDetailSheet';
 import type { MarketPrice } from '@/hooks/useMarketPriceIntelligence';
@@ -19,7 +18,6 @@ import {
   MapPin,
   TrendingUp,
   Brain,
-  CalendarIcon,
   RefreshCw,
   Loader2,
   Wheat,
@@ -29,93 +27,108 @@ import {
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
-type Section = 'today' | 'nearby' | 'trend' | 'ai';
+type Section = 'today' | 'trend' | 'ai';
+type Corridor = 'all' | 'near' | 'regional' | 'major';
+type Tier = 'near' | 'regional' | 'major' | 'other';
+
+const CORRIDORS: { id: Corridor; label: string }[] = [
+  { id: 'all', label: 'सर्व' },
+  { id: 'near', label: 'जवळचे · १०० किमी' },
+  { id: 'regional', label: 'परिसर · २०० किमी' },
+  { id: 'major', label: 'मोठ्या बाजारपेठा' },
+];
+const TIER_META: Record<Tier, { title: string; subtitle: string }> = {
+  near: { title: 'तुमच्या जवळचे बाजार', subtitle: 'तुमचा जिल्हा व १०० किमीच्या आत' },
+  regional: { title: 'परिसरातील बाजार', subtitle: '१०० ते २०० किमी' },
+  major: { title: 'मोठ्या बाजारपेठा', subtitle: 'सर्वाधिक आवक असलेले बाजार (उदा. मुंबई, पुणे)' },
+  other: { title: 'इतर बाजार', subtitle: 'राज्यातील इतर बाजार' },
+};
+const TIER_ORDER: Tier[] = ['near', 'regional', 'major', 'other'];
 
 export function MarketPriceIntelligence() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [selectedMarket, setSelectedMarket] = useState<string>('all');
+  const [corridor, setCorridor] = useState<Corridor>('all');
+  const [land, setLand] = useState<{ lat?: number; lon?: number; district?: string } | null>(null);
+  const [latestDate, setLatestDate] = useState<string | null>(null);
+  const selectedMarket = 'all';
   const [selectedCrop, setSelectedCrop] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [detail, setDetail] = useState<MarketPrice | null>(null);
   const [openSections, setOpenSections] = useState<Record<Section, boolean>>({
     today: true,
-    nearby: true,
     trend: false,
     ai: false,
   });
 
   const {
     prices,
-    groupedPrices,
-    nearbyMarkets,
     historicalData,
     aiAnalysis,
-    farmerLocation,
-    topMarkets,
     crops,
     cropGroups,
     isLoading,
-    fetchFarmerLocation,
-    fetchTopMarkets,
     fetchCropGroups,
     fetchCrops,
-    fetchPrices,
-    fetchNearbyMarkets,
+    fetchRankedPrices,
     getHistoricalComparison,
     getAIAnalysis,
   } = useMarketPriceIntelligence(user?.id);
 
+  const loadFeed = async (opts: { crop?: string; group?: string | null; corridor?: Corridor; loc?: typeof land } = {}) => {
+    const loc = opts.loc !== undefined ? opts.loc : land;
+    const res = await fetchRankedPrices({
+      lat: loc?.lat, lon: loc?.lon, district: loc?.district,
+      crop: (opts.crop ?? selectedCrop) || undefined,
+      group: (opts.group !== undefined ? opts.group : selectedGroup) || undefined,
+      corridor: opts.corridor ?? corridor,
+      limit: 150,
+    });
+    setLatestDate(res.latestDate ?? null);
+  };
+
   useEffect(() => {
     const init = async () => {
-      await Promise.all([fetchCropGroups(), fetchTopMarkets(20), fetchCrops()]);
-      const location = await fetchFarmerLocation();
-      await fetchPrices({ limit: 100 });
-      if (location?.lat && location?.lon) {
-        await fetchNearbyMarkets({ lat: location.lat, lon: location.lon, radiusKm: 50 });
+      // Location comes from the farmer's own verified lands, never from a client-chosen id.
+      let loc: typeof land = null;
+      try {
+        const lands = await landsApi.fetchLands();
+        const l = lands.find((x) => x.center_lat != null && x.center_lon != null) || lands[0];
+        if (l) loc = { lat: l.center_lat ?? undefined, lon: l.center_lon ?? undefined, district: l.district };
+      } catch {
+        loc = null;
       }
+      setLand(loc);
+      await Promise.all([fetchCropGroups(), fetchCrops(), loadFeed({ loc })]);
     };
     init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const handleGroupChange = async (group: string) => {
-    setSelectedGroup(group === 'all' ? null : group);
+    const g = group === 'all' ? null : group;
+    setSelectedGroup(g);
     setSelectedCrop('');
-    await fetchCrops(group === 'all' ? undefined : group);
-    await fetchPrices({
-      market: selectedMarket === 'all' ? undefined : selectedMarket,
-      limit: 100,
-    });
+    await Promise.all([fetchCrops(g || undefined), loadFeed({ group: g, crop: '' })]);
   };
 
-  const handleMarketChange = async (market: string) => {
-    setSelectedMarket(market);
-    await fetchPrices({
-      market: market === 'all' ? undefined : market,
-      crop: selectedCrop || undefined,
-    });
+  const handleCorridorChange = async (c: Corridor) => {
+    setCorridor(c);
+    await loadFeed({ corridor: c });
   };
 
   const handleCropChange = async (crop: string) => {
     setSelectedCrop(crop);
-    await fetchPrices({
-      market: selectedMarket === 'all' ? undefined : selectedMarket,
-      crop: crop || undefined,
-    });
+    await loadFeed({ crop });
     if (crop) {
       await getHistoricalComparison({ crop });
       setOpenSections((s) => ({ ...s, trend: true, ai: true }));
     }
   };
 
-  const handleRefresh = async () => {
-    await fetchPrices({
-      market: selectedMarket === 'all' ? undefined : selectedMarket,
-      crop: selectedCrop || undefined,
-    });
-  };
+  const handleRefresh = () => loadFeed();
 
   const handleGetAIAdvice = async () => {
     if (!selectedCrop) return;
@@ -130,24 +143,18 @@ export function MarketPriceIntelligence() {
     });
   };
 
-  const filteredGroupedPrices = searchQuery
-    ? Object.fromEntries(
-        Object.entries(groupedPrices).map(([d, list]) => [
-          d,
-          list.filter(
-            (p) =>
-              p.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              p.market_location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              p.district?.toLowerCase().includes(searchQuery.toLowerCase()),
-          ),
-        ]),
-      )
-    : groupedPrices;
-
-  const dateKeys = Object.keys(filteredGroupedPrices)
-    .filter((d) => (filteredGroupedPrices[d] || []).length > 0)
-    .sort()
-    .reverse();
+  const q = searchQuery.toLowerCase();
+  const visible = q
+    ? prices.filter((p) =>
+        p.crop_name?.toLowerCase().includes(q) ||
+        p.market_location?.toLowerCase().includes(q) ||
+        p.district?.toLowerCase().includes(q))
+    : prices;
+  const byTier = TIER_ORDER.map((tier) => ({
+    tier,
+    items: visible.filter((p) => (p.tier || 'other') === tier),
+  })).filter((g) => g.items.length > 0);
+  const nearCount = prices.filter((p) => p.tier === 'near').length;
 
   const toggle = (s: Section) =>
     setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
@@ -167,7 +174,7 @@ export function MarketPriceIntelligence() {
         />
         <StatPill
           icon={<MapPin className="w-4 h-4 text-primary" />}
-          value={nearbyMarkets.length}
+          value={nearCount}
           label="जवळचे"
         />
         <StatPill
@@ -185,12 +192,31 @@ export function MarketPriceIntelligence() {
         isLoading={isLoading}
       />
 
-      <MarketLocationButtons
-        markets={topMarkets}
-        selectedMarket={selectedMarket}
-        onSelectMarket={handleMarketChange}
-        isLoading={isLoading}
-      />
+      <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1" role="tablist" aria-label="बाजार अंतर">
+        {CORRIDORS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={corridor === c.id}
+            onClick={() => handleCorridorChange(c.id)}
+            disabled={isLoading}
+            className={cn(
+              'flex-shrink-0 h-9 px-3.5 rounded-full text-xs font-semibold border transition-colors touch-manipulation',
+              corridor === c.id
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card text-foreground border-border/60 active:bg-muted/40',
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {!land?.lat && !isLoading && (
+        <p className="text-[11px] text-muted-foreground px-1">
+          तुमच्या शेताचे ठिकाण मिळाले नाही — अंतर दाखवता येत नाही. जमिनीची नोंद पूर्ण करा.
+        </p>
+      )}
 
       {crops.length > 0 && (
         <CropChips
@@ -243,10 +269,10 @@ export function MarketPriceIntelligence() {
         </Button>
       </div>
 
-      {/* Section: Today's prices */}
+      {/* Section: Today's prices, nearest markets first */}
       <Section
         title="आजचे भाव"
-        subtitle="Today's mandi prices"
+        subtitle={latestDate ? `जवळचे बाजार आधी · ताजी नोंद ${latestDate}` : 'जवळचे बाजार आधी'}
         icon={<TrendingUp className="w-4 h-4 text-primary" />}
         open={openSections.today}
         onToggle={() => toggle('today')}
@@ -254,18 +280,19 @@ export function MarketPriceIntelligence() {
       >
         {isLoading && prices.length === 0 ? (
           <Loading />
-        ) : dateKeys.length === 0 ? (
+        ) : byTier.length === 0 ? (
           <Empty icon={Wheat} text={t('market.intelligence.noPrices')} />
         ) : (
-          <div className="space-y-4">
-            {dateKeys.map((date) => (
-              <div key={date}>
-                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
-                  <CalendarIcon className="w-3 h-3" />
-                  {date}
-                </h4>
+          <div className="space-y-5">
+            {byTier.map(({ tier, items }) => (
+              <div key={tier}>
+                <div className="mb-2 px-1 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
+                  <h4 className="text-xs font-bold text-foreground">{TIER_META[tier].title}</h4>
+                  <span className="text-[10px] text-muted-foreground truncate">· {TIER_META[tier].subtitle}</span>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {(filteredGroupedPrices[date] || []).slice(0, 20).map((p, i) => (
+                  {items.slice(0, tier === 'other' ? 20 : 40).map((p, i) => (
                     <MarketPriceCard key={p.id || i} price={p} onClick={() => setDetail(p)} />
                   ))}
                 </div>
@@ -273,34 +300,6 @@ export function MarketPriceIntelligence() {
             ))}
           </div>
         )}
-      </Section>
-
-      {/* Section: Nearby */}
-      <Section
-        title="जवळचे बाजार"
-        subtitle="Markets within 50km"
-        icon={<MapPin className="w-4 h-4 text-primary" />}
-        open={openSections.nearby}
-        onToggle={() => toggle('nearby')}
-        count={nearbyMarkets.length}
-      >
-        <NearbyMarketsSection
-          markets={nearbyMarkets}
-          isLoading={isLoading}
-          farmerLocation={farmerLocation}
-          embedded
-          onSelect={setDetail}
-          onRefresh={() => {
-            if (farmerLocation?.lat && farmerLocation?.lon) {
-              fetchNearbyMarkets({
-                lat: farmerLocation.lat,
-                lon: farmerLocation.lon,
-                radiusKm: 50,
-                crop: selectedCrop || undefined,
-              });
-            }
-          }}
-        />
       </Section>
 
       {/* Section: Trend */}
@@ -345,7 +344,7 @@ export function MarketPriceIntelligence() {
         open={!!detail}
         onOpenChange={(o) => !o && setDetail(null)}
         price={detail}
-        allPrices={[...prices, ...nearbyMarkets]}
+        allPrices={prices}
         historicalData={historicalData}
         aiAnalysis={aiAnalysis && detail?.crop_name === selectedCrop ? aiAnalysis : null}
         isLoading={isLoading}
