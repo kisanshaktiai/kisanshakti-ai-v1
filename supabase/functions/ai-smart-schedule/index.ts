@@ -541,6 +541,32 @@ serve(async (req) => {
     const narrationComplete = language === "en" || narration.narratedCount >= narration.totalCount;
     if (language === "en") baseline.coverage.narration = true;
 
+    // SCIENTIFIC RELEASE GATE: do not create an active farmer cultivation cycle
+    // when the variety's quantitative seed and maturity evidence is unresolved.
+    // An empty or provisional plan can be reviewed, but cannot be labelled field-ready.
+    // No crop-specific rates or dates are invented here.
+    const scientificBlockers = [
+      ...(!baseline.coverage.seed ? ["SEED_RATE_APPROVED_EVIDENCE_MISSING"] : []),
+      ...(baseline.totals.duration_days == null ? ["VARIETY_MATURITY_CLOCK_NOT_VERIFIED"] : []),
+      ...(baseline.tasks.some(t=>t.task_type==="harvest" &&
+        (t.resources as Record<string,unknown>|undefined)?.requirement_semantics!=="HARVEST_READINESS_CONFIRMATION")
+          ? ["HARVEST_READINESS_STAGE_NOT_CONFIRMED"] : []),
+    ];
+    if(scientificBlockers.length){
+      return json({
+        success:false,
+        error:"The crop plan needs verified variety and biological-stage evidence before activation. No farmer task or schedule was saved.",
+        code:"AGRONOMY_REVIEW_REQUIRED",
+        review_required:true,
+        blockers:scientificBlockers,
+        gaps:[...new Set(baseline.gaps)],
+        coverage:baseline.coverage,
+        cropCode:inputs.cropCode,
+        varietyId:inputs.varietyId,
+        cultivationMethod:inputs.cultivationMethod,
+      },422);
+    }
+
     const sow = new Date(inputs.sowingDate);
     const durationDays = baseline.totals.duration_days;
     const harvestDateStr = durationDays ? new Date(sow.getTime() + durationDays * 86400000).toISOString().split("T")[0] : null;
