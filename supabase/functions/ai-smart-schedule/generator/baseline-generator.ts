@@ -1179,6 +1179,73 @@ export async function generateBaseline(
     }
   }
 
+  // Re-anchor the transplanting operation to the farmer's actual recorded event,
+  // not to the default nursery-age boundary. When that event falls outside the
+  // selected graph, all dependent doses remain review-only until verified.
+  if(inputs.transplantDate && transplantOffset!=null){
+    for(const t of tasks){
+      const stage=t.stage_uuid?stages.find(s=>s.id===t.stage_uuid):null;
+      if(String(stage?.growth_stage??"").toLowerCase()!=="transplanting")continue;
+      const graphFrom=stage?das0(stage,stage.das_min):null;
+      const graphTo=stage?das0(stage,stage.das_max):null;
+      if(t.days_from_sowing!==transplantOffset){
+        gaps.push("transplanting_event_reanchored_from_default_stage");
+        t.days_from_sowing=transplantOffset;
+      }
+      t.resources={...(t.resources??{}),window:{from_das:transplantOffset,to_das:transplantOffset,
+        clock:"sowing",anchor_event:"transplanting",date_source:"farmer_record"}};
+      if(t.recurrence){
+        t.recurrence=null;
+        gaps.push("transplant_recurrence_requires_event_specific_plan");
+      }
+      if(graphFrom!=null && graphTo!=null &&
+        (transplantOffset<graphFrom || transplantOffset>graphTo)){
+        gaps.push("nursery_age_outside_stage_graph_requires_review");
+        t.resources.requirement_semantics="NEEDS_TIMING_REVIEW";
+        if(t.task_type==="nutrition" || t.task_type==="irrigation"){
+          t.quantity=null;
+          t.water_volume=null;
+          t.task_description="The recorded transplant date differs from the crop stage's expected nursery window. Confirm this operation with an agronomist before applying inputs.";
+          t.instructions=["Check the recorded transplant date and actual crop establishment before choosing an application or irrigation event."];
+        }
+      }
+    }
+  }
+
+  // Harvest is a distinct biological operation. A grain-filling rule must
+  // never turn into a harvest card on the grain-filling stage.
+  const harvestStage=stages.find(s=>String(s.growth_stage??"").toLowerCase()==="harvest");
+  if(harvestStage){
+    const day=das0(harvestStage,harvestStage.das_min);
+    if(day!=null){
+      const harvestTasks=tasks.filter(t=>t.task_type==="harvest");
+      if(harvestTasks.length){
+        const primary=harvestTasks.find(t=>t.stage_uuid===harvestStage.id)??harvestTasks[0];
+        for(const old of harvestTasks){
+          if(old===primary)continue;
+          primary.instructions=[...new Set([...primary.instructions,...old.instructions])];
+          primary.rule_ids=[...new Set([...primary.rule_ids,...old.rule_ids])];
+          primary.source_refs.push(...old.source_refs);
+        }
+        tasks=tasks.filter(t=>t.task_type!=="harvest"||t===primary);
+        if(primary.stage_uuid!==harvestStage.id || primary.days_from_sowing<day){
+          gaps.push("harvest_reanchored_to_biological_harvest_stage");
+          primary.days_from_sowing=day;
+        }
+        primary.stage_uuid=harvestStage.id;
+        primary.stage_key=harvestStage.stage_code;
+        primary.stage_name=harvestStage.growth_stage;
+        primary.anchor_stage=harvestStage.stage_code || harvestStage.growth_stage;
+        primary.stage_order=stageOrderOf(stages,harvestStage.stage_code);
+        primary.resources={...(primary.resources??{}),window:{
+          from_das:day,to_das:das0(harvestStage,harvestStage.das_max)??day,
+          clock:"sowing",anchor_event:"biological_harvest_stage"},
+          requirement_semantics:"HARVEST_READINESS_CONFIRMATION"};
+        if(!durationDays)gaps.push("harvest_window_provisional_variety_maturity_unverified");
+      }
+    }
+  }
+
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(
     (a, b) =>

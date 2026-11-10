@@ -75,6 +75,7 @@ import { isFlagEnabled } from "../_shared/featureFlags.ts";
 import { resolveVerifiedCaller } from "../_shared/sessionVerify.ts";
 import { applyScheduleHarness } from "./harness/index.ts";
 import { prepareCurrentFieldTasks } from "./generator/current-field-plan.ts";
+import { isTreatmentInstruction, validateScientificTasks } from "./generator/agronomy-scientific-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -311,6 +312,42 @@ serve(async (req) => {
       return json({ error: "Schedule harness execution failed before persistence", code: "HARNESS_FAILURE" }, 422);
     }
 
+    // Never expose an unverified chemical recipe as a scouting instruction.
+    // Preserve safe observational summaries; full treatments require a separate
+    // recorded diagnosis, governed label and field-specific decision.
+    for(const task of baseline.tasks){
+      if(task.task_type!=="monitoring")continue;
+      const all=task.instructions??[];
+      const safe=all.filter(step=>!isTreatmentInstruction(step));
+      const dropped=all.length-safe.length;
+      const res=(task.resources??={}) as Record<string,unknown>;
+      if(dropped || res.watch_list){
+        res.scouting_treatment_guidance_withheld=true;
+        res.scouting_withheld_steps=dropped;
+        delete res.watch_list;
+        baseline.gaps.push("scouting_treatment_instructions_withheld_until_diagnosis");
+      }
+      task.instructions=safe.length?safe:[
+        "Inspect plants and record the affected area, symptoms and pest counts. Treatment requires a verified diagnosis."
+      ];
+      if(isTreatmentInstruction(task.task_description)){
+        task.task_description="Inspect the crop for pests, disease symptoms, weeds and stress at this biological stage; record observations before treating.";
+      }
+    }
+
+    // Crop-clock and post-harness task safety is checked AFTER the harness and
+    // before any schedule or farmer task is persisted.
+    {
+      const {getStages}=await import("./db/agronomy-repo.ts");
+      const selected=await getStages(supabase,inputs.cropCode!,inputs.cropCycle,inputs.stageClockMethod??inputs.cultivationMethod);
+      const offset=computeTransplantOffset(selected,inputs.sowingDate,inputs.transplantDate);
+      const errors=validateScientificTasks(baseline.tasks,
+        selected.map(s=>({id:s.id,growth_stage:s.growth_stage,das_min:toDas(s,s.das_min,offset)})));
+      if(errors.length)return json({error:"Agricultural safety checks failed; schedule not saved.",
+        code:"AGRONOMY_SAFETY_VALIDATION_FAILED",violations:errors.slice(0,20),
+        gaps:[...new Set(baseline.gaps)]},422);
+    }
+
     // ── Calendar shape: timing window on every task, then the season-plan header ──────────
     try {
       const { getStages } = await import("./db/agronomy-repo.ts");
@@ -372,6 +409,12 @@ serve(async (req) => {
         adjustmentReason: null,
         resources: {
           ...(task.resources ?? {}),
+          ...(projection?.resources?.timeline?.state === "HISTORICAL_UNCONFIRMED"
+             ? { timeline: projection.resources.timeline } :
+             baselineDate < new Date().toISOString().split("T")[0]
+             ? { timeline: {state:"HISTORICAL_UNCONFIRMED",
+                  as_of:new Date().toISOString().split("T")[0],
+                  stage_source:"unconfirmed"} } : {}),
           // No pre-generation timeline state: a land may still hold the previous
           // crop's provisional stage until the new schedule is committed. Dynamic
           // reconciliation calculates this only AFTER the new crop becomes active.

@@ -177,7 +177,7 @@ function prompt(chunk: TaskFacts[], language: string): string {
     audience: "a smallholder farmer who left school early and reads slowly on a small phone",
     voice: "a village agriculture extension officer speaking to him in his own language",
     your_job: [
-      "The agronomy is already decided. The reference material below (source_text, current_english_text) was written by agronomists IN ENGLISH and is stored that way. It is working material for you, never shown to the farmer.",
+      "Only the validated selected agronomic facts are authoritative. Other source text is background, not permission to recommend alternate doses or to overcome missing evidence.",
       "YOUR JOB IS TO SAY THE SAME THING TO THE FARMER IN HIS OWN LANGUAGE. Carry the meaning across — do not transliterate English words into the local script, and do not leave English sentences standing.",
       "Every farmer-facing sentence you return (task_name, task_description, instructions) must be written in the requested language. If a sentence in the reference material is English, translating it is part of your job, not a reason to copy it.",
     ],
@@ -185,7 +185,7 @@ function prompt(chunk: TaskFacts[], language: string): string {
       "task_name is a short label (a few words) naming the job.",
       "task_description is one plain sentence: what to do and why it matters now.",
       "instructions are short steps: what to do, how, how much, in how much water, and the wait before harvest when one is given.",
-      "When water_volume_liters is supplied, tell the farmer the volume in litres as well as the depth — a pump or drip line is set in litres, so the litre figure is the one he can act on.",
+      "A whole-stage water depth or stage_total_liters is NOT an irrigation-event dose. Never instruct a farmer to apply it during one visit. Only state an irrigation-event volume if per_event_liters is explicitly validated and provided.",
       "Use the everyday farming word a farmer in that language actually uses for each operation, input and plant part. Prefer the common spoken word over the textbook term.",
       "When the reference material uses a technical or scientific term the farmer may not know, express the meaning in plain words of his language rather than reproducing the term.",
       "Copy every number, unit, product name and fertilizer grade EXACTLY as supplied. Do not convert, round, add or drop a single number.",
