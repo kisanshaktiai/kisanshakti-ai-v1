@@ -513,7 +513,26 @@ serve(async (req) => {
     const composeBudgetMs = composeInline ? Math.min(COMPOSE_INLINE_MAX_MS, Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS)) : 0;
     timePlan.compose_budget_ms = composeBudgetMs;
     const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId });
-    const narrated = composition.tasks.map((c) => ({ task_name: c.task_name, task_description: c.task_description, instructions: c.instructions }));
+    const narrated = composition.tasks.map((c, idx) => {
+      const original = baseline.tasks[idx];
+      if (original?.task_type !== "monitoring") {
+        return { task_name: c.task_name, task_description: c.task_description, instructions: c.instructions };
+      }
+      // Language generation is a presentation layer, never a treatment
+      // authorization layer. Reject any treatment advice introduced here.
+      const cleanInstructions = (c.instructions ?? []).filter(step => !isTreatmentInstruction(step));
+      const cleanDescription = isTreatmentInstruction(c.task_description)
+        ? original.task_description : c.task_description;
+      if(cleanInstructions.length !== (c.instructions ?? []).length ||
+         cleanDescription !== c.task_description){
+        baseline.gaps.push("translated_monitoring_treatment_withheld");
+      }
+      return {
+        task_name:c.task_name,
+        task_description:cleanDescription,
+        instructions:cleanInstructions.length ? cleanInstructions : original.instructions,
+      };
+    });
     // Kept under the existing field names so persistence, the response contract, the app follow-up
     // and the sweep continue to work unchanged.
     const narration = {
