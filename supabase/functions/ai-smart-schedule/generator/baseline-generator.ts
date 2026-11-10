@@ -87,6 +87,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
+import { hasUnstructuredRelativeTiming, isDeficiencyDependentAction } from "./agronomy-scientific-contract.ts";
 import {
   getStages,
   getSeedRate,
@@ -103,7 +104,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.6.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.7.0-evidence-clock";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -387,8 +388,10 @@ export async function generateBaseline(
   // 1 mm of depth over 1 m2 is exactly 1 litre, so field volume needs only the land area.
   const fieldAreaM2: number | null = inputs.landAreaAcres != null ? Number(inputs.landAreaAcres) * 4046.856 : (inputs.landAreaHa != null ? Number(inputs.landAreaHa) * 10000 : null);
   if (fieldAreaM2 == null) gaps.push("field_area_unknown_water_volume_unavailable");
-  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods);
-  let durationDays = graphDurationDays;
+  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods, transplantOffset);
+  // A graph is a provisional phenology window, not a proven variety harvest date.
+  let durationDays: number | null = null;
+  if(varietyDuration?.issue) gaps.push(varietyDuration.issue);
   if (varietyDuration && varietyDuration.maxDays != null) {
     durationDays = varietyDuration.maxDays;
     provenance.push(varietyDuration.provenance);
@@ -403,6 +406,7 @@ export async function generateBaseline(
   // removes the operation itself.
   const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod);
   coverage.seed = !!seed;
+  if(!seed) gaps.push("seed_rate_verified_source_required");
   let seedKg: number | null = null;
   if (!seed) {
     gaps.push("seed_rate_unavailable");
@@ -433,7 +437,7 @@ export async function generateBaseline(
     if (seed && seed.basisCode && !broadcastLine) gaps.push(`seed_rate_broadcast_band_missing:${seed.basisCode}`);
     const sowDescription = seedKg != null && areaAcres != null
       ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
-      : "";
+      : "Plan establishment using certified seed; the seed quantity is pending verification for this crop, variety and method.";
     const sowInstructions: string[] = [];
     if (seedBasisLine) sowInstructions.push(seedBasisLine);
     if (broadcastLine) sowInstructions.push(broadcastLine);
@@ -760,6 +764,15 @@ export async function generateBaseline(
   const policySuppressed: string[] = [];
 
   for (const rule of rules) {
+    // Without a typed event-relative clock, a stage-start card would be misleading.
+    if(hasUnstructuredRelativeTiming(rule.action_text)){
+      gaps.push(`rule_relative_timing_needs_structured_anchor:${rule.rule_id}`);
+      continue;
+    }
+    if(isDeficiencyDependentAction(rule.rule_id,rule.action_text)){
+      gaps.push(`conditional_nutrient_requires_observation:${rule.rule_id}`);
+      continue;
+    }
     const chem = String(rule.chemical_class ?? "").toLowerCase();
     if (chem && banned.has(chem)) {
       gaps.push(`rule_skipped_banned_chemical:${rule.rule_id}`);
@@ -1131,9 +1144,17 @@ export async function generateBaseline(
         primary.source_refs = [...primary.source_refs, ...t.source_refs];
       }
       if (harvestTasks.length > 1) gaps.push(`harvest_tasks_merged:${harvestTasks.length}->1`);
-      if (primary.days_from_sowing !== maturityDas) {
-        gaps.push(`harvest_moved_to_variety_maturity:${primary.days_from_sowing}->${maturityDas}`);
-        primary.days_from_sowing = maturityDas;
+      if(primary.days_from_sowing!==maturityDas){
+        const harvestStage=stages.find(s=>s.id===primary.stage_uuid);
+        const start=harvestStage?das0(harvestStage,harvestStage.das_min):null;
+        const end=harvestStage?das0(harvestStage,harvestStage.das_max):null;
+        if(String(harvestStage?.growth_stage??"").toLowerCase()==="harvest"
+           && start!=null && end!=null && maturityDas>=start && maturityDas<=end){
+          gaps.push(`harvest_aligned_with_verified_maturity:${primary.days_from_sowing}->${maturityDas}`);
+          primary.days_from_sowing=maturityDas;
+        }else{
+          gaps.push("harvest_maturity_stage_conflict_needs_review");
+        }
       }
       tasks = tasks.filter((t) => t.task_type !== "harvest" || t === primary);
     }

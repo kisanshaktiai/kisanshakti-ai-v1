@@ -50,6 +50,7 @@ export interface SeedRateResult { kgPerAcre:number; rationale:string|null; prove
   basisCode:string|null;
   /** The same row's broadcast band, for a farmer sowing by hand rather than with a drill. */
   broadcastKgPerAcre:{min:number|null;max:number|null}|null; }
+import { isUnverifiedTier, resolvedMaturityDas } from "../generator/agronomy-scientific-contract.ts";
 const RPC_TGW_UNVERIFIED="default_20g_UNVERIFIED";
 export async function getSeedRate(
   supabase: SupabaseClient,
@@ -77,6 +78,8 @@ export async function getSeedRate(
     }
   }
 
+  // Never authorize numeric seed quantities from unverified method records.
+  if (vca && isUnverifiedTier(vca.evidence_tier)) return null;
   if (vca && vca.target_plants_per_m2 != null && vcaMethod) {
     const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", {
       p_variety_id: varietyId,
@@ -153,14 +156,35 @@ export async function getFieldActionRules(supabase:SupabaseClient,cropCode:strin
   return (data||[]) as FieldActionRule[];
 }
 
-export interface ObservationRuleRef {rule_id:string;stage_applicable:unknown;priority:number|null;category:string|null;condition_code:string|null;etl_threshold:string|null;action_text:string|null;}
+export interface ObservationRuleRef {rule_id:string;stage_applicable:unknown;priority:number|null;category:string|null;condition_code:string|null;etl_threshold:string|null;action_text:string|null;cultivation_method_applicable?:unknown;is_farmer_servable?:boolean|null;is_safety_block?:boolean|null;}
 export const SCOUTING_RULE_CATEGORIES=["pest","disease","weed","stress","ipm","proactive_pest","proactive_monitoring"];
 export async function getObservationRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<ObservationRuleRef[]>{
-  const OBSERVATION_RULE_LIMIT=2000;const {data}=await supabase.from("decision_rules").select("rule_id, stage_applicable, priority, category, condition_code, etl_threshold, action_text, crop_code").eq("is_active",true).eq("trigger_class","OBSERVATION").in("category",SCOUTING_RULE_CATEGORIES).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(OBSERVATION_RULE_LIMIT);return(data||[]) as ObservationRuleRef[];
+  const OBSERVATION_RULE_LIMIT=2000;const {data}=await supabase.from("decision_rules").select("rule_id, stage_applicable, priority, category, condition_code, etl_threshold, action_text, crop_code, cultivation_method_applicable, is_farmer_servable, is_safety_block").eq("is_active",true).eq("trigger_class","OBSERVATION").in("category",SCOUTING_RULE_CATEGORIES).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(OBSERVATION_RULE_LIMIT);return(data||[]).filter((r:Record<string,unknown>)=>{
+    if(r.is_farmer_servable===false || r.is_safety_block===true)return false;
+    if(methods.some(x=>String(x).toLowerCase()==="transplanted") && /(?:^|_)DSR(?:_|$)/i.test(String(r.rule_id)))return false;
+    const scoped=Array.isArray(r.cultivation_method_applicable)?r.cultivation_method_applicable.map(x=>String(x).toLowerCase()):[];
+    return !scoped.length || scoped.includes("any") || methods.some(x=>scoped.includes(String(x).toLowerCase()));
+  }) as ObservationRuleRef[];
 }
 
-export async function getVarietyDuration(supabase:SupabaseClient,varietyId:string|null,methods:string[]):Promise<{maxDays:number|null;provenance:Provenance}|null>{
-  if(!varietyId)return null;for(const method of [...new Set(methods.filter(Boolean))]){const {data}=await supabase.from("variety_cultivation_agronomy").select("id, duration_days_min, duration_days_max, source, evidence_tier").eq("variety_id",varietyId).eq("cultivation_method",method).eq("is_active",true).maybeSingle();if(data)return{maxDays:data.duration_days_max!=null?Number(data.duration_days_max):null,provenance:{table:"variety_cultivation_agronomy",row_id:data.id,source:data.source??null}};}return null;}
+export interface VarietyDurationEvidence {maxDays:number|null;durationReference:string|null;evidenceTier:string|null;issue:string|null;provenance:Provenance;}
+export async function getVarietyDuration(
+  supabase:SupabaseClient,varietyId:string|null,methods:string[],transplantOffset:number|null
+):Promise<VarietyDurationEvidence|null>{
+  if(!varietyId)return null;
+  for(const method of [...new Set(methods.filter(Boolean))]){
+    const {data,error}=await supabase.from("variety_cultivation_agronomy")
+      .select("id, duration_days_min, duration_days_max, duration_reference, source, evidence_tier")
+      .eq("variety_id",varietyId).eq("cultivation_method",method).eq("is_active",true).maybeSingle();
+    if(error)throw error;
+    if(!data)continue;
+    const resolved=resolvedMaturityDas(data.duration_days_max!=null?Number(data.duration_days_max):null,
+      data.duration_reference,data.evidence_tier,transplantOffset);
+    return {maxDays:resolved.maxDas,durationReference:data.duration_reference??null,evidenceTier:data.evidence_tier??null,
+      issue:resolved.issue,provenance:{table:"variety_cultivation_agronomy",row_id:data.id,source:data.source??null}};
+  }
+  return null;
+}
 
 export async function getBannedChemicals(supabase:SupabaseClient):Promise<Set<string>>{const {data}=await supabase.from("chemical_regulatory_status").select("chemical_name, status").limit(1000);const out=new Set<string>();for(const r of data||[]){if(String(r.status??"").toLowerCase()!=="approved")out.add(String(r.chemical_name??"").toLowerCase());}return out;}
 export async function getLaborRate(supabase:SupabaseClient,state:string|null,operationType:string|null):Promise<number|null>{if(!state)return null;let q=supabase.from("labor_rates").select("daily_wage").ilike("state",state).eq("is_active",true).order("effective_date",{ascending:false}).limit(1);if(operationType)q=q.eq("operation_type",operationType);const {data}=await q;const row=(data||[])[0];return row?.daily_wage!=null?Number(row.daily_wage):null;}
