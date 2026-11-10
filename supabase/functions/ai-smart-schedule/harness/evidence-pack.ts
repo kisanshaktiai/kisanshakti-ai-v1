@@ -24,7 +24,7 @@
 //       INSUFFICIENT_DATA; a positive value stays evidence-only exactly as before.
 //   (4) Every audited domain with no candidate for this crop/method/region is written to gaps as
 //       NO_AUTHORITATIVE_RULE:<DOMAIN> so the schedule states what it could not evaluate.
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { toDas, computeTransplantOffset, type BaselineTask } from "../generator/baseline-generator.ts";
 import type { StageRow, Provenance } from "../db/agronomy-repo.ts";
