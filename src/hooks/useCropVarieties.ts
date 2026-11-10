@@ -80,17 +80,20 @@ async function fetchVarieties(cropId: string): Promise<CropVariety[]> {
       .order('recommendation_priority', { ascending: false, nullsFirst: false })
       .order('name', { ascending: true });
     if (error) {
-      console.error('[useCropVarieties] load error', error);
-      inflightVarieties.delete(cropId);
-      return [];
+      console.error('[useCropVarieties] catalogue query failed', { cropId, code: error.code, message: error.message });
+      // An access/query failure is not the same as zero catalogued varieties.
+      throw new Error(error.code ? `VARIETY_CATALOG_${error.code}: ${error.message}` : error.message);
     }
     const rows = (data ?? []) as CropVariety[];
     varietyCache.set(cropId, rows);
-    inflightVarieties.delete(cropId);
     return rows;
   })();
   inflightVarieties.set(cropId, p);
-  return p;
+  try {
+    return await p;
+  } finally {
+    inflightVarieties.delete(cropId);
+  }
 }
 
 async function fetchResistance(varietyId: string): Promise<VarietyResistanceRow[]> {
@@ -204,21 +207,40 @@ export function useRegionalCropVarieties(cropId?: string | null, state?: string 
 export function useCropVarieties(cropId?: string | null) {
   const [varieties, setVarieties] = useState<CropVariety[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+
+  const refresh = () => {
+    if (cropId) varietyCache.delete(cropId);
+    setRetryKey((n) => n + 1);
+  };
+
   useEffect(() => {
     let alive = true;
+    // A crop switch must never display the previous crop's variety cards.
+    setVarieties([]);
+    setError(null);
     if (!cropId) {
-      setVarieties([]);
-      return;
-    }
-    setLoading(true);
-    fetchVarieties(cropId).then((rows) => {
-      if (!alive) return;
-      setVarieties(rows);
       setLoading(false);
-    });
+      return () => { alive = false; };
+    }
+
+    setLoading(true);
+    fetchVarieties(cropId)
+      .then((rows) => {
+        if (alive) setVarieties(rows);
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setVarieties([]);
+        setError(err instanceof Error ? err.message : 'Unable to load the variety catalogue');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
     return () => { alive = false; };
-  }, [cropId]);
-  return { varieties, loading };
+  }, [cropId, retryKey]);
+  return { varieties, loading, error, refresh };
 }
 
 export function useVarietyResistance(varietyId?: string | null) {

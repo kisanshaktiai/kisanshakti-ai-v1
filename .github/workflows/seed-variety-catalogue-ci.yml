@@ -1,0 +1,35 @@
+name: Seed variety catalogue repair — no deployment
+on:
+  pull_request:
+    paths:
+      - 'src/hooks/useCropVarieties.ts'
+      - 'src/components/schedule/CropDateInput.tsx'
+      - 'supabase/migrations/20261110110542_repair_seed_variety_catalog_rls_verified_tenant_scope.sql'
+      - 'tests/schedule/seed_variety_rls_*'
+      - '.github/workflows/seed-variety-catalogue-ci.yml'
+permissions:
+  contents: read
+jobs:
+  build-and-sql-parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun via npm registry
+        run: npm install -g bun@1.4.4
+      - name: Install pinned dependencies
+        run: bun install --frozen-lockfile
+      - name: Check PostgreSQL migration syntax only
+        run: |
+          python3 -m pip install --quiet pglast
+          python3 - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+          migration = Path("supabase/migrations/20261110110542_repair_seed_variety_catalog_rls_verified_tenant_scope.sql")
+          rollback = Path("tests/schedule/seed_variety_rls_manual_rollback.sql")
+          for file in (migration, rollback):
+            parse_sql(file.read_text())
+            print("Parsed:", file)
+          PY
+      - name: Build frontend without deployment
+        run: bun run build
