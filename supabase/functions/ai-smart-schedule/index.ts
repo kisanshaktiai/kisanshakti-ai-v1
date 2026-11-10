@@ -294,7 +294,7 @@ serve(async (req) => {
               d.candidates += 1; d.actionable += 1;
             }
             const filled = new Set(enrichment.candidates.map((c) => c.domain));
-            evidencePack.gaps = evidencePack.gaps.filter((g) => !(g.startsWith("NO_AUTHORITATIVE_RULE:") && filled.has(g.split(":")[1])));
+            evidencePack.gaps = evidencePack.gaps.filter((g) => !(g.startsWith("NO_AUTHORITATIVE_RULE:") && filled.has(g.split(":")[1] as typeof enrichment.candidates[number]["domain"])));
             evidencePack.gaps.push(...enrichment.gaps);
             enrichmentTrace = enrichment.trace; enrichmentProposals = enrichment.proposals;
           } catch (enrichErr) { console.warn("[ai-smart-schedule] enrichment failed (non-fatal, DB tiers continue):", enrichErr); enrichmentTrace = { version: "llm-enrichment", skipped: `error:${(enrichErr as Error).message}` }; }
@@ -415,7 +415,7 @@ serve(async (req) => {
         adjustmentReason: null,
         resources: {
           ...(task.resources ?? {}),
-          ...(projection?.resources?.timeline?.state === "HISTORICAL_UNCONFIRMED"
+          ...((projection?.resources?.timeline as {state?:string}|undefined)?.state === "HISTORICAL_UNCONFIRMED"
              ? { timeline: projection.resources.timeline } :
              baselineDate < new Date().toISOString().split("T")[0]
              ? { timeline: {state:"HISTORICAL_UNCONFIRMED",
@@ -590,9 +590,10 @@ serve(async (req) => {
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
     const { data: persisted, error: persistError } = await supabase.rpc("persist_ai_crop_schedule_atomic", { p_schedule: schedulePayload, p_tasks: tasksToPersist, p_land: landPayload }).single();
-    if (persistError || !persisted?.schedule_id) throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
-    if (Number(persisted.task_count) !== tasksToPersist.length) throw new Error(`Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${persisted.task_count}`);
-    const savedSchedule = { id: persisted.schedule_id };
+    const savedResult = persisted as {schedule_id:string;task_count:number}|null;
+    if (persistError || !savedResult?.schedule_id) throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
+    if (Number(savedResult.task_count) !== tasksToPersist.length) throw new Error(`Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${savedResult.task_count}`);
+    const savedSchedule = { id: savedResult.schedule_id };
     if (enrichmentProposals.length) { try { const { recordProposals } = await import("./harness/llm-candidates.ts"); await recordProposals(supabase, enrichmentProposals, { tenantId, farmerId, landId, scheduleId: savedSchedule.id, inputs, model: String(enrichmentTrace?.model ?? null) }); } catch (pErr) { console.warn("[ai-smart-schedule] proposal ledger write failed:", pErr); } }
 
     // Continue narration in-process with whatever time is left; the app follow-up and the

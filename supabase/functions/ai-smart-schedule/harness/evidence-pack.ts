@@ -252,7 +252,7 @@ function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, d
     estimated_cost: rule.total_cost_estimated != null ? Number(rule.total_cost_estimated) : null,
     rule_ids: [ruleId],
     confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null,
-    source_refs: [{ table: "decision_rules", row_id: ruleId, source: rule.scientific_source ?? null, authority: rule.icar_package ?? rule.university_source ?? null, confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null }],
+    source_refs: [{ table: "decision_rules", row_id: ruleId, source: rule.scientific_source != null ? String(rule.scientific_source) : null, authority: rule.icar_package != null ? String(rule.icar_package) : rule.university_source != null ? String(rule.university_source) : null, confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null }],
     instructions: farmerInstructions(rule, status),
     precautions: Array.isArray(rule.contraindications) ? rule.contraindications.map(String).filter(Boolean) : [],
     technical_details: technical,
@@ -343,7 +343,7 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
 
   const guidelineQuery = await supabase.from("crop_baseline_guidelines_v2")
     .select("id,crop_code,growth_stage,das_start,das_end,nitrogen_optimal,phosphorus_optimal,potassium_optimal,sulphur_optimal,zinc_optimal,iron_optimal,source_reference,variety_id,stage_master_id,das_authoritative")
-    .ilike("crop_code", inputs.cropCode).eq("is_active", true).limit(MAX_GUIDELINE_ROWS);
+    .ilike("crop_code", inputs.cropCode ?? "").eq("is_active", true).limit(MAX_GUIDELINE_ROWS);
   if (guidelineQuery.error) gaps.push(`guideline_evidence_query_failed:${guidelineQuery.error.message}`);
 
   const stageIds = new Set(stages.map((s) => s.id));
