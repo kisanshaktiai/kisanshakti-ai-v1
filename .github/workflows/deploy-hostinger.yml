@@ -2,7 +2,10 @@ name: Deploy PWA + Build Mobile Apps
 
 on:
   push:
-    branches: [main, production, kisanshakti-ai-update]
+    # YieldShield integration is code-only until Supabase migrations,
+    # Edge Functions and field validation have been approved.
+    # Keep automatic production delivery disabled on kisanshakti-ai-update.
+    branches: [main, production]
   workflow_dispatch:
 
 jobs:

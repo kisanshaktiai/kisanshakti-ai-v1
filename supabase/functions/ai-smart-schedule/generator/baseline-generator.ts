@@ -698,8 +698,9 @@ export async function generateBaseline(
       // never repeated per event.
       // Depth is the agronomic figure; the farmer runs a pump or a drip line, so the field volume
       // is what he can act on. litres = depth(mm) x field area(m2) — exact, no efficiency assumed.
-      // Both the stage total and the per-event volume are given; per-event only when the DB itself
-      // declares the number of events, never divided by a guessed cadence.
+      // Stage totals are NOT per-event irrigation recommendations.
+      // Event depth requires a validated soil-water model or explicit guideline.
+      // Never convert a seasonal target into an actionable dose by equal splitting.
       quantity: !isWithdrawal && g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
       estimated_cost: null,
       rule_ids: [],
@@ -709,12 +710,13 @@ export async function generateBaseline(
       precautions: [],
       technical_details: irrigationTechnical,
       water_volume: !isWithdrawal && g.waterMm != null && fieldAreaM2 != null
-        ? (() => {
-            const stageL = Math.round(g.waterMm * fieldAreaM2);
-            const events = isWithdrawal ? null : expectedEvents;
-            const perEventL = events && events > 0 ? Math.round(stageL / events) : null;
-            return { stage_total_liters: stageL, per_event_liters: perEventL, events, basis: "depth_mm_x_field_area_m2", field_area_m2: Math.round(fieldAreaM2) };
-          })()
+        ? {
+            stage_total_liters: Math.round(g.waterMm * fieldAreaM2),
+            per_event_liters: null,
+            events: expectedEvents,
+            basis: "stage_total_depth_mm_x_field_area_m2_no_event_dose",
+            field_area_m2: Math.round(fieldAreaM2),
+          }
         : null,
 
       recurrence: isWithdrawal
@@ -767,6 +769,13 @@ export async function generateBaseline(
     const organicAlt = String(rule.organic_alternative ?? "").trim() || null;
     const isProtection = PROTECTION_CATEGORIES.has(String(rule.category ?? "").toLowerCase());
     const isSynthetic = Boolean(chem) || Boolean(rule.dosage_per_acre);
+    // No unreviewed plant-protection or material input recommendation may
+    // become a scheduled farmer action. Lower-risk observation rules remain
+    // available in the separate scouting/OBSERVATION path.
+    if ((isProtection || isSynthetic) && rule.expert_approved !== true) {
+      gaps.push(`rule_blocked_pending_expert_approval:${rule.rule_id}`);
+      continue;
+    }
     let policyActionText: string | null = null;
 
     if (farmingPolicy === "organic_only" && isSynthetic) {

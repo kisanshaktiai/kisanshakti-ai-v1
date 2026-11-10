@@ -186,14 +186,21 @@ async function resolveCultivationMethod(
     .select("*")
     .limit(200);
 
-  if (q && methods) {
-    const hit = methods.find((m: Record<string, unknown>) =>
-      Object.values(m).some((v) => typeof v === "string" && norm(v) === q)
+  // A globally known method is not necessarily valid for this crop. Resolve
+  // only against the crop-method linkage, then consult the declared hierarchy.
+  if (q && cropCode) {
+    const hit = (methods || []).find((m: Record<string, unknown>) =>
+      [m.method_code, m.code, m.value].some((v) => typeof v === "string" && norm(v) === q)
     );
-    if (hit) {
-      const code = (hit as Record<string, unknown>).method_code ?? (hit as Record<string, unknown>).code ?? (hit as Record<string, unknown>).value;
-      if (code) return String(code);
-    }
+    const code = hit ? String(hit.method_code ?? hit.code ?? hit.value) : q;
+    const { data: compatible } = await supabase
+      .from("crop_cultivation_methods")
+      .select("method_code")
+      .eq("crop_code", cropCode)
+      .eq("method_code", code).limit(1);
+    if (compatible?.length) return code;
+    // An unknown/incompatible method must never drive another crop's agronomy.
+    return null;
   }
 
   // "Ready-made plant" resolves through DB metadata, never a literal method code:
@@ -245,7 +252,17 @@ async function resolveCultivationMethod(
       .eq("is_active", true);
     const distinct = [...new Set((stages || []).map((r: Record<string, unknown>) => r.cultivation_method).filter(Boolean).map(String))];
     if (distinct.length === 1) return distinct[0];
-    if (!requested && distinct.length > 1) return AMBIGUOUS_CULTIVATION_METHOD;
+    if (!requested && distinct.length > 1) {
+      // Filter by the farmer's nursery choice using DB metadata, never by
+      // arbitrary crop-name defaults. Ambiguity must be made explicit.
+      const allowed = distinct.filter(code => {
+        const method = (methods || []).find((m: Record<string, unknown>) => norm(m.method_code) === norm(code));
+        return method && method.is_active !== false &&
+          (isReadyMadePlant ? method.requires_nursery === true : method.requires_nursery !== true);
+      });
+      if (allowed.length === 1) return allowed[0];
+      return AMBIGUOUS_CULTIVATION_METHOD;
+    }
   }
 
   return requested ? String(requested) : null;

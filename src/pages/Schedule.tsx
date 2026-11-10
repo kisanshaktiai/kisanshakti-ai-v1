@@ -126,7 +126,7 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -181,10 +181,10 @@ export default function Schedule() {
       // or raises a nursery; otherwise direct-seeded. An explicit farmer/land selection wins.
       const explicitCultivationMethod =
         (selectedLand as unknown as { cultivation_method?: string })?.cultivation_method || null;
-      const cultivationMethod =
-        explicitCultivationMethod ||
-        (isReadyMadePlant || (nurseryDays || 0) > 0 ? 'transplanted' : 'direct_seeded');
-      const cropCycle = (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
+      // Never guess a generic 'direct_seeded'/'transplanted' method for every crop.
+      // The server resolves the crop-specific method from approved DB metadata.
+      const cultivationMethod = explicitCultivationMethod;
+      const cropCycle = cropCycleSelection || (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
 
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
@@ -192,6 +192,7 @@ export default function Schedule() {
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
+          transplantDate: transplantDate ? format(transplantDate, 'yyyy-MM-dd') : null,
           isReadyMadePlant: isReadyMadePlant || false,
           nurseryDays: nurseryDays || 0,
           localizedCropName: localizedCropName || cropName,
@@ -265,7 +266,7 @@ export default function Schedule() {
           // Re-send every field the farmer entered — dropping nurseryDays / intercrops /
           // backdatedConsent / transplantDate would silently build a different schedule.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection);
           }, 3000);
           return;
         }
@@ -290,7 +291,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds, with the farmer's full input.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection);
           }, 2000);
           return;
         }

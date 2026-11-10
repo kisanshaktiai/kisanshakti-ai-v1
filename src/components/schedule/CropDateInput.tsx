@@ -54,7 +54,8 @@ interface CropDateInputProps {
     intercrops?: IntercropData[],
     backdatedConsent?: boolean,
     /** Actual transplanting date (null when not transplanted yet / not applicable). */
-    transplantDate?: Date | null
+    transplantDate?: Date | null,
+    cropCycle?: string | null
   ) => void;
 
   onBack: () => void;
@@ -81,6 +82,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
   const [transplantDate, setTransplantDate] = useState<Date | undefined>(undefined);
+  const [cropCycleOptions, setCropCycleOptions] = useState<string[]>([]);
+  const [cropCycle, setCropCycle] = useState<string>('');
+  const [cycleOptionsLoading, setCycleOptionsLoading] = useState(false);
   const [notTransplantedYet, setNotTransplantedYet] = useState(false);
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
   const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
@@ -105,6 +109,38 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       daysAgo: daysDiff,
     };
   }, [sowingDate]);
+
+  // Crop cycle options come from active crop-stage records, not a crop-name guess.
+  useEffect(() => {
+    let cancelled = false;
+    setCropCycleOptions([]);
+    setCropCycle('');
+    if (!cropId) return;
+    setCycleOptionsLoading(true);
+    (async () => {
+      const { data: cropRow, error: cropError } = await supabase
+        .from('crops').select('value').eq('id', cropId).maybeSingle();
+      if (cropError || !cropRow?.value) throw new Error('Crop master lookup unavailable');
+      const { data: stages, error: stageError } = await supabase
+        .from('crop_stage_master')
+        .select('crop_cycle')
+        .eq('crop_code', String(cropRow.value)).eq('is_active', true);
+      if (stageError) throw stageError;
+      const distinct = [...new Set((stages || [])
+        .map((r) => String(r.crop_cycle || '').toLowerCase())
+        .filter((v) => v && v !== 'universal'))].sort();
+      if (!cancelled) {
+        setCropCycleOptions(distinct);
+        if (distinct.length === 1) setCropCycle(distinct[0]);
+      }
+    })().catch((err) => {
+      if (!cancelled) {
+        console.error('[CropDateInput] crop cycle selection unavailable:', err);
+        setCropCycleOptions([]);
+      }
+    }).finally(() => { if (!cancelled) setCycleOptionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [cropId]);
 
   // ── Variety source: master_products is the variety SSOT (shared, cached hook) ──
   const { varieties, loading: varietiesLoading } = useCropVarieties(cropId || null);
@@ -190,6 +226,15 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       }
     }
 
+    if (cycleOptionsLoading || (cropCycleOptions.length > 1 && !cropCycle)) {
+      toast({
+        title: t('schedule.crop_input.crop_cycle_label', 'Crop cycle'),
+        description: t('schedule.crop_input.crop_cycle_required', 'Select the crop cycle to use the correct agronomy schedule.'),
+        variant: 'destructive',
+      });
+      return;
+    }
+
     // The farming method is chosen inline on this screen. The dialog only opens as a
     // fallback when nothing has been picked yet.
     if (selectedFarmingType) {
@@ -237,7 +282,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         localizedCropName,
         intercrops,
         backdatedConsent,
-        effectiveTransplantDate
+        effectiveTransplantDate,
+        cropCycle || null
       );
 
     }
@@ -456,6 +502,20 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
                   {wizardStep === 'planting' && (
                   <>
+                  {/* Explicit choice only when the stage graph defines several crop cycles. */}
+                  {cropCycleOptions.length > 1 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="crop-cycle" className="text-sm font-medium">
+                        {t('schedule.crop_input.crop_cycle_label', 'Crop cycle')}
+                      </Label>
+                      <select id="crop-cycle" value={cropCycle}
+                        onChange={(e) => setCropCycle(e.target.value)}
+                        className="h-12 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground" required>
+                        <option value="">{t('schedule.crop_input.crop_cycle_required', 'Choose crop cycle')}</option>
+                        {cropCycleOptions.map(code => <option key={code} value={code}>{code.replace(/_/g, ' ')}</option>)}
+                      </select>
+                    </div>
+                  )}
                   {/* Date Selection */}
                   <div className="space-y-2">
 
@@ -775,7 +835,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     </Button>
                     <Button
                       onClick={handleSubmit}
-                      disabled={!cropName || !sowingDate || loading}
+                      disabled={!cropName || !sowingDate || loading || cycleOptionsLoading || (cropCycleOptions.length > 1 && !cropCycle)}
                       className="flex-1 h-14 rounded-2xl text-base font-semibold"
                     >
                       {loading ? <><Sparkles className="mr-2 h-5 w-5 animate-spin" />{t('schedule.crop_input.generating')}</> : <>{t('schedule.crop_input.generate_ai_schedule')}<Sparkles className="ml-2 h-5 w-5" /></>}

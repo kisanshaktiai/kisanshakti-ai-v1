@@ -1,0 +1,44 @@
+name: YieldShield surgical regression (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/ai-smart-schedule/**'
+      - 'supabase/functions/schedule-reconciler/**'
+      - 'supabase/functions/schedules-api/**'
+      - 'supabase/functions/weather/**'
+      - 'supabase/migrations/**'
+      - 'src/pages/Schedule.tsx'
+      - 'src/components/schedule/**'
+      - 'src/services/schedulesApi.ts'
+      - 'tests/schedule/**'
+      - '.github/workflows/yieldshield-schedule-safety.yml'
+permissions:
+  contents: read
+jobs:
+  no-deploy-schedule-tests-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun from npm registry (GitHub release mirror unavailable)
+        run: npm install --global bun@1.4.4
+      - name: Install locked application dependencies
+        run: bun install --frozen-lockfile
+      - name: Verify YieldShield decision guards
+        run: bun run test -- tests/schedule/yieldshield_decision_contract.test.ts
+      - name: Validate staged SQL migration syntax (does not touch database)
+        run: |
+          python3 -m pip install --quiet pglast
+          python3 - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+          files = [
+            Path('supabase/migrations/20261108153000_yieldshield_schedule_integrity.sql'),
+            Path('supabase/migrations/20261108154500_yieldshield_weekly_yield_array_fix.sql'),
+          ]
+          for path in files:
+            parse_sql(path.read_text())
+            print(f"SQL syntax OK: {path}")
+          PY
+      - name: Production build without deploying
+        run: bun run build
