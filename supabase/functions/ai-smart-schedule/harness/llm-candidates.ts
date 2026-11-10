@@ -454,6 +454,7 @@ export async function proposeAndVerifyCandidates(
     // authorization of an input. Keep proposals for scientific review only.
     rec.reasons.push("awaiting_approved_governed_rule_and_label");
     rec.status = "rejected";
+    return; // no candidate leaves review; labels and scientific approval are DB-only
     const stage = stageMap.get(norm(rec.proposal.stage_key))!;
     const c = candidateFromProposal(rec.proposal, rec, stage, transplantOffset, i, `${res.provider}/${res.model}`, harvestDas);
     rec.candidate_id = c.id; candidates.push(c);
