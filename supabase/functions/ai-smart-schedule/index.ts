@@ -1,4 +1,9 @@
 // CHANGE LOG
+// 2026-11-10 18:15 UTC — WORKER_RESOURCE_LIMIT (546): one request did enrichment + harness + full farmer-language
+//   composition + in-process narration and was killed after ~80s before persisting. Composition now runs
+//   in-request only while the request is still light (COMPOSE_INLINE_MAX_ELAPSED_MS); otherwise the schedule is
+//   persisted first with tasks marked needs_translation and the app's action=narrate follow-up (a fresh worker)
+//   writes the farmer-language text. The in-process post-persist continuation is removed for the same reason.
 // 2026-11-10 17:40 UTC — VARIETY_METHOD_NOT_SUITABLE now returns HTTP 200 (success:false) like LAND_NOT_AVAILABLE.
 // 2026-11-10 17:30 UTC — VARIETY×METHOD INFORMED CONSENT: action=method_suitability returns the
 //   variety_cultivation_agronomy rows for a variety (verified caller only); generation accepts
@@ -452,7 +457,11 @@ serve(async (req) => {
         source_text: [t.task_description, ...(t.instructions ?? [])].map(String).filter((x) => x.trim() && !isTechnicalLine(x)),
       };
     };
-    const composeBudgetMs = Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS);
+    // Split heavy work across workers: compose inline only while this request is still light.
+    const COMPOSE_INLINE_MAX_ELAPSED_MS = 45_000;
+    const COMPOSE_INLINE_MAX_MS = 40_000;
+    const composeInline = Date.now() - startTime < COMPOSE_INLINE_MAX_ELAPSED_MS;
+    const composeBudgetMs = composeInline ? Math.min(COMPOSE_INLINE_MAX_MS, Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS)) : 0;
     timePlan.compose_budget_ms = composeBudgetMs;
     const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId });
     const narrated = composition.tasks.map((c) => ({ task_name: c.task_name, task_description: c.task_description, instructions: c.instructions }));
@@ -540,7 +549,7 @@ serve(async (req) => {
     // Continue narration in-process with whatever time is left; the app follow-up and the
     // periodic sweep (action=narrate) finish anything that remains.
     let narrationState: { status: string; narratedCount: number; totalCount: number; pendingCount: number } = { status: narrationComplete ? "COMPLETE" : "PENDING", narratedCount: narration.narratedCount, totalCount: narration.totalCount, pendingCount: language === "en" ? 0 : narration.totalCount - narration.narratedCount };
-    if (narrationState.status === "PENDING" && HARD_DEADLINE_MS - (Date.now() - startTime) > 25_000) {
+    if (false && narrationState.status === "PENDING") { // disabled: follow-up action=narrate runs in a fresh worker
       try {
         const { data: schedRow } = await supabase.from("crop_schedules").select("id, generation_language, generation_params, farmer_id").eq("id", savedSchedule.id).maybeSingle();
         if (schedRow) {
