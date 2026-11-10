@@ -25,3 +25,9 @@ jobs:
         run: bun run test -- tests/schedule/yieldshield_agronomy_scientific_contract.test.ts
       - name: Frontend production build (no deployment)
         run: bun run build
+      - name: Install Deno for Supabase Edge Function check
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check AI crop schedule Edge Function without deploying
+        run: deno check supabase/functions/ai-smart-schedule/index.ts
