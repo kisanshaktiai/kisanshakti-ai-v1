@@ -107,7 +107,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   }, [sowingDate]);
 
   // ── Variety source: master_products is the variety SSOT (shared, cached hook) ──
-  const { varieties, loading: varietiesLoading } = useCropVarieties(cropId || null);
+  const { varieties, loading: varietiesLoading, error: varietiesError, refresh: reloadVarieties } = useCropVarieties(cropId || null);
 
   // Pre-select the land's current variety (SSOT: lands.current_crop_variety_id).
   useEffect(() => {
@@ -121,11 +121,12 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         .maybeSingle();
       if (cancelled) return;
       const currentId = landRow?.current_crop_variety_id ?? null;
-      if (currentId) setVarietyId(currentId);
+      // Only preselect a land's previous variety if it belongs to the current crop.
+      if (currentId && varieties.some((v) => v.id === currentId)) setVarietyId(currentId);
     };
     load();
     return () => { cancelled = true; };
-  }, [cropId, land.id]);
+  }, [cropId, land.id, varieties]);
 
   // Resolve the selected variety's name once the catalogue arrives
   // (keeps the existing onSubmit(cropVariety) contract).
@@ -409,6 +410,18 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         <p className="text-xs text-muted-foreground italic">
                           {t('schedule.crop_input.variety_loading', 'Loading varieties…')}
                         </p>
+                      </div>
+                    ) : varietiesError ? (
+                      <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 space-y-2">
+                        <p className="text-sm font-semibold text-destructive">
+                          {t('schedule.variety.load_failed', 'Unable to load seed varieties')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {t('schedule.variety.load_failed_hint', 'The catalogue could not be loaded. Please retry; this does not mean the crop has no varieties.')}
+                        </p>
+                        <Button type="button" variant="outline" size="sm" onClick={reloadVarieties}>
+                          {t('common.retry', 'Retry')}
+                        </Button>
                       </div>
                     ) : varieties.length > 0 ? (
                       <VarietySelector
@@ -751,7 +764,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                   <div className="space-y-2">
                     <Button
                       type="button"
-                      disabled={loading}
+                      disabled={loading || varietiesLoading || !!varietiesError}
                       onClick={() => setWizardStep('planting')}
                       className="w-full h-14 rounded-2xl text-base font-semibold"
                     >
