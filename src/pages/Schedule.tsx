@@ -15,6 +15,8 @@ import LandSelector from '@/components/schedule/LandSelector';
 import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/layout/EmptyState';
 import CropDateInput from '@/components/schedule/CropDateInput';
+import { VarietyMethodConsentDialog } from '@/components/schedule/VarietyMethodConsentDialog';
+import type { VarietyMethodConsent, VarietyMethodSuitability } from '@/hooks/useVarietyMethodSuitability';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
 import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
@@ -56,6 +58,7 @@ export default function Schedule() {
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
+  const [methodConsentPrompt, setMethodConsentPrompt] = useState<{ evidence: VarietyMethodSuitability[]; varietyName: string; methodLabel: string; retry: () => void } | null>(null);
   const [scheduleData, setScheduleData] = useState<{
     cropName: string;
     cropVariety: string;
@@ -126,7 +129,7 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null, cultivationMethodSelection?: string | null) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null, cultivationMethodSelection?: string | null, varietyMethodConsent?: VarietyMethodConsent | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -212,6 +215,7 @@ export default function Schedule() {
           // NEW: Multi-crop and backdated consent support (array of intercrops)
           intercrops: intercrops || [],
           backdatedConsent: backdatedConsent || false,
+          ...(varietyMethodConsent ? { varietyMethodConsent } : {}),
         },
         headers: {
           'x-tenant-id': tenant?.id || user?.tenantId || '',
@@ -225,7 +229,7 @@ export default function Schedule() {
       // Handle edge function errors
       if (response.error) {
         const context = (response.error as { context?: Response }).context;
-        let errorBody: { code?: string; error?: string; options?: string[] } | null = null;
+        let errorBody: { code?: string; error?: string; options?: string[]; evidenceRows?: VarietyMethodSuitability[]; varietyName?: string; cultivationMethod?: string } | null = null;
 
         try {
           errorBody = context ? await context.clone().json() : null;
@@ -240,6 +244,21 @@ export default function Schedule() {
             description: t('schedule.main.land_not_available_description'),
             variant: 'destructive',
           });
+          return;
+        }
+
+        // Server-side safety net: the variety record marks this method unsuitable and no
+        // consent was sent. Show the DB evidence and let the farmer decide.
+        if (errorBody?.code === 'VARIETY_METHOD_NOT_SUITABLE' && errorBody.evidenceRows?.length) {
+          resetRetries();
+          const evidence = errorBody.evidenceRows;
+          setMethodConsentPrompt({
+            evidence,
+            varietyName: errorBody.varietyName || cropVariety,
+            methodLabel: errorBody.cultivationMethod || cultivationMethodSelection || '',
+            retry: () => handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, { accepted: true, evidenceIds: evidence.map((r) => r.id) }),
+          });
+          setFlowStep('crop-input');
           return;
         }
 
@@ -287,7 +306,7 @@ export default function Schedule() {
           // Re-send every field the farmer entered — dropping nurseryDays / intercrops /
           // backdatedConsent / transplantDate would silently build a different schedule.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, varietyMethodConsent);
           }, 3000);
           return;
         }
@@ -312,7 +331,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds, with the farmer's full input.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, varietyMethodConsent);
           }, 2000);
           return;
         }
@@ -402,7 +421,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               resetRetries();
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, varietyMethodConsent);
             }}
           >
             {t('common.try_again')}
@@ -564,6 +583,16 @@ export default function Schedule() {
             />
           </div>
         )}
+
+        <VarietyMethodConsentDialog
+          open={!!methodConsentPrompt}
+          varietyName={methodConsentPrompt?.varietyName || ''}
+          methodLabel={methodConsentPrompt?.methodLabel || ''}
+          evidence={methodConsentPrompt?.evidence || []}
+          recommendedLabels={[]}
+          onCancel={() => setMethodConsentPrompt(null)}
+          onAccept={() => { const retry = methodConsentPrompt?.retry; setMethodConsentPrompt(null); retry?.(); }}
+        />
 
         {flowStep === 'schedule-view' && selectedLand && (
           <div className="animate-slide-in-right">

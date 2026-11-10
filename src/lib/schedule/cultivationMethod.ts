@@ -68,3 +68,23 @@ export function getCultivationOptions(
     }];
   });
 }
+
+/** Minimal shape of a variety_cultivation_agronomy row needed for method suitability. */
+export interface MethodSuitabilityRow { id: string; cultivation_method: string; is_suitable: boolean; }
+export type MethodSuitabilityState = 'recommended' | 'not_recommended' | 'unknown';
+
+/**
+ * Mirrors the schedule service gate: a method is unsuitable when any active DB row for the
+ * method itself or its stage-clock parent says is_suitable=false. Crop/variety agnostic.
+ */
+export function methodSuitabilityFor<T extends MethodSuitabilityRow>(
+  option: Pick<CultivationOption, 'code' | 'stageClockMethod'>, rows: T[]
+): { state: MethodSuitabilityState; unsuitable: T[] } {
+  const candidates = new Set([norm(option.code), norm(option.stageClockMethod)].filter(Boolean));
+  const matching = rows.filter(r => candidates.has(norm(r.cultivation_method)));
+  const unsuitable = matching.filter(r => r.is_suitable === false);
+  if (unsuitable.length) return { state: 'not_recommended', unsuitable };
+  if (matching.some(r => r.is_suitable === true && norm(r.cultivation_method) === norm(option.code)))
+    return { state: 'recommended', unsuitable: [] };
+  return { state: 'unknown', unsuitable: [] };
+}

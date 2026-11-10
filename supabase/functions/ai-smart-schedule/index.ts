@@ -1,4 +1,8 @@
 // CHANGE LOG
+// 2026-11-10 17:30 UTC — VARIETY×METHOD INFORMED CONSENT: action=method_suitability returns the
+//   variety_cultivation_agronomy rows for a variety (verified caller only); generation accepts
+//   body.varietyMethodConsent {accepted, evidenceIds} bound to the exact unsuitable DB rows and persists
+//   the consent + DB evidence in crop_schedules.generation_params/metadata.variety_method_consent.
 // 2026-10-06 — SECURITY: farmer/tenant identity now comes from the DB-verified x-session-token
 //   (_shared/sessionVerify.ts); x-farmer-id / x-tenant-id headers are trusted only for service-role callers.
 // 2026-09-27 — AI model SSOT: composeFarmerText, applyScheduleHarness and narrateScheduleTasks now receive the
@@ -111,6 +115,17 @@ serve(async (req) => {
       return json(outcome.body, outcome.status);
     }
 
+    if (body?.action === "method_suitability") {
+      if (!farmerId || !tenantId) return json({ error: "Missing tenant/farmer context" }, 401);
+      const vId = typeof body?.varietyId === "string" ? body.varietyId : "";
+      if (!/^[0-9a-f-]{36}$/i.test(vId)) return json({ error: "varietyId required" }, 400);
+      const { data: rows, error: sErr } = await supabase.from("variety_cultivation_agronomy")
+        .select("id, cultivation_method, is_suitable, suitability_note, source, evidence_tier, suitability_grade, limiting_factor")
+        .eq("variety_id", vId).eq("is_active", true);
+      if (sErr) return json({ error: "Suitability unavailable" }, 503);
+      return json({ success: true, varietyId: vId, rows: rows || [] });
+    }
+
     landId = body?.landId ?? null;
     cropName = body?.cropName ?? null;
     const cropVariety = body?.cropVariety ?? null;
@@ -121,6 +136,12 @@ serve(async (req) => {
     const transplantDate = body?.transplantDate ?? null;
     const farmingType = body?.farmingType ?? null;
     const backdatedConsent = body?.backdatedConsent ?? false;
+    // Farmer's informed consent to use a method the variety record marks unsuitable.
+    // Bound to the exact DB evidence row id; evidence text is re-read server-side.
+    const rawMethodConsent = body?.varietyMethodConsent;
+    const methodConsentRowIds: string[] = rawMethodConsent && rawMethodConsent.accepted === true && Array.isArray(rawMethodConsent.evidenceIds)
+      ? rawMethodConsent.evidenceIds.filter((v: unknown) => typeof v === "string").slice(0, 10) : [];
+    let varietyMethodConsentRecord: Record<string, unknown> | null = null;
     const language = String(body?.language ?? "en").trim().toLowerCase().split("-")[0] || "en";
 
     if (!landId || !cropName) return json({ error: "landId and cropName are required" }, 400);
@@ -160,8 +181,17 @@ serve(async (req) => {
         .eq("variety_id", inputs.varietyId)
         .eq("is_active", true)
         .in("cultivation_method", methodCandidates);
-      const unsuitable = (suitabilityRows || []).find((r: Record<string, unknown>) => r.is_suitable === false);
-      if (unsuitable) {
+      const unsuitableRows = (suitabilityRows || []).filter((r: Record<string, unknown>) => r.is_suitable === false);
+      const unsuitable = unsuitableRows[0];
+      const consentCoversAll = unsuitableRows.length > 0 && unsuitableRows.every((r: Record<string, unknown>) => methodConsentRowIds.includes(String(r.id)));
+      if (unsuitable && consentCoversAll) {
+        varietyMethodConsentRecord = {
+          accepted: true, consented_at: new Date().toISOString(), farmer_id: farmerId, tenant_id: tenantId,
+          variety_id: inputs.varietyId, cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod,
+          evidence: unsuitableRows, client_language: language,
+        };
+        inputs.gaps.push("variety_method_override_consented");
+      } else if (unsuitable) {
         return json({
           success: false,
           error: "The selected variety is not marked suitable for the selected cultivation method in the agronomy SSOT.",
@@ -171,6 +201,8 @@ serve(async (req) => {
           cultivationMethod: inputs.cultivationMethod,
           stageClockMethod: inputs.stageClockMethod,
           evidence: unsuitable,
+          evidenceRows: unsuitableRows,
+          consentAllowed: true,
           gaps: [...inputs.gaps, "variety_method_not_suitable"],
         }, 422);
       }
@@ -494,8 +526,8 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { generator_version: GENERATOR_VERSION, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
-      metadata: { coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
+      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      metadata: { variety_method_consent: varietyMethodConsentRecord, coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
     const { data: persisted, error: persistError } = await supabase.rpc("persist_ai_crop_schedule_atomic", { p_schedule: schedulePayload, p_tasks: tasksToPersist, p_land: landPayload }).single();

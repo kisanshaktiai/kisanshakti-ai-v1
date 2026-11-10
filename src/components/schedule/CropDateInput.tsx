@@ -1,3 +1,6 @@
+import { useVarietyMethodSuitability, type VarietyMethodConsent } from '@/hooks/useVarietyMethodSuitability';
+import { VarietyMethodConsentDialog } from '@/components/schedule/VarietyMethodConsentDialog';
+import { methodSuitabilityFor } from '@/lib/schedule/cultivationMethod';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,7 +60,8 @@ interface CropDateInputProps {
     /** Actual transplanting date (null when not transplanted yet / not applicable). */
     transplantDate?: Date | null,
     cropCycle?: string | null,
-    cultivationMethod?: string | null
+    cultivationMethod?: string | null,
+    varietyMethodConsent?: VarietyMethodConsent | null
   ) => void;
 
   onBack: () => void;
@@ -93,6 +97,24 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     useCropCultivationMethods(cropId || null, cropCycle || null);
   const selectedMethodInfo = cultivationOptions.find(option =>
     option.code === selectedCultivationMethod && option.hasCompleteCalendar);
+  // Variety × method suitability straight from the agronomy DB (no client-side agronomy).
+  const suitabilityRows = useVarietyMethodSuitability(varietyId);
+  const [methodConsent, setMethodConsent] = useState<VarietyMethodConsent | null>(null);
+  const [consentPrompt, setConsentPrompt] = useState<{ code: string; requiresNursery: boolean } | null>(null);
+  const methodLabelOf = (o: { nameEn: string; nameHi: string | null; nameMr: string | null }) =>
+    (appLang.startsWith('mr') ? o.nameMr : appLang.startsWith('hi') ? o.nameHi : null) || o.nameEn;
+  const recommendedLabels = cultivationOptions
+    .filter(o => o.hasCompleteCalendar && methodSuitabilityFor(o, suitabilityRows).state === 'recommended')
+    .map(methodLabelOf);
+  const applyMethod = (code: string, requiresNursery: boolean) => {
+    setSelectedCultivationMethod(code);
+    setIsReadyMadePlant(requiresNursery);
+    setNurseryDays(0);
+    setTransplantDate(undefined);
+    setNotTransplantedYet(false);
+    setMethodConsent(null);
+  };
+  useEffect(() => { setMethodConsent(null); }, [varietyId]);
   const cultivationReady = !cultivationLoading && !cultivationError && !!selectedMethodInfo;
   const [notTransplantedYet, setNotTransplantedYet] = useState(false);
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
@@ -305,7 +327,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         backdatedConsent,
         effectiveTransplantDate,
         cropCycle || null,
-        selectedCultivationMethod || null
+        selectedCultivationMethod || null,
+        methodConsent
       );
 
     }
@@ -580,17 +603,18 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         {cultivationOptions.map(option => {
                           const active = selectedCultivationMethod === option.code;
                           const disabled = !option.hasCompleteCalendar;
+                          const suit = methodSuitabilityFor(option, suitabilityRows);
                           const label = appLang.startsWith('mr') ? option.nameMr
                             : appLang.startsWith('hi') ? option.nameHi : null;
                           return (
                             <button key={option.code} type="button" disabled={disabled}
                               aria-pressed={active}
                               onClick={() => {
-                                setSelectedCultivationMethod(option.code);
-                                setIsReadyMadePlant(option.requiresNursery);
-                                setNurseryDays(0);
-                                setTransplantDate(undefined);
-                                setNotTransplantedYet(false);
+                                if (suit.state === 'not_recommended') {
+                                  setConsentPrompt({ code: option.code, requiresNursery: option.requiresNursery });
+                                  return;
+                                }
+                                applyMethod(option.code, option.requiresNursery);
                               }}
                               className={cn(
                                 'min-h-[58px] w-full rounded-xl border-2 p-3 text-left',
@@ -602,6 +626,13 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                                 {active && <Check className="h-4 w-4 text-primary" />}
                               </span>
                               {label && <span className="block text-xs text-muted-foreground">{option.nameEn}</span>}
+                              {suit.state === 'recommended' && <span className="mt-1 inline-block rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
+                                {t('schedule.method_consent.badge_recommended', 'Recommended for this variety')}
+                              </span>}
+                              {suit.state === 'not_recommended' && <span className="mt-1 block text-xs font-medium text-warning">
+                                {t('schedule.method_consent.badge_not_recommended', 'Not recommended for this variety')}
+                                {suit.unsuitable[0]?.limiting_factor && suit.unsuitable[0].limiting_factor !== 'none' ? ` — ${suit.unsuitable[0].limiting_factor}` : ''}
+                              </span>}
                               {disabled && <span className="block text-xs text-warning mt-1">
                                 {t('schedule.crop_input.calendar_unverified', 'Full-season crop calendar not verified for this method/cycle yet.')}
                               </span>}
@@ -956,6 +987,22 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         onOpenChange={setShowFarmingTypeDialog}
         onSelect={handleFarmingTypeSelect}
         cropName={localizedCropName || cropName}
+      />
+
+      <VarietyMethodConsentDialog
+        open={!!consentPrompt}
+        varietyName={cropVariety}
+        methodLabel={(() => { const o = cultivationOptions.find(x => x.code === consentPrompt?.code); return o ? methodLabelOf(o) : ''; })()}
+        evidence={consentPrompt ? methodSuitabilityFor({ code: consentPrompt.code, stageClockMethod: cultivationOptions.find(o => o.code === consentPrompt.code)?.stageClockMethod ?? null }, suitabilityRows).unsuitable : []}
+        recommendedLabels={recommendedLabels}
+        onCancel={() => setConsentPrompt(null)}
+        onAccept={() => {
+          if (!consentPrompt) return;
+          const rows = consentPrompt ? methodSuitabilityFor({ code: consentPrompt.code, stageClockMethod: cultivationOptions.find(o => o.code === consentPrompt.code)?.stageClockMethod ?? null }, suitabilityRows).unsuitable : [];
+          applyMethod(consentPrompt.code, consentPrompt.requiresNursery);
+          setMethodConsent({ accepted: true, evidenceIds: rows.map(r => r.id) });
+          setConsentPrompt(null);
+        }}
       />
 
       {/* Backdated Consent Dialog */}
