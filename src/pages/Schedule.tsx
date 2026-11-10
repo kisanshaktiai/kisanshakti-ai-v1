@@ -283,6 +283,21 @@ export default function Schedule() {
 
       const { data } = response;
 
+      if (data?.code === 'VARIETY_METHOD_NOT_SUITABLE') {
+        resetRetries();
+        const evidence: VarietyMethodSuitability[] = data.evidenceRows || (data.evidence ? [data.evidence] : []);
+        setFlowStep('crop-input');
+        if (evidence.length) {
+          setMethodConsentPrompt({
+            evidence,
+            varietyName: data.varietyName || cropVariety,
+            methodLabel: data.cultivationMethod || cultivationMethodSelection || '',
+            retry: () => handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, { accepted: true, evidenceIds: evidence.map((r) => r.id) }),
+          });
+        }
+        return;
+      }
+
       // LAND_NOT_AVAILABLE is an expected domain result returned over HTTP 200 so
       // Supabase does not promote it to a FunctionsHttpError/runtime failure.
       if (data?.code === 'LAND_NOT_AVAILABLE') {

@@ -1,4 +1,5 @@
 // CHANGE LOG
+// 2026-11-10 17:40 UTC — VARIETY_METHOD_NOT_SUITABLE now returns HTTP 200 (success:false) like LAND_NOT_AVAILABLE.
 // 2026-11-10 17:30 UTC — VARIETY×METHOD INFORMED CONSENT: action=method_suitability returns the
 //   variety_cultivation_agronomy rows for a variety (verified caller only); generation accepts
 //   body.varietyMethodConsent {accepted, evidenceIds} bound to the exact unsuitable DB rows and persists
@@ -204,7 +205,7 @@ serve(async (req) => {
           evidenceRows: unsuitableRows,
           consentAllowed: true,
           gaps: [...inputs.gaps, "variety_method_not_suitable"],
-        }, 422);
+        }, 200); // expected domain result (farmer consent needed), not a runtime failure
       }
       if (!(suitabilityRows || []).length) inputs.gaps.push("variety_method_suitability_unverified");
     }
