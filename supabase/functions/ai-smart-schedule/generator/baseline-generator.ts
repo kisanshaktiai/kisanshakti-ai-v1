@@ -653,6 +653,8 @@ export async function generateBaseline(
     ) || stageForDas(stages, g.dasStart, transplantOffset);
     const label = stageLabel(stage) || String(g.growthStage ?? "").replace(/_/g, " ");
     const width = g.dasEnd - g.dasStart;
+    const isNurseryWater = /nursery/i.test(String(stage?.growth_stage ?? g.growthStage ?? ""));
+    if(isNurseryWater && g.waterMm != null) gaps.push("nursery_irrigation_volume_requires_nursery_area");
 
     const irrigationInstructions: string[] = [];
     // 2026-09-03: machine/provenance detail no longer sits in the farmer instruction
@@ -713,7 +715,7 @@ export async function generateBaseline(
       instructions: [...irrigationInstructions],
       precautions: [],
       technical_details: irrigationTechnical,
-      water_volume: !isWithdrawal && g.waterMm != null && fieldAreaM2 != null
+      water_volume: !isWithdrawal && !isNurseryWater && g.waterMm != null && fieldAreaM2 != null
         ? {
             stage_total_liters: Math.round(g.waterMm * fieldAreaM2),
             per_event_liters: null,
@@ -771,6 +773,11 @@ export async function generateBaseline(
     }
     if(isDeficiencyDependentAction(rule.rule_id,rule.action_text)){
       gaps.push(`conditional_nutrient_requires_observation:${rule.rule_id}`);
+      continue;
+    }
+    if(!inputs.soilFertilityClass &&
+      ["nutrition","micronutrient"].includes(String(rule.category??"").toLowerCase())){
+      gaps.push(`quantitative_nutrient_rule_requires_soil_and_stage_evidence:${rule.rule_id}`);
       continue;
     }
     const chem = String(rule.chemical_class ?? "").toLowerCase();
@@ -1246,6 +1253,56 @@ export async function generateBaseline(
     }
   }
 
+  // Preserve the complete lifecycle without inventing doses. The stage graph
+  // authorizes monitoring windows, not fertilizer or irrigation quantities.
+  const maturityStage=stages.find(s=>String(s.growth_stage??"").toLowerCase()==="maturity");
+  if(maturityStage && !tasks.some(t=>t.stage_uuid===maturityStage.id)){
+    const day=das0(maturityStage,maturityStage.das_min);
+    if(day!=null)tasks.push({
+      task_name:"Assess crop maturity",task_type:"monitoring",
+      task_description:"Observe and record crop maturity. Harvest readiness must be confirmed in the field before cutting.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:maturityStage.stage_code,
+      gdd_target:maturityStage.gdd_min??null,stage_key:maturityStage.stage_code,stage_uuid:maturityStage.id,
+      stage_name:maturityStage.growth_stage,stage_order:stageOrderOf(stages,maturityStage.stage_code),
+      priority:"high",weather_dependent:false,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:maturityStage.id}],
+      instructions:["Inspect crop maturity and confirm harvest-readiness signs before cutting."],precautions:[],
+      resources:{requirement_semantics:"MONITOR",stage_based_provisional:true}
+    });
+  }
+  if(!coverage.fertilizer && stages.length){
+    const stage=stages.find(s=>/land[_ ]?prep/i.test(String(s.growth_stage??"")))??stages[0];
+    const day=das0(stage,stage.das_min);
+    if(day!=null)tasks.push({
+      task_name:"Soil test and fertilizer planning",task_type:"advisory",
+      task_description:"A complete fertilizer programme is unavailable for this field. Check soil fertility before selecting basal and stage-wise nutrient quantities.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:stage.stage_code,
+      gdd_target:stage.gdd_min??null,stage_key:stage.stage_code,stage_uuid:stage.id,
+      stage_name:stage.growth_stage,stage_order:stageOrderOf(stages,stage.stage_code),
+      priority:"high",weather_dependent:false,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:stage.id}],
+      instructions:["Obtain a soil test and confirm the approved nutrient programme for this crop and cultivation method."],
+      precautions:[],resources:{requirement_semantics:"NEEDS_DATA",missing_data:["soil_fertility_class","approved_fertilizer_plan"]}
+    });
+    gaps.push("NUTRIENT_PLAN_INCOMPLETE");
+  }
+  for(const stage of stages){
+    if(stage.is_moisture_critical!==true)continue;
+    if(tasks.some(t=>t.stage_uuid===stage.id && t.task_type==="irrigation"))continue;
+    const day=das0(stage,stage.das_min);
+    if(day==null)continue;
+    tasks.push({
+      task_name:"Check water stress at critical stage",task_type:"monitoring",
+      task_description:"Monitor field water and crop water-stress signs during this sensitive biological stage. Irrigation requires valid field and rainfall evidence.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:stage.stage_code,
+      gdd_target:stage.gdd_min??null,stage_key:stage.stage_code,stage_uuid:stage.id,
+      stage_name:stage.growth_stage,stage_order:stageOrderOf(stages,stage.stage_code),
+      priority:"critical",weather_dependent:true,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:stage.id}],
+      instructions:["Check soil moisture and standing water. Record observations before deciding whether irrigation is needed."],
+      precautions:[],resources:{requirement_semantics:"MONITOR",critical_stage:true}
+    });
+  }
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(
     (a, b) =>

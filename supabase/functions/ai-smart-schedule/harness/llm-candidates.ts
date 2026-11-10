@@ -454,10 +454,7 @@ export async function proposeAndVerifyCandidates(
     // authorization of an input. Keep proposals for scientific review only.
     rec.reasons.push("awaiting_approved_governed_rule_and_label");
     rec.status = "rejected";
-    return; // no candidate leaves review; labels and scientific approval are DB-only
-    const stage = stageMap.get(norm(rec.proposal.stage_key))!;
-    const c = candidateFromProposal(rec.proposal, rec, stage, transplantOffset, i, `${res.provider}/${res.model}`, harvestDas);
-    rec.candidate_id = c.id; candidates.push(c);
+    return; // Never publish an LLM suggestion without a governed approved rule.
   });
   const gaps = targets.filter((d) => !candidates.some((c) => c.domain === d)).map((d) => `LLM_PROPOSAL_UNVERIFIED:${d}`);
   return { candidates, proposals: records, gaps, trace: { version: ENRICHMENT_VERSION, provider: res.provider, model: res.model, targets, proposed: proposals.length, verified: candidates.length, rejected: records.length - candidates.length, elapsed_ms: Date.now() - startedAt } };

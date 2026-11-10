@@ -356,7 +356,13 @@ serve(async (req) => {
       const byId = new Map(stageRows.map((r) => [r.id, r]));
       for (const t of baseline.tasks) {
         const r = (t.resources ??= {}) as Record<string, unknown>;
-        if (r.window) continue;
+        if(r.window){
+          // from_das/to_das are always on the calendar sowing axis.
+          // Retain the original biological reference as metadata, not as the axis.
+          const prior=r.window as Record<string,unknown>;
+          r.window={...prior,clock:"sowing",origin_clock:prior.clock??null};
+          continue;
+        }
         const st = t.stage_uuid ? byId.get(t.stage_uuid) : undefined;
         const rec = t.recurrence ?? null;
         r.window = rec
