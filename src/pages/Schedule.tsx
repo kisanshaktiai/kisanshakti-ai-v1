@@ -126,7 +126,7 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null, cultivationMethodSelection?: string | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -177,13 +177,19 @@ export default function Schedule() {
         userLanguage: user?.language
       });
       
-      // Cultivation lane: transplanted when the farmer starts from ready-made plants
-      // or raises a nursery; otherwise direct-seeded. An explicit farmer/land selection wins.
-      const explicitCultivationMethod =
-        (selectedLand as unknown as { cultivation_method?: string })?.cultivation_method || null;
-      // Never guess a generic 'direct_seeded'/'transplanted' method for every crop.
-      // The server resolves the crop-specific method from approved DB metadata.
-      const cultivationMethod = explicitCultivationMethod;
+      // lands does not carry cultivation_method. This field is chosen by
+      // the farmer from the crop-specific reference catalogue at schedule creation.
+      const cultivationMethod = cultivationMethodSelection || null;
+      if (!cultivationMethod) {
+        resetRetries();
+        toast({
+          title: t('schedule.crop_input.cultivation_method_title', 'Crop establishment method'),
+          description: t('schedule.crop_input.cultivation_method_required',
+            'Choose how this crop was planted before generating a schedule.'),
+          variant: 'destructive',
+        });
+        return;
+      }
       const cropCycle = cropCycleSelection || (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
 
       const response = await supabase.functions.invoke('ai-smart-schedule', {
@@ -219,7 +225,7 @@ export default function Schedule() {
       // Handle edge function errors
       if (response.error) {
         const context = (response.error as { context?: Response }).context;
-        let errorBody: { code?: string; error?: string } | null = null;
+        let errorBody: { code?: string; error?: string; options?: string[] } | null = null;
 
         try {
           errorBody = context ? await context.clone().json() : null;
@@ -237,6 +243,21 @@ export default function Schedule() {
           return;
         }
 
+        if (errorBody?.code && [
+          'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
+          'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
+          'STAGE_COVERAGE_MISSING','VARIETY_METHOD_NOT_SUITABLE',
+          'VARIETY_UNRESOLVED'
+        ].includes(errorBody.code)) {
+          resetRetries();
+          setFlowStep('crop-input');
+          toast({
+            title: t('schedule.main.agronomy_input_required', 'Crop details need review'),
+            description: errorBody.error || t('schedule.main.generation_failed'),
+            variant: 'destructive',
+          });
+          return;
+        }
         console.error('❌ [Schedule] Edge function error:', response.error);
         throw new Error(errorBody?.error || response.error.message || 'Edge function returned an error');
       }
@@ -266,7 +287,7 @@ export default function Schedule() {
           // Re-send every field the farmer entered — dropping nurseryDays / intercrops /
           // backdatedConsent / transplantDate would silently build a different schedule.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection);
           }, 3000);
           return;
         }
@@ -291,7 +312,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds, with the farmer's full input.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection);
           }, 2000);
           return;
         }
@@ -381,7 +402,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               resetRetries();
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection);
             }}
           >
             {t('common.try_again')}
