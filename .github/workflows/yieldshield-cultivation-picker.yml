@@ -1,0 +1,35 @@
+name: Cultivation method picker regression (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'src/components/schedule/CropDateInput.tsx'
+      - 'src/pages/Schedule.tsx'
+      - 'src/hooks/useCropCultivationMethods.ts'
+      - 'src/lib/schedule/cultivationMethod.ts'
+      - 'tests/schedule/yieldshield_cultivation_method.test.ts'
+      - 'supabase/migrations/*cultivation_method*'
+      - '.github/workflows/yieldshield-cultivation-picker.yml'
+permissions:
+  contents: read
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g bun@1.4.4
+      - run: bun install --frozen-lockfile
+      - name: Cultivation method safety regressions
+        run: bun run test -- tests/schedule/yieldshield_cultivation_method.test.ts
+      - name: Parse migration SQL without executing
+        run: |
+          python3 -m pip install --quiet pglast
+          python3 - <<'PY'
+          from pglast import parse_sql
+          from pathlib import Path
+          path = Path('supabase/migrations/20261110210000_yieldshield_anon_crop_method_catalog.sql')
+          parse_sql(path.read_text())
+          print('SQL parsed:', path)
+          PY
+      - name: Production frontend build without deploying
+        run: bun run build
