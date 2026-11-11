@@ -6,6 +6,22 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "review": {
+      "title": "समीक्षा के लिए सहेजी गई योजनाएं",
+      "inactive": "अभी सक्रिय नहीं। खेत के काम या याद दिलाने वाली सूचनाएं नहीं बनी हैं।",
+      "edit": "जानकारी बदलें",
+      "recheck": "फिर जांचें",
+      "load_error": "सहेजी गई योजनाएं लोड नहीं हो सकीं।",
+      "generic": "फसल की सत्यापित जानकारी अभी बाकी है।",
+      "reasons": {
+        "SEED_RATE_DOCUMENTED_EVIDENCE_MISSING": "बीज की मात्रा का सत्यापित प्रमाण उपलब्ध नहीं है।",
+        "PLANTING_MATERIAL_RATE_SOURCE_MISSING": "रोपण सामग्री की सत्यापित मात्रा उपलब्ध नहीं है।",
+        "PROPAGATION_MATERIAL_UNRESOLVED": "रोपण सामग्री की जांच बाकी है।",
+        "VARIETY_MATURITY_CLOCK_NOT_VERIFIED": "पकने की अवधि और उसकी तारीख का आधार जांचना बाकी है।",
+        "BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE": "कटाई का कैलेंडर अधूरा है।",
+        "REPEATED_PICKING_PROGRAMME_NOT_VERIFIED": "बार-बार तुड़ाई के कैलेंडर का सत्यापित प्रमाण बाकी है।"
+      }
+    },
     "title": "फसल अनुसूची",
     "generate": "अनुसूची बनाएं",
     "ai_schedule": "AI स्मार्ट अनुसूची",

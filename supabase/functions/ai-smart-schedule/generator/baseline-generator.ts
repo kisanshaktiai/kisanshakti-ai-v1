@@ -1137,7 +1137,9 @@ export async function generateBaseline(
   // it already sets total_duration_days and the harvest date — so the calendar is closed to it:
   // ONE harvest card at maturity carrying the merged harvest guidance, post-harvest immediately
   // after it, and nothing else scheduled beyond maturity. Every change is recorded as a gap.
-  if (varietyDuration?.maxDays != null) {
+  const repeatedPicking = stages.some(s => /^(first_picking|successive_harvest)$/i.test(s.growth_stage));
+  // First maturity is not the end of a repeated-picking crop's lifecycle.
+  if (varietyDuration?.maxDays != null && !repeatedPicking) {
     const maturityDas = varietyDuration.maxDays;
     const harvestTasks = tasks.filter((t) => t.task_type === "harvest");
     if (harvestTasks.length) {
@@ -1222,7 +1224,7 @@ export async function generateBaseline(
   // Harvest is a distinct biological operation. A grain-filling rule must
   // never turn into a harvest card on the grain-filling stage.
   const harvestStage=stages.find(s=>isBiologicalHarvestStage(s.growth_stage));
-  if(harvestStage){
+  if(harvestStage && !repeatedPicking){
     const day=das0(harvestStage,harvestStage.das_min);
     if(day!=null){
       const harvestTasks=tasks.filter(t=>t.task_type==="harvest");

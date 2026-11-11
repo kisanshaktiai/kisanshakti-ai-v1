@@ -21,3 +21,7 @@
 - Market catalogs page through source rows and ranked feeds expose offset/total/hasMore; the UI uses complete selectors and incremental result loading. Why: neither the PostgREST cap nor visual truncation may hide available items.
 - Market source reads use primary-key cursor paging and share a short-lived public catalog with an in-flight lock; never cache farmer records there. Why: repeated deep OFFSET scans overload the database while selectors need the same reference rows.
 - Transient database read retries are bounded and rebuild the query; never apply them to writes. Why: recover intermittent timeouts without duplicating mutations.
+
+## Schedule review isolation
+- Evidence-incomplete plans persist only in the server-only review-draft ledger, never crop_schedules or schedule_tasks; why: drafts must not mutate land state or enter executable schedule workflows.
+- Repeated-picking stages retain separate DB-backed phases; never truncate them at first maturity or merge them into one harvest task, because maturity does not certify the last picking date.

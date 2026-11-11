@@ -1,6 +1,9 @@
 # Schedule availability repair
 - [x] Confirm activation blockers reject repeated-picking and missing-variety-evidence plans before persistence; no review-only flow exists.
-- [ ] Implement safe review-only schedule flow and DB-backed repeated-picking eligibility: blocked pending explicit approval for isolated review-draft storage. Hosted crop_schedules has no review status; atomic persistence requires executable tasks and updates land.
+- [x] Create approved server-only review ledger, owner-scoped save/list paths and durable localized review screen; isolate selections from executable tasks and quantities. 22 safety/isolation tests passed; review module typecheck and mobile controls passed.
+- [x] Preserve repeated-picking phases rather than truncating/merging them at first maturity; activation still requires verified recurrence evidence.
+- [ ] Finish release eligibility integration: concurrent edits added a new pre-baseline release gate importing missing scientific-release-gate.ts, blocking function validation and draft generation. Preserve those edits until their owner completes them.
+- [ ] Verify authenticated staging creation/read-back and safe production release: external unmanaged farmer session unavailable; no deployment performed.
 
 # Market appearance refinement
 - [x] Remove accent-filled card hover and unify neutral Market control states.

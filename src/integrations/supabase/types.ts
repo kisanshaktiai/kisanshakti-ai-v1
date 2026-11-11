@@ -8724,6 +8724,115 @@ export type Database = {
           },
         ]
       }
+      crop_schedule_review_drafts: {
+        Row: {
+          blockers: Json
+          created_at: string
+          crop_inputs: Json
+          crop_name: string
+          farmer_id: string
+          id: string
+          land_id: string
+          requested_language: string
+          review_summary: Json
+          source_refs: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          blockers?: Json
+          created_at?: string
+          crop_inputs?: Json
+          crop_name: string
+          farmer_id: string
+          id?: string
+          land_id: string
+          requested_language: string
+          review_summary?: Json
+          source_refs?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          blockers?: Json
+          created_at?: string
+          crop_inputs?: Json
+          crop_name?: string
+          farmer_id?: string
+          id?: string
+          land_id?: string
+          requested_language?: string
+          review_summary?: Json
+          source_refs?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedule_review_drafts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       crop_schedules: {
         Row: {
           actual_harvest_date: string | null

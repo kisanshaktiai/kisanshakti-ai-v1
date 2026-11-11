@@ -18,6 +18,7 @@ import CropDateInput from '@/components/schedule/CropDateInput';
 import { VarietyMethodConsentDialog } from '@/components/schedule/VarietyMethodConsentDialog';
 import type { VarietyMethodConsent, VarietyMethodSuitability } from '@/hooks/useVarietyMethodSuitability';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import { ScheduleReviewDrafts, type ScheduleReviewDraft } from '@/components/schedule/ScheduleReviewDrafts';
 import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -44,7 +45,7 @@ interface Land {
   organic_carbon_percent?: number;
 }
 
-type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
+type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view' | 'review-view';
 
 export default function Schedule() {
   const { t } = useTranslation();
@@ -58,6 +59,22 @@ export default function Schedule() {
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
+  const [reviewDrafts, setReviewDrafts] = useState<ScheduleReviewDraft[]>([]);
+  const [reviewLoadError, setReviewLoadError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setReviewDrafts([]); setReviewLoadError(false);
+    if (!selectedLand || !user?.id) return;
+    supabase.functions.invoke('ai-smart-schedule', {
+      body: {action:'review_drafts',landId:selectedLand.id},
+      headers: {'x-session-token':getSessionToken() || '', 'x-tenant-id':tenant?.id || user.tenantId || '', 'x-farmer-id':user.id},
+    }).then(({data,error}) => {
+      if (cancelled) return;
+      if (error) setReviewLoadError(true);
+      else setReviewDrafts(data?.drafts || []);
+    });
+    return () => {cancelled = true;};
+  }, [selectedLand?.id,user?.id,tenant?.id]);
   const [methodConsentPrompt, setMethodConsentPrompt] = useState<{ evidence: VarietyMethodSuitability[]; varietyName: string; methodLabel: string; retry: () => void } | null>(null);
   const [scheduleData, setScheduleData] = useState<{
     cropName: string;
@@ -305,6 +322,11 @@ export default function Schedule() {
       // will remain the same, and no active crop schedule was persisted.
       if (data?.code === 'AGRONOMY_REVIEW_REQUIRED') {
         resetRetries();
+        if (data.draft?.id) {
+          setReviewDrafts(previous => [data.draft, ...previous.filter(d => d.id !== data.draft.id)]);
+          setFlowStep('review-view');
+          return;
+        }
         setFlowStep('crop-input');
         const blockers = Array.isArray(data.blockers) ? data.blockers as string[] : [];
         const reason: Record<string, string> = {
@@ -495,7 +517,7 @@ export default function Schedule() {
     if (flowStep === 'crop-input') {
       setFlowStep('land-selection');
       setSelectedLand(null);
-    } else if (flowStep === 'schedule-view') {
+    } else if (flowStep === 'schedule-view' || flowStep === 'review-view') {
       setFlowStep('land-selection');
       setSelectedLand(null);
     }
@@ -557,7 +579,7 @@ export default function Schedule() {
   }
 
   const STEPS: FlowStep[] = ['land-selection', 'crop-input', 'schedule-view'];
-  const currentStepIndex = STEPS.indexOf(flowStep);
+  const currentStepIndex = flowStep === 'review-view' ? 2 : STEPS.indexOf(flowStep);
 
   const stickyHeader = (
     <div className="px-3 py-2">
@@ -640,6 +662,23 @@ export default function Schedule() {
             />
           </div>
         )}
+
+        {(flowStep === 'crop-input' || flowStep === 'review-view') && selectedLand && <>
+          {reviewLoadError && <p role="alert" className="p-4 text-sm text-destructive">{t('schedule.review.load_error')}</p>}
+          <ScheduleReviewDrafts drafts={reviewDrafts} busy={generating}
+            onEdit={() => setFlowStep('crop-input')}
+            onRecheck={draft => {
+              const i = draft.crop_inputs;
+              const sow = typeof i.sowingDate === 'string' ? new Date(`${i.sowingDate}T00:00:00`) : null;
+              if (!sow || Number.isNaN(sow.getTime())) {setFlowStep('crop-input'); return;}
+              const transplant = typeof i.transplantDate === 'string' ? new Date(`${i.transplantDate}T00:00:00`) : null;
+              handleCropDateSubmit(String(i.cropName || draft.crop_name),String(i.cropVariety || ''),sow,
+                i.isReadyMadePlant === true,String(i.farmingType || 'organic_fertilizer'),Number(i.nurseryDays || 0),
+                '',undefined,i.backdatedConsent === true,transplant,
+                typeof i.cropCycle === 'string' ? i.cropCycle : null,
+                typeof i.cultivationMethod === 'string' ? i.cultivationMethod : null);
+            }} />
+        </>}
 
         <VarietyMethodConsentDialog
           open={!!methodConsentPrompt}

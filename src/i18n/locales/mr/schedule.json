@@ -6,6 +6,22 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "review": {
+      "title": "तपासणीसाठी जतन केलेल्या योजना",
+      "inactive": "अजून सक्रिय नाही. शेतातील कामे किंवा आठवणीच्या सूचना तयार झालेल्या नाहीत.",
+      "edit": "माहिती बदला",
+      "recheck": "पुन्हा तपासा",
+      "load_error": "जतन केलेल्या योजना लोड करता आल्या नाहीत.",
+      "generic": "पिकाची पडताळलेली माहिती अजून बाकी आहे.",
+      "reasons": {
+        "SEED_RATE_DOCUMENTED_EVIDENCE_MISSING": "बियाण्याच्या प्रमाणाचा पडताळलेला पुरावा उपलब्ध नाही.",
+        "PLANTING_MATERIAL_RATE_SOURCE_MISSING": "लागवड साहित्याचे पडताळलेले प्रमाण उपलब्ध नाही.",
+        "PROPAGATION_MATERIAL_UNRESOLVED": "लागवड साहित्याची पडताळणी बाकी आहे.",
+        "VARIETY_MATURITY_CLOCK_NOT_VERIFIED": "पक्वतेचा कालावधी व त्याच्या तारखेचा आधार तपासणे बाकी आहे.",
+        "BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE": "काढणीचे वेळापत्रक अपूर्ण आहे.",
+        "REPEATED_PICKING_PROGRAMME_NOT_VERIFIED": "वारंवार तोडणीच्या वेळापत्रकाचा पडताळलेला पुरावा बाकी आहे."
+      }
+    },
     "title": "पीक वेळापत्रक",
     "generate": "वेळापत्रक तयार करा",
     "ai_schedule": "AI स्मार्ट वेळापत्रक",

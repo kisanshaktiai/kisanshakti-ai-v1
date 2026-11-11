@@ -6,6 +6,22 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "review": {
+      "title": "Saved plans awaiting review",
+      "inactive": "Not active. No field tasks or reminders have been created.",
+      "edit": "Edit details",
+      "recheck": "Recheck evidence",
+      "load_error": "Saved review plans could not be loaded.",
+      "generic": "Verified crop information is still missing.",
+      "reasons": {
+        "SEED_RATE_DOCUMENTED_EVIDENCE_MISSING": "Verified seed-rate evidence is missing.",
+        "PLANTING_MATERIAL_RATE_SOURCE_MISSING": "Verified planting-material quantity is missing.",
+        "PROPAGATION_MATERIAL_UNRESOLVED": "The planting material needs verification.",
+        "VARIETY_MATURITY_CLOCK_NOT_VERIFIED": "The maturity period and its date reference need verification.",
+        "BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE": "The harvest calendar is incomplete.",
+        "REPEATED_PICKING_PROGRAMME_NOT_VERIFIED": "The repeated-picking calendar needs verified evidence."
+      }
+    },
     "title": "Crop Schedule",
     "generate": "Generate Schedule",
     "ai_schedule": "AI Smart Schedule",
