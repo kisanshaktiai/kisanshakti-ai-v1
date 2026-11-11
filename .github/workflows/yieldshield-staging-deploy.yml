@@ -1,0 +1,55 @@
+name: YieldShield staging Edge Functions deployment (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      staging_project_ref:
+        description: "Exact isolated staging Supabase project ref; production is forbidden"
+        required: true
+        type: string
+      expected_git_sha:
+        description: "Exact approved 40-character commit SHA"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: yieldshield-staging-edge-deploy
+  cancel-in-progress: false
+jobs:
+  deploy-staging-only:
+    runs-on: ubuntu-latest
+    environment: yieldshield-staging
+    timeout-minutes: 30
+    env:
+      STAGING_SUPABASE_PROJECT_REF: ${{ inputs.staging_project_ref }}
+      EXPECTED_GIT_SHA: ${{ inputs.expected_git_sha }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.STAGING_SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fail closed on any production or mismatched release target
+        run: node scripts/yieldshield-staging-guard.mjs
+      - name: Require explicit staging environment variables and token
+        shell: bash
+        env:
+          CONFIGURED_STAGING_REF: ${{ vars.STAGING_SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$CONFIGURED_STAGING_REF"
+          test "$STAGING_SUPABASE_PROJECT_REF" = "$CONFIGURED_STAGING_REF"
+          echo "Staging environment approved and target matches protected environment."
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.81.3
+      - name: Deploy compatible group from the exact approved Git SHA (staging only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy ai-smart-schedule --project-ref "$STAGING_SUPABASE_PROJECT_REF" --no-verify-jwt
+          supabase functions deploy schedules-api --project-ref "$STAGING_SUPABASE_PROJECT_REF" --no-verify-jwt
+          supabase functions deploy schedule-reconciler --project-ref "$STAGING_SUPABASE_PROJECT_REF" --no-verify-jwt
+      - name: Show staging Edge Function deployments
+        shell: bash
+        run: supabase functions list --project-ref "$STAGING_SUPABASE_PROJECT_REF"
