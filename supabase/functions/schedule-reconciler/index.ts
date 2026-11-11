@@ -86,9 +86,9 @@
 
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { applyFieldDecisions, DECISION_APPLICATION_VERSION } from "./decision-application.ts";
-import { isServiceRoleBearer } from "../_shared/sessionVerify.ts";
+import { authorizeReconciler, canPersistMonitoring } from "./internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -162,14 +162,17 @@ export function assessSsotConflict(ctx: SsotContext): string | null {
 const numOrNull = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /** One crop-state ledger row per schedule per run. Dry runs are recorded too (run_mode=dry_run) — a trace, not a mutation. */
-async function writeMonitoring(supabase: ReturnType<typeof createClient>, _dryRun: boolean, row: Record<string, unknown>) {
+async function writeMonitoring(supabase: SupabaseClient<any, "public">, dryRun: boolean, row: Record<string, unknown>) {
+  if (!canPersistMonitoring(dryRun)) return;
   const { error } = await supabase.from("schedule_monitoring").insert(row);
   if (error) console.warn("[schedule-reconciler] schedule_monitoring insert failed:", error.message);
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
 
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") || "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
@@ -177,15 +180,14 @@ serve(async (req) => {
 
   const invokedAt = Date.now();
   try {
-    // The scheduled cron uses the Vault-backed schedule_reconciler_key.
-    // Reject all anonymous/farmer callers before any service-role mutation.
-    const bearer = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
-    let authorized = isServiceRoleBearer(req);
-    if (!authorized && bearer) {
-      const { data: secret, error: secretError } = await supabase.rpc("get_sweep_key", { p_name: "schedule_reconciler_key" });
-      authorized = !secretError && typeof secret === "string" && secret.length > 0 && bearer === secret;
-    }
-    if (!authorized) return json({ success: false, error: "Internal schedule service authentication required" }, 401);
+    // Check credentials before any schedule, farmer or field-state lookup.
+    // Legacy cron sends the Vault-backed secret in Authorization: Bearer.
+    // Never trust apikey, anon JWT or caller-supplied farmer/tenant headers.
+    const authorized = await authorizeReconciler(req,serviceRoleKey,async ()=>{
+      const { data: secret,error }=await supabase.rpc("get_sweep_key",{p_name:"schedule_reconciler_key"});
+      return !error && typeof secret==="string" ? secret : null;
+    });
+    if (!authorized) return json({ success:false,error:"Internal schedule service authentication required" },401);
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
     const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;

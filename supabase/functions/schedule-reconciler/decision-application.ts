@@ -309,7 +309,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     }
   } else {
     const deficiency = byKey(KEY.NUTRIENT).find((d) => d.status === "DUE" || d.status === "WATCH") ?? null;
-    if (canAdvanceNutrient(deficiency)) {
+    if (deficiency && canAdvanceNutrient(deficiency)) {
       // WATCH/OBSERVE_BEFORE_INPUT never authorizes a fertilizer application.
       // The next nutrition card whose OWN window has opened comes forward; the quantity is untouched.
       const next = nutrition.find((t) => t.task_date > horizon) ?? null;

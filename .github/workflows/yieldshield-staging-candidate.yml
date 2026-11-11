@@ -1,0 +1,46 @@
+name: YieldShield staging release candidate (NO deployment)
+on:
+  push:
+    branches:
+      - release/yieldshield-staging-auth-contracts-20261111
+  pull_request:
+    paths:
+      - 'supabase/functions/schedule-reconciler/**'
+      - 'supabase/functions/schedules-api/**'
+      - 'supabase/functions/ai-smart-schedule/**'
+      - 'supabase/functions/_shared/**'
+      - 'tests/schedule/yieldshield_*'
+      - 'scripts/yieldshield-staging-*'
+      - '.github/workflows/yieldshield-staging-*.yml'
+permissions:
+  contents: read
+jobs:
+  verify-no-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Bun
+        run: npm install --global bun@1.4.4
+      - name: Frozen lockfile
+        run: bun install --frozen-lockfile
+      - name: Reconciler auth and cross-function contract regression suite
+        run: |
+          bun run test -- \
+            tests/schedule/yieldshield_reconciler_internal_auth.test.ts \
+            tests/schedule/yieldshield_staging_contract_integration.test.ts \
+            tests/schedule/yieldshield_agronomy_scientific_contract.test.ts \
+            tests/schedule/yieldshield_decision_contract.test.ts \
+            tests/schedule/yieldshield_crop_release_gate.test.ts
+      - name: Frontend production build without deployment
+        run: bun run build
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Typecheck all compatible Supabase Edge Function entrypoints
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/ai-smart-schedule/index.ts
+          deno check --node-modules-dir=auto supabase/functions/schedules-api/index.ts
+          deno check --node-modules-dir=auto supabase/functions/schedule-reconciler/index.ts
+      - name: Verify staging deploy workflow safety boundaries
+        run: node scripts/yieldshield-staging-guard.mjs --self-test
