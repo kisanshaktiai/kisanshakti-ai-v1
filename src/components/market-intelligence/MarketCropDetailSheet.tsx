@@ -45,17 +45,22 @@ interface Props {
   price: MarketPrice | null;
   allPrices: MarketPrice[];
   historicalData: HistoricalComparison;
+  historicalCrop: string | null;
   aiAnalysis: AIAnalysis | null;
   isLoading: boolean;
   onLoadHistory: (crop: string) => void;
   onGetAdvice: (crop: string) => void;
 }
 
+const EMPTY_HISTORY: HistoricalComparison = {};
+
 export function MarketCropDetailSheet({
-  open, onOpenChange, price, allPrices, historicalData, aiAnalysis, isLoading, onLoadHistory, onGetAdvice,
+  open, onOpenChange, price, allPrices, historicalData, historicalCrop, aiAnalysis, isLoading, onLoadHistory, onGetAdvice,
 }: Props) {
   const [period, setPeriod] = useState<Period>('month');
   const crop = price?.crop_name || '';
+  // Never render another crop's history under this crop's name.
+  const cropHistory = historicalCrop === crop ? historicalData : EMPTY_HISTORY;
 
   useEffect(() => {
     if (open && crop) onLoadHistory(crop);
@@ -64,15 +69,15 @@ export function MarketCropDetailSheet({
 
   // Mandi feeds can lag; jump to the shortest period that actually has a trend.
   useEffect(() => {
-    const has = (k: Period) => aggregateDaily(historicalData[k]?.data || []).length >= 2;
+    const has = (k: Period) => aggregateDaily(cropHistory[k]?.data || []).length >= 2;
     if (!has(period)) {
       const best = (['month', 'week', 'year'] as Period[]).find(has);
       if (best) setPeriod(best);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historicalData]);
+  }, [cropHistory]);
 
-  const series = useMemo(() => aggregateDaily(historicalData[period]?.data || []), [historicalData, period]);
+  const series = useMemo(() => aggregateDaily(cropHistory[period]?.data || []), [cropHistory, period]);
   const first = series[0]?.price || 0;
   const last = series[series.length - 1]?.price || 0;
   const change = first > 0 ? ((last - first) / first) * 100 : 0;

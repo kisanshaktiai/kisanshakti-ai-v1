@@ -72,6 +72,8 @@ export function useMarketPriceIntelligence(farmerId?: string) {
   const [groupedPrices, setGroupedPrices] = useState<Record<string, MarketPrice[]>>({});
   const [nearbyMarkets, setNearbyMarkets] = useState<MarketPrice[]>([]);
   const [historicalData, setHistoricalData] = useState<HistoricalComparison>({});
+  // Crop the stored history belongs to; consumers must not render it for another crop.
+  const [historicalCrop, setHistoricalCrop] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [farmerLocation, setFarmerLocation] = useState<FarmerLocation | null>(null);
   const [states, setStates] = useState<string[]>([]);
@@ -237,10 +239,13 @@ export function useMarketPriceIntelligence(farmerId?: string) {
   }) => {
     setIsLoading(true);
     setError(null);
-    
+    // Drop stale history the moment a different crop's load starts, so no
+    // chart can render one crop's trend under another crop's name.
+    if ((params.crop || null) !== historicalCrop) setHistoricalData({});
     try {
       const data = await callEdgeFunction('getHistoricalComparison', params);
       setHistoricalData(data.comparisons || {});
+      setHistoricalCrop(params.crop || null);
       return data.comparisons;
     } catch (err: any) {
       setError(err.message);
@@ -248,7 +253,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     } finally {
       setIsLoading(false);
     }
-  }, [callEdgeFunction]);
+  }, [callEdgeFunction, historicalCrop]);
 
   const getAIAnalysis = useCallback(async (params: {
     crop?: string;
@@ -278,6 +283,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     groupedPrices,
     nearbyMarkets,
     historicalData,
+    historicalCrop,
     aiAnalysis,
     farmerLocation,
     states,

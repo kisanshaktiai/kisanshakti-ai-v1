@@ -66,6 +66,7 @@ export function MarketPriceIntelligence() {
   const {
     prices,
     historicalData,
+    historicalCrop,
     aiAnalysis,
     crops,
     cropGroups,
@@ -311,7 +312,7 @@ export function MarketPriceIntelligence() {
         onToggle={() => toggle('trend')}
       >
         <PriceComparisonChart
-          historicalData={historicalData}
+          historicalData={historicalCrop === (selectedCrop || null) ? historicalData : {}}
           selectedCrop={selectedCrop}
           isLoading={isLoading}
           embedded
@@ -346,6 +347,7 @@ export function MarketPriceIntelligence() {
         price={detail}
         allPrices={prices}
         historicalData={historicalData}
+        historicalCrop={historicalCrop}
         aiAnalysis={aiAnalysis && detail?.crop_name === selectedCrop ? aiAnalysis : null}
         isLoading={isLoading}
         onLoadHistory={(crop) => getHistoricalComparison({ crop })}
