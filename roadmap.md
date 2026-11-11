@@ -1,6 +1,6 @@
 # Schedule availability repair
 - [x] Confirm activation blockers reject repeated-picking and missing-variety-evidence plans before persistence; no review-only flow exists.
-- [ ] Implement safe review-only schedule flow and DB-backed repeated-picking eligibility after plan approval; do not bypass evidence safeguards.
+- [ ] Implement safe review-only schedule flow and DB-backed repeated-picking eligibility: blocked pending explicit approval for isolated review-draft storage. Hosted crop_schedules has no review status; atomic persistence requires executable tasks and updates land.
 
 # Market appearance refinement
 - [x] Remove accent-filled card hover and unify neutral Market control states.
