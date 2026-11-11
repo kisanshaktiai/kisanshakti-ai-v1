@@ -34,7 +34,9 @@ These must be deployed from the same exact Git SHA.
    - Environment variable `STAGING_SUPABASE_PROJECT_REF` — staging ref only.
    - Environment secret `STAGING_SUPABASE_ACCESS_TOKEN` — least-privileged
      token capable of managing staging only.
-   - Optional `STAGING_SUPABASE_ANON_KEY` for read-only smoke checks.
+   - Required `STAGING_SUPABASE_SERVICE_ROLE_KEY` for isolated
+     staging read-only HTTP integration snapshots. Never reuse production key.
+   - Optional `STAGING_SUPABASE_ANON_KEY` for further public API smoke checks.
    Never add production service keys or production auth data.
 4. Use the **manual** `YieldShield staging deployment (manual only)` Action.
    Enter exact expected Git SHA and staging project ref. The workflow validates

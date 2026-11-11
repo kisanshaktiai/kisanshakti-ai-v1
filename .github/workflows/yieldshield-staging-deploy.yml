@@ -53,3 +53,10 @@ jobs:
       - name: Show staging Edge Function deployments
         shell: bash
         run: supabase functions list --project-ref "$STAGING_SUPABASE_PROJECT_REF"
+      - name: Verify staging endpoint authorization and dry-run integrity
+        shell: bash
+        env:
+          STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          node scripts/yieldshield-staging-integration.mjs
