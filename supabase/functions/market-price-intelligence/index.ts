@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-11-11 13:10 UTC — Ranked feed: markets placed at their own town; road distance/time via Google Routes (distanceKind road|approx).
 // 2026-11-11 12:50 UTC — Cursor-page price reads, share public catalogs, and classify transient timeout responses.
 // 2026-11-11 — Separate source-coded livestock across market queries; complete catalogs and paged ranked results.
 // 2026-11-10 — Proximity feed: new action fetchRankedPrices ranks the latest price per
@@ -23,6 +24,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
 import { resolveMarkets } from './marketGeo.ts';
+import { roadDistances } from './roadDistance.ts';
 import { marketScope, matchesScope, scopeQuery, pricePage } from './commodityScope.ts';
 import { cursorRows, cachedRead } from './marketReads.ts';
 import { isDatabaseTimeout, retryDatabaseRead } from '../_shared/readResilience.ts';
@@ -260,20 +262,33 @@ serve(async (req) => {
         }
         // Major terminal markets = the busiest markets in the data (data-driven, not a fixed list).
         const majors = new Set([...volume.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([m]) => m));
-        const geo = await resolveMarkets(supabase, [...volume.keys()]);
+        const mDistrict = new Map<string, string>();
+        for (const r of rows) if (r.district && !mDistrict.has(r.market_location)) mDistrict.set(r.market_location, r.district);
+        const geo = await resolveMarkets(supabase, [...volume.keys()], 'Maharashtra', mDistrict);
         const hasFarm = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon)) && lat !== null && lon !== null;
+        // Road distance for the nearest markets (straight-line pre-sort, bounded batch).
+        const road = new Map<string, { km: number; min: number }>();
+        if (hasFarm) {
+          const o = { lat: Number(lat), lon: Number(lon) };
+          const cand = [...geo.entries()].filter(([, g]) => g)
+            .map(([m, g]) => ({ key: m, lat: g!.lat, lon: g!.lon, d: haversineDistance(o.lat, o.lon, g!.lat, g!.lon) }))
+            .filter((c) => c.d <= 250).sort((a, b) => a.d - b.d);
+          for (const [k, v] of await roadDistances(o, cand)) road.set(k, v);
+        }
         const fd = String(farmerDistrict || '').trim().toLowerCase();
 
         const tierOrder: Record<string, number> = { near: 0, regional: 1, major: 2, other: 3 };
         const items = [...latest.values()].map((r) => {
           const g = geo.get(r.market_location) || null;
-          const distance = hasFarm && g ? Math.round(haversineDistance(Number(lat), Number(lon), g.lat, g.lon)) : undefined;
+          const rd = road.get(r.market_location);
+          const distance = rd ? rd.km : hasFarm && g ? Math.round(haversineDistance(Number(lat), Number(lon), g.lat, g.lon)) : undefined;
+          const distanceKind = rd ? 'road' : distance !== undefined ? 'approx' : undefined;
           const sameDistrict = !!fd && !!g?.district && g.district.toLowerCase() === fd;
           let tier = 'other';
           if (sameDistrict || (distance !== undefined && distance <= 100)) tier = 'near';
           else if (distance !== undefined && distance <= 200) tier = 'regional';
           else if (majors.has(r.market_location)) tier = 'major';
-          return { ...r, district: r.district || g?.district || null, distance, tier, is_major_market: majors.has(r.market_location) };
+          return { ...r, district: r.district || g?.district || null, distance, distanceKind, travelMinutes: rd?.min, tier, is_major_market: majors.has(r.market_location) };
         });
         const filtered = items.filter((i) =>
           corridor === 'near' ? i.tier === 'near'

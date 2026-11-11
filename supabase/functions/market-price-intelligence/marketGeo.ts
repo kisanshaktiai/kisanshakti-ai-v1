@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+// 2026-11-11 — Markets resolve to their own town (district-scoped village / taluka seat) before
+//   taluka centroids; GeoPoint.via flags precision.
 // 2026-11-10 — New. Data-driven market gazetteer: market names in market_prices are resolved to
 //   coordinates from the DB location tables (villages → taluka centroids, districts.name_mr),
 //   using a script-agnostic consonant skeleton. No hand-coded market coordinates.
@@ -46,7 +48,7 @@ function finalVowel(s: string): string {
 }
 
 export interface GeoPoint { lat: number; lon: number; district?: string; via: string }
-interface Gazetteer { taluka: Map<string, GeoPoint | null>; village: Map<string, GeoPoint | null>; district: Map<string, GeoPoint>; districtMr: Map<string, GeoPoint> }
+interface Gazetteer { scoped: Map<string, GeoPoint | null>; taluka: Map<string, GeoPoint | null>; village: Map<string, GeoPoint | null>; district: Map<string, GeoPoint>; districtMr: Map<string, GeoPoint> }
 
 let cache: { at: number; g: Gazetteer } | null = null;
 const TTL = 6 * 60 * 60 * 1000;
@@ -89,26 +91,33 @@ async function load(db: any, stateName: string): Promise<Gazetteer> {
   }
 
   const tSum = new Map<string, { lat: number; lon: number; n: number }>();
-  const g: Gazetteer = { taluka: new Map(), village: new Map(), district: new Map(), districtMr: new Map() };
+  const seat = new Map<string, GeoPoint>();
+  const hq = new Map<string, GeoPoint>();
+  const g: Gazetteer = { scoped: new Map(), taluka: new Map(), village: new Map(), district: new Map(), districtMr: new Map() };
   for (const v of villages) {
     const lat = Number(v.center_lat), lon = Number(v.center_lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const acc = tSum.get(v.taluka_id) || { lat: 0, lon: 0, n: 0 };
     acc.lat += lat; acc.lon += lon; acc.n++; tSum.set(v.taluka_id, acc);
     const t: any = talById.get(v.taluka_id); const d: any = t && distById.get(t.district_id);
-    putUnique(g.village, skeleton(v.name), { lat, lon, district: d?.name, via: 'village' });
+    const vp = { lat, lon, district: d?.name, via: 'village' };
+    putUnique(g.village, skeleton(v.name), vp);
+    if (d) putUnique(g.scoped, `${skeleton(d.name)}|${skeleton(v.name)}`, vp);
+    if (t && skeleton(v.name) === skeleton(t.name) && !seat.has(v.taluka_id)) seat.set(v.taluka_id, vp);
+    if (d && skeleton(v.name) === skeleton(d.name) && !hq.has(d.id)) hq.set(d.id, vp);
   }
   const dSum = new Map<string, { lat: number; lon: number; n: number }>();
   for (const [tid, a] of tSum) {
     const t: any = talById.get(tid); const d: any = distById.get(t.district_id);
     const p = { lat: a.lat / a.n, lon: a.lon / a.n, district: d?.name, via: 'taluka' };
-    putUnique(g.taluka, skeleton(t.name), p);
+    // The taluka's own seat town is where its market sits; the centroid is only a fallback.
+    putUnique(g.taluka, skeleton(t.name), seat.get(tid) || p);
     const ds = dSum.get(t.district_id) || { lat: 0, lon: 0, n: 0 };
     ds.lat += p.lat; ds.lon += p.lon; ds.n++; dSum.set(t.district_id, ds);
   }
   for (const [did, a] of dSum) {
     const d: any = distById.get(did);
-    const p = { lat: a.lat / a.n, lon: a.lon / a.n, district: d.name, via: 'district' };
+    const p = hq.get(did) ? { ...hq.get(did)!, via: 'district-hq' } : { lat: a.lat / a.n, lon: a.lon / a.n, district: d.name, via: 'district' };
     g.district.set(skeleton(d.name), p);
     if (d.name_mr) g.districtMr.set(String(d.name_mr).trim(), p);
   }
@@ -123,7 +132,7 @@ function parts(name: string): string[] {
   return [...p.slice(1).reverse(), p[0]].filter(Boolean);
 }
 
-export async function resolveMarkets(db: any, names: string[], stateName = 'Maharashtra'): Promise<Map<string, GeoPoint | null>> {
+export async function resolveMarkets(db: any, names: string[], stateName = 'Maharashtra', districts: Map<string, string> = new Map()): Promise<Map<string, GeoPoint | null>> {
   const g = await load(db, stateName);
   const out = new Map<string, GeoPoint | null>();
   for (const name of names) {
@@ -131,8 +140,11 @@ export async function resolveMarkets(db: any, names: string[], stateName = 'Maha
     if (resolved.has(name)) { out.set(name, resolved.get(name)!); continue; }
     let hit: GeoPoint | null = null;
     const ps = parts(name);
+    const dk = skeleton(districts.get(name) || '');
+    // The market town itself, inside the market's own district.
+    if (dk) for (const p of [...ps].reverse()) { hit = g.scoped.get(`${dk}|${skeleton(p)}`) || null; if (hit) break; }
     // Prefer the market's own town (taluka seat), then the district, then a unique village name.
-    for (const p of [...ps].reverse()) { const k = skeleton(p); hit = g.taluka.get(k) || null; if (hit) break; }
+    if (!hit) for (const p of [...ps].reverse()) { const k = skeleton(p); const t = g.taluka.get(k) || null; if (t && (!dk || !t.district || skeleton(t.district) === dk)) { hit = t; break; } }
     if (!hit) for (const p of [...ps].reverse()) {
       hit = g.districtMr.get(p) || g.district.get(skeleton(p)) || null;
       if (!hit) for (const [mr, pt] of g.districtMr) if (mr.startsWith(p) || p.startsWith(mr)) { hit = pt; break; }
