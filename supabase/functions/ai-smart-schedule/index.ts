@@ -78,6 +78,8 @@ import { prepareCurrentFieldTasks } from "./generator/current-field-plan.ts";
 import { agronomyActivationBlockers, isBiologicalHarvestStage, isTreatmentInstruction, validateScientificTasks } from "./generator/agronomy-scientific-contract.ts";
 import { selectedGraphBlockers, stageGraphSha256, cropReleaseBlockers, type CropReleaseApproval } from "./generator/scientific-release-gate.ts";
 
+import { reviewDraftPayload, listReviewDrafts } from './review-drafts.ts';
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token, x-ai-provider",
@@ -121,6 +123,17 @@ serve(async (req) => {
       const outcome = await narratePendingSchedules(supabase, { scheduleId: body?.scheduleId ?? body?.schedule_id ?? null, tenantId: tenantId || null, farmerId: farmerId || null, sweep, limit: body?.limit ?? null, deadlineAt: startTime + 110_000 });
       try { await supabase.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: sweep ? null : (farmerId || null), payload: { action: "narrate", mode: sweep ? "sweep" : "farmer", http_status: outcome.status, ...outcome.body, execution_time_ms: Date.now() - startTime } }); } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
       return json(outcome.body, outcome.status);
+    }
+
+    if (body?.action === "review_drafts") {
+      if (!farmerId || !tenantId) return json({ error: "Missing tenant/farmer context" }, 401);
+      const id = typeof body.landId === 'string' ? body.landId : '';
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return json({error:'Valid landId required'},400);
+      const {data: land, error: landError} = await supabase.from('lands').select('id')
+        .eq('id',id).eq('farmer_id',farmerId).eq('tenant_id',tenantId).maybeSingle();
+      if (landError) return json({error:'Land lookup unavailable'},503);
+      if (!land) return json({error:'Land not found'},404);
+      return json({success:true, drafts:await listReviewDrafts(supabase,{farmerId,tenantId},id)});
     }
 
     if (body?.action === "method_suitability") {
@@ -327,11 +340,18 @@ serve(async (req) => {
       multiHarvestStage:cycleStages.some(s => /^(first_picking|successive_harvest)$/i.test(String(s.growth_stage??""))),
     });
     if(scientificBlockers.length){
+      // A review ledger is not a schedule: no tasks, atomic activation or land mutation.
+      const payload = reviewDraftPayload({tenantId,farmerId,landId,cropName:inputs.cropLabel || cropName,
+        language,selections:body,blockers:scientificBlockers,sourceRefs:baseline.provenance,coverage:baseline.coverage});
+      const {data: draft,error: draftError} = await supabase.from('crop_schedule_review_drafts')
+        .insert(payload).select('*').single();
+      if (draftError || !draft) return json({success:false,error:'Could not save review draft',code:'REVIEW_DRAFT_SAVE_FAILED'},503);
       return json({
         success:false,
         error:"Crop plan cannot be activated until its variety, planting-material and harvest evidence is verified.",
         code:"AGRONOMY_REVIEW_REQUIRED",
         review_required:true,
+        draft,
         blockers:scientificBlockers,
         gaps:[...new Set(baseline.gaps)],
         coverage:baseline.coverage,
