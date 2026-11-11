@@ -16,3 +16,5 @@
 
 ## Market prices
 - Market coordinates are resolved at runtime from DB location tables (villages → taluka/district centroids) by `market-price-intelligence/marketGeo.ts`; never hand-code market coordinates or corridor lists. "Major markets" are derived from data volume. Why: keeps the market feed region-agnostic and DB-driven.
+- Market scope uses verified source commodity codes, not translated names, units, or category prefixes; all market consumers pass the same scope. Why: the source mixes animals and produce in Other, and even dairy shares the animal-code prefix.
+- Market catalogs page through source rows and ranked feeds expose offset/total/hasMore; the UI uses complete selectors and incremental result loading. Why: neither the PostgREST cap nor visual truncation may hide available items.

@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-11-11 — Separate source-coded livestock across market queries; complete catalogs and paged ranked results.
 // 2026-11-10 — Proximity feed: new action fetchRankedPrices ranks the latest price per
 //   market+crop by the farmer's land (same district / ≤100 km / ≤200 km / major terminal
 //   markets by data volume / rest). Market coordinates come from DB location tables
@@ -21,9 +22,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
 import { resolveMarkets } from './marketGeo.ts';
+import { marketScope, scopeQuery, pricePage } from './commodityScope.ts';
 
 // deno-lint-ignore no-explicit-any
-async function pageRows(build: () => any, max = 30000): Promise<any[]> {
+async function pageRows(build: () => any, max = Infinity): Promise<any[]> {
   const size = 1000; const rows: any[] = [];
   for (let from = 0; from < max; from += size * 4) {
     const batch = await Promise.all([0, 1, 2, 3].map((i) => build().range(from + i * size, from + (i + 1) * size - 1)));
@@ -35,8 +37,8 @@ async function pageRows(build: () => any, max = 30000): Promise<any[]> {
 }
 
 // deno-lint-ignore no-explicit-any
-async function latestDate(supabase: any, crop?: string): Promise<string | null> {
-  let q = supabase.from('market_prices').select('price_date').order('price_date', { ascending: false }).limit(1);
+async function latestDate(supabase: any, crop?: string, scope = marketScope(undefined)): Promise<string | null> {
+  let q = scopeQuery(supabase.from('market_prices').select('price_date'), scope).order('price_date', { ascending: false }).limit(1);
   if (crop && crop !== 'all') q = q.ilike('crop_name', `%${crop}%`);
   const { data } = await q;
   return data?.[0]?.price_date ?? null;
@@ -156,7 +158,8 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { action, params } = await req.json();
+    const { action, params = {} } = await req.json();
+    const scope = marketScope(params.scope);
 
     console.log(`[market-price-intelligence] Action: ${action}`, params);
 
@@ -172,6 +175,7 @@ serve(async (req) => {
           .limit(limit);
 
         // Filter by crop name
+        query = scopeQuery(query, scope);
         if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
         // Filter by district
         if (district) query = query.ilike('district', `%${district}%`);
@@ -205,19 +209,22 @@ serve(async (req) => {
       }
 
       case 'fetchRankedPrices': {
-        const { lat, lon, district: farmerDistrict, crop, group, corridor = 'all', limit = 120 } = params || {};
-        const anchor = await latestDate(supabase, crop);
+        const { lat, lon, district: farmerDistrict, crop, group, corridor = 'all', limit: requestedLimit = 120, offset: requestedOffset = 0 } = params || {};
+        const anchor = await latestDate(supabase, crop, scope);
         if (!anchor) {
-          return new Response(JSON.stringify({ success: true, data: [], latestDate: null, tiers: {} }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          return new Response(JSON.stringify({ success: true, data: [], latestDate: null, tiers: {}, totalRecords: 0, hasMore: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
+        const limit = Math.min(500, Math.max(1, Number(requestedLimit) || 120));
+        const offset = Math.max(0, Math.floor(Number(requestedOffset) || 0));
         const rows = await pageRows(() => {
           let q = supabase.from('market_prices')
-            .select('id,crop_name,variety,price_per_unit,unit,market_location,district,state,price_date,min_price,max_price,modal_price,arrival,commodity_category')
-            .gte('price_date', daysBefore(anchor, 7)).order('price_date', { ascending: false });
+            .select('id,crop_name,variety,price_per_unit,unit,market_location,district,state,price_date,min_price,max_price,modal_price,arrival,commodity_category,commodity_code')
+            .gte('price_date', daysBefore(anchor, 7)).order('price_date', { ascending: false }).order('id');
+          q = scopeQuery(q, scope);
           if (crop && crop !== 'all') q = q.ilike('crop_name', `%${crop}%`);
           if (group && group !== 'all') q = q.eq('commodity_category', group);
           return q;
-        }, 20000);
+        });
 
         // Newest row per market + crop + variety.
         const latest = new Map<string, any>();
@@ -258,7 +265,7 @@ serve(async (req) => {
         for (const i of items) tiers[i.tier]++;
 
         return new Response(JSON.stringify({
-          success: true, data: filtered.slice(0, limit), latestDate: anchor, tiers,
+          success: true, ...pricePage(filtered, offset, limit), latestDate: anchor, tiers,
           majorMarkets: [...majors], located: hasFarm,
         }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
@@ -283,6 +290,7 @@ serve(async (req) => {
           .order('price_date', { ascending: false })
           .limit(500);
 
+        query = scopeQuery(query, scope);
         if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
 
         const { data, error } = await query;
@@ -323,7 +331,7 @@ serve(async (req) => {
         // FIXED: Removed state filter
         const { crop, district, market, periods = ['week', 'month', 'year'] } = params;
         
-        const anchor = await latestDate(supabase, crop);
+        const anchor = await latestDate(supabase, crop, scope);
         const today = anchor ? new Date(anchor) : new Date();
         const comparisons: Record<string, any> = {};
 
@@ -342,7 +350,8 @@ serve(async (req) => {
             .gte('price_date', pastDateStr)
             .order('price_date', { ascending: false });
 
-          if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
+          query = scopeQuery(query, scope);
+        if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
           if (district) query = query.ilike('district', `%${district}%`);
           if (market) query = query.ilike('market_location', `%${market}%`);
 
@@ -395,6 +404,7 @@ serve(async (req) => {
           .order('price_date', { ascending: false })
           .limit(50);
 
+        query = scopeQuery(query, scope);
         if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
 
         const { data: marketData } = await query;
@@ -539,9 +549,8 @@ Respond ONLY with valid JSON, no markdown.`;
 
       case 'getMarkets': {
         // NEW: Fetch unique market locations
-        const anchorM = await latestDate(supabase);
-        const data = anchorM ? await pageRows(() => supabase.from('market_prices').select('market_location')
-          .not('market_location', 'is', null).gte('price_date', daysBefore(anchorM, 60))) : [];
+        const anchorM = await latestDate(supabase, undefined, scope);
+        const data = anchorM ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('market_location').not('market_location', 'is', null).order('id'), scope)) : [];
 
         const uniqueMarkets = [...new Set((data || []).map((d: any) => d.market_location))].filter(Boolean).sort();
 
@@ -558,10 +567,11 @@ Respond ONLY with valid JSON, no markdown.`;
       case 'getCrops': {
         // Filter by group if provided
         const { group } = params;
-        const anchorC = await latestDate(supabase);
+        const anchorC = await latestDate(supabase, undefined, scope);
         const data = anchorC ? await pageRows(() => {
           let q = supabase.from('market_prices').select('crop_name, commodity_category')
-            .not('crop_name', 'is', null).gte('price_date', daysBefore(anchorC, 60));
+            .not('crop_name', 'is', null).order('id');
+          q = scopeQuery(q, scope);
           if (group && group !== 'all') q = q.eq('commodity_category', group);
           return q;
         }) : [];
@@ -582,15 +592,15 @@ Respond ONLY with valid JSON, no markdown.`;
 
       case 'getCropGroups': {
         // Get unique crop groups with counts
-        const anchorG = await latestDate(supabase);
-        const data = anchorG ? await pageRows(() => supabase.from('market_prices').select('commodity_category')
-          .gte('price_date', daysBefore(anchorG, 60))) : [];
+        const anchorG = await latestDate(supabase, undefined, scope);
+        const data = anchorG ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('crop_name,commodity_category').order('id'), scope)) : [];
 
         // Count crops per group
-        const groupCounts: Record<string, number> = {};
+        const groupCounts: Record<string, Set<string>> = {};
         (data || []).forEach((d: any) => {
           const group = d.commodity_category || 'इतर';
-          groupCounts[group] = (groupCounts[group] || 0) + 1;
+          if (!groupCounts[group]) groupCounts[group] = new Set();
+          groupCounts[group].add(d.crop_name);
         });
 
         // Define group metadata with icons and English names
@@ -609,7 +619,7 @@ Respond ONLY with valid JSON, no markdown.`;
         const groups = Object.entries(groupCounts)
           .map(([name, count]) => ({
             name,
-            count,
+            count: count.size,
             ...(groupMeta[name] || { icon: '📦', en: name, hi: name })
           }))
           .sort((a, b) => b.count - a.count);
@@ -628,9 +638,8 @@ Respond ONLY with valid JSON, no markdown.`;
         // Get top markets by record count for button display
         const { limit = 6 } = params;
         
-        const anchorT = await latestDate(supabase);
-        const data = anchorT ? await pageRows(() => supabase.from('market_prices').select('market_location')
-          .gte('price_date', daysBefore(anchorT, 30))) : [];
+        const anchorT = await latestDate(supabase, undefined, scope);
+        const data = anchorT ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('market_location').gte('price_date', daysBefore(anchorT, 30)).order('id'), scope)) : [];
 
         // Count records per market
         const marketCounts: Record<string, number> = {};

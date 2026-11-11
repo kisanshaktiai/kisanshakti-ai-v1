@@ -1,4 +1,5 @@
-import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
 import { MarketPrice } from '@/hooks/useMarketPriceIntelligence';
 import { MapPin, CalendarDays, Package, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ function formatDate(d?: string) {
 }
 
 export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
+  const { t } = useTranslation();
   const modalPrice = price.modal_price || price.price_per_unit || 0;
   const minPrice = price.min_price || modalPrice;
   const maxPrice = price.max_price || modalPrice;
@@ -38,28 +40,24 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
   const groupIcon = getGroupIcon(price.commodity_category);
 
   return (
-    <motion.button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.2 }}
       className={cn(
-        'w-full text-left rounded-2xl p-4 bg-card border border-border/60',
+        'block h-auto w-full min-w-0 whitespace-normal text-left rounded-lg p-3 bg-card border border-border/60',
         'active:bg-muted/40 transition-colors touch-manipulation'
       )}
     >
       {/* Row 1: crop + trend */}
-      <div className="flex items-start justify-between gap-3 mb-2">
+      <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="text-2xl leading-none" aria-hidden>{groupIcon}</span>
+          <span className="text-xl leading-none" aria-hidden>{groupIcon}</span>
           <div className="min-w-0">
-            <h3 className="text-base font-bold text-foreground truncate leading-tight">
+            <h3 className="text-sm font-bold text-foreground break-words leading-snug">
               {price.crop_name}
             </h3>
             {price.variety && (
-              <p className="text-[11px] text-muted-foreground truncate leading-tight">
+              <p className="text-[11px] font-normal text-muted-foreground break-words leading-snug">
                 {price.variety}
               </p>
             )}
@@ -68,7 +66,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
         {price.arrival != null && Number(price.arrival) > 0 ? (
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-muted text-muted-foreground flex-shrink-0 tabular-nums">
             <Package className="w-3.5 h-3.5" />
-            आवक {Number(price.arrival).toLocaleString('en-IN')}
+            {t('market.intelligence.arrival')} {Number(price.arrival).toLocaleString('en-IN')}
           </div>
         ) : (
           <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -100,10 +98,10 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
       )}
 
       {/* Row 4: location + date */}
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 text-[11px] font-normal text-muted-foreground">
         <span className="flex items-center gap-1 min-w-0">
           <MapPin className="w-3 h-3 text-primary flex-shrink-0" />
-          <span className="truncate">
+          <span className="min-w-0 break-words leading-relaxed">
             {price.market_location || price.district}
             {price.distance !== undefined && (
               <span className="ml-1 text-primary font-medium tabular-nums">• {price.distance} किमी</span>
@@ -120,6 +118,6 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
           </span>
         )}
       </div>
-    </motion.button>
+    </Button>
   );
 }

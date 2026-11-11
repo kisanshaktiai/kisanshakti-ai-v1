@@ -10,7 +10,7 @@ import { CropGroupButtons } from './CropGroupButtons';
 import { landsApi } from '@/services/landsApi';
 import { CropChips } from './CropChips';
 import { MarketCropDetailSheet } from './MarketCropDetailSheet';
-import type { MarketPrice } from '@/hooks/useMarketPriceIntelligence';
+import type { MarketPrice, MarketScope } from '@/hooks/useMarketPriceIntelligence';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,31 +23,22 @@ import {
   Wheat,
   BarChart3,
   ChevronDown,
+  Fence,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
 type Section = 'today' | 'trend' | 'ai';
 type Corridor = 'all' | 'near' | 'regional' | 'major';
 type Tier = 'near' | 'regional' | 'major' | 'other';
 
-const CORRIDORS: { id: Corridor; label: string }[] = [
-  { id: 'all', label: 'सर्व' },
-  { id: 'near', label: 'जवळचे · १०० किमी' },
-  { id: 'regional', label: 'परिसर · २०० किमी' },
-  { id: 'major', label: 'मोठ्या बाजारपेठा' },
-];
-const TIER_META: Record<Tier, { title: string; subtitle: string }> = {
-  near: { title: 'तुमच्या जवळचे बाजार', subtitle: 'तुमचा जिल्हा व १०० किमीच्या आत' },
-  regional: { title: 'परिसरातील बाजार', subtitle: '१०० ते २०० किमी' },
-  major: { title: 'मोठ्या बाजारपेठा', subtitle: 'सर्वाधिक आवक असलेले बाजार (उदा. मुंबई, पुणे)' },
-  other: { title: 'इतर बाजार', subtitle: 'राज्यातील इतर बाजार' },
-};
+const CORRIDORS: { id: Corridor }[] = [{ id: 'all' }, { id: 'near' }, { id: 'regional' }, { id: 'major' }];
 const TIER_ORDER: Tier[] = ['near', 'regional', 'major', 'other'];
 
 export function MarketPriceIntelligence() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+  const [scope, setScope] = useState<MarketScope>('produce');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [corridor, setCorridor] = useState<Corridor>('all');
   const [land, setLand] = useState<{ lat?: number; lon?: number; district?: string } | null>(null);
@@ -65,6 +56,9 @@ export function MarketPriceIntelligence() {
 
   const {
     prices,
+    totalRecords,
+    hasMore,
+    error,
     historicalData,
     historicalCrop,
     aiAnalysis,
@@ -76,9 +70,9 @@ export function MarketPriceIntelligence() {
     fetchRankedPrices,
     getHistoricalComparison,
     getAIAnalysis,
-  } = useMarketPriceIntelligence(user?.id);
+  } = useMarketPriceIntelligence(user?.id, scope);
 
-  const loadFeed = async (opts: { crop?: string; group?: string | null; corridor?: Corridor; loc?: typeof land } = {}) => {
+  const loadFeed = async (opts: { crop?: string; group?: string | null; corridor?: Corridor; loc?: typeof land; offset?: number } = {}) => {
     const loc = opts.loc !== undefined ? opts.loc : land;
     const res = await fetchRankedPrices({
       lat: loc?.lat, lon: loc?.lon, district: loc?.district,
@@ -86,11 +80,13 @@ export function MarketPriceIntelligence() {
       group: (opts.group !== undefined ? opts.group : selectedGroup) || undefined,
       corridor: opts.corridor ?? corridor,
       limit: 150,
+      offset: opts.offset || 0,
     });
     setLatestDate(res.latestDate ?? null);
   };
 
   useEffect(() => {
+    let cancelled = false;
     const init = async () => {
       // Location comes from the farmer's own verified lands, never from a client-chosen id.
       let loc: typeof land = null;
@@ -101,12 +97,22 @@ export function MarketPriceIntelligence() {
       } catch {
         loc = null;
       }
+      if (cancelled) return;
       setLand(loc);
-      await Promise.all([fetchCropGroups(), fetchCrops(), loadFeed({ loc })]);
+      await Promise.all([fetchCropGroups(), fetchCrops(), loadFeed({ loc, crop: '', group: null })]);
     };
     init();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, scope]);
+
+  const handleScopeChange = (value: string) => {
+    if (value !== 'produce' && value !== 'livestock') return;
+    setSelectedGroup(null); setSelectedCrop(''); setSearchQuery(''); setDetail(null);
+    setLatestDate(null);
+    setOpenSections({ today: true, trend: false, ai: false });
+    setScope(value);
+  };
 
   const handleGroupChange = async (group: string) => {
     const g = group === 'all' ? null : group;
@@ -161,7 +167,13 @@ export function MarketPriceIntelligence() {
     setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="min-w-0 space-y-3 pb-6">
+      <Tabs value={scope} onValueChange={handleScopeChange}>
+        <TabsList className="grid h-11 w-full grid-cols-2 rounded-lg">
+          <TabsTrigger value="produce" className="h-9 gap-2 rounded-md text-sm"><Wheat className="h-4 w-4" />{t('market.intelligence.produce')}</TabsTrigger>
+          <TabsTrigger value="livestock" className="h-9 gap-2 rounded-md text-sm"><Fence className="h-4 w-4" />{t('market.intelligence.livestock')}</TabsTrigger>
+        </TabsList>
+      </Tabs>
       {/* Quick stats strip */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -170,64 +182,34 @@ export function MarketPriceIntelligence() {
       >
         <StatPill
           icon={<TrendingUp className="w-4 h-4 text-success" />}
-          value={prices.length}
-          label="भाव"
+          value={totalRecords}
+          label={t('market.intelligence.prices')}
         />
         <StatPill
           icon={<MapPin className="w-4 h-4 text-primary" />}
           value={nearCount}
-          label="जवळचे"
+          label={t('market.intelligence.nearby')}
         />
         <StatPill
           icon={<Wheat className="w-4 h-4 text-accent" />}
           value={crops.length}
-          label="पिके"
+          label={t('market.intelligence.items')}
         />
       </motion.div>
 
-      {/* Filter rails */}
-      <CropGroupButtons
-        groups={cropGroups}
-        selectedGroup={selectedGroup}
-        onSelectGroup={handleGroupChange}
-        isLoading={isLoading}
-      />
-
-      <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1" role="tablist" aria-label="बाजार अंतर">
-        {CORRIDORS.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            role="tab"
-            aria-selected={corridor === c.id}
-            onClick={() => handleCorridorChange(c.id)}
-            disabled={isLoading}
-            className={cn(
-              'flex-shrink-0 h-9 px-3.5 rounded-full text-xs font-semibold border transition-colors touch-manipulation',
-              corridor === c.id
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-card text-foreground border-border/60 active:bg-muted/40',
-            )}
-          >
-            {c.label}
-          </button>
+      <div className="grid grid-cols-2 gap-2">
+        <CropGroupButtons groups={cropGroups} selectedGroup={selectedGroup} onSelectGroup={handleGroupChange} isLoading={isLoading} />
+        <CropChips crops={crops} selectedCrop={selectedCrop} onSelectCrop={handleCropChange} isLoading={isLoading} />
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t('market.intelligence.marketDistance')}>
+        {CORRIDORS.map(c => (
+          <Button key={c.id} variant={corridor === c.id ? 'default' : 'outline'} aria-pressed={corridor === c.id} onClick={() => handleCorridorChange(c.id)} disabled={isLoading}
+            className="h-auto min-h-10 min-w-0 whitespace-normal rounded-lg px-2 py-2 text-xs">
+            {t(`market.intelligence.corridors.${c.id}`)}
+          </Button>
         ))}
       </div>
-      {!land?.lat && !isLoading && (
-        <p className="text-[11px] text-muted-foreground px-1">
-          तुमच्या शेताचे ठिकाण मिळाले नाही — अंतर दाखवता येत नाही. जमिनीची नोंद पूर्ण करा.
-        </p>
-      )}
-
-      {crops.length > 0 && (
-        <CropChips
-          crops={crops}
-          selectedCrop={selectedCrop}
-          onSelectCrop={handleCropChange}
-          isLoading={isLoading}
-          maxDisplay={20}
-        />
-      )}
+      {land?.lat == null && !isLoading && <p className="text-xs text-muted-foreground">{t('market.intelligence.missingLocation')}</p>}
 
       {/* Search + refresh row */}
       <div className="flex gap-2 items-center">
@@ -240,14 +222,14 @@ export function MarketPriceIntelligence() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onBlur={() => !searchQuery && setSearchOpen(false)}
-              className="h-11 pl-9 rounded-2xl bg-card border-border/60 text-sm"
+              className="h-11 pl-9 rounded-lg bg-card border-border/60 text-sm"
             />
           </div>
         ) : (
           <Button
             variant="outline"
             onClick={() => setSearchOpen(true)}
-            className="flex-1 h-11 rounded-2xl bg-card border-border/60 justify-start text-muted-foreground font-normal"
+            className="flex-1 h-11 rounded-lg bg-card border-border/60 justify-start text-muted-foreground font-normal"
           >
             <Search className="w-4 h-4 mr-2" />
             {t('market.intelligence.search')}
@@ -258,9 +240,9 @@ export function MarketPriceIntelligence() {
           onClick={handleRefresh}
           variant="outline"
           size="icon"
-          className="h-11 w-11 rounded-2xl bg-card border-border/60 flex-shrink-0"
+          className="h-11 w-11 rounded-lg bg-card border-border/60 flex-shrink-0"
           disabled={isLoading}
-          aria-label="Refresh"
+          aria-label={t('market.intelligence.refresh')}
         >
           {isLoading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -272,14 +254,14 @@ export function MarketPriceIntelligence() {
 
       {/* Section: Today's prices, nearest markets first */}
       <Section
-        title="आजचे भाव"
-        subtitle={latestDate ? `जवळचे बाजार आधी · ताजी नोंद ${latestDate}` : 'जवळचे बाजार आधी'}
+        title={t('market.intelligence.latestPrices')}
+        subtitle={latestDate ? t('market.intelligence.latestRecord', { date: latestDate }) : t('market.intelligence.nearestFirst')}
         icon={<TrendingUp className="w-4 h-4 text-primary" />}
         open={openSections.today}
         onToggle={() => toggle('today')}
-        count={prices.length}
+        count={totalRecords}
       >
-        {isLoading && prices.length === 0 ? (
+        {error ? <div role="alert" className="py-4 text-sm text-destructive">{t('market.intelligence.loadError')}</div> : isLoading && prices.length === 0 ? (
           <Loading />
         ) : byTier.length === 0 ? (
           <Empty icon={Wheat} text={t('market.intelligence.noPrices')} />
@@ -289,11 +271,11 @@ export function MarketPriceIntelligence() {
               <div key={tier}>
                 <div className="mb-2 px-1 flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-primary" />
-                  <h4 className="text-xs font-bold text-foreground">{TIER_META[tier].title}</h4>
-                  <span className="text-[10px] text-muted-foreground truncate">· {TIER_META[tier].subtitle}</span>
+                  <h4 className="text-xs font-bold text-foreground">{t(`market.intelligence.tiers.${tier}`)}</h4>
+
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {items.slice(0, tier === 'other' ? 20 : 40).map((p, i) => (
+                  {items.map((p, i) => (
                     <MarketPriceCard key={p.id || i} price={p} onClick={() => setDetail(p)} />
                   ))}
                 </div>
@@ -301,8 +283,15 @@ export function MarketPriceIntelligence() {
             ))}
           </div>
         )}
+        <div className="mt-3 flex flex-col items-center gap-2">
+          <p className="text-xs text-muted-foreground">{t('market.intelligence.showing', { count: prices.length, total: totalRecords })}</p>
+          {hasMore && <Button variant="outline" onClick={() => loadFeed({ offset: prices.length })} disabled={isLoading} className="w-full rounded-lg">
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('market.intelligence.loadMore')}
+          </Button>}
+        </div>
       </Section>
 
+      {scope === 'produce' && <>
       {/* Section: Trend */}
       <Section
         title="किंमत प्रवृत्ती"
@@ -341,6 +330,7 @@ export function MarketPriceIntelligence() {
           embedded
         />
       </Section>
+      </>}
       <MarketCropDetailSheet
         open={!!detail}
         onOpenChange={(o) => !o && setDetail(null)}
@@ -370,7 +360,7 @@ function StatPill({
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-card border border-border/60">
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/60">
       <div className="flex-shrink-0">{icon}</div>
       <div className="min-w-0">
         <div className="text-sm font-bold text-foreground leading-tight tabular-nums">
@@ -402,18 +392,18 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-card border border-border/60 overflow-hidden">
-      <button
-        type="button"
+    <section className="min-w-0 border-t border-border pt-2">
+      <Button
+        variant="ghost"
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 active:bg-muted/40 transition-colors"
+        className="h-auto w-full justify-start gap-2 whitespace-normal px-0 py-2"
       >
         <div className="p-2 rounded-xl bg-muted flex-shrink-0">{icon}</div>
         <div className="flex-1 text-left min-w-0">
           <div className="text-sm font-bold text-foreground leading-tight truncate">
             {title}
           </div>
-          <div className="text-[11px] text-muted-foreground leading-tight truncate">
+          <div className="mt-1 text-[11px] font-normal text-muted-foreground leading-snug whitespace-normal">
             {subtitle}
           </div>
         </div>
@@ -428,7 +418,7 @@ function Section({
             open && 'rotate-180',
           )}
         />
-      </button>
+      </Button>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
@@ -438,7 +428,7 @@ function Section({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="p-4 pt-1">{children}</div>
+            <div className="pt-2">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
