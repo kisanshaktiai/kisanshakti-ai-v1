@@ -1,3 +1,7 @@
+# Schedule availability repair
+- [x] Confirm activation blockers reject repeated-picking and missing-variety-evidence plans before persistence; no review-only flow exists.
+- [ ] Implement safe review-only schedule flow and DB-backed repeated-picking eligibility after plan approval; do not bypass evidence safeguards.
+
 # Market appearance refinement
 - [x] Remove accent-filled card hover and unify neutral Market control states.
 - [x] Refine mobile card hierarchy, filter alignment, and price-detail spacing without changing data logic.
