@@ -266,7 +266,8 @@ export default function Schedule() {
           'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
           'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
           'STAGE_COVERAGE_MISSING','VARIETY_METHOD_NOT_SUITABLE',
-          'VARIETY_UNRESOLVED'
+          'VARIETY_UNRESOLVED','AGRONOMY_REVIEW_REQUIRED',
+          'AGRONOMY_SAFETY_VALIDATION_FAILED','SCHEDULE_VALIDATION_FAILED'
         ].includes(errorBody.code)) {
           resetRetries();
           setFlowStep('crop-input');
@@ -295,6 +296,31 @@ export default function Schedule() {
             retry: () => handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, { accepted: true, evidenceIds: evidence.map((r) => r.id) }),
           });
         }
+        return;
+      }
+
+      // A scientifically incomplete crop plan is an expected review outcome.
+      // HTTP 200 prevents Supabase FunctionsHttpError from blanking the page.
+      // Never retry automatically: without reviewed crop evidence, the result
+      // will remain the same, and no active crop schedule was persisted.
+      if (data?.code === 'AGRONOMY_REVIEW_REQUIRED') {
+        resetRetries();
+        setFlowStep('crop-input');
+        const blockers = Array.isArray(data.blockers) ? data.blockers as string[] : [];
+        const reason: Record<string, string> = {
+          SEED_RATE_DOCUMENTED_EVIDENCE_MISSING: 'Verified seed rate is missing for the selected variety and planting method.',
+          PLANTING_MATERIAL_RATE_SOURCE_MISSING: 'Verified planting-material quantity is missing for this establishment method.',
+          PROPAGATION_MATERIAL_UNRESOLVED: 'The crop establishment material needs expert verification.',
+          VARIETY_MATURITY_CLOCK_NOT_VERIFIED: 'The variety maturity period or its sowing/transplanting reference is not verified.',
+          BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE: 'The crop-stage calendar has no complete biological harvest programme.',
+          REPEATED_PICKING_PROGRAMME_NOT_VERIFIED: 'This crop needs an expert-verified repeated-picking calendar.',
+        };
+        toast({
+          title: t('schedule.main.agronomy_input_required', 'Crop details need review'),
+          description: blockers.map(b => reason[b] || b.replace(/_/g, ' ').toLowerCase()).join(' ') ||
+            data.error || 'This crop schedule needs scientific review before activation.',
+          variant: 'destructive',
+        });
         return;
       }
 
@@ -335,6 +361,22 @@ export default function Schedule() {
         throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
       }
       
+      // Missing authoritative crop data cannot be repaired by retrying the LLM.
+      if (data?.code && [
+        'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
+        'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
+        'STAGE_COVERAGE_MISSING','VARIETY_UNRESOLVED',
+        'AGRONOMY_REVIEW_REQUIRED','AGRONOMY_SAFETY_VALIDATION_FAILED'
+      ].includes(data.code)) {
+        resetRetries();
+        setFlowStep('crop-input');
+        toast({
+          title: t('schedule.main.agronomy_input_required', 'Crop details need review'),
+          description: data.error || t('schedule.main.generation_failed'),
+          variant: 'destructive',
+        });
+        return;
+      }
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
         if (retryCountRef.current < 2) {

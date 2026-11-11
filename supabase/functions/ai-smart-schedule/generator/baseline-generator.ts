@@ -87,6 +87,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
+import { hasUnstructuredRelativeTiming, isDeficiencyDependentAction, isBiologicalHarvestStage } from "./agronomy-scientific-contract.ts";
 import {
   getStages,
   getSeedRate,
@@ -103,7 +104,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.6.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.7.0-evidence-clock";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -387,8 +388,10 @@ export async function generateBaseline(
   // 1 mm of depth over 1 m2 is exactly 1 litre, so field volume needs only the land area.
   const fieldAreaM2: number | null = inputs.landAreaAcres != null ? Number(inputs.landAreaAcres) * 4046.856 : (inputs.landAreaHa != null ? Number(inputs.landAreaHa) * 10000 : null);
   if (fieldAreaM2 == null) gaps.push("field_area_unknown_water_volume_unavailable");
-  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods);
-  let durationDays = graphDurationDays;
+  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods, transplantOffset);
+  // A graph is a provisional phenology window, not a proven variety harvest date.
+  let durationDays: number | null = null;
+  if(varietyDuration?.issue) gaps.push(varietyDuration.issue);
   if (varietyDuration && varietyDuration.maxDays != null) {
     durationDays = varietyDuration.maxDays;
     provenance.push(varietyDuration.provenance);
@@ -403,6 +406,7 @@ export async function generateBaseline(
   // removes the operation itself.
   const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod);
   coverage.seed = !!seed;
+  if(!seed) gaps.push("seed_rate_verified_source_required");
   let seedKg: number | null = null;
   if (!seed) {
     gaps.push("seed_rate_unavailable");
@@ -433,7 +437,7 @@ export async function generateBaseline(
     if (seed && seed.basisCode && !broadcastLine) gaps.push(`seed_rate_broadcast_band_missing:${seed.basisCode}`);
     const sowDescription = seedKg != null && areaAcres != null
       ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
-      : "";
+      : "Plan establishment using certified seed; the seed quantity is pending verification for this crop, variety and method.";
     const sowInstructions: string[] = [];
     if (seedBasisLine) sowInstructions.push(seedBasisLine);
     if (broadcastLine) sowInstructions.push(broadcastLine);
@@ -649,6 +653,8 @@ export async function generateBaseline(
     ) || stageForDas(stages, g.dasStart, transplantOffset);
     const label = stageLabel(stage) || String(g.growthStage ?? "").replace(/_/g, " ");
     const width = g.dasEnd - g.dasStart;
+    const isNurseryWater = /nursery/i.test(String(stage?.growth_stage ?? g.growthStage ?? ""));
+    if(isNurseryWater && g.waterMm != null) gaps.push("nursery_irrigation_volume_requires_nursery_area");
 
     const irrigationInstructions: string[] = [];
     // 2026-09-03: machine/provenance detail no longer sits in the farmer instruction
@@ -709,7 +715,7 @@ export async function generateBaseline(
       instructions: [...irrigationInstructions],
       precautions: [],
       technical_details: irrigationTechnical,
-      water_volume: !isWithdrawal && g.waterMm != null && fieldAreaM2 != null
+      water_volume: !isWithdrawal && !isNurseryWater && g.waterMm != null && fieldAreaM2 != null
         ? {
             stage_total_liters: Math.round(g.waterMm * fieldAreaM2),
             per_event_liters: null,
@@ -760,6 +766,20 @@ export async function generateBaseline(
   const policySuppressed: string[] = [];
 
   for (const rule of rules) {
+    // Without a typed event-relative clock, a stage-start card would be misleading.
+    if(hasUnstructuredRelativeTiming(rule.action_text)){
+      gaps.push(`rule_relative_timing_needs_structured_anchor:${rule.rule_id}`);
+      continue;
+    }
+    if(isDeficiencyDependentAction(rule.rule_id,rule.action_text)){
+      gaps.push(`conditional_nutrient_requires_observation:${rule.rule_id}`);
+      continue;
+    }
+    if(!inputs.soilFertilityClass &&
+      ["nutrition","micronutrient"].includes(String(rule.category??"").toLowerCase())){
+      gaps.push(`quantitative_nutrient_rule_requires_soil_and_stage_evidence:${rule.rule_id}`);
+      continue;
+    }
     const chem = String(rule.chemical_class ?? "").toLowerCase();
     if (chem && banned.has(chem)) {
       gaps.push(`rule_skipped_banned_chemical:${rule.rule_id}`);
@@ -1027,7 +1047,7 @@ export async function generateBaseline(
     { match: /land[_ ]?prep/i, taskType: "land_preparation", label: "Land preparation", priority: "high" },
     { match: /seed[_ ]?treat/i, taskType: "seed_treatment", label: "Seed treatment", priority: "high" },
     { match: /^nursery$/i, taskType: "nursery", label: "Nursery management", priority: "high" },
-    { match: /^harvest$/i, taskType: "harvest", label: "Harvest", priority: "critical" },
+    { match: /^(harvest|harvest_maturity|maturation_harvest|first_picking|successive_harvest)$/i, taskType: "harvest", label: "Harvest readiness / picking", priority: "critical" },
     { match: /post[_ ]?harvest/i, taskType: "post_harvest", label: "Post-harvest handling", priority: "medium" },
   ];
   const emittedLifecycle = new Set<string>();
@@ -1131,9 +1151,17 @@ export async function generateBaseline(
         primary.source_refs = [...primary.source_refs, ...t.source_refs];
       }
       if (harvestTasks.length > 1) gaps.push(`harvest_tasks_merged:${harvestTasks.length}->1`);
-      if (primary.days_from_sowing !== maturityDas) {
-        gaps.push(`harvest_moved_to_variety_maturity:${primary.days_from_sowing}->${maturityDas}`);
-        primary.days_from_sowing = maturityDas;
+      if(primary.days_from_sowing!==maturityDas){
+        const harvestStage=stages.find(s=>s.id===primary.stage_uuid);
+        const start=harvestStage?das0(harvestStage,harvestStage.das_min):null;
+        const end=harvestStage?das0(harvestStage,harvestStage.das_max):null;
+        if(isBiologicalHarvestStage(harvestStage?.growth_stage)
+           && start!=null && end!=null && maturityDas>=start && maturityDas<=end){
+          gaps.push(`harvest_aligned_with_verified_maturity:${primary.days_from_sowing}->${maturityDas}`);
+          primary.days_from_sowing=maturityDas;
+        }else{
+          gaps.push("harvest_maturity_stage_conflict_needs_review");
+        }
       }
       tasks = tasks.filter((t) => t.task_type !== "harvest" || t === primary);
     }
@@ -1158,6 +1186,123 @@ export async function generateBaseline(
     }
   }
 
+  // Re-anchor the transplanting operation to the farmer's actual recorded event,
+  // not to the default nursery-age boundary. When that event falls outside the
+  // selected graph, all dependent doses remain review-only until verified.
+  if(inputs.transplantDate && transplantOffset!=null){
+    for(const t of tasks){
+      const stage=t.stage_uuid?stages.find(s=>s.id===t.stage_uuid):null;
+      if(String(stage?.growth_stage??"").toLowerCase()!=="transplanting")continue;
+      const graphFrom=stage?das0(stage,stage.das_min):null;
+      const graphTo=stage?das0(stage,stage.das_max):null;
+      if(t.days_from_sowing!==transplantOffset){
+        gaps.push("transplanting_event_reanchored_from_default_stage");
+        t.days_from_sowing=transplantOffset;
+      }
+      t.resources={...(t.resources??{}),window:{from_das:transplantOffset,to_das:transplantOffset,
+        clock:"sowing",anchor_event:"transplanting",date_source:"farmer_record"}};
+      if(t.recurrence){
+        t.recurrence=null;
+        gaps.push("transplant_recurrence_requires_event_specific_plan");
+      }
+      if(graphFrom!=null && graphTo!=null &&
+        (transplantOffset<graphFrom || transplantOffset>graphTo)){
+        gaps.push("nursery_age_outside_stage_graph_requires_review");
+        t.resources.requirement_semantics="NEEDS_TIMING_REVIEW";
+        if(t.task_type==="nutrition" || t.task_type==="irrigation"){
+          t.quantity=null;
+          t.water_volume=null;
+          t.task_description="The recorded transplant date differs from the crop stage's expected nursery window. Confirm this operation with an agronomist before applying inputs.";
+          t.instructions=["Check the recorded transplant date and actual crop establishment before choosing an application or irrigation event."];
+        }
+      }
+    }
+  }
+
+  // Harvest is a distinct biological operation. A grain-filling rule must
+  // never turn into a harvest card on the grain-filling stage.
+  const harvestStage=stages.find(s=>isBiologicalHarvestStage(s.growth_stage));
+  if(harvestStage){
+    const day=das0(harvestStage,harvestStage.das_min);
+    if(day!=null){
+      const harvestTasks=tasks.filter(t=>t.task_type==="harvest");
+      if(harvestTasks.length){
+        const primary=harvestTasks.find(t=>t.stage_uuid===harvestStage.id)??harvestTasks[0];
+        for(const old of harvestTasks){
+          if(old===primary)continue;
+          primary.instructions=[...new Set([...primary.instructions,...old.instructions])];
+          primary.rule_ids=[...new Set([...primary.rule_ids,...old.rule_ids])];
+          primary.source_refs.push(...old.source_refs);
+        }
+        tasks=tasks.filter(t=>t.task_type!=="harvest"||t===primary);
+        if(primary.stage_uuid!==harvestStage.id || primary.days_from_sowing<day){
+          gaps.push("harvest_reanchored_to_biological_harvest_stage");
+          primary.days_from_sowing=day;
+        }
+        primary.stage_uuid=harvestStage.id;
+        primary.stage_key=harvestStage.stage_code;
+        primary.stage_name=harvestStage.growth_stage;
+        primary.anchor_stage=harvestStage.stage_code || harvestStage.growth_stage;
+        primary.stage_order=stageOrderOf(stages,harvestStage.stage_code);
+        primary.resources={...(primary.resources??{}),window:{
+          from_das:day,to_das:das0(harvestStage,harvestStage.das_max)??day,
+          clock:"sowing",anchor_event:"biological_harvest_stage"},
+          requirement_semantics:"HARVEST_READINESS_CONFIRMATION"};
+        if(!durationDays)gaps.push("harvest_window_provisional_variety_maturity_unverified");
+      }
+    }
+  }
+
+  // Preserve the complete lifecycle without inventing doses. The stage graph
+  // authorizes monitoring windows, not fertilizer or irrigation quantities.
+  const maturityStage=stages.find(s=>String(s.growth_stage??"").toLowerCase()==="maturity");
+  if(maturityStage && !tasks.some(t=>t.stage_uuid===maturityStage.id)){
+    const day=das0(maturityStage,maturityStage.das_min);
+    if(day!=null)tasks.push({
+      task_name:"Assess crop maturity",task_type:"monitoring",
+      task_description:"Observe and record crop maturity. Harvest readiness must be confirmed in the field before cutting.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:maturityStage.stage_code,
+      gdd_target:maturityStage.gdd_min??null,stage_key:maturityStage.stage_code,stage_uuid:maturityStage.id,
+      stage_name:maturityStage.growth_stage,stage_order:stageOrderOf(stages,maturityStage.stage_code),
+      priority:"high",weather_dependent:false,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:maturityStage.id}],
+      instructions:["Inspect crop maturity and confirm harvest-readiness signs before cutting."],precautions:[],
+      resources:{requirement_semantics:"MONITOR",stage_based_provisional:true}
+    });
+  }
+  if(!coverage.fertilizer && stages.length){
+    const stage=stages.find(s=>/land[_ ]?prep/i.test(String(s.growth_stage??"")))??stages[0];
+    const day=das0(stage,stage.das_min);
+    if(day!=null)tasks.push({
+      task_name:"Soil test and fertilizer planning",task_type:"advisory",
+      task_description:"A complete fertilizer programme is unavailable for this field. Check soil fertility before selecting basal and stage-wise nutrient quantities.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:stage.stage_code,
+      gdd_target:stage.gdd_min??null,stage_key:stage.stage_code,stage_uuid:stage.id,
+      stage_name:stage.growth_stage,stage_order:stageOrderOf(stages,stage.stage_code),
+      priority:"high",weather_dependent:false,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:stage.id}],
+      instructions:["Obtain a soil test and confirm the approved nutrient programme for this crop and cultivation method."],
+      precautions:[],resources:{requirement_semantics:"NEEDS_DATA",missing_data:["soil_fertility_class","approved_fertilizer_plan"]}
+    });
+    gaps.push("NUTRIENT_PLAN_INCOMPLETE");
+  }
+  for(const stage of stages){
+    if(stage.is_moisture_critical!==true)continue;
+    if(tasks.some(t=>t.stage_uuid===stage.id && t.task_type==="irrigation"))continue;
+    const day=das0(stage,stage.das_min);
+    if(day==null)continue;
+    tasks.push({
+      task_name:"Check water stress at critical stage",task_type:"monitoring",
+      task_description:"Monitor field water and crop water-stress signs during this sensitive biological stage. Irrigation requires valid field and rainfall evidence.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:stage.stage_code,
+      gdd_target:stage.gdd_min??null,stage_key:stage.stage_code,stage_uuid:stage.id,
+      stage_name:stage.growth_stage,stage_order:stageOrderOf(stages,stage.stage_code),
+      priority:"critical",weather_dependent:true,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:stage.id}],
+      instructions:["Check soil moisture and standing water. Record observations before deciding whether irrigation is needed."],
+      precautions:[],resources:{requirement_semantics:"MONITOR",critical_stage:true}
+    });
+  }
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(
     (a, b) =>
