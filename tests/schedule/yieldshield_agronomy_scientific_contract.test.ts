@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agronomyActivationBlockers, isBiologicalHarvestStage,
   hasUnstructuredRelativeTiming, isDeficiencyDependentAction,
   isTreatmentInstruction, isUnverifiedTier, resolvedMaturityDas,
   validateScientificTasks,
@@ -37,6 +38,25 @@ describe("YieldShield agronomic evidence and crop-clock invariants", () => {
     expect(isTreatmentInstruction("Apply Tricyclazole 75 WP 160 g/acre by foliar spray")).toBe(true);
     expect(isTreatmentInstruction("फवारणी करा")).toBe(true);
     expect(isTreatmentInstruction("Inspect leaves for lesions and record pest counts")).toBe(false);
+  });
+  it("requires an authoritative crop-specific establishment-material rate rather than assuming seed", () => {
+    const shared = {cropCycle:"plant",documentedMaterialRate:false,maturityDas:300,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:false};
+    expect(agronomyActivationBlockers({...shared,propagationMaterial:"seed"})).toEqual(["SEED_RATE_DOCUMENTED_EVIDENCE_MISSING"]);
+    expect(agronomyActivationBlockers({...shared,propagationMaterial:"sett"})).toEqual(["PLANTING_MATERIAL_RATE_SOURCE_MISSING"]);
+    expect(agronomyActivationBlockers({...shared,propagationMaterial:null})).toEqual(["PROPAGATION_MATERIAL_UNRESOLVED"]);
+  });
+  it("does not expect new seed purchase for ratoon establishment", () => {
+    expect(agronomyActivationBlockers({propagationMaterial:"ratoon_stubble",cropCycle:"ratoon",documentedMaterialRate:false,maturityDas:300,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:false})).toEqual([]);
+  });
+  it("recognizes biological picking/harvest but rejects pre- and post-harvest", () => {
+    expect(isBiologicalHarvestStage("harvest")).toBe(true);
+    expect(isBiologicalHarvestStage("maturation_harvest")).toBe(true);
+    expect(isBiologicalHarvestStage("first_picking")).toBe(true);
+    expect(isBiologicalHarvestStage("pre_harvest")).toBe(false);
+    expect(isBiologicalHarvestStage("post_harvest")).toBe(false);
+  });
+  it("blocks a multi-picking crop until an actual recurring harvest plan exists", () => {
+    expect(agronomyActivationBlockers({propagationMaterial:"seed",cropCycle:null,documentedMaterialRate:true,maturityDas:100,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:true})).toContain("REPEATED_PICKING_PROGRAMME_NOT_VERIFIED");
   });
   const harvestTask = {
     task_type:"harvest", days_from_sowing:119, stage_uuid:"grain",

@@ -75,7 +75,7 @@ import { isFlagEnabled } from "../_shared/featureFlags.ts";
 import { resolveVerifiedCaller } from "../_shared/sessionVerify.ts";
 import { applyScheduleHarness } from "./harness/index.ts";
 import { prepareCurrentFieldTasks } from "./generator/current-field-plan.ts";
-import { isTreatmentInstruction, validateScientificTasks } from "./generator/agronomy-scientific-contract.ts";
+import { agronomyActivationBlockers, isBiologicalHarvestStage, isTreatmentInstruction, validateScientificTasks } from "./generator/agronomy-scientific-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -243,8 +243,7 @@ serve(async (req) => {
     const { getStages: readCycleStages } = await import("./db/agronomy-repo.ts");
     const cycleStages = await readCycleStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod);
     const hasTerminalStage = cycleStages.some(stage =>
-      /(HARVEST|MATUR|RIPEN|CUTTING|PICKING)/i.test(String(stage.stage_code ?? "")) ||
-      /(HARVEST|MATUR|RIPEN|CUTTING|PICKING)/i.test(String(stage.growth_stage ?? ""))
+      isBiologicalHarvestStage(stage.growth_stage)
     );
     if (!hasTerminalStage) {
       return json({
@@ -258,6 +257,41 @@ serve(async (req) => {
     }
     if (baseline.validation && baseline.validation.violations.length) return json({ error: "Generated schedule failed structural validation and was not persisted", code: "SCHEDULE_VALIDATION_FAILED", violations: baseline.validation.violations, warnings: baseline.validation.warnings, gaps: baseline.gaps }, 422);
     if (baseline.validation && baseline.validation.warnings.length) for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
+
+    // First evaluate crop-specific scientific release eligibility BEFORE any
+    // LLM enrichment, RAG retrieval, language composition or database writes.
+    // The cultivation method master is the single source for seed vs sett/tuber/
+    // vegetative propagation — do not demand seed kilograms for a ratoon.
+    const {data: methodEvidence, error: methodEvidenceError} = await supabase
+      .from("cultivation_method_master")
+      .select("propagation_material")
+      .eq("method_code", inputs.cultivationMethod)
+      .eq("is_active", true)
+      .maybeSingle();
+    const scientificBlockers = agronomyActivationBlockers({
+      propagationMaterial: methodEvidenceError ? null : methodEvidence?.propagation_material ?? null,
+      cropCycle:inputs.cropCycle,
+      documentedMaterialRate:baseline.coverage.seed === true,
+      maturityDas:baseline.totals.duration_days,
+      hasHarvestStage:hasTerminalStage,
+      hasHarvestTask:baseline.tasks.some(t => t.task_type === "harvest"),
+      multiHarvestStage:cycleStages.some(s => /^(first_picking|successive_harvest)$/i.test(String(s.growth_stage??""))),
+    });
+    if(scientificBlockers.length){
+      return json({
+        success:false,
+        error:"Crop plan cannot be activated until its variety, planting-material and harvest evidence is verified.",
+        code:"AGRONOMY_REVIEW_REQUIRED",
+        review_required:true,
+        blockers:scientificBlockers,
+        gaps:[...new Set(baseline.gaps)],
+        coverage:baseline.coverage,
+        cropCode:inputs.cropCode,
+        varietyId:inputs.varietyId,
+        cultivationMethod:inputs.cultivationMethod,
+        cropCycle:inputs.cropCycle,
+      },200);
+    }
 
     // ── Time plan: one deadline, explicit slices ─────────────────────────────
     const HARD_DEADLINE_MS = 110_000;
@@ -559,32 +593,6 @@ serve(async (req) => {
     // returned, and the farmer kept cards with a generic title and no details.
     const narrationComplete = language === "en" || narration.narratedCount >= narration.totalCount;
     if (language === "en") baseline.coverage.narration = true;
-
-    // SCIENTIFIC RELEASE GATE: do not create an active farmer cultivation cycle
-    // when the variety's quantitative seed and maturity evidence is unresolved.
-    // An empty or provisional plan can be reviewed, but cannot be labelled field-ready.
-    // No crop-specific rates or dates are invented here.
-    const scientificBlockers = [
-      ...(!baseline.coverage.seed ? ["SEED_RATE_APPROVED_EVIDENCE_MISSING"] : []),
-      ...(baseline.totals.duration_days == null ? ["VARIETY_MATURITY_CLOCK_NOT_VERIFIED"] : []),
-      ...(baseline.tasks.some(t=>t.task_type==="harvest" &&
-        (t.resources as Record<string,unknown>|undefined)?.requirement_semantics!=="HARVEST_READINESS_CONFIRMATION")
-          ? ["HARVEST_READINESS_STAGE_NOT_CONFIRMED"] : []),
-    ];
-    if(scientificBlockers.length){
-      return json({
-        success:false,
-        error:"The crop plan needs verified variety and biological-stage evidence before activation. No farmer task or schedule was saved.",
-        code:"AGRONOMY_REVIEW_REQUIRED",
-        review_required:true,
-        blockers:scientificBlockers,
-        gaps:[...new Set(baseline.gaps)],
-        coverage:baseline.coverage,
-        cropCode:inputs.cropCode,
-        varietyId:inputs.varietyId,
-        cultivationMethod:inputs.cultivationMethod,
-      },422);
-    }
 
     const sow = new Date(inputs.sowingDate);
     const durationDays = baseline.totals.duration_days;

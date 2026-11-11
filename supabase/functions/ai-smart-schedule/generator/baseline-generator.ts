@@ -87,7 +87,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
-import { hasUnstructuredRelativeTiming, isDeficiencyDependentAction } from "./agronomy-scientific-contract.ts";
+import { hasUnstructuredRelativeTiming, isDeficiencyDependentAction, isBiologicalHarvestStage } from "./agronomy-scientific-contract.ts";
 import {
   getStages,
   getSeedRate,
@@ -1047,7 +1047,7 @@ export async function generateBaseline(
     { match: /land[_ ]?prep/i, taskType: "land_preparation", label: "Land preparation", priority: "high" },
     { match: /seed[_ ]?treat/i, taskType: "seed_treatment", label: "Seed treatment", priority: "high" },
     { match: /^nursery$/i, taskType: "nursery", label: "Nursery management", priority: "high" },
-    { match: /^harvest$/i, taskType: "harvest", label: "Harvest", priority: "critical" },
+    { match: /^(harvest|harvest_maturity|maturation_harvest|first_picking|successive_harvest)$/i, taskType: "harvest", label: "Harvest readiness / picking", priority: "critical" },
     { match: /post[_ ]?harvest/i, taskType: "post_harvest", label: "Post-harvest handling", priority: "medium" },
   ];
   const emittedLifecycle = new Set<string>();
@@ -1155,7 +1155,7 @@ export async function generateBaseline(
         const harvestStage=stages.find(s=>s.id===primary.stage_uuid);
         const start=harvestStage?das0(harvestStage,harvestStage.das_min):null;
         const end=harvestStage?das0(harvestStage,harvestStage.das_max):null;
-        if(String(harvestStage?.growth_stage??"").toLowerCase()==="harvest"
+        if(isBiologicalHarvestStage(harvestStage?.growth_stage)
            && start!=null && end!=null && maturityDas>=start && maturityDas<=end){
           gaps.push(`harvest_aligned_with_verified_maturity:${primary.days_from_sowing}->${maturityDas}`);
           primary.days_from_sowing=maturityDas;
@@ -1221,7 +1221,7 @@ export async function generateBaseline(
 
   // Harvest is a distinct biological operation. A grain-filling rule must
   // never turn into a harvest card on the grain-filling stage.
-  const harvestStage=stages.find(s=>String(s.growth_stage??"").toLowerCase()==="harvest");
+  const harvestStage=stages.find(s=>isBiologicalHarvestStage(s.growth_stage));
   if(harvestStage){
     const day=das0(harvestStage,harvestStage.das_min);
     if(day!=null){

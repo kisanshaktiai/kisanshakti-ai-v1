@@ -45,6 +45,41 @@ export function isDeficiencyDependentAction(id: unknown, text: unknown): boolean
 export function isTreatmentInstruction(text: unknown): boolean {
   return /\b(?:apply|spray|dose|tank.mix|herbicide|fungicide|insecticide|ml\s*\/\s*acre|g\s*\/\s*acre)\b|(?:फवारणी\s*करा|फवारा|कीटकनाशक\s*द्या|तणनाशक\s*द्या)/i.test(String(text ?? ""));
 }
+/** Biological harvest is not a pre-harvest or post-harvest support phase. */
+export function isBiologicalHarvestStage(stage: unknown): boolean {
+  const name = String(stage ?? "").trim().toLowerCase();
+  return /^(harvest|maturation_harvest|harvest_maturity|first_picking|successive_harvest)$/.test(name);
+}
+/**
+ * A DB-backed assessment of whether the program may be ACTIVATED, as distinct
+ * from a review-only discussion of crop establishment and field observations.
+ * 'Documented' does not claim formal ICAR certification.
+ */
+export function agronomyActivationBlockers(input: {
+  propagationMaterial: string | null;
+  cropCycle: string | null;
+  documentedMaterialRate: boolean;
+  maturityDas: number | null;
+  hasHarvestStage: boolean;
+  hasHarvestTask: boolean;
+  multiHarvestStage: boolean;
+}): string[] {
+  const blockers: string[] = [];
+  const material = String(input.propagationMaterial ?? "").trim().toLowerCase();
+  const ratoon = String(input.cropCycle ?? "").toLowerCase() === "ratoon" || material === "ratoon_stubble";
+  if (!ratoon && !input.documentedMaterialRate) {
+    if (!material || material === "any") blockers.push("PROPAGATION_MATERIAL_UNRESOLVED");
+    else if (material === "seed") blockers.push("SEED_RATE_DOCUMENTED_EVIDENCE_MISSING");
+    else blockers.push("PLANTING_MATERIAL_RATE_SOURCE_MISSING");
+  }
+  if (input.maturityDas == null || !Number.isFinite(input.maturityDas))
+    blockers.push("VARIETY_MATURITY_CLOCK_NOT_VERIFIED");
+  if (!input.hasHarvestStage || !input.hasHarvestTask)
+    blockers.push("BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE");
+  if (input.multiHarvestStage)
+    blockers.push("REPEATED_PICKING_PROGRAMME_NOT_VERIFIED");
+  return blockers;
+}
 export interface ScientificTask {
   task_type: string;
   days_from_sowing: number;
@@ -63,7 +98,7 @@ export function validateScientificTasks<T extends ScientificTask>(tasks: T[], st
     const tag = task.task_type+"@DAS"+task.days_from_sowing;
     if(task.task_type === "harvest") {
       const st=task.stage_uuid ? stageMap.get(task.stage_uuid):null;
-      if(!st || String(st.growth_stage||"").toLowerCase()!=="harvest")
+      if(!st || !isBiologicalHarvestStage(st.growth_stage))
         issues.push("HARVEST_STAGE_MISMATCH:"+tag);
       else if(st.das_min != null && task.days_from_sowing < st.das_min)
         issues.push("HARVEST_BEFORE_STAGE:"+tag);
