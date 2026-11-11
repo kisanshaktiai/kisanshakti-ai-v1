@@ -14,12 +14,12 @@ export function CropGroupButtons({ groups, selectedGroup, onSelectGroup, isLoadi
   const label = (group: CropGroup) => i18n.language.startsWith('mr') ? group.name : i18n.language.startsWith('hi') ? group.hi : group.en;
   return (
     <Select value={selectedGroup || 'all'} onValueChange={onSelectGroup} disabled={isLoading}>
-      <SelectTrigger className="h-11 min-w-0 rounded-lg bg-card text-xs" aria-label={t('market.intelligence.cropType')}>
+      <SelectTrigger className="h-11 min-w-0 rounded-lg border-border bg-card text-sm" aria-label={t('market.intelligence.cropType')}>
         <SelectValue placeholder={t('market.intelligence.cropType')} />
       </SelectTrigger>
       <SelectContent className="max-h-80">
-        <SelectItem value="all">{t('market.intelligence.allCategories')}</SelectItem>
-        {groups.map(group => <SelectItem key={group.name} value={group.name}>
+        <SelectItem className="min-h-11 focus:bg-muted focus:text-foreground" value="all">{t('market.intelligence.allCategories')}</SelectItem>
+        {groups.map(group => <SelectItem className="min-h-11 focus:bg-muted focus:text-foreground" key={group.name} value={group.name}>
           {group.icon} {label(group)} · {group.count}
         </SelectItem>)}
       </SelectContent>

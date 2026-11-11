@@ -191,7 +191,7 @@ export function MarketPriceIntelligence() {
           label={t('market.intelligence.nearby')}
         />
         <StatPill
-          icon={<Wheat className="w-4 h-4 text-accent" />}
+          icon={<Wheat className="w-4 h-4 text-primary" />}
           value={crops.length}
           label={t('market.intelligence.items')}
         />
@@ -203,7 +203,7 @@ export function MarketPriceIntelligence() {
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t('market.intelligence.marketDistance')}>
         {CORRIDORS.map(c => (
-          <Button key={c.id} variant={corridor === c.id ? 'default' : 'outline'} aria-pressed={corridor === c.id} onClick={() => handleCorridorChange(c.id)} disabled={isLoading}
+          <Button key={c.id} variant="filter" aria-pressed={corridor === c.id} onClick={() => handleCorridorChange(c.id)} disabled={isLoading}
             className="h-auto min-h-10 min-w-0 whitespace-normal rounded-lg px-2 py-2 text-xs">
             {t(`market.intelligence.corridors.${c.id}`)}
           </Button>
@@ -227,7 +227,7 @@ export function MarketPriceIntelligence() {
           </div>
         ) : (
           <Button
-            variant="outline"
+            variant="surface"
             onClick={() => setSearchOpen(true)}
             className="flex-1 h-11 rounded-lg bg-card border-border/60 justify-start text-muted-foreground font-normal"
           >
@@ -238,7 +238,7 @@ export function MarketPriceIntelligence() {
 
         <Button
           onClick={handleRefresh}
-          variant="outline"
+          variant="surface"
           size="icon"
           className="h-11 w-11 rounded-lg bg-card border-border/60 flex-shrink-0"
           disabled={isLoading}
@@ -285,7 +285,7 @@ export function MarketPriceIntelligence() {
         )}
         <div className="mt-3 flex flex-col items-center gap-2">
           <p className="text-xs text-muted-foreground">{t('market.intelligence.showing', { count: prices.length, total: totalRecords })}</p>
-          {hasMore && <Button variant="outline" onClick={() => loadFeed({ offset: prices.length })} disabled={isLoading} className="w-full rounded-lg">
+          {hasMore && <Button variant="surface" onClick={() => loadFeed({ offset: prices.length })} disabled={isLoading} className="w-full rounded-lg">
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t('market.intelligence.loadMore')}
           </Button>}
         </div>
@@ -318,7 +318,7 @@ export function MarketPriceIntelligence() {
       <Section
         title="AI विक्री सल्ला"
         subtitle="AI selling advice"
-        icon={<Brain className="w-4 h-4 text-accent" />}
+        icon={<Brain className="w-4 h-4 text-primary" />}
         open={openSections.ai}
         onToggle={() => toggle('ai')}
       >
@@ -360,13 +360,13 @@ function StatPill({
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/60">
+    <div className="flex min-w-0 items-center gap-2 px-2 py-2">
       <div className="flex-shrink-0">{icon}</div>
       <div className="min-w-0">
         <div className="text-sm font-bold text-foreground leading-tight tabular-nums">
           {value}
         </div>
-        <div className="text-[10px] text-muted-foreground leading-tight truncate">
+        <div className="text-xs text-muted-foreground leading-snug break-words">
           {label}
         </div>
       </div>
@@ -394,11 +394,11 @@ function Section({
   return (
     <section className="min-w-0 border-t border-border pt-2">
       <Button
-        variant="ghost"
+        variant="quiet"
         onClick={onToggle}
         className="h-auto w-full justify-start gap-2 whitespace-normal px-0 py-2"
       >
-        <div className="p-2 rounded-xl bg-muted flex-shrink-0">{icon}</div>
+        <div className="p-2 rounded-lg bg-muted flex-shrink-0">{icon}</div>
         <div className="flex-1 text-left min-w-0">
           <div className="text-sm font-bold text-foreground leading-tight truncate">
             {title}

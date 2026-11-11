@@ -9,6 +9,7 @@ import {
 import { TrendingUp, TrendingDown, Minus, Loader2, Package, MapPin } from 'lucide-react';
 import type { MarketPrice, HistoricalComparison, AIAnalysis } from '@/hooks/useMarketPriceIntelligence';
 import { AISellingAdvisor } from './AISellingAdvisor';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 type Period = 'week' | 'month' | 'year';
@@ -110,17 +111,17 @@ export function MarketCropDetailSheet({
         <div className="overflow-y-auto px-4 pb-8">
           <DrawerHeader className="px-0 text-left">
             <DrawerTitle className="text-xl font-bold">{crop}{price.variety ? ` • ${price.variety}` : ''}</DrawerTitle>
-            <DrawerDescription className="flex items-center gap-1">
+            <DrawerDescription className="flex flex-wrap items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-primary" /> {price.market_location} • {price.price_date}
             </DrawerDescription>
           </DrawerHeader>
 
           {/* Big price + gauge */}
-          <div className="rounded-2xl bg-card border border-border/60 p-4 space-y-3">
-            <div className="flex items-end justify-between gap-2">
-              <div>
+          <div className="border-b border-border pb-4 space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">सर्वसाधारण दर</p>
-                <p className="text-3xl font-extrabold tabular-nums text-foreground">{rupee(modal)}<span className="text-sm font-medium text-muted-foreground"> / {unit}</span></p>
+                <p className="flex flex-wrap items-baseline gap-1 text-3xl font-extrabold tabular-nums text-foreground">{rupee(modal)}<span className="text-sm font-medium text-muted-foreground"> / {unit}</span></p>
               </div>
               {price.arrival != null && (
                 <div className="text-right">
@@ -130,7 +131,7 @@ export function MarketCropDetailSheet({
               )}
             </div>
             <div>
-              <div className="relative h-2.5 rounded-full bg-gradient-to-r from-destructive/40 via-warning/40 to-success/50">
+              <div className="relative h-2.5 rounded-full bg-muted">
                 <div className="absolute -top-1 h-[18px] w-[18px] rounded-full bg-primary border-2 border-background shadow" style={{ left: `calc(${pos}% - 9px)` }} />
               </div>
               <div className="flex justify-between text-xs mt-1.5 tabular-nums">
@@ -141,8 +142,8 @@ export function MarketCropDetailSheet({
           </div>
 
           {/* Trend chart */}
-          <div className="mt-4 rounded-2xl bg-card border border-border/60 p-4">
-            <div className="flex items-center justify-between mb-3">
+          <div className="mt-4 border-b border-border pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h3 className="text-sm font-bold">भावाचा आलेख</h3>
               {series.length > 1 && (
                 <span className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold', trendCls)}>
@@ -150,12 +151,12 @@ export function MarketCropDetailSheet({
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-muted mb-3">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-muted mb-3">
               {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
-                <button key={p} type="button" onClick={() => setPeriod(p)}
-                  className={cn('h-9 rounded-lg text-xs font-semibold', period === p ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
+                <Button variant="quiet" key={p} type="button" onClick={() => setPeriod(p)} aria-pressed={period === p}
+                  className={cn('h-10 rounded-md px-2 text-xs font-semibold', period === p ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
                   {PERIOD_LABEL[p]}
-                </button>
+                </Button>
               ))}
             </div>
             {isLoading && series.length === 0 ? (
@@ -194,7 +195,7 @@ export function MarketCropDetailSheet({
 
           {/* Mandi comparison */}
           {mandis.length > 1 && (
-            <div className="mt-4 rounded-2xl bg-card border border-border/60 p-4">
+            <div className="mt-4 border-b border-border pb-4">
               <h3 className="text-sm font-bold mb-1">कोणत्या बाजारात जास्त भाव?</h3>
               <p className="text-xs text-muted-foreground mb-3">सर्वात वरचा बाजार = सर्वोत्तम दर</p>
               <div style={{ height: mandis.length * 40 }}>
@@ -215,7 +216,7 @@ export function MarketCropDetailSheet({
           )}
 
           {/* AI advice */}
-          <div className="mt-4 rounded-2xl bg-card border border-border/60 p-4">
+          <div className="mt-4">
             <AISellingAdvisor analysis={aiAnalysis} selectedCrop={crop} isLoading={isLoading} onGetAdvice={() => onGetAdvice(crop)} embedded />
           </div>
         </div>
