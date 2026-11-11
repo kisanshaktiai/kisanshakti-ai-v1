@@ -17,6 +17,8 @@ export interface MarketPrice {
   arrival?: number;
   commodity_category?: string;
   distance?: number;
+  distanceKind?: 'road' | 'approx';
+  travelMinutes?: number;
   tier?: 'near' | 'regional' | 'major' | 'other';
   is_major_market?: boolean;
 }

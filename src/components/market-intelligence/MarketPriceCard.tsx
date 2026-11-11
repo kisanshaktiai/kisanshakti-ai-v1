@@ -97,22 +97,30 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
         </div>
       )}
 
-      {/* Row 4: location + date */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 text-[11px] font-normal text-muted-foreground">
-        <span className="flex items-center gap-1 min-w-0">
-          <MapPin className="w-3 h-3 text-primary flex-shrink-0" />
-          <span className="min-w-0 break-words leading-relaxed">
-            {price.market_location || price.district}
-            {price.distance !== undefined && (
-              <span className="ml-1 text-primary font-medium tabular-nums">• {price.distance} किमी</span>
-            )}
-            {price.is_major_market && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-accent/15 text-accent-foreground font-semibold">मोठा बाजार</span>
-            )}
+      {/* Row 4: market name, road distance + date */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        <div className="min-w-0">
+          <span className="flex items-start gap-1 min-w-0 text-sm font-semibold text-foreground">
+            <MapPin className="w-3.5 h-3.5 mt-0.5 text-primary flex-shrink-0" />
+            <span className="min-w-0 break-words leading-snug">{price.market_location || price.district}</span>
           </span>
-        </span>
+          {(price.distance !== undefined || price.is_major_market) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-4 text-xs">
+              {price.distance !== undefined && (
+                <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-semibold tabular-nums">
+                  {price.distanceKind === 'road' ? '' : '~'}{price.distance} किमी
+                  {price.distanceKind === 'road' ? ' रस्ता' : ''}
+                  {price.travelMinutes !== undefined && ` · ${price.travelMinutes >= 60 ? `${Math.floor(price.travelMinutes / 60)} तास ${price.travelMinutes % 60} मि` : `${price.travelMinutes} मि`}`}
+                </span>
+              )}
+              {price.is_major_market && (
+                <span className="px-1.5 py-0.5 rounded-md bg-accent/15 text-accent-foreground font-semibold">मोठा बाजार</span>
+              )}
+            </div>
+          )}
+        </div>
         {price.price_date && (
-          <span className="flex items-center gap-1 flex-shrink-0">
+          <span className="flex items-center gap-1 flex-shrink-0 text-[11px] text-muted-foreground">
             <CalendarDays className="w-3 h-3" />
             {formatDate(price.price_date)}
           </span>
