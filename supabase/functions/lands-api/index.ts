@@ -864,7 +864,7 @@ serve(async (req) => {
     console.error('Unexpected error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Request failed', 
+        error: error instanceof Error ? error.message : 'Request failed',
         details: 'An unexpected error occurred while processing the request' 
       }),
       { 
