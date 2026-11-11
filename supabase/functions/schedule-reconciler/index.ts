@@ -86,7 +86,7 @@
 
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { applyFieldDecisions, DECISION_APPLICATION_VERSION } from "./decision-application.ts";
 import { authorizeReconciler, canPersistMonitoring } from "./internal-auth.ts";
 
@@ -162,7 +162,7 @@ export function assessSsotConflict(ctx: SsotContext): string | null {
 const numOrNull = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /** One crop-state ledger row per schedule per run. Dry runs are recorded too (run_mode=dry_run) — a trace, not a mutation. */
-async function writeMonitoring(supabase: ReturnType<typeof createClient>, dryRun: boolean, row: Record<string, unknown>) {
+async function writeMonitoring(supabase: SupabaseClient<any, "public">, dryRun: boolean, row: Record<string, unknown>) {
   if (!canPersistMonitoring(dryRun)) return;
   const { error } = await supabase.from("schedule_monitoring").insert(row);
   if (error) console.warn("[schedule-reconciler] schedule_monitoring insert failed:", error.message);
