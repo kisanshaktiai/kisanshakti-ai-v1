@@ -30,7 +30,8 @@ jobs:
             tests/schedule/yieldshield_reconciler_internal_auth.test.ts \
             tests/schedule/yieldshield_staging_contract_integration.test.ts \
             tests/schedule/yieldshield_agronomy_scientific_contract.test.ts \
-            tests/schedule/yieldshield_decision_contract.test.ts
+            tests/schedule/yieldshield_decision_contract.test.ts \
+            tests/schedule/yieldshield_crop_release_gate.test.ts
       - name: Frontend production build without deployment
         run: bun run build
       - uses: denoland/setup-deno@v2
