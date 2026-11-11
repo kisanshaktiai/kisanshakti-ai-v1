@@ -15,3 +15,10 @@
 - [x] Replace clipped filter rails with aligned, complete selectors; paginate all available price results.
 - [x] Run market regressions (11 passed), live produce/livestock probes, and isolated component checks at 394×732 and 1280×1800.
 - [ ] Signed-in market-page end-to-end verification: external unmanaged Supabase session is unavailable; isolated UI/live public-data checks do not verify the farmer session.
+
+# Land and market timeout repair
+- [x] Replace repeated offset scans with cursor paging and shared market catalog caching; deployed and live selectors return all 180 produce items and 9 livestock items.
+- [x] Recover transient land read timeouts without retrying writes or weakening ownership checks; bounded recovery regressions pass.
+- [x] Run targeted regressions (16 passed), function type checks, preview build, and live market requests (200); unauthenticated lands remain 401.
+- [ ] Signed-in land-read verification: external unmanaged farmer session is unavailable.
+- [ ] Further cold-catalog optimization: complete historical scans still take 21–36 seconds; eliminating them requires an approved database catalog/aggregation change, outside the no-DB-change scope.

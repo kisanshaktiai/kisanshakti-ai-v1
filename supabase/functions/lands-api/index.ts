@@ -1,6 +1,9 @@
+// CHANGE LOG
+// 2026-11-11 12:50 UTC — Retry transient owned-land reads once with a fresh query; retain all identity filters.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
+import { retryDatabaseRead } from '../_shared/readResilience.ts';
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -423,7 +426,7 @@ serve(async (req) => {
           });
           
           // Fetch specific land by ID with joined context data
-          const { data: land, error } = await supabase
+          const { data: land, error } = await retryDatabaseRead(() => supabase
             .from('lands')
             .select('*')
             .eq('id', landId)
@@ -431,7 +434,7 @@ serve(async (req) => {
             .eq('farmer_id', farmerId)
             .eq('is_active', true)
             .is('deleted_at', null)
-            .single();
+            .single());
           
           if (error || !land) {
             console.error('❌ [LandsAPI] Land fetch error:', error);
@@ -531,6 +534,7 @@ serve(async (req) => {
           const sinceParam = url.searchParams.get('since');
           console.log('📋 [LandsAPI] Listing lands', { sinceParam });
 
+          const buildListQuery = () => {
           let listQuery = supabase
             .from('lands')
             .select('*')
@@ -544,7 +548,9 @@ serve(async (req) => {
             listQuery = listQuery.gt('updated_at', sinceParam);
           }
 
-          const { data: lands, error } = await listQuery;
+          return listQuery;
+          };
+          const { data: lands, error } = await retryDatabaseRead(buildListQuery);
 
           if (error) {
             console.error('Error fetching lands:', error);
@@ -858,7 +864,7 @@ serve(async (req) => {
     console.error('Unexpected error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message, 
+        error: error instanceof Error ? error.message : 'Request failed', 
         details: 'An unexpected error occurred while processing the request' 
       }),
       { 

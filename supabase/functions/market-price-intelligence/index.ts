@@ -1,4 +1,5 @@
 // CHANGE LOG (newest first)
+// 2026-11-11 12:50 UTC — Cursor-page price reads, share public catalogs, and classify transient timeout responses.
 // 2026-11-11 — Separate source-coded livestock across market queries; complete catalogs and paged ranked results.
 // 2026-11-10 — Proximity feed: new action fetchRankedPrices ranks the latest price per
 //   market+crop by the farmer's land (same district / ≤100 km / ≤200 km / major terminal
@@ -22,32 +23,55 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { callAITask } from '../_shared/aiConfig.ts';
 import { resolveMarkets } from './marketGeo.ts';
-import { marketScope, scopeQuery, pricePage } from './commodityScope.ts';
+import { marketScope, matchesScope, scopeQuery, pricePage } from './commodityScope.ts';
+import { cursorRows, cachedRead } from './marketReads.ts';
+import { isDatabaseTimeout, retryDatabaseRead } from '../_shared/readResilience.ts';
 
 // deno-lint-ignore no-explicit-any
-async function pageRows(build: () => any, max = Infinity): Promise<any[]> {
-  const size = 1000; const rows: any[] = [];
-  for (let from = 0; from < max; from += size * 4) {
-    const batch = await Promise.all([0, 1, 2, 3].map((i) => build().range(from + i * size, from + (i + 1) * size - 1)));
-    let done = false;
-    for (const r of batch) { if (r.error) throw r.error; rows.push(...(r.data || [])); if ((r.data || []).length < size) done = true; }
-    if (done) break;
-  }
-  return rows;
+async function pageRows(build: () => any): Promise<any[]> {
+  return cursorRows((after, size) => {
+    return retryDatabaseRead(() => {
+      let query = build().order('id').limit(size);
+      if (after) query = query.gt('id', after);
+      return query;
+    });
+  });
 }
 
 // deno-lint-ignore no-explicit-any
 async function latestDate(supabase: any, crop?: string, scope = marketScope(undefined)): Promise<string | null> {
   let q = scopeQuery(supabase.from('market_prices').select('price_date'), scope).order('price_date', { ascending: false }).limit(1);
   if (crop && crop !== 'all') q = q.ilike('crop_name', `%${crop}%`);
-  const { data } = await q;
+  const { data, error } = await q;
+  if (error) throw error;
   return data?.[0]?.price_date ?? null;
 }
 function daysBefore(d: string, n: number) { const x = new Date(d); x.setDate(x.getDate() - n); return x.toISOString().split('T')[0]; }
 
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabaseUrl = Deno.env.get('SUPABASE_URL');
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+if (!supabaseUrl || !supabaseKey) throw new Error('Supabase configuration missing');
+const supabase = createClient(supabaseUrl, supabaseKey);
+const publicCatalog = cachedRead(async () => {
+  // Disjoint UUID ranges keep cold catalog reads bounded without deep offsets.
+  // Each range advances serially; concurrent selectors reuse this same load.
+  const partitions = await Promise.all(Array.from({ length: 4 }, (_, i) => pageRows(() => {
+    let query = supabase.from('market_prices')
+      .select('id,crop_name,commodity_category,commodity_code,market_location')
+      .gte('id', `${(i * 4).toString(16)}0000000-0000-0000-0000-000000000000`);
+    if (i < 3) query = query.lt('id', `${((i + 1) * 4).toString(16)}0000000-0000-0000-0000-000000000000`);
+    return query;
+  })));
+  const unique = new Map<string, (typeof partitions)[number][number]>();
+  for (const row of partitions.flat()) {
+    unique.set(JSON.stringify([row.crop_name, row.commodity_category, row.commodity_code, row.market_location]), row);
+  }
+  return [...unique.values()];
+});
+async function catalog(scope: ReturnType<typeof marketScope>) {
+  return (await publicCatalog()).filter(row => matchesScope(row.commodity_code, scope));
+}
 
 // Haversine formula to calculate distance between two points in km
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -157,7 +181,6 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
     const { action, params = {} } = await req.json();
     const scope = marketScope(params.scope);
 
@@ -219,13 +242,14 @@ serve(async (req) => {
         const rows = await pageRows(() => {
           let q = supabase.from('market_prices')
             .select('id,crop_name,variety,price_per_unit,unit,market_location,district,state,price_date,min_price,max_price,modal_price,arrival,commodity_category,commodity_code')
-            .gte('price_date', daysBefore(anchor, 7)).order('price_date', { ascending: false }).order('id');
+            .gte('price_date', daysBefore(anchor, 7));
           q = scopeQuery(q, scope);
           if (crop && crop !== 'all') q = q.ilike('crop_name', `%${crop}%`);
           if (group && group !== 'all') q = q.eq('commodity_category', group);
           return q;
         });
 
+        rows.sort((a, b) => String(b.price_date).localeCompare(String(a.price_date)) || String(a.id).localeCompare(String(b.id)));
         // Newest row per market + crop + variety.
         const latest = new Map<string, any>();
         const volume = new Map<string, number>();
@@ -549,8 +573,7 @@ Respond ONLY with valid JSON, no markdown.`;
 
       case 'getMarkets': {
         // NEW: Fetch unique market locations
-        const anchorM = await latestDate(supabase, undefined, scope);
-        const data = anchorM ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('market_location').not('market_location', 'is', null).order('id'), scope)) : [];
+        const data = await catalog(scope);
 
         const uniqueMarkets = [...new Set((data || []).map((d: any) => d.market_location))].filter(Boolean).sort();
 
@@ -567,14 +590,7 @@ Respond ONLY with valid JSON, no markdown.`;
       case 'getCrops': {
         // Filter by group if provided
         const { group } = params;
-        const anchorC = await latestDate(supabase, undefined, scope);
-        const data = anchorC ? await pageRows(() => {
-          let q = supabase.from('market_prices').select('crop_name, commodity_category')
-            .not('crop_name', 'is', null).order('id');
-          q = scopeQuery(q, scope);
-          if (group && group !== 'all') q = q.eq('commodity_category', group);
-          return q;
-        }) : [];
+        const data = (await catalog(scope)).filter(row => row.crop_name && (!group || group === 'all' || row.commodity_category === group));
 
         const uniqueCrops = [...new Set((data || []).map((d: any) => d.crop_name))].filter(Boolean).sort();
         const categories = [...new Set((data || []).map((d: any) => d.commodity_category))].filter(Boolean);
@@ -592,8 +608,7 @@ Respond ONLY with valid JSON, no markdown.`;
 
       case 'getCropGroups': {
         // Get unique crop groups with counts
-        const anchorG = await latestDate(supabase, undefined, scope);
-        const data = anchorG ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('crop_name,commodity_category').order('id'), scope)) : [];
+        const data = await catalog(scope);
 
         // Count crops per group
         const groupCounts: Record<string, Set<string>> = {};
@@ -639,7 +654,7 @@ Respond ONLY with valid JSON, no markdown.`;
         const { limit = 6 } = params;
         
         const anchorT = await latestDate(supabase, undefined, scope);
-        const data = anchorT ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('market_location').gte('price_date', daysBefore(anchorT, 30)).order('id'), scope)) : [];
+        const data = anchorT ? await pageRows(() => scopeQuery(supabase.from('market_prices').select('id,market_location').gte('price_date', daysBefore(anchorT, 30)), scope)) : [];
 
         // Count records per market
         const marketCounts: Record<string, number> = {};
@@ -678,9 +693,10 @@ Respond ONLY with valid JSON, no markdown.`;
     console.error('[market-price-intelligence] Error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message 
+      error: isDatabaseTimeout(error) ? 'The server took too long to respond. Please try again.' : error instanceof Error ? error.message : 'Request failed',
+      ...(isDatabaseTimeout(error) ? { code: 'DB_TIMEOUT', retryable: true } : {})
     }), {
-      status: 500,
+      status: isDatabaseTimeout(error) ? 503 : 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
