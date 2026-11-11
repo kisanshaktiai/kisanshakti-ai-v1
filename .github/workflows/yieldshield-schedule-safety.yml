@@ -35,6 +35,7 @@ jobs:
           files = [
             Path('supabase/migrations/20261108153000_yieldshield_schedule_integrity.sql'),
             Path('supabase/migrations/20261108154500_yieldshield_weekly_yield_array_fix.sql'),
+            Path('supabase/migrations/20261112000100_yieldshield_crop_release_approvals.sql'),
           ]
           for path in files:
             parse_sql(path.read_text())
