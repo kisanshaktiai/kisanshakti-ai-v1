@@ -34,7 +34,7 @@ export async function roadDistances(
   dests: { key: string; lat: number; lon: number }[],
 ): Promise<Map<string, Road>> {
   const out = new Map<string, Road>();
-  const key = Deno.env.get('GOOGLE_MAPS_API_KEY');
+  const key = (globalThis as unknown as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get('GOOGLE_MAPS_API_KEY');
   const ok = `${origin.lat.toFixed(3)},${origin.lon.toFixed(3)}`;
   const todo: typeof dests = [];
   for (const d of dests.slice(0, MAX_DESTINATIONS)) {
