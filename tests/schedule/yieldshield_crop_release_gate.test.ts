@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   canonicalStageGraph, cropReleaseBlockers, selectedGraphBlockers, stageGraphSha256,
   type ReleaseStage, type ReleaseScope, type CropReleaseApproval,
@@ -75,5 +76,30 @@ describe("YieldShield crop-scoped scientific release gate (default deny)",()=>{
   it("never allows a missing region even when a record is otherwise approved",async()=>{
     const hash=await stageGraphSha256(graph);
     expect(cropReleaseBlockers(approval(hash),{...scope,regionCode:null},hash,now)).toEqual(["REGION_NOT_VERIFIED"]);
+  });
+});
+
+// Source-level regression: block even a valid-looking generated plan if the
+// independent scientific registry cannot authorize activation.
+describe("YieldShield generator publication wiring (no Supabase writes)",()=>{
+  const generator=readFileSync("supabase/functions/ai-smart-schedule/index.ts","utf8");
+  const migration=readFileSync("supabase/migrations/20261112000100_yieldshield_crop_release_approvals.sql","utf8");
+  it("checks scoped stage graph and approval before baseline generation and atomic persistence",()=>{
+    const graph=generator.indexOf("selectedGraphBlockers(selectedGraph, scope)");
+    const approval=generator.indexOf("cropReleaseBlockers(");
+    const baseline=generator.indexOf("const baseline = await generateBaseline(");
+    const persistence=generator.indexOf('supabase.rpc("persist_ai_crop_schedule_atomic"');
+    expect(graph).toBeGreaterThan(0);
+    expect(approval).toBeGreaterThan(graph);
+    expect(baseline).toBeGreaterThan(approval);
+    expect(persistence).toBeGreaterThan(baseline);
+    expect(generator).toContain("CROP_RELEASE_REGISTRY_UNAVAILABLE");
+    expect(generator).toContain("CROP_SCIENTIFIC_RELEASE_BLOCKED");
+  });
+  it("keeps approval registry inaccessible to browser roles and seeds no approvals",()=>{
+    expect(migration).toContain("enable row level security");
+    expect(migration).toContain("from PUBLIC, anon, authenticated");
+    expect(migration).toContain("to service_role");
+    expect(migration).not.toMatch(/insert\s+into\s+public\.yieldshield_crop_release_approvals/i);
   });
 });
