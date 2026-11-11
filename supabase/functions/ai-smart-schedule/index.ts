@@ -76,6 +76,7 @@ import { resolveVerifiedCaller } from "../_shared/sessionVerify.ts";
 import { applyScheduleHarness } from "./harness/index.ts";
 import { prepareCurrentFieldTasks } from "./generator/current-field-plan.ts";
 import { agronomyActivationBlockers, isBiologicalHarvestStage, isTreatmentInstruction, validateScientificTasks } from "./generator/agronomy-scientific-contract.ts";
+import { selectedGraphBlockers, stageGraphSha256, cropReleaseBlockers, type CropReleaseApproval } from "./generator/scientific-release-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -232,6 +233,54 @@ serve(async (req) => {
     // closes the path that produced the legacy NULL-method schedule (b9f15e9e, generator 1.0.0).
     if (!inputs.cultivationMethod || !inputs.stageClockMethod) return json({ error: "Cultivation method has no approved compatible crop stage clock", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, requestedMethod: inputs.cultivationMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
     if (inputs.cropCycle === AMBIGUOUS_CROP_CYCLE) return json({ error: "Crop cycle is required for this crop", code: "CROP_CYCLE_REQUIRED", cropCode: inputs.cropCode, options: await getCropCycleOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
+
+    // YieldShield P0: default-deny scientific publication. This check runs before
+    // baseline generation, any AI narration/enrichment, or farmer schedule persistence.
+    // Registry is deliberately empty until independently reviewed, scoped approvals
+    // are published through a privileged migration/review procedure.
+    const { getStages: readApprovedStageGraph } = await import("./db/agronomy-repo.ts");
+    const scope = {
+      cropCode: inputs.cropCode,
+      cultivationMethod: inputs.cultivationMethod,
+      stageClockMethod: inputs.stageClockMethod,
+      cropCycle: inputs.cropCycle || "",
+      regionCode: inputs.regionCode,
+      varietyId: inputs.varietyId,
+    };
+    const selectedGraph = await readApprovedStageGraph(supabase, inputs.cropCode, inputs.cropCycle, inputs.stageClockMethod);
+    const graphErrors = selectedGraphBlockers(selectedGraph, scope);
+    if (graphErrors.length) return json({
+      success: false, code: "CROP_SCIENTIFIC_RELEASE_BLOCKED", review_required: true,
+      blockers: graphErrors, cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod,
+      cropCycle: inputs.cropCycle, regionCode: inputs.regionCode,
+    }, 422);
+    const graphHash = await stageGraphSha256(selectedGraph);
+    let releaseQuery = supabase
+      .from("yieldshield_crop_release_approvals")
+      .select("id,crop_code,cultivation_method,crop_cycle,region_code,variety_id,status,stage_graph_sha256,evidence_bundle_sha256,reviewed_by,reviewed_at,expires_at")
+      .eq("crop_code", inputs.cropCode)
+      .eq("cultivation_method", inputs.cultivationMethod)
+      .eq("crop_cycle", inputs.cropCycle || "")
+      .eq("region_code", inputs.regionCode!);
+    releaseQuery = inputs.varietyId
+      ? releaseQuery.eq("variety_id", inputs.varietyId)
+      : releaseQuery.is("variety_id", null);
+    const { data: releaseRow, error: releaseError } = await releaseQuery.maybeSingle();
+    if (releaseError) {
+      console.error("[ai-smart-schedule] crop release registry unavailable:", releaseError.code ?? "unknown");
+      return json({
+        success: false, code: "CROP_RELEASE_REGISTRY_UNAVAILABLE", review_required: true,
+        error: "Scientific release registry cannot be verified. Schedule generation is disabled.",
+      }, 503);
+    }
+    const releaseBlockers = cropReleaseBlockers(
+      releaseRow as CropReleaseApproval | null, scope, graphHash,
+    );
+    if (releaseBlockers.length) return json({
+      success: false, code: "CROP_SCIENTIFIC_RELEASE_BLOCKED", review_required: true,
+      blockers: releaseBlockers, cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod,
+      cropCycle: inputs.cropCycle, regionCode: inputs.regionCode,
+    }, 422);
 
     const baseline = await generateBaseline(supabase, inputs);
     if (!baseline.tasks.length) return json({ error: "No schedule could be produced from the agronomic database for this crop", cropCode: inputs.cropCode, gaps: baseline.gaps, coverage: baseline.coverage }, 422);
