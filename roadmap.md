@@ -1,3 +1,12 @@
+# Schedule availability repair
+- [x] Confirm activation blockers reject repeated-picking and missing-variety-evidence plans before persistence; no review-only flow exists.
+- [ ] Implement safe review-only schedule flow and DB-backed repeated-picking eligibility: blocked pending explicit approval for isolated review-draft storage. Hosted crop_schedules has no review status; atomic persistence requires executable tasks and updates land.
+
+# Market appearance refinement
+- [x] Remove accent-filled card hover and unify neutral Market control states.
+- [x] Refine mobile card hierarchy, filter alignment, and price-detail spacing without changing data logic.
+- [x] Verify isolated card hover/detail controls at 394×684 and 1280×1800; 19 market regressions passed and preview build is OK. Existing lint errors remain in Market page data typings; signed-in whole-page verification remains blocked by external unmanaged authentication (tracked below).
+
 # Camera consolidation
 - [x] Fix shared capture translations, mobile dialog, preview lifecycle, and empty-land exit.
 - [x] Route active diagnostic camera entry points through the shared capture tool; retire unused cameras and direct growth upload path.

@@ -41,11 +41,11 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
 
   return (
     <Button
-      variant="ghost"
+      variant="surface"
       onClick={onClick}
       className={cn(
-        'block h-auto w-full min-w-0 whitespace-normal text-left rounded-lg p-3 bg-card border border-border/60',
-        'active:bg-muted/40 transition-colors touch-manipulation'
+        'block h-full w-full min-w-0 whitespace-normal text-left p-3.5',
+        'transition-colors duration-150 touch-manipulation'
       )}
     >
       {/* Row 1: crop + trend */}
@@ -53,7 +53,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <span className="text-xl leading-none" aria-hidden>{groupIcon}</span>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-foreground break-words leading-snug">
+            <h3 className="text-base font-bold text-foreground break-words leading-snug">
               {price.crop_name}
             </h3>
             {price.variety && (
@@ -64,7 +64,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
           </div>
         </div>
         {price.arrival != null && Number(price.arrival) > 0 ? (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-muted text-muted-foreground flex-shrink-0 tabular-nums">
+          <div className="flex max-w-[45%] flex-wrap items-center justify-end gap-1 px-2 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground tabular-nums">
             <Package className="w-3.5 h-3.5" />
             {t('market.intelligence.arrival')} {Number(price.arrival).toLocaleString('en-IN')}
           </div>
@@ -74,7 +74,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
       </div>
 
       {/* Row 2: price */}
-      <div className="flex items-baseline gap-1.5 mb-2">
+      <div className="flex flex-wrap items-baseline gap-1.5 mb-3">
         <span className="text-2xl font-extrabold text-foreground tabular-nums leading-none">
           ₹{modalPrice.toLocaleString('en-IN')}
         </span>
@@ -83,7 +83,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
 
       {/* Row 3: min/max range */}
       {spread > 0 && (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2 tabular-nums">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3 tabular-nums">
           <span>कमी ₹{minPrice.toLocaleString('en-IN')}</span>
           <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
             <div
@@ -98,29 +98,29 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
       )}
 
       {/* Row 4: market name, road distance + date */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-t border-border/60 pt-2.5">
         <div className="min-w-0">
-          <span className="flex items-start gap-1 min-w-0 text-sm font-semibold text-foreground">
+          <span className="flex items-start gap-1.5 min-w-0 text-base font-semibold text-foreground">
             <MapPin className="w-3.5 h-3.5 mt-0.5 text-primary flex-shrink-0" />
             <span className="min-w-0 break-words leading-snug">{price.market_location || price.district}</span>
           </span>
           {(price.distance !== undefined || price.is_major_market) && (
             <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-4 text-xs">
               {price.distance !== undefined && (
-                <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-semibold tabular-nums">
+                <span className="py-0.5 text-muted-foreground font-medium tabular-nums">
                   {price.distanceKind === 'road' ? '' : '~'}{price.distance} किमी
                   {price.distanceKind === 'road' ? ' रस्ता' : ''}
                   {price.travelMinutes !== undefined && ` · ${price.travelMinutes >= 60 ? `${Math.floor(price.travelMinutes / 60)} तास ${price.travelMinutes % 60} मि` : `${price.travelMinutes} मि`}`}
                 </span>
               )}
               {price.is_major_market && (
-                <span className="px-1.5 py-0.5 rounded-md bg-accent/15 text-accent-foreground font-semibold">मोठा बाजार</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-foreground font-medium">मोठा बाजार</span>
               )}
             </div>
           )}
         </div>
         {price.price_date && (
-          <span className="flex items-center gap-1 flex-shrink-0 text-[11px] text-muted-foreground">
+          <span className="flex items-center gap-1 flex-shrink-0 pt-1 text-xs text-muted-foreground">
             <CalendarDays className="w-3 h-3" />
             {formatDate(price.price_date)}
           </span>

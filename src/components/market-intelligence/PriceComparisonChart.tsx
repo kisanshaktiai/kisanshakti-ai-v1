@@ -84,9 +84,10 @@ export function PriceComparisonChart({
           </div>
           <Button
             onClick={onFetchComparison}
-            variant="outline"
+            variant="surface"
             size="icon"
-            className="h-10 w-10 rounded-xl"
+            className="h-10 w-10 rounded-lg"
+            aria-label={t('market.intelligence.refresh')}
             disabled={isLoading}
           >
             {isLoading ? (
@@ -99,45 +100,47 @@ export function PriceComparisonChart({
       )}
 
       {/* Period segmented control */}
-      <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-muted">
+      <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-muted">
         {(['week', 'month', 'year'] as const).map((p) => (
-          <button
+          <Button
+            variant="quiet"
             key={p}
             onClick={() => setActivePeriod(p)}
+            aria-pressed={activePeriod === p}
             className={cn(
-              'h-9 rounded-xl text-xs font-semibold transition-colors',
+              'h-10 rounded-md px-2 text-xs font-semibold transition-colors',
               activePeriod === p
                 ? 'bg-card text-foreground shadow-sm'
                 : 'text-muted-foreground',
             )}
           >
             {t(`market.intelligence.${p}`)}
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-3 gap-2">
-          <div className="p-2.5 rounded-xl bg-muted/50">
-            <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wide">
+          <div className="min-w-0 p-2 rounded-lg bg-muted/50">
+            <p className="text-xs text-muted-foreground mb-0.5">
               सरासरी
             </p>
-            <p className="text-sm font-bold tabular-nums">
+            <p className="text-sm font-bold tabular-nums break-words">
               ₹{Math.round(stats.avgPrice || 0).toLocaleString('en-IN')}
             </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-muted/50">
-            <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wide">
+          <div className="min-w-0 p-2 rounded-lg bg-muted/50">
+            <p className="text-xs text-muted-foreground mb-0.5">
               बदल
             </p>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {getTrendIcon()}
               <span className="text-sm font-bold tabular-nums">{stats.changePercent}%</span>
             </div>
           </div>
-          <div className="p-2.5 rounded-xl bg-muted/50">
-            <p className="text-[10px] text-muted-foreground mb-0.5 uppercase tracking-wide">
+          <div className="min-w-0 p-2 rounded-lg bg-muted/50">
+            <p className="text-xs text-muted-foreground mb-0.5">
               नोंदी
             </p>
             <p className="text-sm font-bold tabular-nums">{stats.dataPoints}</p>
@@ -155,7 +158,7 @@ export function PriceComparisonChart({
           <p className="text-sm text-muted-foreground mb-3">
             {t('market.intelligence.noHistoricalData', 'No historical data available')}
           </p>
-          <Button onClick={onFetchComparison} size="sm" className="rounded-xl h-10">
+          <Button variant="surface" onClick={onFetchComparison} size="sm" className="rounded-lg h-10">
             {t('market.intelligence.loadData', 'Load Data')}
           </Button>
         </div>
@@ -163,7 +166,7 @@ export function PriceComparisonChart({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="h-56 rounded-2xl bg-muted/30 p-2"
+          className="h-56 p-2"
         >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData}>

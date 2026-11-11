@@ -22,7 +22,7 @@ export function CropChips({ crops, selectedCrop, onSelectCrop, isLoading }: Crop
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" disabled={isLoading} className="h-11 w-full min-w-0 justify-between gap-1 rounded-lg bg-card px-3 text-xs">
+        <Button variant="surface" disabled={isLoading} className="h-11 w-full min-w-0 justify-between gap-1 px-3 text-sm">
           <span className="truncate">{selectedCrop || t('market.intelligence.allItems', { count: crops.length })}</span>
           <ChevronsUpDown className="h-3.5 w-3.5 shrink-0" />
         </Button>
@@ -33,10 +33,10 @@ export function CropChips({ crops, selectedCrop, onSelectCrop, isLoading }: Crop
           <Input aria-label={t('market.intelligence.search')} placeholder={t('market.intelligence.search')} value={query} onChange={event => setQuery(event.target.value)} className="h-10 pl-8" />
         </div>
         <div className="max-h-64 overflow-y-auto" role="listbox" aria-label={t('market.intelligence.items')}>
-          <Button variant="ghost" className="h-10 w-full justify-between" onClick={() => select('')}>
+          <Button variant="quiet" className="h-auto min-h-11 w-full justify-between whitespace-normal text-left px-3" onClick={() => select('')}>
             {t('market.intelligence.allItems', { count: crops.length })}{!selectedCrop && <Check className="h-4 w-4" />}
           </Button>
-          {choices.map(crop => <Button key={crop} variant="ghost" role="option" aria-selected={selectedCrop === crop} className="h-auto min-h-10 w-full justify-between whitespace-normal text-left" onClick={() => select(crop)}>
+          {choices.map(crop => <Button key={crop} variant="quiet" role="option" aria-selected={selectedCrop === crop} className="h-auto min-h-11 w-full justify-between whitespace-normal text-left px-3" onClick={() => select(crop)}>
             {crop}{selectedCrop === crop && <Check className="h-4 w-4 shrink-0" />}
           </Button>)}
           {!choices.length && <p className="p-3 text-sm text-muted-foreground">{t('market.intelligence.noPrices')}</p>}
