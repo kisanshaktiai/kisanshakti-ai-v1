@@ -60,6 +60,7 @@ export default function Schedule() {
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
   const [reviewDrafts, setReviewDrafts] = useState<ScheduleReviewDraft[]>([]);
+  const [editingReviewDraft, setEditingReviewDraft] = useState<ScheduleReviewDraft | null>(null);
   const [reviewLoadError, setReviewLoadError] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +127,7 @@ export default function Schedule() {
   }, [fetchedLands]);
 
   const handleLandSelect = (land: Land) => {
+    setEditingReviewDraft(null);
     setSelectedLand(land);
     setFlowStep('crop-input');
   };
@@ -141,12 +143,13 @@ export default function Schedule() {
   const handleEditSchedule = (landId: string) => {
     const land = lands.find(l => l.id === landId);
     if (land) {
+      setEditingReviewDraft(null);
       setSelectedLand(land);
       setFlowStep('crop-input');
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null, cultivationMethodSelection?: string | null, varietyMethodConsent?: VarietyMethodConsent | null) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null, cultivationMethodSelection?: string | null, varietyMethodConsent?: VarietyMethodConsent | null, reviewDraftId?: string | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -233,6 +236,7 @@ export default function Schedule() {
           intercrops: intercrops || [],
           backdatedConsent: backdatedConsent || false,
           ...(varietyMethodConsent ? { varietyMethodConsent } : {}),
+          ...((reviewDraftId || editingReviewDraft?.id) ? { reviewDraftId: reviewDraftId || editingReviewDraft?.id } : {}),
         },
         headers: {
           'x-tenant-id': tenant?.id || user?.tenantId || '',
@@ -283,7 +287,8 @@ export default function Schedule() {
           'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
           'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
           'STAGE_COVERAGE_MISSING','VARIETY_METHOD_NOT_SUITABLE',
-          'VARIETY_UNRESOLVED','AGRONOMY_REVIEW_REQUIRED',
+          'VARIETY_UNRESOLVED','AGRONOMY_REVIEW_REQUIRED','CROP_SCIENTIFIC_RELEASE_BLOCKED',
+          'CROP_RELEASE_REGISTRY_UNAVAILABLE','REVIEW_DRAFT_SAVE_FAILED',
           'AGRONOMY_SAFETY_VALIDATION_FAILED','SCHEDULE_VALIDATION_FAILED'
         ].includes(errorBody.code)) {
           resetRetries();
@@ -388,7 +393,9 @@ export default function Schedule() {
         'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
         'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
         'STAGE_COVERAGE_MISSING','VARIETY_UNRESOLVED',
-        'AGRONOMY_REVIEW_REQUIRED','AGRONOMY_SAFETY_VALIDATION_FAILED'
+        'AGRONOMY_REVIEW_REQUIRED','CROP_SCIENTIFIC_RELEASE_BLOCKED',
+        'CROP_RELEASE_REGISTRY_UNAVAILABLE','REVIEW_DRAFT_SAVE_FAILED',
+        'AGRONOMY_SAFETY_VALIDATION_FAILED'
       ].includes(data.code)) {
         resetRetries();
         setFlowStep('crop-input');
@@ -418,8 +425,10 @@ export default function Schedule() {
         throw new Error(data?.error || 'Failed to generate schedule after multiple attempts');
       }
 
-      // Reset retry count on success
+      // Reset retry count on success; this specific review draft was resolved
+      // by a fully approved, atomically persisted schedule.
       resetRetries();
+      setEditingReviewDraft(null);
 
       // Farmer-language completion: the schedule is persisted as soon as its agronomy is ready;
       // tasks not yet in the farmer's language are finished by the same function (action=narrate).
@@ -657,6 +666,7 @@ export default function Schedule() {
             <CropDateInput
               land={selectedLand}
               onSubmit={handleCropDateSubmit}
+              initialDraft={editingReviewDraft}
               onBack={handleBack}
               loading={generating}
             />
@@ -666,17 +676,30 @@ export default function Schedule() {
         {(flowStep === 'crop-input' || flowStep === 'review-view') && selectedLand && <>
           {reviewLoadError && <p role="alert" className="p-4 text-sm text-destructive">{t('schedule.review.load_error')}</p>}
           <ScheduleReviewDrafts drafts={reviewDrafts} busy={generating}
-            onEdit={() => setFlowStep('crop-input')}
+            onEdit={draft => { setEditingReviewDraft(draft); setFlowStep('crop-input'); }}
             onRecheck={draft => {
               const i = draft.crop_inputs;
-              const sow = typeof i.sowingDate === 'string' ? new Date(`${i.sowingDate}T00:00:00`) : null;
-              if (!sow || Number.isNaN(sow.getTime())) {setFlowStep('crop-input'); return;}
-              const transplant = typeof i.transplantDate === 'string' ? new Date(`${i.transplantDate}T00:00:00`) : null;
-              handleCropDateSubmit(String(i.cropName || draft.crop_name),String(i.cropVariety || ''),sow,
-                i.isReadyMadePlant === true,String(i.farmingType || 'organic_fertilizer'),Number(i.nurseryDays || 0),
-                '',undefined,i.backdatedConsent === true,transplant,
+              const sow = typeof i.sowingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.sowingDate)
+                ? new Date(`${i.sowingDate}T00:00:00`) : null;
+              const policy = typeof i.farmingType === 'string' && ['organic_only','organic_fertilizer','fertilizer_pesticide'].includes(i.farmingType)
+                ? i.farmingType : null;
+              const method = typeof i.cultivationMethod === 'string' ? i.cultivationMethod : '';
+              // Never invent a farming policy, method, or sowing clock on recheck.
+              if (!sow || Number.isNaN(sow.getTime()) || !policy || !method) {
+                setEditingReviewDraft(draft);
+                setFlowStep('crop-input');
+                return;
+              }
+              const transplant = typeof i.transplantDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.transplantDate)
+                ? new Date(`${i.transplantDate}T00:00:00`) : null;
+              const storedIntercrops = Array.isArray(i.intercrops) ? i.intercrops : [];
+              setEditingReviewDraft(draft);
+              handleCropDateSubmit(String(i.cropName || draft.crop_name), String(i.cropVariety || ''), sow,
+                i.isReadyMadePlant === true, policy, Number(i.nurseryDays || 0),
+                typeof i.localizedCropName === 'string' ? i.localizedCropName : '',
+                storedIntercrops, i.backdatedConsent === true, transplant,
                 typeof i.cropCycle === 'string' ? i.cropCycle : null,
-                typeof i.cultivationMethod === 'string' ? i.cultivationMethod : null);
+                method, null, draft.id);
             }} />
         </>}
 

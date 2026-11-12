@@ -66,13 +66,15 @@ interface CropDateInputProps {
 
   onBack: () => void;
   loading?: boolean;
+  initialDraft?: { id: string; crop_name: string; crop_inputs: Record<string, unknown> } | null;
 }
 
 const CropDateInput: React.FC<CropDateInputProps> = ({
   land,
   onSubmit,
   onBack,
-  loading = false
+  loading = false,
+  initialDraft = null,
 }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -138,6 +140,55 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [showBackdatedConsent, setShowBackdatedConsent] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<{farmingType: FarmingMode} | null>(null);
 
+  // Restore verified farmer selections; never infer a missing variety, method or
+  // farming policy. This review screen has no executable tasks or chemical doses.
+  useEffect(() => {
+    if (!initialDraft?.id) return;
+    const values = initialDraft.crop_inputs;
+    const selectedName = typeof values.cropName === 'string' ? values.cropName : initialDraft.crop_name;
+    let cancelled = false;
+    (async () => {
+      const { data: exact, error: cropError } = await supabase.from('crops')
+        .select('id,label,value').eq('label', selectedName).eq('is_active', true).maybeSingle();
+      if (cropError) throw cropError;
+      const { data: byCode, error: codeError } = exact ? {data: exact,error:null} : await supabase.from('crops')
+        .select('id,label,value').eq('value', selectedName.toLowerCase().replace(/\s+/g, '_')).eq('is_active', true).maybeSingle();
+      if (codeError) throw codeError;
+      if (!byCode || cancelled) return;
+      setCropId(byCode.id);
+      setCropName(byCode.label);
+      setLocalizedCropName(typeof values.localizedCropName === 'string' ? values.localizedCropName : byCode.label);
+      setCropVariety(typeof values.cropVariety === 'string' ? values.cropVariety : '');
+      const parseDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+        ? new Date(v + 'T00:00:00') : undefined;
+      const sow = parseDay(values.sowingDate);
+      if (sow && !Number.isNaN(sow.getTime())) setSowingDate(sow);
+      const transplant = parseDay(values.transplantDate);
+      setTransplantDate(transplant && !Number.isNaN(transplant.getTime()) ? transplant : undefined);
+      setIsReadyMadePlant(values.isReadyMadePlant === true);
+      setNurseryDays(typeof values.nurseryDays === 'number' && Number.isFinite(values.nurseryDays) ? values.nurseryDays : 0);
+      const mode = FARMING_OPTIONS.find(option => option.mode === values.farmingType)?.mode;
+      setSelectedFarmingType(mode ?? null);
+      setSelectedCultivationMethod(typeof values.cultivationMethod === 'string' ? values.cultivationMethod : '');
+      const restoredIntercrops = Array.isArray(values.intercrops)
+        ? (values.intercrops as IntercropData[]).filter(ic => typeof ic.cropName === 'string' &&
+            Number.isFinite(ic.areaPercent) && ic.areaPercent > 0 && ic.areaPercent <= 100).slice(0, 3)
+        : [];
+      setIntercrops(restoredIntercrops);
+      setWizardStep('variety');
+    })().catch(error => console.warn('[CropDateInput] Draft restore failed', error));
+    return () => { cancelled = true; };
+  }, [initialDraft?.id, land.id]);
+
+  // Map a draft's variety back to a real catalogue record, never pick a different one.
+  useEffect(() => {
+    if (!initialDraft?.id) return;
+    const requested = String(initialDraft.crop_inputs.cropVariety ?? '').trim();
+    const match = varieties.find(v => v.name.toLowerCase() === requested.toLowerCase());
+    if (match) setVarietyId(match.id);
+  }, [initialDraft?.id, varieties]);
+
+
   // Calculate total area for display
   const totalIntercropArea = useMemo(() => {
     return intercrops.reduce((sum, ic) => sum + (ic.areaPercent || 0), 0);
@@ -177,7 +228,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         .filter((v) => v && v !== 'universal'))].sort();
       if (!cancelled) {
         setCropCycleOptions(distinct);
-        if (distinct.length === 1) setCropCycle(distinct[0]);
+        const requested = typeof initialDraft?.crop_inputs.cropCycle === 'string'
+          ? initialDraft.crop_inputs.cropCycle : '';
+        if (requested && (distinct.includes(requested) || (requested === 'universal' && !distinct.length)))
+          setCropCycle(requested);
+        else if (distinct.length === 1) setCropCycle(distinct[0]);
       }
     })().catch((err) => {
       if (!cancelled) {
@@ -187,7 +242,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       }
     }).finally(() => { if (!cancelled) setCycleOptionsLoading(false); });
     return () => { cancelled = true; };
-  }, [cropId]);
+  }, [cropId, initialDraft?.id]);
 
   // ── Variety source: master_products is the variety SSOT (shared, cached hook) ──
   const { varieties, loading: varietiesLoading } = useCropVarieties(cropId || null);
@@ -196,7 +251,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      if (!cropId) return;
+      if (!cropId || initialDraft?.id) return;
       const { data: landRow } = await supabase
         .from('lands')
         .select('current_crop_variety_id')
@@ -208,7 +263,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     };
     load();
     return () => { cancelled = true; };
-  }, [cropId, land.id]);
+  }, [cropId, land.id, initialDraft?.id]);
 
   // Resolve the selected variety's name once the catalogue arrives
   // (keeps the existing onSubmit(cropVariety) contract).

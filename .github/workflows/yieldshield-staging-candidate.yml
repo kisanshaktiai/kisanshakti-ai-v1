@@ -3,13 +3,18 @@ on:
   push:
     branches:
       - release/yieldshield-staging-auth-contracts-20261111
+      - fix/yieldshield-integrated-review-security-20261112
   pull_request:
     paths:
       - 'supabase/functions/schedule-reconciler/**'
       - 'supabase/functions/schedules-api/**'
       - 'supabase/functions/ai-smart-schedule/**'
       - 'supabase/functions/_shared/**'
-      - 'tests/schedule/yieldshield_*'
+      - 'tests/schedule/**'
+      - 'src/pages/Schedule.tsx'
+      - 'src/components/schedule/**'
+      - 'src/integrations/supabase/**'
+      - 'supabase/migrations/**'
       - 'scripts/yieldshield-staging-*'
       - '.github/workflows/yieldshield-staging-*.yml'
 permissions:
@@ -31,7 +36,9 @@ jobs:
             tests/schedule/yieldshield_staging_contract_integration.test.ts \
             tests/schedule/yieldshield_agronomy_scientific_contract.test.ts \
             tests/schedule/yieldshield_decision_contract.test.ts \
-            tests/schedule/yieldshield_crop_release_gate.test.ts
+            tests/schedule/yieldshield_crop_release_gate.test.ts \
+            tests/schedule/review_draft_isolation.test.ts \
+            tests/schedule/yieldshield_review_integration.test.ts
       - name: Frontend production build without deployment
         run: bun run build
       - uses: denoland/setup-deno@v2
