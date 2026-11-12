@@ -247,6 +247,42 @@ serve(async (req) => {
     if (!inputs.cultivationMethod || !inputs.stageClockMethod) return json({ error: "Cultivation method has no approved compatible crop stage clock", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, requestedMethod: inputs.cultivationMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
     if (inputs.cropCycle === AMBIGUOUS_CROP_CYCLE) return json({ error: "Crop cycle is required for this crop", code: "CROP_CYCLE_REQUIRED", cropCode: inputs.cropCode, options: await getCropCycleOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
 
+    // Scientific review is deliberately an inert ledger, never a saved/active crop
+    // schedule. All published/rejected paths must share this response contract.
+    // Recheck updates ONLY the original, verified farmer/tenant/land-owned draft.
+    const saveScientificReview = async (
+      blockers: string[],
+      provenance: unknown[] = [],
+      coverage: Record<string, unknown> = {},
+    ) => {
+      const payload = reviewDraftPayload({
+        tenantId: tenantId!, farmerId: farmerId!, landId: landId!, cropName: inputs.cropLabel || cropName!,
+        language, selections: body, blockers, sourceRefs: provenance, coverage,
+      });
+      const requestedDraftId = typeof body?.reviewDraftId === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.reviewDraftId)
+        ? body.reviewDraftId : null;
+      const write = requestedDraftId
+        ? await supabase.from("crop_schedule_review_drafts").update(payload)
+            .eq("id", requestedDraftId).eq("tenant_id", tenantId!)
+            .eq("farmer_id", farmerId!).eq("land_id", landId!).select("*").maybeSingle()
+        : await supabase.from("crop_schedule_review_drafts").insert(payload).select("*").single();
+      if (write.error || !write.data) {
+        console.error("[ai-smart-schedule] failed to save review draft:", write.error?.code ?? "not_found");
+        return json({
+          success: false, code: "REVIEW_DRAFT_SAVE_FAILED",
+          error: "Could not securely save this review. No crop schedule was activated.",
+        }, 503);
+      }
+      return json({
+        success: false, code: "AGRONOMY_REVIEW_REQUIRED", review_required: true,
+        error: "Independent crop evidence is required before activating this schedule.",
+        draft: write.data, blockers: payload.blockers,
+        cropCode: inputs.cropCode, varietyId: inputs.varietyId,
+        cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle,
+      }, 200);
+    };
+
     // YieldShield P0: default-deny scientific publication. This check runs before
     // baseline generation, any AI narration/enrichment, or farmer schedule persistence.
     // Registry is deliberately empty until independently reviewed, scoped approvals
@@ -262,11 +298,7 @@ serve(async (req) => {
     };
     const selectedGraph = await readApprovedStageGraph(supabase, inputs.cropCode, inputs.cropCycle, inputs.stageClockMethod);
     const graphErrors = selectedGraphBlockers(selectedGraph, scope);
-    if (graphErrors.length) return json({
-      success: false, code: "CROP_SCIENTIFIC_RELEASE_BLOCKED", review_required: true,
-      blockers: graphErrors, cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod,
-      cropCycle: inputs.cropCycle, regionCode: inputs.regionCode,
-    }, 422);
+    if (graphErrors.length) return await saveScientificReview(graphErrors);
     const graphHash = await stageGraphSha256(selectedGraph);
     let releaseQuery = supabase
       .from("yieldshield_crop_release_approvals")
@@ -289,11 +321,7 @@ serve(async (req) => {
     const releaseBlockers = cropReleaseBlockers(
       releaseRow as CropReleaseApproval | null, scope, graphHash,
     );
-    if (releaseBlockers.length) return json({
-      success: false, code: "CROP_SCIENTIFIC_RELEASE_BLOCKED", review_required: true,
-      blockers: releaseBlockers, cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod,
-      cropCycle: inputs.cropCycle, regionCode: inputs.regionCode,
-    }, 422);
+    if (releaseBlockers.length) return await saveScientificReview(releaseBlockers);
 
     const baseline = await generateBaseline(supabase, inputs);
     if (!baseline.tasks.length) return json({ error: "No schedule could be produced from the agronomic database for this crop", cropCode: inputs.cropCode, gaps: baseline.gaps, coverage: baseline.coverage }, 422);
@@ -339,27 +367,8 @@ serve(async (req) => {
       hasHarvestTask:baseline.tasks.some(t => t.task_type === "harvest"),
       multiHarvestStage:cycleStages.some(s => /^(first_picking|successive_harvest)$/i.test(String(s.growth_stage??""))),
     });
-    if(scientificBlockers.length){
-      // A review ledger is not a schedule: no tasks, atomic activation or land mutation.
-      const payload = reviewDraftPayload({tenantId,farmerId,landId,cropName:inputs.cropLabel || cropName,
-        language,selections:body,blockers:scientificBlockers,sourceRefs:baseline.provenance,coverage:baseline.coverage});
-      const {data: draft,error: draftError} = await supabase.from('crop_schedule_review_drafts')
-        .insert(payload).select('*').single();
-      if (draftError || !draft) return json({success:false,error:'Could not save review draft',code:'REVIEW_DRAFT_SAVE_FAILED'},503);
-      return json({
-        success:false,
-        error:"Crop plan cannot be activated until its variety, planting-material and harvest evidence is verified.",
-        code:"AGRONOMY_REVIEW_REQUIRED",
-        review_required:true,
-        draft,
-        blockers:scientificBlockers,
-        gaps:[...new Set(baseline.gaps)],
-        coverage:baseline.coverage,
-        cropCode:inputs.cropCode,
-        varietyId:inputs.varietyId,
-        cultivationMethod:inputs.cultivationMethod,
-        cropCycle:inputs.cropCycle,
-      },200);
+    if (scientificBlockers.length) {
+      return await saveScientificReview(scientificBlockers, baseline.provenance, baseline.coverage);
     }
 
     // ── Time plan: one deadline, explicit slices ─────────────────────────────
