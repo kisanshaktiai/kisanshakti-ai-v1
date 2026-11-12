@@ -1,0 +1,51 @@
+name: YieldShield surgical fixes — behaviour + SQL integration (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/ai-smart-schedule/**'
+      - 'supabase/functions/schedule-reconciler/**'
+      - 'supabase/functions/schedules-api/**'
+      - 'supabase/migrations/**'
+      - 'tests/schedule/**'
+      - '.github/workflows/yieldshield-surgical-fixes.yml'
+permissions:
+  contents: read
+jobs:
+  behaviour-and-sql-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun from npm registry
+        run: npm install --global bun@1.4.4
+      - name: Install locked application dependencies
+        run: bun install --frozen-lockfile
+      - name: Schedule behaviour tests (generator, harness, reconciler)
+        run: bun run test -- tests/schedule
+      - name: SQL integration on a throw-away PostgreSQL 16 (approval workflow, nutrient producer, privileges)
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+        run: tests/schedule/sql/run.sh
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check the three schedule Edge Functions without deploying
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/ai-smart-schedule/index.ts
+          deno check --node-modules-dir=auto supabase/functions/schedule-reconciler/index.ts
+          deno check --node-modules-dir=auto supabase/functions/schedules-api/index.ts

@@ -37,6 +37,7 @@ jobs:
             Path('supabase/migrations/20261108154500_yieldshield_weekly_yield_array_fix.sql'),
             Path('supabase/migrations/20261112000100_yieldshield_crop_release_approvals.sql'),
             Path('supabase/migrations/20261112141000_yieldshield_rpc_privilege_closure.sql'),
+            Path('supabase/migrations/20261112200000_yieldshield_release_workflow_and_verified_nutrient.sql'),
           ]
           for path in files:
             parse_sql(path.read_text())

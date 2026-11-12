@@ -87,7 +87,8 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
-import { hasUnstructuredRelativeTiming, isDeficiencyDependentAction, isBiologicalHarvestStage } from "./agronomy-scientific-contract.ts";
+import { isDeficiencyDependentAction, isBiologicalHarvestStage, biologicalHarvestStages } from "./agronomy-scientific-contract.ts";
+import { resolveRuleTiming } from "./rule-timing.ts";
 import {
   getStages,
   getSeedRate,
@@ -104,7 +105,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.7.0-evidence-clock";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.8.0-provisional-release";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -480,7 +481,7 @@ export async function generateBaseline(
 
 
   // ── Fertilizer split tasks ─────────────────────────────────────────────────
-  const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass, [inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean) as string[]);
+  const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass, [inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean) as string[], inputs.cropCycle ?? null);
   coverage.fertilizer = !!fert && fert.splits.length > 0;
   // Clock-origin names of this crop (DB) and the establishment stage of THIS graph: the stage at
   // day 0 of the schedule clock. Used only to re-anchor a split written against another method's
@@ -617,7 +618,7 @@ export async function generateBaseline(
         source_refs: [fert.provenance, ...equivalents.map((e) => ({ table: "master_products", row_id: e.product_id, source: null } as Provenance))],
         instructions: [`Apply ${qty} kg ${nutrientLabel} on this field for this application.`, ...equivalentLines],
         precautions: [],
-        resources: { requirement_semantics: "BASELINE", nutrient_basis: basisKey, product_equivalents: equivalents, fertilizer_context: fert.cultivation_context },
+        resources: { requirement_semantics: "BASELINE", nutrient_basis: basisKey, product_equivalents: equivalents, fertilizer_context: fert.cultivation_context, dose_basis: fert.basis },
       });
     }
   }
@@ -766,18 +767,16 @@ export async function generateBaseline(
   const policySuppressed: string[] = [];
 
   for (const rule of rules) {
-    // Without a typed event-relative clock, a stage-start card would be misleading.
-    if(hasUnstructuredRelativeTiming(rule.action_text)){
-      gaps.push(`rule_relative_timing_needs_structured_anchor:${rule.rule_id}`);
-      continue;
-    }
     if(isDeficiencyDependentAction(rule.rule_id,rule.action_text)){
       gaps.push(`conditional_nutrient_requires_observation:${rule.rule_id}`);
       continue;
     }
-    if(!inputs.soilFertilityClass &&
-      ["nutrition","micronutrient"].includes(String(rule.category??"").toLowerCase())){
-      gaps.push(`quantitative_nutrient_rule_requires_soil_and_stage_evidence:${rule.rule_id}`);
+    // 2026-11-12: ONE dose authority per schedule. With an approved fertilizer programme on the
+    // calendar, a dose-bearing nutrition rule card would be a second application of the same
+    // nutrient. Without a programme the expert-approved rule card is the nutrient guidance
+    // (the old "no soil test => no nutrition rule" skip left such farmers with nothing).
+    if(coverage.fertilizer && String(rule.category??"").toLowerCase()==="nutrition"){
+      gaps.push(`nutrition_rule_not_scheduled_fertilizer_programme_present:${rule.rule_id}`);
       continue;
     }
     const chem = String(rule.chemical_class ?? "").toLowerCase();
@@ -827,7 +826,15 @@ export async function generateBaseline(
     if (!matched.length) continue;
 
     {
-      const { stage, das } = matched[0];
+      // 2026-11-12: event-relative rules are anchored, not dropped (generator/rule-timing.ts).
+      const timing = resolveRuleTiming({
+        ruleId: rule.rule_id, ageMin: rule.crop_age_days_min, ageMax: rule.crop_age_days_max,
+        actionText: rule.action_text, transplantOffset,
+        stages: matched.map((m) => ({ dasMin: m.das, dasMax: das0(m.stage, m.stage.das_max) })),
+      });
+      if (timing.gap) gaps.push(timing.gap);
+      const stage = matched[timing.stageIndex].stage;
+      const das = timing.das ?? matched[timing.stageIndex].das;
       const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
       // 2026-09-03: ETL / dose / PHI / source are AUDIT detail — they used to be the
@@ -885,6 +892,7 @@ export async function generateBaseline(
         instructions: ruleInstructions,
         precautions: rulePrecautions,
         technical_details: ruleTechnical,
+        resources: { timing_basis: timing.basis, timing_window_das: [das as number, timing.dasEnd ?? das0(stage, stage.das_max)], ...(timing.gap ? { timing_review: timing.gap.split(":")[0] } : {}) },
 
       });
     }
@@ -1137,7 +1145,10 @@ export async function generateBaseline(
   // it already sets total_duration_days and the harvest date — so the calendar is closed to it:
   // ONE harvest card at maturity carrying the merged harvest guidance, post-harvest immediately
   // after it, and nothing else scheduled beyond maturity. Every change is recorded as a gap.
-  const repeatedPicking = stages.some(s => /^(first_picking|successive_harvest)$/i.test(s.growth_stage));
+  // 2026-11-12: structural, crop-agnostic — a graph that declares more than one biological
+  // harvest stage is a repeated-picking crop (was a hardcoded pair of stage names).
+  const pickingStages = biologicalHarvestStages(stages);
+  const repeatedPicking = pickingStages.length > 1;
   // First maturity is not the end of a repeated-picking crop's lifecycle.
   if (varietyDuration?.maxDays != null && !repeatedPicking) {
     const maturityDas = varietyDuration.maxDays;
@@ -1253,6 +1264,37 @@ export async function generateBaseline(
         if(!durationDays)gaps.push("harvest_window_provisional_variety_maturity_unverified");
       }
     }
+  }
+
+  // ── Repeated-picking crops: one harvest card PER DB picking phase ─────────
+  // Each biological harvest stage of the graph keeps its own card with the stage's own window.
+  // Picking frequency and the number of pickings are NOT in the database, so no interval,
+  // count or end date is produced: the card asks for a field readiness check inside the window.
+  // Rule-derived harvest cards are kept and bound to their own phase; phases are never merged
+  // and the calendar is never closed at first maturity.
+  if (repeatedPicking) {
+    pickingStages.forEach((stage, i) => {
+      const from = das0(stage, stage.das_min);
+      if (from == null) { gaps.push(`picking_phase_window_unresolved:${stage.stage_code || stage.growth_stage}`); return; }
+      const to = das0(stage, stage.das_max) ?? from;
+      const window = { from_das: from, to_das: to, clock: "sowing", anchor_event: "biological_harvest_stage" };
+      const own = tasks.filter((t) => t.task_type === "harvest" && t.stage_uuid === stage.id);
+      for (const t of own) t.resources = { ...(t.resources ?? {}), window, picking_phase: i + 1, picking_phases_total: pickingStages.length, picking_interval_verified: false, requirement_semantics: "HARVEST_READINESS_CONFIRMATION" };
+      if (own.length) return;
+      tasks.push({
+        task_name: `Picking — ${stageLabel(stage)}`, task_type: "harvest",
+        task_description: "Check the crop for harvest-ready produce during this picking phase and pick what is ready. Confirm readiness in the field before each picking.",
+        days_from_sowing: from, anchor_type: "STAGE", anchor_stage: stage.stage_code || stage.growth_stage,
+        gdd_target: stage.gdd_min ?? null, stage_key: stage.stage_code, stage_uuid: stage.id,
+        stage_name: stage.growth_stage, stage_order: stageOrderOf(stages, stage.stage_code),
+        priority: "high", weather_dependent: true, nutrient: null, quantity: null, estimated_cost: null,
+        rule_ids: [], confidence: null, source_refs: [{ table: "crop_stage_master", row_id: stage.id }],
+        instructions: ["Inspect the crop for harvest-ready produce and pick only what is ready.", "Record each picking date so the next check can be planned from it."],
+        precautions: [],
+        resources: { window, picking_phase: i + 1, picking_phases_total: pickingStages.length, picking_interval_verified: false, requirement_semantics: "HARVEST_READINESS_CONFIRMATION", stage_based_provisional: true },
+      });
+    });
+    gaps.push("repeated_picking_interval_not_in_database");
   }
 
   // Preserve the complete lifecycle without inventing doses. The stage graph

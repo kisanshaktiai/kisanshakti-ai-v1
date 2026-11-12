@@ -84,19 +84,20 @@ describe("YieldShield crop-scoped scientific release gate (default deny)",()=>{
 describe("YieldShield generator publication wiring (no Supabase writes)",()=>{
   const generator=readFileSync("supabase/functions/ai-smart-schedule/index.ts","utf8");
   const migration=readFileSync("supabase/migrations/20261112000100_yieldshield_crop_release_approvals.sql","utf8");
-  it("checks scoped stage graph and approval before baseline generation and atomic persistence",()=>{
+  it("checks the scoped stage graph and resolves the release status before baseline generation and atomic persistence",()=>{
     const graph=generator.indexOf("selectedGraphBlockers(selectedGraph, scope)");
-    const approval=generator.indexOf("cropReleaseBlockers(");
+    const release=generator.indexOf("resolveReleaseStatus(");
     const baseline=generator.indexOf("const baseline = await generateBaseline(");
     const persistence=generator.indexOf('supabase.rpc("persist_ai_crop_schedule_atomic"');
     expect(graph).toBeGreaterThan(0);
-    expect(approval).toBeGreaterThan(graph);
-    expect(baseline).toBeGreaterThan(approval);
+    expect(release).toBeGreaterThan(graph);
+    expect(baseline).toBeGreaterThan(release);
     expect(persistence).toBeGreaterThan(baseline);
-    expect(generator).toContain("CROP_RELEASE_REGISTRY_UNAVAILABLE");
     expect(generator).toContain("saveScientificReview(graphErrors)");
-    expect(generator).toContain("saveScientificReview(releaseBlockers)");
     expect(generator).toContain('code: "AGRONOMY_REVIEW_REQUIRED"');
+    // 2026-11-12: an unreadable or empty registry no longer disables generation (was a 503 for every crop).
+    expect(generator).not.toContain("Schedule generation is disabled");
+    expect(generator).toContain("scientific_release: release");
   });
   it("keeps approval registry inaccessible to browser roles and seeds no approvals",()=>{
     expect(migration).toContain("enable row level security");

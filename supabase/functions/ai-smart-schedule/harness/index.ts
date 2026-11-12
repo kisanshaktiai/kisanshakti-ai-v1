@@ -43,6 +43,8 @@ import {
 } from "./types.ts";
 import { buildCandidateGraph, canonicalSequence } from "./candidate-graph.ts";
 import { requestPlan, type PlannerAIContext } from "./llm-v3.ts";
+import { runPlanner } from "./plan-assembly.ts";
+import { watchLine, type WatchBrief } from "../generator/monitoring-safety.ts";
 import { validatePlanIntent } from "./validator.ts";
 
 const MAX_ATTEMPTS = 2;
@@ -140,9 +142,10 @@ function foldWatchBriefs(tasks: BaselineTask[], evidence: AgronomicEvidencePack)
     const res = (t.resources ??= {}) as Record<string, unknown>;
     res.watch_list = briefs;                       // structured, for the UI
     res.watch_count = briefs.length;
-    // Also add human-readable lines so the scouting card is useful even without UI changes.
-    const lines = briefs.map((b) => `Watch for ${String(b.watch_for)}; if seen: ${String(b.if_seen)}`);
-    t.instructions = [...(t.instructions ?? []), ...lines];
+    // 2026-11-12: lines render from the typed brief; a treatment appears only when the rule row
+    // itself authorizes it (monitoring-safety.ts). No keyword filtering happens after this.
+    const lines = briefs.map((b) => watchLine(b as unknown as WatchBrief));
+    t.instructions = [...(t.instructions ?? []), ...lines.filter((l) => !(t.instructions ?? []).includes(l))];
   }
   return tasks;
 }
@@ -269,45 +272,42 @@ export async function applyScheduleHarness(
   if (isContext) {
     const context = input as ScheduleHarnessContext;
     const graph = context.graph;
-    let errors: string[] = [];
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining() >= MIN_ATTEMPT_MS; attempt++) {
-      try {
-        const r = await requestPlan(context, errors, { deadlineAt, ai: input.ai });
-        const validationErrors = validatePlanIntent(r.plan, graph);
-        if (!validationErrors.length && r.plan.status === "READY") {
-          const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, r.plan, "llm_evidence_pack"), context.evidencePack));
-          return {
-            tasks: materialized,
-            result: {
-              applied: true,
-              status: "READY",
-              plan: r.plan,
-              selectedIds: r.plan.sequence
-                .filter((x) => x.status === "SCHEDULED" || x.status === "CONDITIONAL")
-                .map((x) => x.candidate_id),
-              trace: {
-                harness_version: HARNESS_VERSION,
-                planner: "llm_evidence_pack",
-                provider: r.provider,
-                model: r.model,
-                attempts: attempt,
-                elapsed_ms: Date.now() - startedAt,
-                baseline_candidate_count: tasks.length,
-                evidence_candidate_count: context.evidencePack.candidates.length,
-                materialized_candidate_count: materialized.length,
-                domain_summary: context.evidencePack.domain_summary,
-                domain_coverage: r.plan.domain_coverage ?? null,
-                validation_errors: [],
-              },
-            },
-          };
-        }
-        errors = validationErrors.length ? validationErrors : [`planner_status:${r.plan.status}`];
-      } catch (error) {
-        errors = [error instanceof Error ? error.message : String(error)];
-        if (errors[0] === "MODEL_UNAVAILABLE" || errors[0] === "MODEL_TIMEOUT") break;
-      }
+    // 2026-11-12: bounded plan → validate → repair loop lives in plan-assembly.runPlanner (pure,
+    // regression-tested with an injected planner). The trace now reports what really happened.
+    let providerAttempts: unknown = null;
+    const outcome = await runPlanner(graph, async (repairErrors) => {
+      try { return await requestPlan(context, repairErrors, { deadlineAt, ai: input.ai }); }
+      catch (error) { providerAttempts = (error as { provider_attempts?: unknown })?.provider_attempts ?? providerAttempts; throw error; }
+    }, validatePlanIntent, { maxAttempts: MAX_ATTEMPTS, minAttemptMs: MIN_ATTEMPT_MS, remainingMs: remaining });
+    if (outcome.ok) {
+      const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, outcome.plan, "llm_evidence_pack"), context.evidencePack));
+      return {
+        tasks: materialized,
+        result: {
+          applied: true,
+          status: "READY",
+          plan: outcome.plan,
+          selectedIds: outcome.plan.sequence
+            .filter((x) => x.status === "SCHEDULED" || x.status === "CONDITIONAL")
+            .map((x) => x.candidate_id),
+          trace: {
+            harness_version: HARNESS_VERSION,
+            planner: "llm_evidence_pack",
+            provider: outcome.provider,
+            model: outcome.model,
+            attempts: outcome.attempts,
+            elapsed_ms: Date.now() - startedAt,
+            baseline_candidate_count: tasks.length,
+            evidence_candidate_count: context.evidencePack.candidates.length,
+            materialized_candidate_count: materialized.length,
+            domain_summary: context.evidencePack.domain_summary,
+            domain_coverage: outcome.plan.domain_coverage ?? null,
+            validation_errors: [],
+          },
+        },
+      };
     }
+    const errors = outcome.errors;
     const plan = fallback(context, tasks);
     const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, plan, "deterministic_fallback"), context.evidencePack));
     return {
@@ -320,7 +320,10 @@ export async function applyScheduleHarness(
         trace: {
           harness_version: HARNESS_VERSION,
           planner: "deterministic_fallback",
-          attempts: MAX_ATTEMPTS,
+          attempts: outcome.attempts,
+          fallback_reason: errors[0] ?? "unknown",
+          provider_attempts: providerAttempts,
+          budget_ms: Math.max(0, input.budgetMs ?? DEFAULT_BUDGET_MS),
           elapsed_ms: Date.now() - startedAt,
           baseline_candidate_count: tasks.length,
           evidence_candidate_count: context.evidencePack.candidates.length,

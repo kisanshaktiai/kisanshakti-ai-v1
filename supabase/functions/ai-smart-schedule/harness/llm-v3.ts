@@ -23,6 +23,7 @@
 import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider } from "../../_shared/aiConfig.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { PlanIntent, ScheduleHarnessContext } from "./types.ts";
+import { planFromModelOutput, providerBudgetMs } from "./plan-assembly.ts";
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 const MIN_USEFUL_MS = 6_000;
@@ -37,14 +38,14 @@ const systemPrompt = () => [
   "The database-backed evidence pack is the only source of agricultural facts. You compose a plan; you never create agronomy.",
   "The plan you return is rendered to a smallholder farmer as a dated, stage-by-stage crop schedule, so it must be complete, ordered and internally consistent.",
   "COMPOSITION CONTRACT:",
-  "1. Every candidate id in `candidates` appears in `sequence` exactly once. Do not add ids that are not supplied. Do not drop any id.",
+  "1. Return `decisions` ONLY for candidates whose status you set to something other than their supplied default_status, or whose placement needs an explanation. Do NOT echo unchanged candidates: every candidate you omit keeps its default_status (required candidates stay SCHEDULED) and the system orders all candidates itself. Never use an id that is not supplied.",
   "2. Every candidate with required=true keeps status SCHEDULED.",
-  "3. Order by days_from_sowing ascending; a candidate must come after every id listed in its depends_on and after every edge that points to it. Use stage_order, then priority, to order candidates on the same day.",
+  "3. Ordering is deterministic (days_from_sowing, supplied dependency edges, stage_order) and is not part of your output; if the supplied candidates cannot be ordered consistently, return NO_VALID_PLAN.",
   "4. An optional candidate may be SCHEDULED only when materializable=true and its supplied evidence authorizes an application at that stage. Otherwise use CONDITIONAL (a supplied trigger or condition_code must be met first), MONITOR (observation/scouting knowledge, no treatment implied) or INSUFFICIENT_DATA (evidence exists but does not authorize an application).",
   "5. Observation-triggered candidates (trigger_class OBSERVATION) are CONDITIONAL or MONITOR, never SCHEDULED.",
   "6. `reason` is one short sentence and may reference only the supplied rule_ids, condition_code, trigger_class, evidence fields and known_gaps. Never state a product, dose, quantity, date, PHI, threshold or stage that is not in the supplied candidate.",
   "7. `uncertainties` lists the supplied known_gaps that affect this plan, plus any candidate you set to INSUFFICIENT_DATA, in the form `<candidate_id>: <supplied reason>`.",
-  "7b. `domain_coverage` classifies EVERY key of `domain_summary` plus every domain named in `audited_domains`: SCHEDULED (a dated application exists), CONDITIONAL (only trigger-gated candidates exist), MONITOR (observation-only), NOT_REQUIRED (evidence records no requirement), INSUFFICIENT_DATA (evidence exists without an authorized dose/form), NO_AUTHORITATIVE_RULE (no supplied candidate at all). This is a self-check on completeness; it must agree with `sequence`.",
+  "7b. `domain_coverage` classifies EVERY key of `domain_summary` plus every domain named in `audited_domains`: SCHEDULED (a dated application exists), CONDITIONAL (only trigger-gated candidates exist), MONITOR (observation-only), NOT_REQUIRED (evidence records no requirement), INSUFFICIENT_DATA (evidence exists without an authorized dose/form), NO_AUTHORITATIVE_RULE (no supplied candidate at all). This is a self-check on completeness; it must agree with the candidates' final statuses.",
   "8. The resolved context snapshot is factual request context only. It does NOT authorize deriving new agronomy from weather, soil, NDVI, dates, coordinates or model memory.",
   "9. Never invent or alter an input, product, quantity, dose, PHI, date, stage, trigger, dependency, regulatory fact or evidence. Never convert an evidence-only requirement into an application.",
   "10. Do not force every domain to appear. Preserve gaps. Dynamic weather/soil/NDVI adaptation belongs to the reconciler and Decision Brain, not to this plan.",
@@ -61,7 +62,7 @@ const prompt = (c: ScheduleHarnessContext, errors: string[]) => JSON.stringify({
   required_output: {
     schema_version:"schedule_plan_intent_v3",
     status:"READY | NEEDS_DATA | NO_VALID_PLAN",
-    sequence:[{ candidate_id:"task_0001", sequence_order:1, status:"SCHEDULED | CONDITIONAL | MONITOR | INSUFFICIENT_DATA", reason:"one short sentence citing only supplied fields" }],
+    decisions:[{ candidate_id:"<supplied id>", status:"SCHEDULED | CONDITIONAL | MONITOR | INSUFFICIENT_DATA", reason:"one short sentence citing only supplied fields" }],
     uncertainties:["<candidate_id or gap>: <supplied reason>"],
     domain_coverage:{"<DOMAIN>":"SCHEDULED | CONDITIONAL | MONITOR | NOT_REQUIRED | INSUFFICIENT_DATA | NO_AUTHORITATIVE_RULE"},
     reasoning_summary:"short non-authoritative planning summary",
@@ -83,7 +84,8 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
     const pick = await pickAIKey(db, m);
     if (pick.slot === null) continue;
     const key = pick.apiKey;
-    const budget = Math.min(DEFAULT_TIMEOUT_MS, remaining());
+    // 2026-11-12: one slow provider may not consume the whole budget while another is waiting.
+    const budget = providerBudgetMs(remaining(), providers.length - providers.indexOf(m), DEFAULT_TIMEOUT_MS, MIN_USEFUL_MS);
     if (budget < MIN_USEFUL_MS) { lastError = new Error("MODEL_TIMEOUT"); break; }
     lastModel = m; lastStatus = null; lastKey = pick;
     const controller = new AbortController();
@@ -106,11 +108,7 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
       const parsed = JSON.parse(content);
       attempts.push({ model_key: m.model_key, outcome: "ok", http_status: response.status, key_slot: pick.slot });
       await ledger(m, true, readAIUsage(data));
-      return { plan: {
-        schema_version: parsed.schema_version, status: parsed.status,
-        sequence: Array.isArray(parsed.sequence) ? parsed.sequence.map((x: Record<string, unknown>) => ({candidate_id:String(x.candidate_id ?? ""),sequence_order:Number(x.sequence_order),status:String(x.status ?? "INSUFFICIENT_DATA") as PlanIntent["sequence"][number]["status"],reason:x.reason == null ? undefined : String(x.reason)})) : [],
-        uncertainties: Array.isArray(parsed.uncertainties) ? parsed.uncertainties.map(String) : [], domain_coverage: parsed.domain_coverage && typeof parsed.domain_coverage === "object" ? Object.fromEntries(Object.entries(parsed.domain_coverage).map(([k,v]) => [String(k).toUpperCase(), String(v).toUpperCase()])) : undefined, reasoning_summary:String(parsed.reasoning_summary ?? "")
-      }, provider, model };
+      return { plan: planFromModelOutput(parsed as Record<string, unknown>, context.graph), provider, model };
     } catch (error) {
       lastError = error instanceof Error && error.name === "AbortError" ? new Error("MODEL_TIMEOUT") : error;
       attempts.push({ model_key: m.model_key, outcome: error instanceof Error && error.name === "AbortError" ? "timeout" : "error" });
@@ -118,5 +116,7 @@ export async function requestPlan(context: ScheduleHarnessContext, repairErrors:
     } finally { clearTimeout(timer); }
   }
   if (lastModel) await ledger(lastModel, false);
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  const failure = lastError instanceof Error ? lastError : new Error(String(lastError));
+  (failure as Error & { provider_attempts?: unknown }).provider_attempts = attempts;
+  throw failure;
 }

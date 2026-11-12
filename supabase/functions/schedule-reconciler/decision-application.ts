@@ -39,9 +39,9 @@
 //   No threshold, cadence, crop or language word lives here.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
-import { isNoIrrigationDecision, canAdvanceNutrient, irrigationDeferralWithinStage } from "./decision-contract.ts";
+import { isNoIrrigationDecision, canAdvanceNutrient, irrigationDeferralWithinStage, pickNutrientDecision, evidenceFreshness } from "./decision-contract.ts";
 
-export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.2.0";
+export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.3.0";
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
 const addDays = (dateIso: string, n: number) => iso(new Date(new Date(dateIso).getTime() + n * 86400000));
@@ -124,6 +124,17 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   const snapshot = fs ? { ...fs } as Record<string, unknown> : null;
   const decisionEngine = (fs?.state_version as Record<string, unknown> | null)?.engine ? String((fs!.state_version as Record<string, unknown>).engine) : null;
 
+  // 1b. 2026-11-12 — verified nutrient producer (DB). The only source of APPLY_NUTRIENT_VERIFIED:
+  //     a farmer/field reading below a typed, expert-approved threshold. Absent function (migration
+  //     not yet applied) or any error is non-fatal and simply produces no verified decision.
+  let nutrientProducer: Record<string, unknown> = { called: false };
+  if (!input.dryRun && fs?.state_date === input.todayIso) {
+    const { data: produced, error: producerError } = await supabase.rpc("derive_verified_nutrient_decisions", { p_land_id: input.landId, p_date: input.todayIso });
+    nutrientProducer = producerError ? { called: true, ok: false, error: producerError.code ?? "error" } : { called: true, ok: true, ...(produced as Record<string, unknown> ?? {}) };
+  }
+  if (snapshot) snapshot.nutrient_producer = nutrientProducer;
+  const freshness = evidenceFreshness(snapshot, input.todayIso);
+
   // 2. Today's decisions (DB engine) — the latest decision day on or before today; only live statuses.
   const { data: dayRow } = await supabase.from("farm_decision").select("decision_date").eq("land_id", input.landId).lte("decision_date", input.todayIso).order("decision_date", { ascending: false }).limit(1).maybeSingle();
   if (!dayRow?.decision_date) {
@@ -187,7 +198,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     if (!input.dryRun) await supabase.from("farm_decision").update({ schedule_id: input.scheduleId, task_id: t.id, updated_at: new Date().toISOString() }).eq("id", d.id).is("task_id", null);
     counters.linked += 1;
   };
-  const evidenceOf = (d: DecisionRow) => ({ decision_id: d.id, decision_key: d.decision_key, decision_status: d.status, decision_priority: d.priority, rule_id: d.rule_id, source: d.source, decision_date: d.decision_date, evidence: d.evidence ?? null, state_date: fs?.state_date ?? null, stage: fs?.stage_code ?? null, stage_source: fs?.stage_source ?? null, decision_engine: decisionEngine });
+  const evidenceOf = (d: DecisionRow) => ({ decision_id: d.id, decision_key: d.decision_key, decision_status: d.status, decision_priority: d.priority, rule_id: d.rule_id, source: d.source, decision_date: d.decision_date, evidence: d.evidence ?? null, state_date: fs?.state_date ?? null, stage: fs?.stage_code ?? null, stage_source: fs?.stage_source ?? null, decision_engine: decisionEngine, evidence_freshness: freshness });
   const record = (t: TaskRow, change_type: string, old_value: unknown, new_value: unknown, reason: string, d: DecisionRow) =>
     adjustments.push({ schedule_id: input.scheduleId, task_id: t.id, change_type, old_value, new_value, reason, evidence: evidenceOf(d), engine_version: input.engineVersion });
   const state = async (t: TaskRow, d: DecisionRow | null, decisionState: string, outcome: string, from: unknown, to: unknown, reason: string, extraPatch: Record<string, unknown> = {}) => {
@@ -308,7 +319,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
       }
     }
   } else {
-    const deficiency = byKey(KEY.NUTRIENT).find((d) => d.status === "DUE" || d.status === "WATCH") ?? null;
+    const deficiency = pickNutrientDecision(byKey(KEY.NUTRIENT));
     if (deficiency && canAdvanceNutrient(deficiency)) {
       // WATCH/OBSERVE_BEFORE_INPUT never authorizes a fertilizer application.
       // The next nutrition card whose OWN window has opened comes forward; the quantity is untouched.

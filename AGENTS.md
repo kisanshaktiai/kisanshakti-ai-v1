@@ -24,5 +24,8 @@
 
 ## Schedule review isolation
 - Read review drafts through the owner-checked schedules-api read route, independently of the generation function; why: unfinished generation releases must not break schedule-page loading.
-- Evidence-incomplete plans persist only in the server-only review-draft ledger, never crop_schedules or schedule_tasks; why: drafts must not mutate land state or enter executable schedule workflows.
+- Structurally unsound stage graphs (missing graph, identity/method/cycle conflict, no biological harvest stage or harvest task) persist only in the server-only review-draft ledger, never crop_schedules or schedule_tasks; why: drafts must not mutate land state or enter executable schedule workflows.
+- A missing, stale, expired or unreadable crop release approval, and missing variety/seed-rate/picking-interval evidence, produce a PROVISIONAL schedule (generation_params.scientific_release), never a review draft and never an outage; why: the registry is empty by design, so default-deny on it blocked every crop. Unverified quantities, maturity and harvest dates stay withheld, and each input action is authorized only by its own decision_rules evidence.
+- Approvals are written only through public.yieldshield_record_crop_release (service role, audited); never insert into the registry directly and never seed an approval.
+- Scouting-card treatment safety is structural (generator/monitoring-safety.ts); never add keyword or language-specific text filters.
 - Repeated-picking stages retain separate DB-backed phases; never truncate them at first maturity or merge them into one harvest task, because maturity does not certify the last picking date.

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  agronomyActivationBlockers, isBiologicalHarvestStage,
-  hasUnstructuredRelativeTiming, isDeficiencyDependentAction,
-  isTreatmentInstruction, isUnverifiedTier, resolvedMaturityDas,
+  agronomyActivationBlockers, agronomyProvisionalReasons, isBiologicalHarvestStage,
+  isDeficiencyDependentAction,
+  isUnverifiedTier, resolvedMaturityDas,
   validateScientificTasks,
 } from "../../supabase/functions/ai-smart-schedule/generator/agronomy-scientific-contract";
 
@@ -25,28 +25,25 @@ describe("YieldShield agronomic evidence and crop-clock invariants", () => {
     expect(isUnverifiedTier("C_documented_source")).toBe(false);
     expect(isUnverifiedTier("")).toBe(true);
   });
-  it("detects unstructured relative timings without turning prose into a date", () => {
-    expect(hasUnstructuredRelativeTiming("Apply 8 to 10 days after transplanting")).toBe(true);
-    expect(hasUnstructuredRelativeTiming("Weed 15 days after transplanting")).toBe(true);
-    expect(hasUnstructuredRelativeTiming("Mix 20 kg per hectare")).toBe(false);
-  });
   it("requires evidence for nutrient deficiency remediation", () => {
     expect(isDeficiencyDependentAction("RICE_NUTR_MN_DEFICIT_TNAU_DRAFT_002","spray")).toBe(true);
     expect(isDeficiencyDependentAction("N_TOP","regular nitrogen management")).toBe(false);
   });
-  it("separates chemical treatment recipes from observational scouting", () => {
-    expect(isTreatmentInstruction("Apply Tricyclazole 75 WP 160 g/acre by foliar spray")).toBe(true);
-    expect(isTreatmentInstruction("फवारणी करा")).toBe(true);
-    expect(isTreatmentInstruction("Inspect leaves for lesions and record pest counts")).toBe(false);
-  });
-  it("requires an authoritative crop-specific establishment-material rate rather than assuming seed", () => {
+  it("missing establishment-material evidence makes the schedule provisional, never a deadlock and never an assumed seed rate", () => {
     const shared = {cropCycle:"plant",documentedMaterialRate:false,maturityDas:300,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:false};
-    expect(agronomyActivationBlockers({...shared,propagationMaterial:"seed"})).toEqual(["SEED_RATE_DOCUMENTED_EVIDENCE_MISSING"]);
-    expect(agronomyActivationBlockers({...shared,propagationMaterial:"sett"})).toEqual(["PLANTING_MATERIAL_RATE_SOURCE_MISSING"]);
-    expect(agronomyActivationBlockers({...shared,propagationMaterial:null})).toEqual(["PROPAGATION_MATERIAL_UNRESOLVED"]);
+    expect(agronomyProvisionalReasons({...shared,propagationMaterial:"seed"})).toEqual(["SEED_RATE_DOCUMENTED_EVIDENCE_MISSING"]);
+    expect(agronomyProvisionalReasons({...shared,propagationMaterial:"sett"})).toEqual(["PLANTING_MATERIAL_RATE_SOURCE_MISSING"]);
+    expect(agronomyProvisionalReasons({...shared,propagationMaterial:null})).toEqual(["PROPAGATION_MATERIAL_UNRESOLVED"]);
+    expect(agronomyActivationBlockers({...shared,propagationMaterial:"seed"})).toEqual([]);
+    expect(agronomyProvisionalReasons({...shared,propagationMaterial:"seed",maturityDas:null})).toContain("VARIETY_MATURITY_CLOCK_NOT_VERIFIED");
+  });
+  it("still blocks a crop cycle with no biological harvest programme", () => {
+    const shared = {propagationMaterial:"seed",cropCycle:"plant",documentedMaterialRate:true,maturityDas:120,multiHarvestStage:false};
+    expect(agronomyActivationBlockers({...shared,hasHarvestStage:false,hasHarvestTask:false})).toEqual(["BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE"]);
+    expect(agronomyActivationBlockers({...shared,hasHarvestStage:true,hasHarvestTask:false})).toEqual(["BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE"]);
   });
   it("does not expect new seed purchase for ratoon establishment", () => {
-    expect(agronomyActivationBlockers({propagationMaterial:"ratoon_stubble",cropCycle:"ratoon",documentedMaterialRate:false,maturityDas:300,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:false})).toEqual([]);
+    expect(agronomyProvisionalReasons({propagationMaterial:"ratoon_stubble",cropCycle:"ratoon",documentedMaterialRate:false,maturityDas:300,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:false})).toEqual([]);
   });
   it("recognizes biological picking/harvest but rejects pre- and post-harvest", () => {
     expect(isBiologicalHarvestStage("harvest")).toBe(true);
@@ -55,8 +52,10 @@ describe("YieldShield agronomic evidence and crop-clock invariants", () => {
     expect(isBiologicalHarvestStage("pre_harvest")).toBe(false);
     expect(isBiologicalHarvestStage("post_harvest")).toBe(false);
   });
-  it("blocks a multi-picking crop until an actual recurring harvest plan exists", () => {
-    expect(agronomyActivationBlockers({propagationMaterial:"seed",cropCycle:null,documentedMaterialRate:true,maturityDas:100,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:true})).toContain("REPEATED_PICKING_PROGRAMME_NOT_VERIFIED");
+  it("a multi-picking crop is provisional (picking interval unverified), not blocked", () => {
+    const input={propagationMaterial:"seed",cropCycle:null,documentedMaterialRate:true,maturityDas:100,hasHarvestStage:true,hasHarvestTask:true,multiHarvestStage:true};
+    expect(agronomyActivationBlockers(input)).toEqual([]);
+    expect(agronomyProvisionalReasons(input)).toEqual(["REPEATED_PICKING_INTERVAL_NOT_VERIFIED"]);
   });
   const harvestTask = {
     task_type:"harvest", days_from_sowing:119, stage_uuid:"grain",
@@ -78,8 +77,10 @@ describe("YieldShield agronomic evidence and crop-clock invariants", () => {
     const task={...harvestTask,stage_uuid:"harvest",days_from_sowing:119};
     expect(validateScientificTasks([task],stages)).toContain("HARVEST_BEFORE_STAGE:harvest@DAS119");
   });
-  it("rejects drug instructions embedded in a monitoring card", () => {
-    const task={...harvestTask,task_type:"monitoring",stage_uuid:"grain",instructions:["Apply 2 g/acre spray"]};
-    expect(validateScientificTasks([task],stages)).toContain("MONITORING_CONTAINS_TREATMENT:monitoring@DAS119");
+  it("rejects a prescription on a monitoring card by structure, in any language", () => {
+    const base={...harvestTask,task_type:"monitoring",stage_uuid:"grain"};
+    expect(validateScientificTasks([{...base,quantity:{value:2,unit:"g"}}],stages)).toContain("MONITORING_CARRIES_QUANTITY:monitoring@DAS119");
+    expect(validateScientificTasks([{...base,resources:{watch_list:[{treatment_authorized:false,if_seen:"x"}]}}],stages)).toContain("MONITORING_UNAUTHORIZED_TREATMENT:monitoring@DAS119");
+    expect(validateScientificTasks([{...base,instructions:["फवारणी करा"],resources:{watch_list:[{treatment_authorized:true,if_seen:"x"}]}}],stages)).toEqual([]);
   });
 });

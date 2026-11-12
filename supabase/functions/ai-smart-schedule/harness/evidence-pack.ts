@@ -24,6 +24,7 @@
 //       INSUFFICIENT_DATA; a positive value stays evidence-only exactly as before.
 //   (4) Every audited domain with no candidate for this crop/method/region is written to gaps as
 //       NO_AUTHORITATIVE_RULE:<DOMAIN> so the schedule states what it could not evaluate.
+import { buildWatchBrief, type WatchBrief } from "../generator/monitoring-safety.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { toDas, computeTransplantOffset, type BaselineTask } from "../generator/baseline-generator.ts";
@@ -202,18 +203,7 @@ function farmerInstructions(rule: Record<string, unknown>, status: CandidateStat
 
 /** One-line, farmer-facing "watch for / if seen do" brief for a conditional rule — DB fields only.
  *  Used by the generator to fold conditional rules into the stage's scouting card, not a dated task. */
-function watchBrief(rule: Record<string, unknown>): { rule_id: string; category: string; watch_for: string; if_seen: string } {
-  const etl = String(rule.etl_threshold ?? "").trim();
-  const cond = String(rule.condition_code ?? "").trim();
-  const ai = String(rule.active_ingredient ?? "").trim();
-  const dose = String(rule.dosage_per_acre ?? "").trim();
-  const method = String(rule.application_method ?? "").trim();
-  const phi = rule.phi_days != null && String(rule.phi_days).trim() !== "" ? ` Wait ${rule.phi_days} days before harvest.` : "";
-  const ifSeen = ai || dose || method
-    ? `Apply ${[ai, dose ? `${dose} per acre` : "", method ? `by ${method}` : ""].filter(Boolean).join(", ")}.${phi}`
-    : (String(rule.action_text ?? "").trim() || "Follow the recommended action.");
-  return { rule_id: String(rule.rule_id), category: String(rule.category ?? ""), watch_for: etl || cond || String(rule.category ?? "problem"), if_seen: ifSeen };
-}
+const watchBrief = (rule: Record<string, unknown>): WatchBrief => buildWatchBrief(rule);
 
 /** Offset that mapped this stage's das_min onto the schedule clock (0 for sowing-clock stages). */
 const transplantOffsetOf = (stage: StageRow, das: number) => (stage.das_min != null ? das - Number(stage.das_min) : 0);
