@@ -94,7 +94,9 @@ describe("YieldShield generator publication wiring (no Supabase writes)",()=>{
     expect(baseline).toBeGreaterThan(approval);
     expect(persistence).toBeGreaterThan(baseline);
     expect(generator).toContain("CROP_RELEASE_REGISTRY_UNAVAILABLE");
-    expect(generator).toContain("CROP_SCIENTIFIC_RELEASE_BLOCKED");
+    expect(generator).toContain("saveScientificReview(graphErrors)");
+    expect(generator).toContain("saveScientificReview(releaseBlockers)");
+    expect(generator).toContain('code: "AGRONOMY_REVIEW_REQUIRED"');
   });
   it("keeps approval registry inaccessible to browser roles and seeds no approvals",()=>{
     expect(migration).toContain("enable row level security");
