@@ -84,6 +84,7 @@
 //   valid DAS range, max 200 events per guideline row) — a 0-interval DB row looped forever
 //   and exhausted the edge worker memory.
 
+import { establishmentDescription } from "./establishment-text.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
@@ -105,7 +106,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.8.0-provisional-release";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.9.0-provisional-release";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -219,6 +220,8 @@ export interface BaselineResult {
   };
   provenance: Provenance[];
   generator_version: string;
+  /** 2026-11-13 — the crop's biological stages on the schedule's days-after-sowing axis (null where a boundary cannot be placed). */
+  stage_timeline?: Array<{ order: number; stage_key: string | null; stage_name: string | null; das_from: number | null; das_to: number | null }>;
 }
 
 const priorityFromRule = (p: number | null): string =>
@@ -436,9 +439,9 @@ export async function generateBaseline(
       ? `If you broadcast the seed by hand instead, use ${[bc.min != null ? Number((bc.min * areaAcres).toFixed(2)) : null, bc.max != null ? Number((bc.max * areaAcres).toFixed(2)) : null].filter((x) => x != null).join(" to ")} kg for ${areaAcres} acre.`
       : null;
     if (seed && seed.basisCode && !broadcastLine) gaps.push(`seed_rate_broadcast_band_missing:${seed.basisCode}`);
-    const sowDescription = seedKg != null && areaAcres != null
-      ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
-      : "Plan establishment using certified seed; the seed quantity is pending verification for this crop, variety and method.";
+    // 2026-11-13: the day-0 card names the crop, the variety the farmer selected and the growth
+    // stage it belongs to (all database labels) instead of saying "the crop".
+    const sowDescription = establishmentDescription({ cropLabel: inputs.cropLabel, cropCode: inputs.cropCode, varietyName: inputs.varietyName, stageLabel: sowStage?.growth_stage ?? null, seedKg, areaAcres });
     const sowInstructions: string[] = [];
     if (seedBasisLine) sowInstructions.push(seedBasisLine);
     if (broadcastLine) sowInstructions.push(broadcastLine);
@@ -1398,5 +1401,9 @@ export async function generateBaseline(
     },
     provenance,
     generator_version: GENERATOR_VERSION,
+    stage_timeline: stages
+      .map((st) => ({ stage_key: st.stage_code || null, stage_name: st.growth_stage || null, das_from: das0(st, st.das_min), das_to: das0(st, st.das_max) }))
+      .sort((a, b) => (a.das_from ?? Number.MAX_SAFE_INTEGER) - (b.das_from ?? Number.MAX_SAFE_INTEGER) || (a.das_to ?? Number.MAX_SAFE_INTEGER) - (b.das_to ?? Number.MAX_SAFE_INTEGER))
+      .map((st, i) => ({ order: i + 1, ...st })),
   };
 }

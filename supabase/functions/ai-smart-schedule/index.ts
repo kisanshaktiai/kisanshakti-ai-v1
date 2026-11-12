@@ -67,6 +67,7 @@ import {
 } from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION, toDas, computeTransplantOffset } from "./generator/baseline-generator.ts";
 import { composeFarmerText, COMPOSER_VERSION, type TaskFacts } from "./generator/compose-farmer-text.ts";
+import { loadVarietyProfile, composerVarietyView } from "./db/variety-profile.ts";
 import { narratePendingSchedules, narrateScheduleTasks } from "./generator/narrate-pending.ts";
 import { sanitizeTaskText, hasFarmerText, isTechnicalLine } from "./generator/farmer-text.ts";
 import { loadLandContext } from "./db/land-context.ts";
@@ -401,6 +402,11 @@ serve(async (req) => {
     const enrichBudgetMs = Math.max(0, Math.min(ENRICH_MAX_MS, remainingMs() - HARNESS_MAX_MS - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
     const timePlan: Record<string, number | null> = { hard_deadline_ms: HARD_DEADLINE_MS, enrich_budget_ms: enrichBudgetMs, harness_budget_ms: null, narration_budget_ms: null };
 
+    // 2026-11-13 — the selected crop + variety dossier (maturity with its evidence flag, resistance,
+    // the crop's own stage timeline). Read once; the planner, the farmer-language composer and the
+    // narration sweeper all work from it. A failed read degrades to a profile that names its gaps.
+    const varietyProfile = await loadVarietyProfile(supabase, inputs, baseline.stage_timeline ?? [], baseline.totals.duration_days);
+
     let harnessTrace: Record<string, unknown> | null = null;
     let enrichmentTrace: Record<string, unknown> | null = null;
     let enrichmentProposals: import("./harness/llm-candidates.ts").ProposalRecord[] = [];
@@ -434,7 +440,7 @@ serve(async (req) => {
         const harnessBudgetMs = Math.max(0, Math.min(HARNESS_MAX_MS, remainingMs() - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
         timePlan.harness_budget_ms = harnessBudgetMs;
         for (const g of evidencePack.gaps) if (!baseline.gaps.includes(g)) baseline.gaps.push(g);
-        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId } });
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId }, varietyProfile });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;
@@ -639,7 +645,7 @@ serve(async (req) => {
     const composeInline = Date.now() - startTime < COMPOSE_INLINE_MAX_ELAPSED_MS;
     const composeBudgetMs = composeInline ? Math.min(COMPOSE_INLINE_MAX_MS, Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS)) : 0;
     timePlan.compose_budget_ms = composeBudgetMs;
-    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId });
+    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId }, composerVarietyView(varietyProfile));
     // Composition is presentation only. Its fidelity is enforced inside composeFarmerText by the
     // language-independent fact boundary (every number/unit must exist in the source facts); a
     // rejected task keeps its deterministic text. No keyword filtering is applied here.
@@ -715,7 +721,7 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
       metadata: { variety_method_consent: varietyMethodConsentRecord, coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
