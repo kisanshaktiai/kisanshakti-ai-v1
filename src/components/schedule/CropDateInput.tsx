@@ -180,14 +180,6 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     return () => { cancelled = true; };
   }, [initialDraft?.id, land.id]);
 
-  // Map a draft's variety back to a real catalogue record, never pick a different one.
-  useEffect(() => {
-    if (!initialDraft?.id) return;
-    const requested = String(initialDraft.crop_inputs.cropVariety ?? '').trim();
-    const match = varieties.find(v => v.name.toLowerCase() === requested.toLowerCase());
-    if (match) setVarietyId(match.id);
-  }, [initialDraft?.id, varieties]);
-
 
   // Calculate total area for display
   const totalIntercropArea = useMemo(() => {
@@ -246,6 +238,15 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
   // ── Variety source: master_products is the variety SSOT (shared, cached hook) ──
   const { varieties, loading: varietiesLoading } = useCropVarieties(cropId || null);
+
+  // Map a draft's variety back to a real catalogue record, never pick a different one.
+  useEffect(() => {
+    if (!initialDraft?.id) return;
+    const requested = String(initialDraft.crop_inputs.cropVariety ?? '').trim();
+    const match = varieties.find(v => v.name.toLowerCase() === requested.toLowerCase());
+    if (match) setVarietyId(match.id);
+  }, [initialDraft?.id, varieties]);
+
 
   // Pre-select the land's current variety (SSOT: lands.current_crop_variety_id).
   useEffect(() => {
