@@ -1,4 +1,6 @@
 // CHANGE LOG (newest first)
+// 2026-11-12 18:45 UTC — Import GraphTruth type alongside buildGraphTruth/assertGraphTruthIntegrity;
+//   TS2304 "Cannot find name 'GraphTruth'" broke deno check on the whole function graph.
 // 2026-10-29 07:20 UTC — Keep GENERAL/KNOWLEDGE informational queries out of rule fallback; preserve explicit observation authority.
 // 2026-10-27 17:50 UTC — Restore GraphTruth observation references and enforce DB direct-intent scope on both advisory lanes and recovery.
 // 2026-10-09 12:25 UTC — TDZ FIX: KNOWLEDGE_PLANE_GATE log referenced cropFromAnyLayer
@@ -381,7 +383,7 @@ import {
 } from './language-induction-layer.ts';
 
 // GraphTruth — immutable per-turn agronomic node (T1 in refactor plan)
-import { buildGraphTruth, assertGraphTruthIntegrity } from '../runtime/graph-truth.ts';
+import { buildGraphTruth, assertGraphTruthIntegrity, type GraphTruth } from '../runtime/graph-truth.ts';
 
 // CRITICAL FIX: Import normalization functions from type-mappers for consistent code matching
 import { 
