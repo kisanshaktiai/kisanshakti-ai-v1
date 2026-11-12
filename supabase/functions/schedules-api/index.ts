@@ -358,6 +358,12 @@ serve(async (req) => {
         });
         if (error) {
           console.error('❌ [SchedulesAPI] Atomic completion failed:', error.message);
+          // 2026-11-12 deployment contract: this function may be deployed before the migration that
+          // installs the RPC. PostgREST reports a missing function as PGRST202 (42883 from Postgres).
+          // That is a deployment fault, not a conflict the farmer can retry — say so, change nothing.
+          if (error.code === 'PGRST202' || error.code === '42883') {
+            return json({ error: 'Task completion service is not deployed yet. Nothing was changed.', code: 'COMPLETION_RPC_NOT_DEPLOYED' }, 503);
+          }
           return json({ error: 'Failed to record task operation', code: 'TASK_OPERATION_FAILED' }, 409);
         }
         return json({ data: outcome?.task ?? null, idempotent: outcome?.idempotent === true, recurrence_open: outcome?.recurrence_open === true });

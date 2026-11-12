@@ -89,6 +89,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { applyFieldDecisions, DECISION_APPLICATION_VERSION } from "./decision-application.ts";
 import { authorizeReconciler, canPersistMonitoring } from "./internal-auth.ts";
+import { thermalStageEvidence } from "./decision-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,7 +97,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.5.0";
+const ENGINE_VERSION = "schedule-reconciler@1.6.0";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -257,7 +258,7 @@ serve(async (req) => {
       const { data: stageRow } = phenologyResolved
         ? await supabase
           .from("crop_stage_master")
-          .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference")
+          .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference, gdd_min, gdd_max")
           .eq("id", stage.stage_uuid)
           .maybeSingle()
         : { data: null };
@@ -357,7 +358,8 @@ serve(async (req) => {
       // move a farmer's tasks (the DB resolver labels them provisional).
       if (PROVISIONAL_SOURCES.has(String(stage.source ?? ""))) {
         if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
-        await monitor({ stage_drift: { skipped: "provisional_stage_source", stage: stage.stage_code, stage_source: stage.source ?? null } });
+        const thermal = thermalStageEvidence(stage.current_gdd, stageRow?.gdd_min, stageRow?.gdd_max);
+        await monitor({ stage_drift: { skipped: "provisional_stage_source", stage: stage.stage_code, stage_source: stage.source ?? null, thermal_evidence: thermal, current_gdd: stage.current_gdd ?? null, stage_gdd_window: [stageRow?.gdd_min ?? null, stageRow?.gdd_max ?? null] } });
         if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
@@ -365,6 +367,7 @@ serve(async (req) => {
           skipped: "provisional_stage_source",
           stage: stage.stage_code,
           stage_source: stage.source ?? null,
+          thermal_evidence: thermal,
           tasks_examined: 0,
           tasks_changed: 0,
           ...weatherSummary,

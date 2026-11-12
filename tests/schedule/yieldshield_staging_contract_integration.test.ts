@@ -28,7 +28,7 @@ describe("YieldShield staging integration source contracts (no production calls)
    expect(generator.indexOf("agronomyActivationBlockers(")).toBeLessThan(generator.indexOf('supabase.rpc("persist_ai_crop_schedule_atomic"'));
    expect(generator).toContain('code: "AGRONOMY_REVIEW_REQUIRED"');
    expect(generator).toContain("saveScientificReview(graphErrors)");
-   expect(generator).toContain("saveScientificReview(releaseBlockers)");
+   expect(generator).toContain("resolveReleaseStatus(");
  });
  it("task completion must use the atomic ledger, not generic status update",()=>{
    expect(api).toContain("await resolveVerifiedCaller(req)");

@@ -1,7 +1,7 @@
 import type { BaselineTask } from "../generator/baseline-generator.ts";
 import type { AgronomicEvidencePack, CandidateStatus } from "./evidence-pack.ts";
 
-export const HARNESS_VERSION = "crop-schedule-harness@3.2.0";
+export const HARNESS_VERSION = "crop-schedule-harness@3.3.0";
 export const PLAN_SCHEMA_VERSION = "schedule_plan_intent_v3" as const;
 
 export type HarnessStatus = "READY" | "NEEDS_DATA" | "NO_VALID_PLAN" | "INVALID_PLAN" | "MODEL_UNAVAILABLE" | "MODEL_TIMEOUT";

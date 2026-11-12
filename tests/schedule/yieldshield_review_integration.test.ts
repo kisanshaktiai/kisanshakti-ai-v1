@@ -9,10 +9,10 @@ const editor = read("src/components/schedule/CropDateInput.tsx");
 const permission = read("supabase/migrations/20261112141000_yieldshield_rpc_privilege_closure.sql");
 
 describe("YieldShield + Lovable review and activation integrated contract", () => {
-  it("never starts baseline creation for a missing or stale scientific approval", () => {
+  it("resolves the release status before baseline creation and keeps structural faults in the review ledger", () => {
     const save = edge.indexOf("const saveScientificReview");
     const graph = edge.indexOf("selectedGraphBlockers(selectedGraph, scope)");
-    const approval = edge.indexOf("cropReleaseBlockers(");
+    const approval = edge.indexOf("resolveReleaseStatus(");
     const baseline = edge.indexOf("const baseline = await generateBaseline");
     const atomic = edge.indexOf('supabase.rpc("persist_ai_crop_schedule_atomic"');
     expect(save).toBeGreaterThan(0);
@@ -21,7 +21,6 @@ describe("YieldShield + Lovable review and activation integrated contract", () =
     expect(baseline).toBeGreaterThan(approval);
     expect(atomic).toBeGreaterThan(baseline);
     expect(edge).toContain("if (graphErrors.length) return await saveScientificReview(graphErrors)");
-    expect(edge).toContain("if (releaseBlockers.length) return await saveScientificReview(releaseBlockers)");
     expect(edge).toContain("saveScientificReview(scientificBlockers, baseline.provenance, baseline.coverage)");
   });
 
@@ -66,7 +65,10 @@ describe("YieldShield + Lovable review and activation integrated contract", () =
   });
 
   it("never silently accepts missing security registry or activation results", () => {
-    expect(edge).toContain("CROP_RELEASE_REGISTRY_UNAVAILABLE");
+    // 2026-11-12: a missing registry now yields a PROVISIONAL schedule; the page keeps handling the
+    // legacy code so an older deployed function still renders correctly.
+    expect(edge).toContain("registryError");
+    expect(edge).toContain("scientific_release: release");
     expect(page).toContain("'CROP_RELEASE_REGISTRY_UNAVAILABLE'");
     expect(page).toContain("'REVIEW_DRAFT_SAVE_FAILED'");
   });

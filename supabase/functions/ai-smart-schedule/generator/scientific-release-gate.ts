@@ -1,7 +1,11 @@
 /**
  * YieldShield crop publication gate — scientific signoff is data, not an AI opinion.
- * No DB writes. Missing registry, mismatched scope, stale graph, unverified approval
- * and incomplete biological stages cannot authorize an ACTIVE farmer schedule.
+ * No DB writes.
+ *
+ * 2026-11-12: the gate no longer deadlocks generation. A structurally unsound stage graph still
+ * blocks (review draft). A missing / stale / expired approval — or an unreadable registry — makes
+ * the schedule PROVISIONAL (resolveReleaseStatus); it can never make it "approved". High-risk
+ * actions are authorized per action from their own evidence, never by this crop-level status.
  */
 import { isBiologicalHarvestStage } from "./agronomy-scientific-contract.ts";
 
@@ -124,4 +128,33 @@ export function cropReleaseBlockers(
       Date.parse(approval.expires_at) <= now.getTime())
     failures.add("CROP_RELEASE_APPROVAL_EXPIRED");
   return [...failures].sort();
+}
+
+export interface ReleaseStatus {
+  status: "approved" | "provisional";
+  reasons: string[];
+  approval_id: string | null;
+  stage_graph_sha256: string;
+  registry: "ok" | "unavailable";
+}
+/** Combine the registry lookup with the scope/hash checks. Fails toward "provisional", never toward "approved". */
+export function resolveReleaseStatus(args: {
+  approval: CropReleaseApproval | null;
+  registryError: boolean;
+  scope: ReleaseScope;
+  graphSha256: string;
+  extraReasons?: string[];
+  now?: Date;
+}): ReleaseStatus {
+  const reasons = new Set<string>(args.extraReasons ?? []);
+  if (args.registryError) reasons.add("CROP_RELEASE_REGISTRY_UNAVAILABLE");
+  else for (const r of cropReleaseBlockers(args.approval, args.scope, args.graphSha256, args.now)) reasons.add(r);
+  const approved = reasons.size === 0;
+  return {
+    status: approved ? "approved" : "provisional",
+    reasons: [...reasons].sort(),
+    approval_id: approved ? args.approval!.id : null,
+    stage_graph_sha256: args.graphSha256,
+    registry: args.registryError ? "unavailable" : "ok",
+  };
 }

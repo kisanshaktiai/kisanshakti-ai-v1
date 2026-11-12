@@ -20,3 +20,21 @@ GROUP BY decision_key,status ORDER BY decision_key,status;
 -- has a reviewed and EXACT applicable agronomy record.
 SELECT crop_code,region_code,soil_fertility_class,cultivation_context,review_status
 FROM fertilizer_recommendation_master ORDER BY crop_code;
+
+-- 2026-11-12 deployment contract. Every row must read present=true BEFORE the matching Edge
+-- Function version is deployed. Read-only.
+SELECT obj, present FROM (VALUES
+  ('table yieldshield_crop_release_approvals', to_regclass('public.yieldshield_crop_release_approvals') IS NOT NULL),
+  ('table yieldshield_crop_release_approval_audit', to_regclass('public.yieldshield_crop_release_approval_audit') IS NOT NULL),
+  ('table crop_schedule_review_drafts', to_regclass('public.crop_schedule_review_drafts') IS NOT NULL),
+  ('rpc yieldshield_record_crop_release', to_regprocedure('public.yieldshield_record_crop_release(text,text,text,text,text,uuid,text,text,text,timestamptz,text)') IS NOT NULL),
+  ('rpc derive_verified_nutrient_decisions', to_regprocedure('public.derive_verified_nutrient_decisions(uuid,date,integer)') IS NOT NULL),
+  ('rpc complete_schedule_task_atomic', to_regprocedure('public.complete_schedule_task_atomic(uuid,uuid,uuid,boolean,timestamptz,jsonb,numeric,text,text[],jsonb,integer,integer)') IS NOT NULL),
+  ('rpc persist_ai_crop_schedule_atomic', to_regprocedure('public.persist_ai_crop_schedule_atomic(jsonb,jsonb,jsonb)') IS NOT NULL)
+) AS contract(obj, present);
+-- Must return zero rows: SECURITY DEFINER engine writers still executable by app roles.
+SELECT p.oid::regprocedure AS exposed_function
+FROM pg_proc p WHERE p.pronamespace='public'::regnamespace
+  AND p.proname IN ('apply_stage_transitions','initialize_crop_cycle_stage','run_daily_phenology','reconcile_schedule_for_land',
+                    'persist_ai_crop_schedule_atomic','complete_schedule_task_atomic','yieldshield_record_crop_release','derive_verified_nutrient_decisions')
+  AND (has_function_privilege('anon',p.oid,'EXECUTE') OR has_function_privilege('authenticated',p.oid,'EXECUTE'));

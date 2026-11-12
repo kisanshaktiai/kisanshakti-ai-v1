@@ -3,6 +3,7 @@
  * Pure safety invariants: never convert an unverified record or an ambiguous
  * agricultural clock into a farmer-ready input rate / harvest date.
  */
+import { monitoringViolations } from "./monitoring-safety.ts";
 export type DurationReference = "sowing" | "nursery_sowing" | "direct_sowing" | "transplanting";
 export function isUnverifiedTier(tier: unknown): boolean {
   const value = String(tier ?? "").trim().toLowerCase();
@@ -28,22 +29,9 @@ export function resolvedMaturityDas(
       : { maxDas: null, issue: "variety_duration_transplant_anchor_missing" };
   return { maxDas: null, issue: "variety_duration_reference_unresolved" };
 }
-/**
- * Many old decision_rules encode application dates only in free text.
- * They cannot be treated as stage-start tasks without typed timing evidence.
- * This is a safety filter, not an extractor of agricultural timings.
- */
-export function hasUnstructuredRelativeTiming(text: unknown): boolean {
-  const value = String(text ?? "");
-  return /\b\d+(?:\s*(?:-|to|–)\s*\d+)?\s*(?:days?|weeks?)\s+after\s+(?:transplant(?:ing)?|plant(?:ing)?|sow(?:ing)?|seeding|harvest)\b/i.test(value);
-}
 export function isDeficiencyDependentAction(id: unknown, text: unknown): boolean {
   return /(?:DEFICIT|DEFICIENCY)/i.test(String(id ?? "")) ||
     /\b(?:if|when)\s+(?:a\s+)?(?:deficien|nutrient\s+symptom)/i.test(String(text ?? ""));
-}
-/** A scouting card is observation only, never a standing prescription. */
-export function isTreatmentInstruction(text: unknown): boolean {
-  return /\b(?:apply|spray|dose|tank.mix|herbicide|fungicide|insecticide|ml\s*\/\s*acre|g\s*\/\s*acre)\b|(?:फवारणी\s*करा|फवारा|कीटकनाशक\s*द्या|तणनाशक\s*द्या)/i.test(String(text ?? ""));
 }
 /** Biological harvest is not a pre-harvest or post-harvest support phase. */
 export function isBiologicalHarvestStage(stage: unknown): boolean {
@@ -51,11 +39,17 @@ export function isBiologicalHarvestStage(stage: unknown): boolean {
   return /^(harvest|maturation_harvest|harvest_maturity|first_picking|successive_harvest)$/.test(name);
 }
 /**
- * A DB-backed assessment of whether the program may be ACTIVATED, as distinct
- * from a review-only discussion of crop establishment and field observations.
- * 'Documented' does not claim formal ICAR certification.
+ * 2026-11-12 — release assessment split in two (was one all-or-nothing blocker list that sent
+ * every crop to a review draft because the approval registry is empty by design):
+ *
+ *  - agronomyActivationBlockers: STRUCTURAL faults. No schedule can be built safely, so the request
+ *    still goes to the review-draft ledger (Lovable review flow unchanged).
+ *  - agronomyProvisionalReasons: missing variety / material-rate / picking-interval evidence. The
+ *    stage-graph schedule is saved as PROVISIONAL; the unverified quantity or date itself stays
+ *    withheld by the generator (never fabricated) and each reason is shown to the farmer and
+ *    queued for scientific approval.
  */
-export function agronomyActivationBlockers(input: {
+export interface AgronomyReleaseInput {
   propagationMaterial: string | null;
   cropCycle: string | null;
   documentedMaterialRate: boolean;
@@ -63,22 +57,28 @@ export function agronomyActivationBlockers(input: {
   hasHarvestStage: boolean;
   hasHarvestTask: boolean;
   multiHarvestStage: boolean;
-}): string[] {
-  const blockers: string[] = [];
+}
+export function agronomyActivationBlockers(input: AgronomyReleaseInput): string[] {
+  return !input.hasHarvestStage || !input.hasHarvestTask ? ["BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE"] : [];
+}
+export function agronomyProvisionalReasons(input: AgronomyReleaseInput): string[] {
+  const reasons: string[] = [];
   const material = String(input.propagationMaterial ?? "").trim().toLowerCase();
   const ratoon = String(input.cropCycle ?? "").toLowerCase() === "ratoon" || material === "ratoon_stubble";
   if (!ratoon && !input.documentedMaterialRate) {
-    if (!material || material === "any") blockers.push("PROPAGATION_MATERIAL_UNRESOLVED");
-    else if (material === "seed") blockers.push("SEED_RATE_DOCUMENTED_EVIDENCE_MISSING");
-    else blockers.push("PLANTING_MATERIAL_RATE_SOURCE_MISSING");
+    if (!material || material === "any") reasons.push("PROPAGATION_MATERIAL_UNRESOLVED");
+    else if (material === "seed") reasons.push("SEED_RATE_DOCUMENTED_EVIDENCE_MISSING");
+    else reasons.push("PLANTING_MATERIAL_RATE_SOURCE_MISSING");
   }
   if (input.maturityDas == null || !Number.isFinite(input.maturityDas))
-    blockers.push("VARIETY_MATURITY_CLOCK_NOT_VERIFIED");
-  if (!input.hasHarvestStage || !input.hasHarvestTask)
-    blockers.push("BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE");
+    reasons.push("VARIETY_MATURITY_CLOCK_NOT_VERIFIED");
   if (input.multiHarvestStage)
-    blockers.push("REPEATED_PICKING_PROGRAMME_NOT_VERIFIED");
-  return blockers;
+    reasons.push("REPEATED_PICKING_INTERVAL_NOT_VERIFIED");
+  return reasons;
+}
+/** A crop is repeated-picking when its own stage graph declares more than one biological harvest stage. */
+export function biologicalHarvestStages<T extends { growth_stage?: string | null }>(stages: T[]): T[] {
+  return stages.filter((s) => isBiologicalHarvestStage(s.growth_stage));
 }
 export interface ScientificTask {
   task_type: string;
@@ -89,6 +89,8 @@ export interface ScientificTask {
   task_description?: string;
   resources?: Record<string, unknown>;
   water_volume?: unknown;
+  quantity?: unknown;
+  nutrient?: unknown;
 }
 export interface ScientificStage {id: string;growth_stage?: string | null;das_min?: number | null;}
 export function validateScientificTasks<T extends ScientificTask>(tasks: T[], stages: ScientificStage[]): string[] {
@@ -103,9 +105,7 @@ export function validateScientificTasks<T extends ScientificTask>(tasks: T[], st
       else if(st.das_min != null && task.days_from_sowing < st.das_min)
         issues.push("HARVEST_BEFORE_STAGE:"+tag);
     }
-    if(task.task_type === "monitoring" &&
-      (task.instructions||[]).some(isTreatmentInstruction))
-      issues.push("MONITORING_CONTAINS_TREATMENT:"+tag);
+    for(const v of monitoringViolations(task)) issues.push(v+":"+tag);
     if(task.task_type === "irrigation" && /nursery/i.test(String(task.resources?.area_scope || "")) &&
        task.water_volume != null)
       issues.push("NURSERY_AREA_NOT_VALIDATED:"+tag);
