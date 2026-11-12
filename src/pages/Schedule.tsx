@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import { landsApi } from '@/services/landsApi';
+import { schedulesApi } from '@/services/schedulesApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/layout/EmptyState';
@@ -66,13 +67,11 @@ export default function Schedule() {
     let cancelled = false;
     setReviewDrafts([]); setReviewLoadError(false);
     if (!selectedLand || !user?.id) return;
-    supabase.functions.invoke('ai-smart-schedule', {
-      body: {action:'review_drafts',landId:selectedLand.id},
-      headers: {'x-session-token':getSessionToken() || '', 'x-tenant-id':tenant?.id || user.tenantId || '', 'x-farmer-id':user.id},
-    }).then(({data,error}) => {
+    schedulesApi.fetchReviewDrafts(selectedLand.id).then(drafts => {
       if (cancelled) return;
-      if (error) setReviewLoadError(true);
-      else setReviewDrafts(data?.drafts || []);
+      setReviewDrafts(drafts);
+    }).catch(() => {
+      if (!cancelled) setReviewLoadError(true);
     });
     return () => {cancelled = true;};
   }, [selectedLand?.id,user?.id,tenant?.id]);

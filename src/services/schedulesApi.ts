@@ -1,5 +1,6 @@
 import { dataIsolation } from './dataIsolationService';
 import { SUPABASE_CONFIG, getSupabaseFunctionUrl } from '@/config/supabase';
+import type { ScheduleReviewDraft } from '@/components/schedule/ScheduleReviewDrafts';
 
 const SCHEDULES_API_URL = getSupabaseFunctionUrl('schedules-api');
 const MAX_RETRIES = 2;
@@ -25,6 +26,15 @@ export interface ScheduleData {
 }
 
 class SchedulesApiService {
+  async fetchReviewDrafts(landId: string): Promise<ScheduleReviewDraft[]> {
+    const headers = await this.getHeaders();
+    const url = `${SCHEDULES_API_URL}/review-drafts?${new URLSearchParams({ land_id: landId })}`;
+    const response = await this.fetchWithRetry(url, { method: 'GET', headers });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Failed to fetch schedule reviews');
+    return result.drafts || [];
+  }
+
   private async getHeaders(): Promise<HeadersInit> {
     let attempts = 0;
     const maxAttempts = 5;

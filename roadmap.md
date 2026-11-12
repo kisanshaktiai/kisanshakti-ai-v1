@@ -1,4 +1,5 @@
 # Schedule availability repair
+- [x] Move review loading to the owner-checked schedules-api read route; deployed only schedules-api. 24 regressions passed, preview build OK, and unauthenticated/invalid-token probes return 401. Authenticated read-back remains blocked by the unavailable external farmer session below.
 - [x] Confirm activation blockers reject repeated-picking and missing-variety-evidence plans before persistence; no review-only flow exists.
 - [x] Create approved server-only review ledger, owner-scoped save/list paths and durable localized review screen; isolate selections from executable tasks and quantities. 22 safety/isolation tests passed; review module typecheck and mobile controls passed.
 - [x] Preserve repeated-picking phases rather than truncating/merging them at first maturity; activation still requires verified recurrence evidence.

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { resolveVerifiedCaller, sessionRequiredResponse } from '../_shared/sessionVerify.ts';
+import { readOwnedReviewDrafts } from './review-drafts.ts';
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -99,6 +100,16 @@ serve(async (req) => {
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(Boolean);
     const lastPart = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
+
+    // Review reads are independent of schedule generation and its release gates.
+    if (lastPart === 'review-drafts') {
+      const result = req.method === 'GET'
+        ? await readOwnedReviewDrafts(supabase, { tenantId, farmerId }, url.searchParams.get('land_id'))
+        : { status: 405, body: { error: 'Method not allowed' } };
+      return new Response(JSON.stringify(result.body), {
+        status: result.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Task sub-routes: /schedules-api/tasks/:taskId[/complete]
     const tasksIdx = pathParts.indexOf('tasks');

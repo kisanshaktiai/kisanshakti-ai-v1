@@ -23,5 +23,6 @@
 - Transient database read retries are bounded and rebuild the query; never apply them to writes. Why: recover intermittent timeouts without duplicating mutations.
 
 ## Schedule review isolation
+- Read review drafts through the owner-checked schedules-api read route, independently of the generation function; why: unfinished generation releases must not break schedule-page loading.
 - Evidence-incomplete plans persist only in the server-only review-draft ledger, never crop_schedules or schedule_tasks; why: drafts must not mutate land state or enter executable schedule workflows.
 - Repeated-picking stages retain separate DB-backed phases; never truncate them at first maturity or merge them into one harvest task, because maturity does not certify the last picking date.
