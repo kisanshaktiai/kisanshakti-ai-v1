@@ -11613,6 +11613,8 @@ export type Database = {
           soil_ph_min: number | null
           soil_type_applicable: string[] | null
           stage_applicable: string[]
+          stage_offset_days_max: number | null
+          stage_offset_days_min: number | null
           success_indicators: string[] | null
           supersedes_rule_id: string | null
           target_pest_stage: string | null
@@ -11796,6 +11798,8 @@ export type Database = {
           soil_ph_min?: number | null
           soil_type_applicable?: string[] | null
           stage_applicable: string[]
+          stage_offset_days_max?: number | null
+          stage_offset_days_min?: number | null
           success_indicators?: string[] | null
           supersedes_rule_id?: string | null
           target_pest_stage?: string | null
@@ -11979,6 +11983,8 @@ export type Database = {
           soil_ph_min?: number | null
           soil_type_applicable?: string[] | null
           stage_applicable?: string[]
+          stage_offset_days_max?: number | null
+          stage_offset_days_min?: number | null
           success_indicators?: string[] | null
           supersedes_rule_id?: string | null
           target_pest_stage?: string | null
