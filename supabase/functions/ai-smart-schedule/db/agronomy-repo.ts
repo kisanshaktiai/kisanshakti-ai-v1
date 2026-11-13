@@ -187,12 +187,12 @@ export async function getIrrigationGuidelines(supabase:SupabaseClient,cropCode:s
   return rows.filter((r:Record<string,unknown>)=>r.irrigation_interval_days!=null||r.water_requirement_mm!=null).map((r:Record<string,unknown>)=>({stageId:(r.stage_master_id as string)??null,growthStage:(r.growth_stage as string)??null,dasStart:r.das_start!=null?Number(r.das_start):null,dasEnd:r.das_end!=null?Number(r.das_end):null,intervalDays:r.irrigation_interval_days!=null?Number(r.irrigation_interval_days):null,waterMm:r.water_requirement_mm!=null?Number(r.water_requirement_mm):null,notes:(r.notes as string)??null,criticalMoisturePercent:r.critical_moisture_percent!=null?Number(r.critical_moisture_percent):null,provenance:{table:"crop_baseline_guidelines_v2",row_id:(r.id as string)??null,source:(r.source_reference as string)??null}}));
 }
 
-export interface FieldActionRule {rule_id:string;category:string|null;action_type:string|null;action_text:string|null;stage_applicable:unknown;priority:number|null;phi_days:number|null;chemical_class:string|null;scientific_source:string|null;biological_group:string|null;etl_threshold:string|null;dosage_per_acre:string|null;contraindications:unknown;organic_alternative?:string|null;ipm_level?:number|string|null;expert_approved:boolean|null;crop_age_days_min?:number|null;crop_age_days_max?:number|null;}
+export interface FieldActionRule {rule_id:string;category:string|null;action_type:string|null;action_text:string|null;stage_applicable:unknown;priority:number|null;phi_days:number|null;chemical_class:string|null;scientific_source:string|null;biological_group:string|null;etl_threshold:string|null;dosage_per_acre:string|null;contraindications:unknown;organic_alternative?:string|null;ipm_level?:number|string|null;expert_approved:boolean|null;crop_age_days_min?:number|null;crop_age_days_max?:number|null;condition_code?:string|null;schedule_role?:string|null;}
 const regionFilter=(regionCode:string|null):string=>regionCode?`region_code.is.null,region_code.eq.${regionCode}`:`region_code.is.null`;
 const methodFilter=(methods:string[]|null|undefined):string=>`cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${[...new Set(["any",...(methods??[]).filter(Boolean)])].join(",")}}`;
 export async function getFieldActionRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<FieldActionRule[]>{
   const FIELD_ACTION_RULE_LIMIT=1000;
-  const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
+  const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, condition_code").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
   const rows=(data||[]) as FieldActionRule[];
   // 2026-11-13 — SCHEDULE OPERATIONS filed under another trigger class. Core practices (seed
   // treatment, nursery bed, puddling, gap filling) are stored as general advice rules, so they never
@@ -201,7 +201,7 @@ export async function getFieldActionRules(supabase:SupabaseClient,cropCode:strin
   // its use elsewhere are untouched. Only an expert-approved rule is served (fail closed): these texts
   // carry rates and doses. Read tolerantly: without the columns nothing is added.
   try{
-    const extra=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, schedule_role, schedule_stage").eq("is_active",true).eq("schedule_role","operation").eq("expert_approved",true).eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
+    const extra=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, schedule_role, schedule_stage, condition_code").eq("is_active",true).eq("schedule_role","operation").eq("expert_approved",true).eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
     if(!extra.error){
       const have=new Set(rows.map(r=>r.rule_id));
       for(const r of (extra.data||[]) as Array<Record<string,unknown>>){
@@ -236,6 +236,21 @@ export async function getSymptomCatalog(supabase:SupabaseClient,codes:string[],l
     const out=new Map<string,SymptomInfo>();
     for(const r of (m.data||[]) as Array<Record<string,unknown>>){const code=String(r.observation_code);const l=label.get(code);if(!l)continue;out.set(code,{label:l,diagnostic:r.is_diagnostic===true&&r.is_farmer_observable!==false&&r.is_active!==false});}
     return out;
+  }catch{ return null; }
+}
+
+/**
+ * 2026-11-13 — which condition codes are diagnostic field symptoms (observation_master.is_diagnostic),
+ * independent of whether a farmer-language label exists. null when the read fails (callers then treat
+ * no code as diagnostic and rely on the rule's own wording).
+ */
+export async function getDiagnosticCodes(supabase:SupabaseClient,codes:string[]):Promise<Set<string>|null>{
+  const ids=[...new Set(codes.map(c=>String(c??"").trim()).filter(Boolean))];
+  if(!ids.length) return new Set();
+  try{
+    const {data,error}=await supabase.from("observation_master").select("observation_code, is_diagnostic, is_active").in("observation_code",ids);
+    if(error) return null;
+    return new Set(((data||[]) as Array<Record<string,unknown>>).filter(r=>r.is_diagnostic===true&&r.is_active!==false).map(r=>String(r.observation_code)));
   }catch{ return null; }
 }
 

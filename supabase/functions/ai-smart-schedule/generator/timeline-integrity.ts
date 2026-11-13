@@ -12,6 +12,7 @@
 import type { StageRow } from "../db/agronomy-repo.ts";
 import type { BaselineTask } from "./baseline-generator.ts";
 import { monitoringViolations } from "./monitoring-safety.ts";
+import { isBiologicalHarvestStage, stagesUseTransplantClock } from "./agronomy-scientific-contract.ts";
 import type { StagePosition } from "./stage-sequence.ts";
 
 const lower = (v: unknown) => String(v ?? "").trim().toLowerCase();
@@ -80,8 +81,128 @@ export function markTimingConfidence(tasks: BaselineTask[], order: StagePosition
   return { indicative, harvest_review: harvestReview };
 }
 
+/**
+ * 2026-11-13 — TRANSPLANT DATE APPLICABILITY (database clock fields, crop-agnostic). A transplant
+ * date means something only when the selected method's stage graph counts days from transplanting.
+ *   explicit request value on a method without that clock -> rejected (the request is contradictory);
+ *   value inherited from the land record (a previous crop)  -> ignored and recorded as a gap.
+ */
+export function transplantDateDecision(stages: ReadonlyArray<{ das_reference?: unknown; clock_reference?: unknown }>, transplantDate: string | null, fromRequest: boolean):
+  { keep: boolean; reject: boolean; gap: string | null } {
+  if (!transplantDate) return { keep: false, reject: false, gap: null };
+  if (stagesUseTransplantClock(stages)) return { keep: true, reject: false, gap: null };
+  return fromRequest
+    ? { keep: false, reject: true, gap: "transplant_date_not_applicable_to_method" }
+    : { keep: false, reject: false, gap: "transplant_date_from_land_record_ignored_method_has_no_transplanting" };
+}
+
+/**
+ * 2026-11-13 — POST-HARVEST AFTER THE HARVEST. The stage graph's post-harvest window is a crop-level
+ * calendar; when the harvest window comes from the variety, the post-harvest stage must follow THAT
+ * harvest. Every card on a stage after the biological harvest stage is re-dated from the harvest
+ * card (day + 1), and its window AND its day numbers in the text move with it (the old fix moved
+ * only the date and left "DAS 160 to 190" in the text and the window).
+ */
+export function alignAfterHarvest(tasks: BaselineTask[], order: StagePosition[]): { moved: number; from: number | null } {
+  const harvest = order.filter((p) => isBiologicalHarvestStage(p.stage.growth_stage) && p.from != null).sort((a, b) => b.rank - a.rank)[0];
+  if (!harvest) return { moved: 0, from: null };
+  const harvestCard = tasks.filter((t) => t.task_type === "harvest").sort((a, b) => a.days_from_sowing - b.days_from_sowing)[0];
+  const start = (harvestCard?.days_from_sowing ?? (harvest.from as number)) + 1;
+  let moved = 0;
+  for (const p of order) {
+    if (p.rank <= harvest.rank || p.from == null || p.to == null) continue;
+    const origFrom = p.from, origTo = p.to, span = origTo - origFrom, shift = start - origFrom;
+    if (shift === 0) continue;
+    const onNewClock = (line: string) => String(line)
+      .replace(DAS_RANGE, (m, a, b) => Number(a) >= origFrom && Number(b) <= origTo ? `DAS ${Number(a) + shift} to ${Number(b) + shift}` : m)
+      .replace(/\bDAS (\d+)\b(?! to)/g, (m, a) => Number(a) >= origFrom && Number(a) <= origTo ? `DAS ${Number(a) + shift}` : m);
+    for (const t of tasks) {
+      if (positionOf(t, [p]) !== p) continue;
+      t.days_from_sowing = start + Math.max(0, t.days_from_sowing - origFrom);
+      t.task_description = onNewClock(t.task_description ?? "");
+      t.instructions = (t.instructions ?? []).map(onNewClock);
+      if (t.recurrence) { t.recurrence.window_start = start; t.recurrence.window_end = start + span; }
+      t.resources = { ...resOf(t), window: { from_das: start, to_das: start + span, clock: "sowing", origin: "aligned_after_harvest", stage_graph_window: [origFrom, origTo] } };
+      moved += 1;
+    }
+    p.from = start; p.to = start + span;
+    // The window is now as reliable as the harvest window it follows.
+    p.stage = { ...p.stage, variety_window_source: harvest.stage.variety_window_source ?? p.stage.variety_window_source, variety_window_reliability: harvest.stage.variety_window_reliability ?? p.stage.variety_window_reliability };
+  }
+  return { moved, from: start };
+}
+
+const PER_AREA_RANGE = /(\d+(?:\.\d+)?)\s*(?:to|-|–)\s*(\d+(?:\.\d+)?)\s*kg\b[^.;]{0,60}?\bper\s+(hectare|ha|acre)\b/gi;
+const HA_PER_ACRE = 0.404686;
+
+/**
+ * 2026-11-13 — ONE SEED-RATE AUTHORITY. The sowing card's quantity comes from the variety record;
+ * a regional rule folded onto the same card may state its own per-area seed rate for the same
+ * method. When the card's rate lies outside every range the card itself states, the card would tell
+ * the farmer two different amounts: the computed quantity is withheld (never averaged, never
+ * replaced by a guessed number) and the card is marked for review. Reads the English source lines.
+ */
+export function withholdConflictingSeedRate(tasks: BaselineTask[], areaAcres: number | null): string[] {
+  const conflicts: string[] = [];
+  if (areaAcres == null || !(areaAcres > 0)) return conflicts;
+  for (const t of tasks) {
+    if (!["sowing", "planting", "transplanting"].includes(t.task_type) || !t.quantity || t.quantity.unit !== "kg") continue;
+    const kg = t.quantity.value;
+    const qtyToken = String(kg);
+    const lines = [String(t.task_description ?? ""), ...(t.instructions ?? []).map(String)];
+    const ranges: Array<{ min: number; max: number; per: string }> = [];
+    for (const line of lines) {
+      if (line.includes(qtyToken)) continue;
+      for (const m of line.matchAll(PER_AREA_RANGE)) ranges.push({ min: Number(m[1]), max: Number(m[2]), per: m[3].toLowerCase() });
+    }
+    if (!ranges.length) continue;
+    const perHa = kg / (areaAcres * HA_PER_ACRE), perAcre = kg / areaAcres;
+    const inside = ranges.some((r) => { const v = r.per === "acre" ? perAcre : perHa; return v >= r.min * 0.95 && v <= r.max * 1.05; });
+    if (inside) continue;
+    // Drop every line the variety record produced for this field (they carry the field's acreage).
+    const fieldLine = new RegExp(`\\b${String(areaAcres).replace(".", "\\.")}\\s*acre`, "i");
+    const derived = (l: string) => l.includes(qtyToken) || fieldLine.test(l) || /^This seed quantity is for /.test(l);
+    const kept = (t.instructions ?? []).filter((l) => !derived(String(l)));
+    if (derived(String(t.task_description ?? ""))) t.task_description = kept[0] ?? "";
+    t.instructions = kept.filter((l) => l !== t.task_description);
+    const review = Array.isArray(resOf(t).review_required) ? resOf(t).review_required as string[] : [];
+    t.resources = { ...resOf(t), withheld_quantity: { ...t.quantity, reason: "SEED_RATE_SOURCES_CONFLICT", card_rate_kg_per_ha: Number(perHa.toFixed(1)), stated_ranges: ranges }, review_required: [...new Set([...review, "SEED_RATE_SOURCES_CONFLICT"])] };
+    t.quantity = null;
+    conflicts.push(`${t.task_name}: ${perHa.toFixed(1)} kg/ha vs ${ranges.map((r) => `${r.min}-${r.max} kg/${r.per}`).join(", ")}`);
+  }
+  return conflicts;
+}
+
+/**
+ * 2026-11-13 — CALENDAR STAGE (fallback). When the field's observed stage cannot be resolved yet
+ * (the land still carries the previous crop until this schedule is committed), today's position on
+ * THIS plan's own stage calendar is used so past windows are separated from current work. Marked as
+ * a calendar estimate, never as an observation.
+ */
+export function calendarStageAt(order: StagePosition[], todayDas: number): StagePosition | null {
+  const placed = order.filter((p) => p.from != null && p.to != null);
+  if (!placed.length || todayDas < (placed[0].from as number)) return null;
+  const open = placed.filter((p) => todayDas >= (p.from as number) && todayDas <= (p.to as number)).sort((a, b) => b.rank - a.rank)[0];
+  return open ?? placed.filter((p) => (p.from as number) <= todayDas).sort((a, b) => (b.to as number) - (a.to as number) || b.rank - a.rank)[0] ?? null;
+}
+
 export interface GateFinding { code: string; task?: string; detail?: string }
-export interface GateReport { passed: boolean; blocking: GateFinding[]; warnings: GateFinding[] }
+export interface GateReport {
+  /** True only when nothing is unsafe AND the cultivation programme is complete and verified. */
+  passed: boolean;
+  blocking: GateFinding[];
+  warnings: GateFinding[];
+  /** What keeps a safely saved plan from being farmer-executable as an approved programme. */
+  incomplete: GateFinding[];
+  readiness: { safe_to_save: boolean; executable: boolean; mode: "approved" | "provisional_planning" | "blocked" };
+}
+/** Context the whole-plan gate reads besides the tasks (all optional; absent = not checked). */
+export interface GateContext {
+  releaseStatus?: string | null;
+  /** A yield figure the schedule would claim, and the evidence for it. */
+  yieldClaim?: number | null;
+  yieldEvidence?: string | null;
+}
 const NUTRIENT_TOLERANCE = 0.01;
 
 /**
@@ -91,8 +212,8 @@ const NUTRIENT_TOLERANCE = 0.01;
  * WARNINGS (saved, recorded on the schedule): a card dated outside its stage; one rule on two
  * cards; an executable card with no instruction at all.
  */
-export function runQualityGates(tasks: BaselineTask[], order: StagePosition[], seasonNutrients: Record<string, number | null | undefined>): GateReport {
-  const blocking: GateFinding[] = [], warnings: GateFinding[] = [];
+export function runQualityGates(tasks: BaselineTask[], order: StagePosition[], seasonNutrients: Record<string, number | null | undefined>, ctx: GateContext = {}): GateReport {
+  const blocking: GateFinding[] = [], warnings: GateFinding[] = [], incomplete: GateFinding[] = [];
   for (const t of tasks) for (const v of monitoringViolations(t)) blocking.push({ code: v, task: t.task_name });
 
   const scheduled = new Map<string, number>();
@@ -124,13 +245,53 @@ export function runQualityGates(tasks: BaselineTask[], order: StagePosition[], s
     for (const id of t.rule_ids ?? []) { const had = cardOfRule.get(id); if (had && had !== t.task_name) warnings.push({ code: "RULE_ON_TWO_CARDS", task: t.task_name, detail: id }); else cardOfRule.set(id, t.task_name); }
     if (!String(t.task_description ?? "").trim() && !(t.instructions ?? []).length) warnings.push({ code: "EXECUTABLE_TASK_WITHOUT_INSTRUCTIONS", task: t.task_name });
   }
-  return { passed: blocking.length === 0, blocking, warnings };
+  // ── 2026-11-13: PROGRAMME COVERAGE AND SCIENTIFIC READINESS ─────────────────────────────────
+  // Canonical task types only (crop-agnostic). A missing component does not block saving a safe
+  // provisional plan; it keeps the plan from being called complete or farmer-executable.
+  const has = (pred: (t: BaselineTask) => boolean) => tasks.some(pred);
+  const dosed = (t: BaselineTask) => !!t.quantity || (Array.isArray(resOf(t).inputs) && (resOf(t).inputs as unknown[]).length > 0);
+  if (!has((t) => ["sowing", "planting", "transplanting"].includes(t.task_type))) incomplete.push({ code: "COVERAGE_ESTABLISHMENT_MISSING" });
+  else if (!has((t) => ["sowing", "planting", "transplanting"].includes(t.task_type) && !!t.quantity)) incomplete.push({ code: "COVERAGE_SEED_QUANTITY_MISSING" });
+  const programme = Object.values(seasonNutrients).some((v) => v != null && Number(v) > 0);
+  if (!programme || !has((t) => ["nutrition", "micronutrient"].includes(t.task_type) && dosed(t))) incomplete.push({ code: "COVERAGE_NUTRIENT_PROGRAMME_MISSING" });
+  if (!has((t) => t.task_type === "irrigation" || resOf(t).requirement_semantics === "BASELINE_WITHDRAWAL")) incomplete.push({ code: "COVERAGE_WATER_PLAN_MISSING" });
+  if (!has((t) => t.task_type === "weed_management")) incomplete.push({ code: "COVERAGE_WEED_OPERATION_MISSING" });
+  if (!has((t) => t.task_type === "monitoring")) incomplete.push({ code: "COVERAGE_SCOUTING_MISSING" });
+  if (!has((t) => t.task_type === "harvest")) incomplete.push({ code: "COVERAGE_HARVEST_MISSING" });
+  for (const t of tasks) {
+    const r = resOf(t);
+    const decision = r.irrigation_decision as { per_event_depth_mm?: unknown } | undefined;
+    if (t.task_type === "irrigation" && (!decision || decision.per_event_depth_mm == null)) incomplete.push({ code: "IRRIGATION_EVENT_DEPTH_UNVERIFIED", task: t.task_name });
+    for (const code of Array.isArray(r.review_required) ? r.review_required as string[] : []) incomplete.push({ code, task: t.task_name });
+    // Task date, window and the day numbers printed in its own text must agree.
+    const win = r.window as { from_das?: number; to_das?: number } | undefined;
+    const p = positionOf(t, order);
+    const lo = win?.from_das ?? p?.from ?? null, hi = win?.to_das ?? p?.to ?? null;
+    if (lo != null && hi != null) {
+      for (const line of [String(t.task_description ?? ""), ...(t.instructions ?? []).map(String)]) {
+        for (const m of line.matchAll(DAS_RANGE)) {
+          if (Number(m[1]) < lo - 1 || Number(m[2]) > hi + 1) { warnings.push({ code: "TASK_TEXT_WINDOW_MISMATCH", task: t.task_name, detail: `text ${m[1]}-${m[2]} vs window ${lo}-${hi}` }); incomplete.push({ code: "TASK_TEXT_WINDOW_MISMATCH", task: t.task_name }); }
+        }
+      }
+      if (t.days_from_sowing < lo - 1 || t.days_from_sowing > hi + 1) incomplete.push({ code: "TASK_DATE_OUTSIDE_ITS_WINDOW", task: t.task_name, detail: `day ${t.days_from_sowing} vs ${lo}-${hi}` });
+    }
+  }
+  for (const w of warnings) if (w.code === "TASK_DATED_OUTSIDE_ITS_STAGE") incomplete.push({ code: w.code, task: w.task });
+  if (ctx.releaseStatus != null && String(ctx.releaseStatus).toLowerCase() !== "approved") incomplete.push({ code: "SCIENTIFIC_RELEASE_NOT_APPROVED", detail: String(ctx.releaseStatus) });
+  if (ctx.yieldClaim != null && !String(ctx.yieldEvidence ?? "").trim()) blocking.push({ code: "UNSUPPORTED_YIELD_CLAIM", detail: String(ctx.yieldClaim) });
+
+  const safe = blocking.length === 0;
+  const complete = incomplete.length === 0;
+  return { passed: safe && complete, blocking, warnings, incomplete, readiness: { safe_to_save: safe, executable: safe && complete, mode: !safe ? "blocked" : complete ? "approved" : "provisional_planning" } };
 }
 
 /** Ordered steps of a card for the detailed_steps field: what to do, then the precautions. Built only from the card's own text. */
 export function detailedStepsOf(t: { task_description?: string | null; instructions?: string[] | null; precautions?: string[] | null }): string[] {
+  // 2026-11-13: the description leads. A merged card keeps its main action in the description and the
+  // folded practice in the instructions; the old "instructions, else description" dropped that action
+  // (replay of e7c27133: the grain-filling card lost its watering cadence, the sowing card its seed-rate line).
   const steps = (t.instructions ?? []).map((x) => String(x).trim()).filter(Boolean);
-  const body = steps.length ? steps : [String(t.task_description ?? "").trim()].filter(Boolean);
+  const body = [String(t.task_description ?? "").trim(), ...steps].filter(Boolean);
   const out: string[] = [];
   for (const line of [...body, ...(t.precautions ?? []).map((x) => String(x).trim()).filter(Boolean)]) if (!out.includes(line)) out.push(line);
   return out;

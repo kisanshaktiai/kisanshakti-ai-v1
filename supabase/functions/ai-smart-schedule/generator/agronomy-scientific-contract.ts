@@ -30,8 +30,42 @@ export function resolvedMaturityDas(
   return { maxDas: null, issue: "variety_duration_reference_unresolved" };
 }
 export function isDeficiencyDependentAction(id: unknown, text: unknown): boolean {
+  const t = String(text ?? "");
   return /(?:DEFICIT|DEFICIENCY)/i.test(String(id ?? "")) ||
-    /\b(?:if|when)\s+(?:a\s+)?(?:deficien|nutrient\s+symptom)/i.test(String(text ?? ""));
+    /\b(?:if|when)\s+(?:a\s+)?(?:deficien|nutrient\s+symptom)/i.test(t) ||
+    // 2026-11-13: "confirm with a soil or leaf test, then spray ..." and "where micronutrient
+    // hunger is common, spray ..." are treatments that wait on a diagnosis or a soil context.
+    /\bconfirm(?:ed)?\s+(?:it\s+)?(?:with|by)\s+(?:a\s+)?(?:soil|leaf|plant|tissue)\b/i.test(t) ||
+    /\bwhere\b[^.]{0,60}\b(?:deficien|hunger)/i.test(t);
+}
+/**
+ * 2026-11-13 — CLOCK OF A RULE'S WORDING. Database rule text written on the transplanting clock
+ * ("15 days after transplanting", "DAT", "at transplanting"). Read only on the English source
+ * text of a decision rule, never on farmer-language text.
+ */
+export function isTransplantClockWording(text: unknown): boolean {
+  return /\b(?:DAT|after\s+transplant(?:ing)?|at\s+transplanting|before\s+transplanting)\b/i.test(String(text ?? ""));
+}
+/**
+ * 2026-11-13 — A NUTRIENT INPUT THAT WAITS ON A DIAGNOSIS. A nutrition / organic / micronutrient
+ * rule is conditional (a scouting item, never a dated spray or dose) when its own text makes it
+ * depend on a deficiency or a soil context, or when its condition is a diagnostic field symptom in
+ * the observation catalog (observation_master.is_diagnostic). A rule an expert curated as a stage
+ * operation (decision_rules.schedule_role = 'operation') is a scheduled practice by definition.
+ */
+export function isConditionalNutrientRule(
+  rule: { rule_id?: unknown; category?: unknown; action_text?: unknown; condition_code?: unknown; schedule_role?: unknown },
+  isDiagnostic: (code: string) => boolean,
+): boolean {
+  if (String(rule.schedule_role ?? "").trim().toLowerCase() === "operation") return false;
+  if (!["nutrition", "organic", "micronutrient"].includes(String(rule.category ?? "").trim().toLowerCase())) return false;
+  const code = String(rule.condition_code ?? "").trim();
+  return isDeficiencyDependentAction(rule.rule_id, rule.action_text) || (!!code && isDiagnostic(code));
+}
+/** The selected stage graph counts days from a transplanting event (database clock fields). */
+export function stagesUseTransplantClock(stages: ReadonlyArray<{ das_reference?: unknown; clock_reference?: unknown }>): boolean {
+  return stages.some((s) => ["transplanting", "nursery_sowing"].includes(String(s.das_reference ?? "").trim().toLowerCase()) ||
+    ["transplanting", "nursery_sowing"].includes(String(s.clock_reference ?? "").trim().toLowerCase()));
 }
 /** Biological harvest is not a pre-harvest or post-harvest support phase. */
 export function isBiologicalHarvestStage(stage: unknown): boolean {
