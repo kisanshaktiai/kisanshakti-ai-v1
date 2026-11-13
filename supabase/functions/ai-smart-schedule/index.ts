@@ -68,6 +68,7 @@ import {
 import { generateBaseline, GENERATOR_VERSION, toDas, computeTransplantOffset } from "./generator/baseline-generator.ts";
 import { composeFarmerText, COMPOSER_VERSION, type TaskFacts } from "./generator/compose-farmer-text.ts";
 import { loadVarietyProfile, composerVarietyView } from "./db/variety-profile.ts";
+import { consolidateByStage } from "./generator/stage-work-plan.ts";
 import { narratePendingSchedules, narrateScheduleTasks } from "./generator/narrate-pending.ts";
 import { sanitizeTaskText, hasFarmerText, isTechnicalLine } from "./generator/farmer-text.ts";
 import { loadLandContext } from "./db/land-context.ts";
@@ -407,6 +408,7 @@ serve(async (req) => {
     // narration sweeper all work from it. A failed read degrades to a profile that names its gaps.
     const varietyProfile = await loadVarietyProfile(supabase, inputs, baseline.stage_timeline ?? [], baseline.totals.duration_days);
 
+    let stageWorkTrace: Record<string, unknown> | null = null;
     let harnessTrace: Record<string, unknown> | null = null;
     let enrichmentTrace: Record<string, unknown> | null = null;
     let enrichmentProposals: import("./harness/llm-candidates.ts").ProposalRecord[] = [];
@@ -416,7 +418,7 @@ serve(async (req) => {
         const evidencePack = await (async () => {
           const { buildAgronomicEvidencePack } = await import("./harness/evidence-pack.ts");
           const { getStages } = await import("./db/agronomy-repo.ts");
-          const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
+          const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
           return buildAgronomicEvidencePack(supabase, inputs, stages, baseline.tasks);
         })();
         // ── LLM enrichment tier: fill only what the DB left empty, verified before it is ever shown ──
@@ -424,7 +426,7 @@ serve(async (req) => {
           try {
             const { proposeAndVerifyCandidates } = await import("./harness/llm-candidates.ts");
             const { getStages } = await import("./db/agronomy-repo.ts");
-            const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
+            const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
             const enrichment = await proposeAndVerifyCandidates(supabase, inputs, stages, baseline.tasks, evidencePack, { tenantId, farmerId, landId, deadlineAt: Date.now() + enrichBudgetMs, landContext });
             for (const c of enrichment.candidates) {
               evidencePack.candidates.push(c);
@@ -450,6 +452,15 @@ serve(async (req) => {
       return json({ error: "Schedule harness execution failed before persistence", code: "HARNESS_FAILURE" }, 422);
     }
 
+    // 2026-11-13 — STAGE-WISE WORK PLAN. A farmer works by crop stage, so the cards of one stage and
+    // one kind of work (field work, feeding, water, crop check) become ONE card. Regrouping only:
+    // every folded card's text, rule ids, sources and quantities stay on the merged card.
+    {
+      const plan = consolidateByStage(baseline.tasks);
+      baseline.tasks.splice(0, baseline.tasks.length, ...plan.tasks);
+      stageWorkTrace = { before: plan.before, after: plan.after, merged_groups: plan.merged_groups };
+    }
+
     // A scouting card is observation, never a standing prescription. Enforced on STRUCTURE
     // (typed watch briefs + quantity/nutrient/volume fields), not on words, so it holds in every
     // farmer language. A treatment is present only when its decision_rules row authorizes it.
@@ -472,7 +483,7 @@ serve(async (req) => {
     // before any schedule or farmer task is persisted.
     {
       const {getStages}=await import("./db/agronomy-repo.ts");
-      const selected=await getStages(supabase,inputs.cropCode!,inputs.cropCycle,inputs.stageClockMethod??inputs.cultivationMethod);
+      const selected=await getStages(supabase,inputs.cropCode!,inputs.cropCycle,inputs.stageClockMethod??inputs.cultivationMethod,inputs.varietyId);
       const offset=computeTransplantOffset(selected,inputs.sowingDate,inputs.transplantDate);
       const errors=validateScientificTasks(baseline.tasks,
         selected.map(s=>({id:s.id,growth_stage:s.growth_stage,das_min:toDas(s,s.das_min,offset)})));
@@ -484,7 +495,7 @@ serve(async (req) => {
     // ── Calendar shape: timing window on every task, then the season-plan header ──────────
     try {
       const { getStages } = await import("./db/agronomy-repo.ts");
-      const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
+      const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
       const tpOffset = computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate);
       const byId = new Map(stageRows.map((r) => [r.id, r]));
       for (const t of baseline.tasks) {
@@ -721,7 +732,7 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, stage_work_plan: stageWorkTrace, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
       metadata: { variety_method_consent: varietyMethodConsentRecord, coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };

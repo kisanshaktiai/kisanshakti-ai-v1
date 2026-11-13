@@ -34,9 +34,42 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
 export interface Provenance { table: string; row_id?: string | null; source?: string | null; authority?: string | null; confidence?: number | null; }
-export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null; }
+export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null;  /** Set when the selected variety's own stage window (variety_phenology_profile) replaced the crop-level one. */ variety_window_source?:string|null; }
 
-export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycle:string|null,cultivationMethod:string|null):Promise<StageRow[]> {
+/** One active variety_phenology_profile row: the variety's own window for one crop stage. */
+export interface VarietyStageWindow { stage_uuid:string|null; das_min_override:number|null; das_max_override:number|null; das_reference:string|null; cultivation_method:string|null; source:string|null; calendar_reliability:string|null; }
+/**
+ * 2026-11-13 — the SELECTED VARIETY's stage windows replace the crop-level ones.
+ * The static schedule dated every stage from crop_stage_master (the crop's generic graph), while the
+ * dynamic engine (evaluate_stage_transitions / fn_resolve_stage_v) already uses the variety's own
+ * windows. A medium-duration variety therefore got its panicle-initiation dose two weeks early in
+ * the static plan and the two engines disagreed about the current stage.
+ * A window is replaced only when the profile row is for the same stage row, the same method and
+ * the SAME day-count clock as the stage; nothing is scaled or estimated here.
+ */
+export function applyVarietyStageWindows(rows:StageRow[],windows:VarietyStageWindow[],cultivationMethod:string|null):StageRow[] {
+  if(!windows.length) return rows;
+  const norm=(v:unknown)=>String(v??"").trim().toLowerCase();
+  const wanted=norm(cultivationMethod);
+  const byStage=new Map<string,VarietyStageWindow>();
+  for(const w of windows){
+    if(!w.stage_uuid||w.das_min_override==null||w.das_max_override==null) continue;
+    if(Number(w.das_min_override)>Number(w.das_max_override)) continue;
+    const m=norm(w.cultivation_method);
+    if(m&&m!=="any"&&wanted&&m!==wanted) continue;
+    if(!byStage.has(w.stage_uuid)||m===wanted) byStage.set(w.stage_uuid,w);
+  }
+  const out=rows.map(r=>{
+    const w=byStage.get(r.id);
+    if(!w) return r;
+    const stageClock=norm(r.clock_reference??r.das_reference), windowClock=norm(w.das_reference);
+    if(stageClock&&windowClock&&stageClock!==windowClock) return r;
+    return {...r,das_min:Number(w.das_min_override),das_max:Number(w.das_max_override),variety_window_source:w.source??"variety_phenology_profile"};
+  });
+  return out.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
+}
+
+export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycle:string|null,cultivationMethod:string|null,varietyId:string|null=null):Promise<StageRow[]> {
   let q=supabase.from("crop_stage_master").select("id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days, stage_node_type").eq("crop_code",cropCode).eq("is_active",true).order("das_min",{ascending:true,nullsFirst:true});
   if(cropCycle) q=q.or(`crop_cycle.eq.${cropCycle},crop_cycle.eq.universal,crop_cycle.is.null`);
   const {data}=await q;
@@ -45,7 +78,11 @@ export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycl
   let rows=((data||[]) as Array<StageRow&{stage_node_type?:string|null}>).filter(r=>String(r.stage_node_type??"").trim().toLowerCase()!=="alias").map(({stage_node_type:_n,...r})=>r as StageRow);
   if(cropCycle){const wanted=cropCycle.toLowerCase();const byKey=new Map<string,StageRow>();for(const r of rows){const key=(r.stage_code||r.growth_stage||r.id).toLowerCase();const prev=byKey.get(key);if(!prev){byKey.set(key,r);continue;}const rs=String(r.crop_cycle??"").toLowerCase()===wanted;const ps=String(prev.crop_cycle??"").toLowerCase()===wanted;if(rs&&!ps)byKey.set(key,r);}rows=[...byKey.values()];}
   if(cultivationMethod){const wanted=cultivationMethod.toLowerCase();rows=rows.filter(r=>{const m=String(r.cultivation_method??"").trim().toLowerCase();return !m||m==="any"||m===wanted;});}
-  return rows.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
+  rows=rows.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
+  if(!varietyId||!rows.length) return rows;
+  const {data:windows,error}=await supabase.from("variety_phenology_profile").select("stage_uuid, das_min_override, das_max_override, das_reference, cultivation_method, source, calendar_reliability").eq("variety_id",varietyId).eq("is_active",true);
+  if(error) return rows;
+  return applyVarietyStageWindows(rows,(windows??[]) as VarietyStageWindow[],cultivationMethod);
 }
 
 export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance;

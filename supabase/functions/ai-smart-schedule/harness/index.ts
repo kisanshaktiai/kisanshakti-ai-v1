@@ -320,7 +320,7 @@ export async function applyScheduleHarness(
       Deno.env.get("SUPABASE_URL") || "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
     );
-    stages ??= await getStages(supabase, legacy.cropCode, legacy.cropCycle, legacy.resolvedInputs?.stageClockMethod ?? legacy.cultivationMethod);
+    stages ??= await getStages(supabase, legacy.cropCode, legacy.cropCycle, legacy.resolvedInputs?.stageClockMethod ?? legacy.cultivationMethod, legacy.resolvedInputs?.varietyId ?? null);
     evidencePack = legacy.resolvedInputs
       ? await buildAgronomicEvidencePack(supabase, legacy.resolvedInputs, stages, tasks)
       : await buildSafeEvidencePack(legacy, tasks);
