@@ -232,6 +232,8 @@ interface LegacyHarnessInput {
   ai?: PlannerAIContext;
   /** 2026-11-13 — crop + variety dossier built once by index.ts and shared with the composer and sweeper. */
   varietyProfile?: VarietyProfile | null;
+  /** 2026-11-13 — symptom catalog for scouting cards (labels + diagnostic flags). */
+  symptoms?: ReadonlyMap<string, { label: string; diagnostic: boolean }> | null;
 }
 
 const emptyLandContext: LandContext = { soil: null, weather: null, coordinates: null, agroClimaticZone: null, ndvi: null, gaps: [] };
@@ -256,7 +258,7 @@ export async function applyScheduleHarness(
       catch (error) { providerAttempts = (error as { provider_attempts?: unknown })?.provider_attempts ?? providerAttempts; throw error; }
     }, validatePlanIntent, { maxAttempts: MAX_ATTEMPTS, minAttemptMs: MIN_ATTEMPT_MS, remainingMs: remaining });
     if (outcome.ok) {
-      const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, outcome.plan, "llm_evidence_pack"), context.evidencePack, context.varietyProfile ?? null));
+      const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, outcome.plan, "llm_evidence_pack"), context.evidencePack, context.varietyProfile ?? null, context.symptoms ?? null));
       return {
         tasks: materialized,
         result: {
@@ -285,7 +287,7 @@ export async function applyScheduleHarness(
     }
     const errors = outcome.errors;
     const plan = fallback(context, tasks);
-    const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, plan, "deterministic_fallback"), context.evidencePack, context.varietyProfile ?? null));
+    const materialized = foldSameStageRuleCards(foldWatchBriefs(materialize(tasks, context.evidencePack, plan, "deterministic_fallback"), context.evidencePack, context.varietyProfile ?? null, context.symptoms ?? null));
     return {
       tasks: materialized,
       result: {
@@ -340,6 +342,7 @@ export async function applyScheduleHarness(
     evidencePack,
     contextSnapshot: snapshot,
     varietyProfile: legacy.varietyProfile ?? null,
+    symptoms: legacy.symptoms ?? null,
   };
 
   // 2026-11-13 — ONE planner path. The legacy input shape (what index.ts passes) used to run its

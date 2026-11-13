@@ -443,7 +443,7 @@ serve(async (req) => {
         const harnessBudgetMs = Math.max(0, Math.min(HARNESS_MAX_MS, remainingMs() - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
         timePlan.harness_budget_ms = harnessBudgetMs;
         for (const g of evidencePack.gaps) if (!baseline.gaps.includes(g)) baseline.gaps.push(g);
-        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId }, varietyProfile });
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId }, varietyProfile, symptoms: await (await import("./db/agronomy-repo.ts")).getSymptomCatalog(supabase, evidencePack.candidates.map((c) => String(c.condition_code ?? "")), language) });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;

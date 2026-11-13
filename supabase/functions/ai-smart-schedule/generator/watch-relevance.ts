@@ -57,9 +57,25 @@ export function rankWatchBriefs<T extends WatchBriefLike>(
   }));
 }
 
-/** Fold conditional-rule watch briefs (evidence-pack) into each stage's scouting task, so a
- *  farmer sees one scouting card per stage with a "watch for / if seen" list, not many cards. */
-export function foldWatchBriefs(tasks: BaselineTask[], evidence: FoldableEvidence, varietyProfile: VarietyProfile | null = null): BaselineTask[] {
+/** Closing line of a scouting card: the action for every symptom on it. */
+export const SCOUTING_ACTION_LINE = "If you see any of these, note where and how much, and get it checked before any spray or treatment.";
+
+/**
+ * Fold conditional-rule watch briefs (evidence-pack) into each stage's scouting task, so a
+ * farmer sees one scouting card per stage, not many cards.
+ *
+ * 2026-11-13 — A SCOUTING CARD LISTS SYMPTOMS, NEVER A PRESCRIPTION. The card used to print
+ * "watch for <code>; if seen: apply <product, dose>" for every rule of the stage. With generic
+ * condition codes that became an unconditional pesticide line ("watch for stage general; if seen:
+ * apply a fungicide") and a dozen products on one card. A product and dose are decided after the
+ * problem is confirmed in the field at its threshold, by the diagnosis flow, not by the calendar.
+ * With the symptom catalog (database):
+ *   - only codes the catalog marks as a diagnostic, farmer-visible symptom are listed;
+ *   - each symptom appears once, by its farmer-language label, however many rules share it;
+ *   - no product, dose or treatment text is printed, and none is left on the structured list.
+ * Without the catalog (read failed) the card still prints observations only.
+ */
+export function foldWatchBriefs(tasks: BaselineTask[], evidence: FoldableEvidence, varietyProfile: VarietyProfile | null = null, symptoms: ReadonlyMap<string, { label: string; diagnostic: boolean }> | null = null): BaselineTask[] {
   const bindings = resistanceBindings(varietyProfile?.resistance ?? []);
   const briefsByStage = new Map<string, Array<Record<string, unknown>>>();
   for (const c of evidence.candidates) {
@@ -73,17 +89,27 @@ export function foldWatchBriefs(tasks: BaselineTask[], evidence: FoldableEvidenc
   for (const t of tasks) {
     if (t.task_type !== "monitoring") continue;
     const key = String(t.stage_key ?? t.anchor_stage ?? "");
-    const briefs = briefsByStage.get(key);
-    if (!briefs || !briefs.length) continue;
+    const all = briefsByStage.get(key);
+    if (!all || !all.length) continue;
     const res = (t.resources ??= {}) as Record<string, unknown>;
-    // 2026-11-13: order by the selected variety's own resistance records and print at most
-    // MAX_VISIBLE_WATCH_LINES; the complete list stays structured in watch_list (visible flag).
-    const ranked = rankWatchBriefs(briefs, bindings);
+    // Symptoms only: drop non-diagnostic codes, then one entry per symptom (most relevant rule first).
+    const observable = symptoms ? all.filter((b) => symptoms.get(String(b.condition_code ?? ""))?.diagnostic === true) : all;
+    const seen = new Set<string>();
+    const ranked = rankWatchBriefs(observable, bindings, Number.MAX_SAFE_INTEGER)
+      .filter((b) => { const k = String(b.condition_code ?? b.rule_id ?? ""); if (seen.has(k)) return false; seen.add(k); return true; })
+      .map((b, i) => ({
+        ...b,
+        symptom: symptoms?.get(String(b.condition_code ?? ""))?.label ?? null,
+        // The calendar never carries the treatment; whether one exists is kept as a flag only.
+        treatment_on_diagnosis: b.treatment_authorized === true && b.carries_input === true,
+        if_seen: null, treatment: null, treatment_authorized: false,
+        visible: i < MAX_VISIBLE_WATCH_LINES,
+      }));
     res.watch_list = ranked;                       // structured, for the UI
     res.watch_count = ranked.length;
-    // 2026-11-12: lines render from the typed brief; a treatment appears only when the rule row
-    // itself authorizes it (monitoring-safety.ts). No keyword filtering happens after this.
-    const lines = ranked.filter((b) => b.visible).map((b) => watchLine(b as unknown as WatchBrief));
+    res.watch_dropped_not_observable = all.length - observable.length;
+    const lines = ranked.filter((b) => b.visible).map((b) => b.symptom ? `Look for: ${b.symptom}` : watchLine(b as unknown as WatchBrief));
+    if (lines.length) lines.push(SCOUTING_ACTION_LINE);
     t.instructions = [...(t.instructions ?? []), ...lines.filter((l) => !(t.instructions ?? []).includes(l))];
   }
   return tasks;

@@ -35,6 +35,8 @@ export interface ScheduleHarnessContext {
   graph: ScheduleCandidateGraph; evidencePack: AgronomicEvidencePack; contextSnapshot: HarnessContextSnapshot | null;
   /** 2026-11-13 — full crop/variety dossier; the snapshot carries only its planner view. */
   varietyProfile?: VarietyProfile | null;
+  /** 2026-11-13 — observation code -> farmer label + diagnostic flag; scouting cards list symptoms from it. */
+  symptoms?: ReadonlyMap<string, { label: string; diagnostic: boolean }> | null;
 }
 
 export interface PlanItem { candidate_id: string; sequence_order: number; status?: CandidateStatus; reason?: string; }
