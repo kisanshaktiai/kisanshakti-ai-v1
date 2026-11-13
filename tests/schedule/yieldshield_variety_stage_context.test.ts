@@ -155,7 +155,7 @@ describe("variety-aware scouting list", () => {
     expect(res.watch_count).toBe(8);
     expect(res.watch_list).toHaveLength(8);
     expect(res.watch_list.filter((b) => b.visible)).toHaveLength(MAX_VISIBLE_WATCH_LINES);
-    expect(t.instructions).toHaveLength(MAX_VISIBLE_WATCH_LINES);
+    expect(t.instructions).toHaveLength(MAX_VISIBLE_WATCH_LINES + 1); // + the one closing action line
     expect(res.watch_list.find((b) => b.rule_id === "RULE_BLAST_A")?.variety_resistance?.level).toBe("R");
     expect(res.watch_list.map((b) => b.rule_id).sort()).toEqual(evidence.candidates.map((c) => c.task.resources.watch_brief.rule_id).sort());
   });
@@ -171,5 +171,34 @@ describe("variety-aware scouting list", () => {
     ]);
     expect(b.get("R1")).toMatchObject({ level: "MS", weight: 1 });
     expect(rankWatchBriefs([{ rule_id: "R1" }, { rule_id: "R2" }], b, 5).every((x) => x.visible)).toBe(true);
+  });
+});
+
+// ── 2026-11-13: a scouting card lists symptoms, never a prescription ────────────────────────────
+import { SCOUTING_ACTION_LINE } from "../../supabase/functions/ai-smart-schedule/generator/watch-relevance";
+describe("scouting card content", () => {
+  const b = (rule: string, code: string, o: Record<string, unknown> = {}) => ({ default_status: "CONDITIONAL", task: { stage_key: "TILLERING", resources: { watch_brief: { rule_id: rule, category: "disease", condition_code: code, watch_for: code, if_seen: "Apply Fungicide X, 600 g per acre.", treatment_authorized: true, carries_input: true, withheld_reason: null, treatment: { active_ingredient: "Fungicide X", dosage_per_acre: "600 g", application_method: null, phi_days: 20 }, ...o } } } });
+  const catalog = new Map([["leaf_spots", { label: "grey diamond spots on leaves", diagnostic: true }], ["hopper_burn", { label: "plants drying in round patches", diagnostic: true }], ["stage_general", { label: "general stage", diagnostic: false }]]);
+  const evidence = { candidates: [b("STORM_RECOVERY", "stage_general"), b("BLAST_A", "leaf_spots"), b("BLAST_B", "leaf_spots"), b("HOPPER", "hopper_burn")] };
+  const run = (symptoms: typeof catalog | null) => { const t = scoutingTask(); foldWatchBriefs([t], evidence, null, symptoms); return t; };
+  it("prints each real symptom once by its farmer label and never a product, a dose or a code", () => {
+    const t = run(catalog);
+    expect(t.instructions).toEqual(["Look for: grey diamond spots on leaves", "Look for: plants drying in round patches", SCOUTING_ACTION_LINE]);
+    const all = JSON.stringify(t.instructions);
+    for (const banned of ["Fungicide", "600", "stage_general", "if seen", "Apply"]) expect(all).not.toContain(banned);
+  });
+  it("a generic bucket that is not a visible symptom is not a scouting item, so it can never carry an unconditional spray", () => {
+    const res = run(catalog).resources as { watch_list: Array<{ rule_id: string }>; watch_dropped_not_observable: number };
+    expect(res.watch_list.map((x) => x.rule_id)).toEqual(["BLAST_A", "HOPPER"]);
+    expect(res.watch_dropped_not_observable).toBe(1);
+  });
+  it("no treatment is left on the structured list either; only a flag that one exists after diagnosis", () => {
+    const list = (run(catalog).resources as { watch_list: Array<Record<string, unknown>> }).watch_list;
+    for (const x of list) { expect(x.if_seen).toBeNull(); expect(x.treatment).toBeNull(); expect(x.treatment_authorized).toBe(false); expect(x.treatment_on_diagnosis).toBe(true); }
+  });
+  it("without the catalog the card still prints observations only", () => {
+    const all = JSON.stringify(run(null).instructions);
+    expect(all).not.toContain("Fungicide");
+    expect(all).toContain("report it before treating");
   });
 });

@@ -193,7 +193,49 @@ const methodFilter=(methods:string[]|null|undefined):string=>`cultivation_method
 export async function getFieldActionRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<FieldActionRule[]>{
   const FIELD_ACTION_RULE_LIMIT=1000;
   const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
-  return (data||[]) as FieldActionRule[];
+  const rows=(data||[]) as FieldActionRule[];
+  // 2026-11-13 — SCHEDULE OPERATIONS filed under another trigger class. Core practices (seed
+  // treatment, nursery bed, puddling, gap filling) are stored as general advice rules, so they never
+  // became a dated operation. decision_rules.schedule_role = 'operation' marks such a rule as a
+  // stage operation of the static schedule and schedule_stage names its stage; the rule itself and
+  // its use elsewhere are untouched. Read tolerantly: without the columns nothing is added.
+  try{
+    const extra=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, schedule_role, schedule_stage").eq("is_active",true).eq("schedule_role","operation").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
+    if(!extra.error){
+      const have=new Set(rows.map(r=>r.rule_id));
+      for(const r of (extra.data||[]) as Array<Record<string,unknown>>){
+        if(have.has(String(r.rule_id))) continue;
+        const stage=String(r.schedule_stage??"").trim();
+        rows.push({...(r as unknown as FieldActionRule),category:"management",stage_applicable:stage?[stage]:r.stage_applicable});
+      }
+    }
+  }catch{ /* tolerant by design */ }
+  return rows;
+}
+
+/** What the database knows about an observation code: its farmer label and whether it is a real, farmer-visible symptom. */
+export interface SymptomInfo { label:string; diagnostic:boolean; }
+/**
+ * 2026-11-13 — farmer labels and diagnostic flags for observation codes (observation_master +
+ * observation_translations). A code that is not a diagnostic, farmer-observable symptom (a generic
+ * "any stage" or "pest present" bucket) is not something a farmer can look for. Never throws.
+ */
+export async function getSymptomCatalog(supabase:SupabaseClient,codes:string[],language:string|null):Promise<Map<string,SymptomInfo>|null>{
+  const ids=[...new Set(codes.map(c=>String(c??"").trim()).filter(Boolean))];
+  if(!ids.length) return new Map();
+  try{
+    const lang=String(language||"en").trim().toLowerCase();
+    const [m,t]=await Promise.all([
+      supabase.from("observation_master").select("observation_code, is_diagnostic, is_farmer_observable, is_active").in("observation_code",ids),
+      supabase.from("observation_translations").select("observation_code, language_code, display_text").in("observation_code",ids).in("language_code",[lang,"en"]),
+    ]);
+    if(m.error||t.error) return null;
+    const label=new Map<string,string>();
+    for(const r of (t.data||[]) as Array<Record<string,unknown>>){const code=String(r.observation_code);const text=String(r.display_text??"").trim();if(!text)continue;if(String(r.language_code).toLowerCase()===lang||!label.has(code))label.set(code,text);}
+    const out=new Map<string,SymptomInfo>();
+    for(const r of (m.data||[]) as Array<Record<string,unknown>>){const code=String(r.observation_code);const l=label.get(code);if(!l)continue;out.set(code,{label:l,diagnostic:r.is_diagnostic===true&&r.is_farmer_observable!==false&&r.is_active!==false});}
+    return out;
+  }catch{ return null; }
 }
 
 export interface ObservationRuleRef {rule_id:string;stage_applicable:unknown;priority:number|null;category:string|null;condition_code:string|null;etl_threshold:string|null;action_text:string|null;cultivation_method_applicable?:unknown;is_farmer_servable?:boolean|null;is_safety_block?:boolean|null;}

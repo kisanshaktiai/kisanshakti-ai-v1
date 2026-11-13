@@ -23,6 +23,9 @@ describe("stage-wise work plan", () => {
     expect(inputs.map((i) => [i.nutrient, i.dose_value, i.dose_unit])).toEqual([["N", 35.51, "kg"], ["K", 17.75, "kg"]]);
     expect([card.task_description, ...card.instructions].join(" ")).toContain("17.75 kg");
     expect([card.task_description, ...card.instructions].join(" ")).toContain("35.51 kg");
+    expect(card.task_name).toBe("Apply fertilizer: N + K");
+    expect(card.task_description).toBe("Apply 35.51 kg of Nitrogen (N) to this field. Apply 17.75 kg of Potassium (K2O basis) to this field.");
+    expect(card.instructions).toEqual([]);
     expect(card.rule_ids).toEqual(["r1", "r2"]);
     expect((card.resources as { product_equivalents: unknown[] }).product_equivalents).toHaveLength(2);
     expect((card.resources as { stage_work: { merged_count: number; group: string } }).stage_work).toMatchObject({ merged_count: 2, group: "nutrition" });

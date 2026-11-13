@@ -77,9 +77,17 @@ function merge(group: WorkGroup, members: BaselineTask[]): BaselineTask {
     if (Array.isArray(r.product_equivalents)) equivalents.push(...(r.product_equivalents as unknown[]));
   }
   let quantity = anchor.quantity, nutrient = anchor.nutrient;
+  let name = anchor.task_name;
   if (dosed.length > 1) {
+    // One feeding card for several nutrients says so: its title names every nutrient (the
+    // database's own nutrient symbols) and its description states every dose, not only the first.
+    const symbols = [...new Set(dosed.map((t) => text(t.nutrient)).filter(Boolean))];
+    if (symbols.length > 1) name = `Apply fertilizer: ${symbols.join(" + ")}`;
+    const doses = uniq(dosed.map((t) => text(t.task_description)));
+    if (doses.length) { description = doses.join(" "); }
     for (const t of dosed) inputs.push({ nutrient: t.nutrient ?? null, dose_value: t.quantity!.value, dose_unit: t.quantity!.unit, nutrient_basis: res(t).nutrient_basis ?? null });
     quantity = null; nutrient = null;
+    for (const d of uniq(dosed.map((t) => text(t.task_description)))) { const at = instructions.indexOf(d); if (at >= 0) instructions.splice(at, 1); }
   } else if (dosed.length === 1 && dosed[0] !== anchor) { quantity = dosed[0].quantity; nutrient = dosed[0].nutrient; }
 
   const recurring = members.filter((t) => t.recurrence);
@@ -87,6 +95,7 @@ function merge(group: WorkGroup, members: BaselineTask[]): BaselineTask {
 
   return {
     ...anchor,
+    task_name: name,
     task_description: description,
     instructions,
     // The anchor's own day: a dated operation keeps its date when a stage-long note is folded in.

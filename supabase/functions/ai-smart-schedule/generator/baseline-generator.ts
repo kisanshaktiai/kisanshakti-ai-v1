@@ -936,6 +936,7 @@ export async function generateBaseline(
       observationRules.map((r) => String(r.condition_code ?? "").trim()).filter(Boolean),
     )];
     const labelByCode = new Map<string, string>();
+    const notASymptom = new Set<string>();
     if (condCodes.length) {
       const { data: trs } = await supabase
         .from("observation_translations")
@@ -949,6 +950,12 @@ export async function generateBaseline(
         if (!text) continue;
         if (isLang || !labelByCode.has(code)) labelByCode.set(code, text);
       }
+      // 2026-11-13: only a diagnostic, farmer-visible symptom is something to "inspect for". Generic
+      // buckets (observation_master.is_diagnostic = false) were printed as if they were symptoms.
+      const { data: flags, error: flagsError } = await supabase.from("observation_master").select("observation_code, is_diagnostic, is_farmer_observable").in("observation_code", condCodes);
+      if (!flagsError) for (const row of (flags || []) as Array<Record<string, unknown>>) {
+        if (row.is_diagnostic !== true || row.is_farmer_observable === false) notASymptom.add(String(row.observation_code));
+      }
       const unmapped = condCodes.filter((c) => !labelByCode.has(c));
       if (unmapped.length) gaps.push(`observation_label_missing:${unmapped.length}`);
     }
@@ -960,7 +967,7 @@ export async function generateBaseline(
         const r = ruleById.get(id);
         if (!r) continue;
         const cc = String(r.condition_code ?? "").trim();
-        if (cc) {
+        if (cc && !notASymptom.has(cc)) {
           const label = labelByCode.get(cc) || cc.replace(/_/g, " ");
           if (!conditions.includes(label)) conditions.push(label);
           const etl = String(r.etl_threshold ?? "").trim();

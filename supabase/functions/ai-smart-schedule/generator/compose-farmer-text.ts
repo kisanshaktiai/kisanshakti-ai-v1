@@ -201,6 +201,9 @@ function prompt(chunk: TaskFacts[], language: string, cropContext: CropContext =
       "Product names and fertilizer grades stay in the script the farmer reads on the bag; the sentence around them is written in his language.",
       "When a condition is supplied, begin the steps with that condition so the farmer knows this is done only if he sees it.",
       "Do not add advice, cautions or agronomy of your own — only what the supplied facts and reference material already say.",
+      "One card is one job at one crop stage. Put the steps in the order the farmer does them in the field. Say each thing once: when two supplied lines state the same dose or the same instruction, write it one time.",
+      "A crop-check card (task_type monitoring) only tells the farmer what to look for and to get it checked. Never name a pesticide, a dose or a spray on it, even if you know one.",
+      "Never output internal codes or English placeholders (words joined by underscores, rule names, 'stage general'). If a supplied line is only such a code, leave it out.",
       ...(cropContext ? [
         "selected_crop is the crop and variety this farmer chose. Every task is for that crop and variety at the growth stage given in the task's `stage`. Never describe the crop in general, another crop or another variety.",
         "task_name says the operation for THIS stage of THIS crop (the stage or the crop name may appear in it when that makes it clearer), not a generic heading.",

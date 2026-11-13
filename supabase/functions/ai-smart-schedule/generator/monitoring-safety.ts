@@ -37,6 +37,8 @@ export function treatmentAuthorization(rule: Record<string, unknown>, bannedChem
 export interface WatchBrief {
   rule_id: string;
   category: string;
+  /** The observation code the rule is conditioned on (the key into the symptom catalog). */
+  condition_code?: string | null;
   watch_for: string;
   /** Rendered ONLY when treatment_authorized; null otherwise. */
   if_seen: string | null;
@@ -58,7 +60,7 @@ export function buildWatchBrief(rule: Record<string, unknown>, bannedChemicalCla
       : (text(rule.action_text) || null);
   }
   return {
-    rule_id: text(rule.rule_id), category: text(rule.category),
+    rule_id: text(rule.rule_id), category: text(rule.category), condition_code: cond || null,
     watch_for: etl || cond || text(rule.category) || "problem",
     if_seen: ifSeen, treatment_authorized: auth.authorized, carries_input: auth.carriesInput,
     withheld_reason: auth.authorized ? null : auth.reason,
