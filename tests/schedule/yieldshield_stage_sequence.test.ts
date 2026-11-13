@@ -89,13 +89,12 @@ describe("rule timing inside the stage", () => {
 import { consolidateByStage } from "../../supabase/functions/ai-smart-schedule/generator/stage-work-plan";
 describe("dated operation inside a merged card", () => {
   const order = biologicalStageOrder(stages, 35);
-  it("first weeding stays 15 days after transplanting when a stage-long note is folded into its card, and is named for tillering", () => {
+  it("first weeding stays 15 days after transplanting, separate from a stage-long note on another day, and is named for tillering", () => {
     const weed = card("weed — transplant establishment", "est", "weed_management", 35, { rule_ids: ["WEED"] });
     const note = card("weekly walk", "till", "advisory", 45, { rule_ids: ["SCOUT"] });
     applyRuleStageOffsets([weed, note], new Map([["WEED", { rule_id: "WEED", offset_min: 15, offset_max: 45, stages: ["transplant_establishment", "tillering"] }]]), order);
     const out = consolidateByStage([weed, note]).tasks;
-    expect(out).toHaveLength(1);
-    expect(out[0].days_from_sowing).toBe(50);
-    expect(out[0].task_name).toBe("weed — tillering");
+    // two events on two days: the weeding keeps its own date and is not folded into the note
+    expect(out.map((t) => [t.task_name, t.days_from_sowing])).toEqual([["weekly walk", 45], ["weed — tillering", 50]]);
   });
 });

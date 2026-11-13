@@ -79,7 +79,8 @@ describe("stage-wise work plan", () => {
       ["boot", "monitoring", 2], ["head", "monitoring", 2], ["flower", "monitoring", 2],
       ["grain", "monitoring", 1], ["grain", "irrigation", 1], ["mat", "monitoring", 1], ["harv", "harvest", 1], ["post", "post_harvest", 1], ["post", "advisory", 1],
     ];
-    const tasks = shape.flatMap(([stage, type, n], si) => Array.from({ length: n }, (_, i) => task({ task_name: `${stage}-${type}-${i}`, task_type: type, stage_uuid: stage, stage_key: stage, stage_order: si, days_from_sowing: si })));
+    const stageDay = new Map<string, number>(); for (const [stage] of shape) if (!stageDay.has(stage)) stageDay.set(stage, stageDay.size * 10);
+    const tasks = shape.flatMap(([stage, type, n], si) => Array.from({ length: n }, (_, i) => task({ task_name: `${stage}-${type}-${i}`, task_type: type, stage_uuid: stage, stage_key: stage, stage_order: stageDay.get(stage)!, days_from_sowing: stageDay.get(stage)! })));
     expect(tasks).toHaveLength(41);
     const out = consolidateByStage(tasks);
     expect(out.after).toBe(29);
@@ -118,5 +119,59 @@ describe("variety stage windows", () => {
   });
   it("no variety rows leaves the stage list unchanged", () => {
     expect(applyVarietyStageWindows(generic, [], "transplanted")).toBe(generic);
+  });
+});
+
+// ── 2026-11-13: merging never loses a scheduled event ───────────────────────────────────────────
+describe("merge only what is one job", () => {
+  it("cards of one stage and kind due on different days stay separate events", () => {
+    const out = consolidateByStage([
+      task({ task_name: "keep 2 cm water for a week", task_type: "irrigation", days_from_sowing: 35 }),
+      task({ task_name: "irrigate to 5 cm", task_type: "irrigation", days_from_sowing: 45 }),
+      task({ task_name: "first weeding", task_type: "weed_management", days_from_sowing: 50 }),
+      task({ task_name: "gap filling", task_type: "advisory", days_from_sowing: 42 }),
+    ]);
+    expect(out.tasks.map((t) => [t.task_name, t.days_from_sowing])).toEqual([["keep 2 cm water for a week", 35], ["gap filling", 42], ["irrigate to 5 cm", 45], ["first weeding", 50]]);
+    expect(out.merged_groups).toBe(0);
+  });
+  it("two different repeat cadences on the same day are never folded into one card", () => {
+    const out = consolidateByStage([
+      task({ task_name: "every 2 days", task_type: "irrigation", recurrence: { interval_days: 2, window_start: 0, window_end: 24, expected_events: 13 } }),
+      task({ task_name: "every 5 days", task_type: "irrigation", recurrence: { interval_days: 5, window_start: 0, window_end: 24, expected_events: 5 } }),
+    ]);
+    expect(out.tasks).toHaveLength(2);
+    expect(out.tasks.map((t) => t.recurrence?.interval_days).sort()).toEqual([2, 5]);
+  });
+  it("every source card is still accounted for after consolidation (property over mixed days)", () => {
+    const types = ["irrigation", "nutrition", "monitoring", "weed_management", "advisory"];
+    for (let seed = 1; seed <= 40; seed++) {
+      let x = seed * 7919; const rnd = (n: number) => { x = (x * 1103515245 + 12345) % 2147483648; return x % n; };
+      const cards = Array.from({ length: 5 + rnd(20) }, (_, i) => task({ task_name: `c${i}`, task_type: types[rnd(types.length)], stage_uuid: `s${rnd(4)}`, stage_key: `S${rnd(4)}`, days_from_sowing: rnd(6) * 5, rule_ids: [`r${i}`] }));
+      const out = consolidateByStage(cards).tasks;
+      expect(out.flatMap((t) => t.rule_ids).sort()).toEqual(cards.map((c) => c.rule_ids[0]).sort());
+      for (const t of out) for (const m of ((t.resources as { stage_work?: { members: Array<{ days_from_sowing: number }> } } | undefined)?.stage_work?.members ?? [])) expect(m.days_from_sowing).toBe(t.days_from_sowing);
+    }
+  });
+});
+
+describe("crop check stays observation only", () => {
+  it("a dosed pest card on a scouting day stays its own card; the scouting card carries no quantity and passes the gate", async () => {
+    const { monitoringViolations } = await import("../../supabase/functions/ai-smart-schedule/generator/monitoring-safety");
+    const out = consolidateByStage([
+      task({ task_name: "scout", task_type: "monitoring", days_from_sowing: 30, rule_ids: ["m1"] }),
+      task({ task_name: "spray", task_type: "pest_management", days_from_sowing: 30, quantity: { value: 1, unit: "l" }, rule_ids: ["p1"] }),
+    ]);
+    expect(out.tasks).toHaveLength(2);
+    const scout = out.tasks.find((t) => t.task_type === "monitoring")!;
+    expect(scout.quantity).toBeNull();
+    expect(monitoringViolations(scout)).toEqual([]);
+    expect(out.tasks.find((t) => t.task_type === "pest_management")!.quantity).toEqual({ value: 1, unit: "l" });
+  });
+  it("undosed crop-check cards of one day still fold into one scouting card", () => {
+    const out = consolidateByStage([
+      task({ task_name: "scout", task_type: "monitoring", days_from_sowing: 30 }),
+      task({ task_name: "look", task_type: "disease_management", days_from_sowing: 30, task_description: "Look at the leaves." }),
+    ]);
+    expect(out.tasks).toHaveLength(1);
   });
 });

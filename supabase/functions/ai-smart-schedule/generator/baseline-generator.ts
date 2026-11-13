@@ -1246,6 +1246,9 @@ export async function generateBaseline(
         const eventLine="Irrigate the field on the transplanting day.";
         if(stale.test(String(t.task_description??"").trim())) t.task_description=eventLine;
         t.instructions=t.instructions.map(l=>stale.test(String(l).trim())?eventLine:l);
+        // The weekly-walk line of the stage quotes the same default window; on the recorded day it is one check.
+        const staleWalk=/^Walk the field once a week from DAS \d+ to \d+\.$/;
+        t.instructions=t.instructions.map(l=>staleWalk.test(String(l).trim())?"Check the seedlings and the field on the transplanting day.":l);
         t.recurrence=null;
         gaps.push("transplant_recurrence_requires_event_specific_plan");
       }
