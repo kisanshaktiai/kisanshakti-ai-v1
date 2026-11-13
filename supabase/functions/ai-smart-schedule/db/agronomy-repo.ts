@@ -34,7 +34,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
 export interface Provenance { table: string; row_id?: string | null; source?: string | null; authority?: string | null; confidence?: number | null; }
-export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null;  /** Set when the selected variety's own stage window (variety_phenology_profile) replaced the crop-level one. */ variety_window_source?:string|null; }
+export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null;  /** Set when the selected variety's own stage window (variety_phenology_profile) replaced the crop-level one. */ variety_window_source?:string|null;  /** crop_stage_master.phenology_index: the stage's position in the crop's biological sequence (null on some operational stages). */ phenology_index?:number|null; }
 
 /** One active variety_phenology_profile row: the variety's own window for one crop stage. */
 export interface VarietyStageWindow { stage_uuid:string|null; das_min_override:number|null; das_max_override:number|null; das_reference:string|null; cultivation_method:string|null; source:string|null; calendar_reliability:string|null; }
@@ -70,7 +70,7 @@ export function applyVarietyStageWindows(rows:StageRow[],windows:VarietyStageWin
 }
 
 export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycle:string|null,cultivationMethod:string|null,varietyId:string|null=null):Promise<StageRow[]> {
-  let q=supabase.from("crop_stage_master").select("id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days, stage_node_type").eq("crop_code",cropCode).eq("is_active",true).order("das_min",{ascending:true,nullsFirst:true});
+  let q=supabase.from("crop_stage_master").select("id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days, stage_node_type, phenology_index").eq("crop_code",cropCode).eq("is_active",true).order("das_min",{ascending:true,nullsFirst:true});
   if(cropCycle) q=q.or(`crop_cycle.eq.${cropCycle},crop_cycle.eq.universal,crop_cycle.is.null`);
   const {data}=await q;
   // 2026-11-12: an alias row is a second NAME for a biological stage, not a stage. Counting it
@@ -228,3 +228,27 @@ export async function getVarietyDuration(
 
 export async function getBannedChemicals(supabase:SupabaseClient):Promise<Set<string>>{const {data}=await supabase.from("chemical_regulatory_status").select("chemical_name, status").limit(1000);const out=new Set<string>();for(const r of data||[]){if(String(r.status??"").toLowerCase()!=="approved")out.add(String(r.chemical_name??"").toLowerCase());}return out;}
 export async function getLaborRate(supabase:SupabaseClient,state:string|null,operationType:string|null):Promise<number|null>{if(!state)return null;let q=supabase.from("labor_rates").select("daily_wage").ilike("state",state).eq("is_active",true).order("effective_date",{ascending:false}).limit(1);if(operationType)q=q.eq("operation_type",operationType);const {data}=await q;const row=(data||[])[0];return row?.daily_wage!=null?Number(row.daily_wage):null;}
+
+/** A rule's own timing inside its stage: days after the stage starts (decision_rules.stage_offset_days_min/max). */
+export interface RuleStageOffset { rule_id:string; offset_min:number; offset_max:number|null; stages:string[]; }
+/**
+ * 2026-11-13 — read the stage offsets of the given rules. Read separately and tolerantly: where the
+ * columns are not deployed yet (or the read fails) the result is empty and every card keeps the
+ * stage-start date it has today, so the function never depends on the migration's timing.
+ */
+export async function getRuleStageOffsets(supabase:SupabaseClient,ruleIds:string[]):Promise<Map<string,RuleStageOffset>>{
+  const out=new Map<string,RuleStageOffset>();
+  const ids=[...new Set(ruleIds.filter(Boolean))];
+  if(!ids.length) return out;
+  try{
+    const {data,error}=await supabase.from("decision_rules").select("rule_id, stage_offset_days_min, stage_offset_days_max, stage_applicable").in("rule_id",ids).not("stage_offset_days_min","is",null);
+    if(error) return out;
+    for(const r of (data??[]) as Array<Record<string,unknown>>){
+      const min=Number(r.stage_offset_days_min);
+      if(!Number.isFinite(min)||min<0) continue;
+      const max=r.stage_offset_days_max==null?null:Number(r.stage_offset_days_max);
+      out.set(String(r.rule_id),{rule_id:String(r.rule_id),offset_min:min,offset_max:max!=null&&Number.isFinite(max)&&max>=min?max:null,stages:Array.isArray(r.stage_applicable)?r.stage_applicable.map((x)=>String(x).trim().toLowerCase()).filter(Boolean):[]});
+    }
+  }catch{ /* tolerant by design */ }
+  return out;
+}
