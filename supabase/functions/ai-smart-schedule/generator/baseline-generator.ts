@@ -539,6 +539,14 @@ export async function generateBaseline(
         gaps.push("fertilizer_split_without_timing_skipped");
         continue;
       }
+      // 2026-11-13: a split may state its own timing inside its stage (stage_offset_days, a
+      // database value). Without it the dose is due on the stage's first day, as before.
+      const splitOffset = Number(split.stage_offset_days);
+      if (stage && split.stage_offset_days != null && Number.isFinite(splitOffset) && splitOffset >= 0) {
+        const stageEnd = toDas(stage, stage.das_max, transplantOffset);
+        if (stageEnd == null || das + splitOffset <= stageEnd) das += splitOffset;
+        else gaps.push("fertilizer_split_offset_outside_stage_ignored");
+      }
       // Strict split semantics — agronomic quantities never come from a heuristic.
       // percent/pct in (0,100] ⇒ /100; fraction in (0,1] used as-is; anything else
       // (a bare 'share', an out-of-range number) is ambiguous ⇒ null + named gap.
@@ -1224,6 +1232,13 @@ export async function generateBaseline(
       t.resources={...(t.resources??{}),window:{from_das:transplantOffset,to_das:transplantOffset,
         clock:"sowing",anchor_event:"transplanting",date_source:"farmer_record"}};
       if(t.recurrence){
+        // The stage's irrigation cadence was written for the stage's default day window. On the
+        // farmer's recorded transplanting day it is one irrigation, so the stale window sentence
+        // is replaced; the stage total and every other line are kept.
+        const stale=/^Irrigate about every \d+ days? from DAS \d+ to \d+\.$/;
+        const eventLine="Irrigate the field on the transplanting day.";
+        if(stale.test(String(t.task_description??"").trim())) t.task_description=eventLine;
+        t.instructions=t.instructions.map(l=>stale.test(String(l).trim())?eventLine:l);
         t.recurrence=null;
         gaps.push("transplant_recurrence_requires_event_specific_plan");
       }

@@ -63,7 +63,11 @@ const prompt = (c: ScheduleHarnessContext, errors: string[]) => JSON.stringify({
   resolved_context: c.contextSnapshot ? { ...c.contextSnapshot, variety_profile: undefined } : null, known_gaps: c.gaps, domain_summary: c.evidencePack.domain_summary,
   candidate_count: c.graph.nodes.length,
   audited_domains: ["LAND_PREPARATION","SEED_TREATMENT","PLANTING","NUTRIENT","MICRONUTRIENT","ORGANIC_INPUT","BIOLOGICAL_INPUT","IRRIGATION","WEED","PEST","DISEASE","PGR","INTERCULTURAL","MONITORING","HARVEST","POST_HARVEST"],
-  candidates: c.graph.nodes.map((n) => ({ id:n.id, required:n.required, materializable:n.materializable, default_status:n.default_status, domain:n.domain, task_type:n.task_type, days_from_sowing:n.days_from_sowing, stage_key:n.stage_key, stage_order:n.stage_order, priority:n.priority, weather_dependent:n.weather_dependent, trigger_class:n.trigger_class, condition_code:n.condition_code, depends_on:n.depends_on, rule_ids:n.rule_ids, evidence:n.evidence ?? null })),
+  // 2026-11-13: only the candidates the planner may decide are sent. A watch candidate (not
+  // required, not materializable) can never change status — the validator rejects it — and there
+  // are over a hundred of them on a real graph; sending them made both planner models time out,
+  // which also left no time for the farmer-language pass. They keep their default status.
+  candidates: c.graph.nodes.filter((n) => n.required || n.materializable).map((n) => ({ id:n.id, required:n.required, materializable:n.materializable, default_status:n.default_status, domain:n.domain, task_type:n.task_type, days_from_sowing:n.days_from_sowing, stage_key:n.stage_key, stage_order:n.stage_order, priority:n.priority, weather_dependent:n.weather_dependent, trigger_class:n.trigger_class, condition_code:n.condition_code, depends_on:n.depends_on, rule_ids:n.rule_ids, evidence:n.evidence ?? null })),
   edges: c.graph.edges, previous_validation_errors: errors,
   required_output: {
     schema_version:"schedule_plan_intent_v3",

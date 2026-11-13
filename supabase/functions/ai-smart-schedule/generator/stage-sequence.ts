@@ -70,6 +70,8 @@ export function applyRuleStageOffsets(tasks: BaselineTask[], offsets: ReadonlyMa
     const target = order.find((p) => p.from != null && p.to != null && from >= p.from && from <= p.to && rule.stages.includes(String(p.stage.growth_stage ?? "").toLowerCase())) ?? home;
     t.days_from_sowing = from;
     if (target !== home) {
+      const label = (st: StageRow) => String(st.growth_stage || st.stage_code || "").replace(/_/g, " ");
+      if (label(home.stage) && t.task_name.includes(label(home.stage))) t.task_name = t.task_name.replace(label(home.stage), label(target.stage));
       t.stage_uuid = target.stage.id; t.stage_key = target.stage.stage_code; t.stage_name = target.stage.growth_stage;
       t.anchor_stage = target.stage.stage_code || target.stage.growth_stage; t.gdd_target = target.stage.gdd_min ?? null;
     }

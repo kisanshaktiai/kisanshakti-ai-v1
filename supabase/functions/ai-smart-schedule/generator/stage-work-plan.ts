@@ -89,7 +89,8 @@ function merge(group: WorkGroup, members: BaselineTask[]): BaselineTask {
     ...anchor,
     task_description: description,
     instructions,
-    days_from_sowing: Math.min(...members.map((t) => t.days_from_sowing)),
+    // The anchor's own day: a dated operation keeps its date when a stage-long note is folded in.
+    days_from_sowing: anchor.days_from_sowing,
     priority: top.priority,
     weather_dependent: members.some((t) => t.weather_dependent),
     quantity, nutrient,
