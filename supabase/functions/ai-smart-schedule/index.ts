@@ -69,6 +69,7 @@ import { generateBaseline, GENERATOR_VERSION, toDas, computeTransplantOffset } f
 import { composeFarmerText, COMPOSER_VERSION, type TaskFacts } from "./generator/compose-farmer-text.ts";
 import { loadVarietyProfile, composerVarietyView } from "./db/variety-profile.ts";
 import { consolidateByStage } from "./generator/stage-work-plan.ts";
+import { applyRuleStageOffsets, biologicalStageOrder, sequenceTasks } from "./generator/stage-sequence.ts";
 import { narratePendingSchedules, narrateScheduleTasks } from "./generator/narrate-pending.ts";
 import { sanitizeTaskText, hasFarmerText, isTechnicalLine } from "./generator/farmer-text.ts";
 import { loadLandContext } from "./db/land-context.ts";
@@ -455,10 +456,20 @@ serve(async (req) => {
     // 2026-11-13 — STAGE-WISE WORK PLAN. A farmer works by crop stage, so the cards of one stage and
     // one kind of work (field work, feeding, water, crop check) become ONE card. Regrouping only:
     // every folded card's text, rule ids, sources and quantities stay on the merged card.
+    //
+    // SEQUENCE (2026-11-13). The order of work is agronomy, so it is decided in one place
+    // (generator/stage-sequence.ts): stages in the crop's biological order, each rule card dated
+    // from the rule's own timing inside its stage, and on one day inputs before the operation,
+    // then water, then the crop check.
     {
+      const { getStages, getRuleStageOffsets } = await import("./db/agronomy-repo.ts");
+      const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
+      const order = biologicalStageOrder(stageRows, computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate));
+      const offsets = await getRuleStageOffsets(supabase, baseline.tasks.flatMap((t) => t.rule_ids ?? []));
+      const redated = applyRuleStageOffsets(baseline.tasks, offsets, order);
       const plan = consolidateByStage(baseline.tasks);
-      baseline.tasks.splice(0, baseline.tasks.length, ...plan.tasks);
-      stageWorkTrace = { before: plan.before, after: plan.after, merged_groups: plan.merged_groups };
+      baseline.tasks.splice(0, baseline.tasks.length, ...sequenceTasks(plan.tasks, order));
+      stageWorkTrace = { before: plan.before, after: plan.after, merged_groups: plan.merged_groups, rule_offsets_applied: redated, stage_order: order.map((p) => p.stage.stage_code ?? p.stage.growth_stage) };
     }
 
     // A scouting card is observation, never a standing prescription. Enforced on STRUCTURE
