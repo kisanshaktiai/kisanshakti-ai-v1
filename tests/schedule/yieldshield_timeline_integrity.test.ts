@@ -59,7 +59,9 @@ describe("quality gates", () => {
   const live = [dose("N", 71.02, "tp", 35), dose("P", 71.02, "tp", 35), dose("K", 35.51, "tp", 35), dose("N", 35.51, "till", 56), dose("K", 17.75, "till", 56)];
   it("the live fertilizer split passes the mass balance (independent check: 1.4205 ha x 100 kg N = 142.05 kg)", () => {
     expect(Math.abs(3.51 * 0.404686 * 100 - programme.N)).toBeLessThan(0.05);
-    expect(runQualityGates(live, order, programme)).toMatchObject({ passed: true, blocking: [] });
+    // 2026-11-13: this slice holds only the feeding cards, so it is safe (no blocking finding) but not a
+    // complete programme; `passed` now means complete AND safe, so it is read from readiness here.
+    expect(runQualityGates(live, order, programme)).toMatchObject({ blocking: [], readiness: { safe_to_save: true } });
   });
   it("blocks a plan whose doses add up to more than the season's programme", () => {
     const r = runQualityGates([...live, dose("N", 71.02, "till", 60), dose("N", 35.51, "till", 70)], order, programme);
@@ -80,14 +82,16 @@ describe("quality gates", () => {
   });
   it("warns, without blocking, on a card dated outside its stage, a rule on two cards and a card with no instruction", () => {
     const r = runQualityGates([card("a", "nur", "advisory", 30, { task_description: "x", rule_ids: ["R"] }), card("b", "est", "advisory", 36, { rule_ids: ["R"] })], order, {});
-    expect(r.passed).toBe(true);
+    expect(r.blocking).toEqual([]);
+    expect(r.readiness.safe_to_save).toBe(true);
     expect(r.warnings.map((w) => w.code).sort()).toEqual(["EXECUTABLE_TASK_WITHOUT_INSTRUCTIONS", "RULE_ON_TWO_CARDS", "TASK_DATED_OUTSIDE_ITS_STAGE"]);
   });
 });
 
 describe("detailed steps", () => {
   it("are the card's steps then its precautions, each once; a card with no steps uses its description", () => {
-    expect(detailedStepsOf({ task_description: "d", instructions: ["one", "two", "one"], precautions: ["wear gloves", "two"] })).toEqual(["one", "two", "wear gloves"]);
+    expect(detailedStepsOf({ task_description: "d", instructions: ["one", "two", "one"], precautions: ["wear gloves", "two"] })).toEqual(["d", "one", "two", "wear gloves"]);
+    expect(detailedStepsOf({ task_description: "one", instructions: ["one", "two"], precautions: [] })).toEqual(["one", "two"]);
     expect(detailedStepsOf({ task_description: "Dry the grain.", instructions: [], precautions: [] })).toEqual(["Dry the grain."]);
     expect(detailedStepsOf({ task_description: "", instructions: [], precautions: [] })).toEqual([]);
   });

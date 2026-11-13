@@ -113,8 +113,8 @@ Deno.test("scouting excludes economics/safety/management rules", async () => {
 Deno.test("irrigation task keeps provenance out of farmer text", async () => {
   const { tasks } = await generateBaseline(makeSupabase(), inputs());
   const irr = tasks.find((t) => t.task_type === "irrigation")!;
-  // The farmer line is the cadence sentence; the card is never blank.
-  assert(irr.task_description.startsWith("Irrigate about every"), irr.task_description);
+  // The farmer line is the field-water check at the guideline cadence (2026-11-13); the card is never blank.
+  assert(irr.task_description.startsWith("Check the field water about every"), irr.task_description);
   assert(!irr.instructions.some((i) => i.startsWith("Source:")));
   assert((irr.technical_details ?? []).includes("Critical soil moisture: 100%"));
   assert((irr.technical_details ?? []).some((i) => i.startsWith("Source:")));

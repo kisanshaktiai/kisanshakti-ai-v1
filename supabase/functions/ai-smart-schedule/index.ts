@@ -70,7 +70,7 @@ import { composeFarmerText, COMPOSER_VERSION, type TaskFacts } from "./generator
 import { loadVarietyProfile, composerVarietyView } from "./db/variety-profile.ts";
 import { consolidateByStage } from "./generator/stage-work-plan.ts";
 import { applyRuleStageOffsets, biologicalStageOrder, sequenceTasks } from "./generator/stage-sequence.ts";
-import { detailedStepsOf, labelStageClock, markTimingConfidence, runQualityGates } from "./generator/timeline-integrity.ts";
+import { alignAfterHarvest, calendarStageAt, detailedStepsOf, labelStageClock, markTimingConfidence, runQualityGates, transplantDateDecision, withholdConflictingSeedRate } from "./generator/timeline-integrity.ts";
 import { narratePendingSchedules, narrateScheduleTasks } from "./generator/narrate-pending.ts";
 import { sanitizeTaskText, hasFarmerText, isTechnicalLine } from "./generator/farmer-text.ts";
 import { loadLandContext } from "./db/land-context.ts";
@@ -343,6 +343,15 @@ serve(async (req) => {
       return json({ success: true, scope, stage_graph_sha256: graphHash, stage_count: selectedGraph.length, release });
     }
 
+    // 2026-11-13 — CULTIVATION METHOD x CLOCK. A transplant date is meaningful only when the
+    // selected method's stage graph counts days from transplanting (crop_stage_master clock fields).
+    {
+      const decision = transplantDateDecision(selectedGraph, inputs.transplantDate, !!transplantDate);
+      if (decision.reject) return json({ success: false, code: "TRANSPLANT_DATE_NOT_APPLICABLE_TO_METHOD", error: "A transplanting date was given for a cultivation method that has no transplanting. Remove the transplanting date or select a transplanted method.", cultivationMethod: inputs.cultivationMethod, transplantDate: inputs.transplantDate }, 422);
+      if (!decision.keep && inputs.transplantDate) inputs.transplantDate = null;
+      if (decision.gap) inputs.gaps.push(decision.gap);
+    }
+
     const baseline = await generateBaseline(supabase, inputs);
     if (!baseline.tasks.length) return json({ error: "No schedule could be produced from the agronomic database for this crop", cropCode: inputs.cropCode, gaps: baseline.gaps, coverage: baseline.coverage }, 422);
     if (!baseline.coverage.stages) return json({ error: "No growth-stage graph is available for this crop and cultivation method", code: "STAGE_COVERAGE_MISSING", cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, stageClockMethod: inputs.stageClockMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: baseline.gaps, coverage: baseline.coverage }, 422);
@@ -412,6 +421,8 @@ serve(async (req) => {
 
     let stageWorkTrace: Record<string, unknown> | null = null;
     let qualityGateTrace: Record<string, unknown> | null = null;
+    // The plan's own biological stage calendar (set by the sequence step; read by the current-stage fallback).
+    let planOrder: ReturnType<typeof biologicalStageOrder> = [];
     let harnessTrace: Record<string, unknown> | null = null;
     let enrichmentTrace: Record<string, unknown> | null = null;
     let enrichmentProposals: import("./harness/llm-candidates.ts").ProposalRecord[] = [];
@@ -467,6 +478,7 @@ serve(async (req) => {
       const { getStages, getRuleStageOffsets } = await import("./db/agronomy-repo.ts");
       const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
       const order = biologicalStageOrder(stageRows, computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate));
+      planOrder = order;
       const offsets = await getRuleStageOffsets(supabase, baseline.tasks.flatMap((t) => t.rule_ids ?? []));
       const redated = applyRuleStageOffsets(baseline.tasks, offsets, order);
       // TIMELINE INTEGRITY (2026-11-13): each window is stated on its stage's own clock; each card
@@ -474,6 +486,9 @@ serve(async (req) => {
       // the variety's maturity is unverified.
       const transplantOffsetDays = computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate);
       const relabelled = labelStageClock(baseline.tasks, order, transplantOffsetDays);
+      // Post-harvest follows THIS crop's harvest (date, window and text move together).
+      const postHarvest = alignAfterHarvest(baseline.tasks, order);
+      if (postHarvest.moved) baseline.gaps.push(`post_harvest_aligned_after_harvest:${postHarvest.moved}@${postHarvest.from}`);
       const firstHarvest = Math.min(...order.filter((p) => isBiologicalHarvestStage(p.stage.growth_stage) && p.from != null).map((p) => p.from as number));
       const harvestSide = new Set(order.filter((p) => p.from != null && Number.isFinite(firstHarvest) && (p.from as number) >= firstHarvest).map((p) => p.stage.id));
       const timing = markTimingConfidence(baseline.tasks, order, varietyProfile.maturity.verified, harvestSide);
@@ -481,10 +496,15 @@ serve(async (req) => {
       if (timing.harvest_review) baseline.gaps.push("harvest_date_requires_review_maturity_unverified");
       const plan = consolidateByStage(baseline.tasks);
       baseline.tasks.splice(0, baseline.tasks.length, ...sequenceTasks(plan.tasks, order));
+      // One seed-rate authority per card: a conflicting computed quantity is withheld for review.
+      for (const c of withholdConflictingSeedRate(baseline.tasks, inputs.landAreaAcres)) baseline.gaps.push(`seed_rate_sources_conflict_quantity_withheld:${c}`);
       // QUALITY GATES (2026-11-13): the finished plan is checked as a whole before anything is saved.
-      const gates = runQualityGates(baseline.tasks, order, { N: baseline.totals.n_kg, P: baseline.totals.p_kg, K: baseline.totals.k_kg });
+      // BLOCKING findings stop the save; INCOMPLETE findings save a provisional planning schedule
+      // that is never called complete or approved.
+      const gates = runQualityGates(baseline.tasks, order, { N: baseline.totals.n_kg, P: baseline.totals.p_kg, K: baseline.totals.k_kg }, { releaseStatus: release.status, yieldClaim: null });
       qualityGateTrace = gates as unknown as Record<string, unknown>;
-      if (!gates.passed) return json({ error: "Agricultural quality gates failed; schedule not saved.", code: "AGRONOMY_QUALITY_GATE_FAILED", violations: gates.blocking.slice(0, 20), gaps: [...new Set(baseline.gaps)] }, 422);
+      if (gates.blocking.length) return json({ error: "Agricultural quality gates failed; schedule not saved.", code: "AGRONOMY_QUALITY_GATE_FAILED", violations: gates.blocking.slice(0, 20), gaps: [...new Set(baseline.gaps)] }, 422);
+      if (!gates.readiness.executable) baseline.gaps.push(`plan_provisional:${[...new Set(gates.incomplete.map((f) => f.code))].join(",")}`);
       stageWorkTrace = { before: plan.before, after: plan.after, merged_groups: plan.merged_groups, rule_offsets_applied: redated, clock_relabelled: relabelled, timing, stage_order: order.map((p) => p.stage.stage_code ?? p.stage.growth_stage) };
     }
 
@@ -551,7 +571,16 @@ serve(async (req) => {
     let currentFieldPlan: ReturnType<typeof prepareCurrentFieldTasks> | null = null;
     try {
       const { data: phenology } = await supabase.rpc("resolve_crop_phenology", { p_land_id: landId });
-      const row = Array.isArray(phenology) ? phenology[0] : phenology;
+      const rawRow = Array.isArray(phenology) ? phenology[0] : phenology;
+      // 2026-11-13: the land still carries the previous crop until this schedule is committed, so a
+      // resolved stage that is not on THIS plan's stage graph is not this crop's stage. Then today's
+      // position on this plan's own calendar is used, labelled as a calendar estimate.
+      const planStageIds = new Set(planOrder.map((p) => p.stage.id));
+      const row = rawRow && (!rawRow.stage_uuid || planStageIds.has(String(rawRow.stage_uuid))) ? rawRow : null;
+      const todayIso = new Date().toISOString().split("T")[0];
+      const todayDas = inputs.sowingDate ? Math.round((new Date(todayIso).getTime() - new Date(inputs.sowingDate).getTime()) / 86400000) : null;
+      const calendar = !row && todayDas != null ? calendarStageAt(planOrder, todayDas) : null;
+      if (calendar) baseline.gaps.push("current_stage_from_plan_calendar_not_observed");
       currentFieldPlan = prepareCurrentFieldTasks(
         baseline.tasks,
         row ? {
@@ -560,6 +589,12 @@ serve(async (req) => {
           currentDas: row.current_das != null ? Number(row.current_das) : null,
           source: row.source ? String(row.source) : null,
           confidence: row.confidence != null ? Number(row.confidence) : null,
+        } : calendar ? {
+          stageUuid: calendar.stage.id,
+          stageCode: calendar.stage.stage_code ?? calendar.stage.growth_stage ?? null,
+          currentDas: todayDas,
+          source: "plan_calendar_from_sowing_date",
+          confidence: null,
         } : null,
         new Date().toISOString().split("T")[0],
         inputs.sowingDate,
@@ -760,13 +795,15 @@ serve(async (req) => {
       land_id: landId, farmer_id: farmerId, tenant_id: tenantId, crop_name: inputs.cropLabel || cropName, crop_variety: inputs.varietyName,
       variety_id: inputs.varietyId, cultivation_method: inputs.cultivationMethod, crop_cycle: inputs.cropCycle,
       sowing_date: inputs.sowingDate, transplant_date: inputs.transplantDate, expected_harvest_date: harvestDateStr, is_active: true, status: "active",
+      // 2026-11-13: no yield multiplier is claimed without calibrated field-yield evidence (column default was 3.0).
+      yield_multiplier_target: null,
       generation_language: language, ai_model: narration.narrated ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (${COMPOSER_VERSION})` : "none",
       input_soil_data: landContext.soil, input_weather_data: landContext.weather, input_land_coordinates: landContext.coordinates, agro_climatic_zone: landContext.agroClimaticZone,
       calculated_for_area_acres: inputs.landAreaAcres, total_duration_days: durationDays, seed_quantity_kg: baseline.totals.seed_kg,
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, stage_work_plan: stageWorkTrace, quality_gates: qualityGateTrace, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, stage_work_plan: stageWorkTrace, quality_gates: qualityGateTrace, release_readiness: (qualityGateTrace as { readiness?: unknown } | null)?.readiness ?? null, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
       metadata: { variety_method_consent: varietyMethodConsentRecord, coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };

@@ -88,7 +88,7 @@ import { establishmentDescription } from "./establishment-text.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
-import { isDeficiencyDependentAction, isBiologicalHarvestStage, biologicalHarvestStages } from "./agronomy-scientific-contract.ts";
+import { isConditionalNutrientRule, isTransplantClockWording, stagesUseTransplantClock, isBiologicalHarvestStage, biologicalHarvestStages } from "./agronomy-scientific-contract.ts";
 import { resolveRuleTiming } from "./rule-timing.ts";
 import {
   getStages,
@@ -96,6 +96,7 @@ import {
   getFertilizerPlan,
   getIrrigationGuidelines,
   getFieldActionRules,
+  getDiagnosticCodes,
   getObservationRules,
   getVarietyDuration,
   getBannedChemicals,
@@ -662,11 +663,21 @@ export async function generateBaseline(
     if (step == null) continue;
     provenance.push(g.provenance);
 
-    const stage = stages.find(
+    const namedStage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
-    ) || stageForDas(stages, g.dasStart, transplantOffset);
+    );
+    const stage = namedStage || stageForDas(stages, g.dasStart, transplantOffset);
+    // 2026-11-13: a guideline row names its growth stage; its water belongs to THAT stage's window
+    // on this crop's own calendar (variety-scaled stage graph). The row's generic DAS range is kept
+    // only when the stage cannot be identified by name.
+    const stageFrom = namedStage ? das0(namedStage, namedStage.das_min) : null;
+    const stageTo = namedStage ? das0(namedStage, namedStage.das_max) : null;
+    const anchored = stageFrom != null && stageTo != null && stageTo >= stageFrom;
+    const dasStart = anchored ? stageFrom as number : g.dasStart;
+    const dasEnd = anchored ? stageTo as number : g.dasEnd;
+    if (anchored && (dasStart !== g.dasStart || dasEnd !== g.dasEnd)) gaps.push(`irrigation_window_aligned_to_stage:${g.growthStage}:${g.dasStart}-${g.dasEnd}->${dasStart}-${dasEnd}`);
     const label = stageLabel(stage) || String(g.growthStage ?? "").replace(/_/g, " ");
-    const width = g.dasEnd - g.dasStart;
+    const width = dasEnd - dasStart;
     const isNurseryWater = /nursery/i.test(String(stage?.growth_stage ?? g.growthStage ?? ""));
     if(isNurseryWater && g.waterMm != null) gaps.push("nursery_irrigation_volume_requires_nursery_area");
 
@@ -684,10 +695,12 @@ export async function generateBaseline(
     if (isWithdrawal) {
       irrigationInstructions.unshift("No irrigation in this window — let the field drain.");
     } else {
+      // 2026-11-13: the guideline gives a cadence and a STAGE total, not a dose per irrigation. The
+      // card is a field-water decision: check at the cadence and irrigate when the field needs it.
       irrigationInstructions.unshift(
-        `Irrigate about every ${step} day${step === 1 ? "" : "s"} from DAS ${g.dasStart} to ${g.dasEnd}.`,
+        `Check the field water about every ${step} day${step === 1 ? "" : "s"} from DAS ${dasStart} to ${dasEnd} and irrigate when the field needs water.`,
       );
-      if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm`);
+      if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm. This is a planning total for the whole stage, not the amount for one irrigation.`);
     }
 
 
@@ -703,7 +716,7 @@ export async function generateBaseline(
       // built above, so the card is never blank.
       task_description: irrigationInstructions[0] ?? "",
 
-      days_from_sowing: g.dasStart,
+      days_from_sowing: dasStart,
       anchor_type: stage ? "STAGE" : "DAS",
       anchor_stage: stage?.stage_code || g.growthStage || null,
       gdd_target: stage?.gdd_min ?? null,
@@ -741,19 +754,21 @@ export async function generateBaseline(
 
       recurrence: isWithdrawal
         ? null
-        : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
+        : { interval_days: step, window_start: dasStart, window_end: dasEnd, expected_events: expectedEvents },
       resources: {
         requirement_semantics: isWithdrawal ? "BASELINE_WITHDRAWAL" : "BASELINE",
+        // No verified depth per irrigation exists for this field: the card is a field-water check.
+        ...(isWithdrawal ? {} : { irrigation_decision: { mode: "field_water_check", check_interval_days: step, per_event_depth_mm: null, per_event_basis: "not_verified_stage_total_only" } }),
         ...(g.notes ? { source_note_unprojected: true } : {}),
       },
     };
 
-    const existing = irrigationByStart.get(g.dasStart);
+    const existing = irrigationByStart.get(dasStart);
     if (!existing) {
-      irrigationByStart.set(g.dasStart, { task, width });
+      irrigationByStart.set(dasStart, { task, width });
     } else {
       irrigationOverlap = true;
-      if (width < existing.width) irrigationByStart.set(g.dasStart, { task, width });
+      if (width < existing.width) irrigationByStart.set(dasStart, { task, width });
     }
   }
   if (irrigationOverlap) gaps.push("irrigation_windows_overlapping");
@@ -779,9 +794,20 @@ export async function generateBaseline(
   const policyApplied: string[] = [];
   const policySuppressed: string[] = [];
 
+  // 2026-11-13: diagnostic flags of the rules' conditions (observation catalog), and whether this
+  // method's stage graph has a transplanting clock at all.
+  const diagnosticCodes = await getDiagnosticCodes(supabase, rules.map((r) => String(r.condition_code ?? "")));
+  const isDiagnosticCode = (code: string) => diagnosticCodes?.has(code) === true;
+  const transplantClock = stagesUseTransplantClock(stages);
   for (const rule of rules) {
-    if(isDeficiencyDependentAction(rule.rule_id,rule.action_text)){
+    if(isConditionalNutrientRule(rule,isDiagnosticCode)){
       gaps.push(`conditional_nutrient_requires_observation:${rule.rule_id}`);
+      continue;
+    }
+    // A rule written on the transplanting clock cannot be dated in a method that has no
+    // transplanting (direct-seeded crops): its day numbers would be read against the wrong event.
+    if(!transplantClock&&isTransplantClockWording(rule.action_text)){
+      gaps.push(`rule_wording_on_transplant_clock_not_applicable:${rule.rule_id}`);
       continue;
     }
     // 2026-11-12: ONE dose authority per schedule. With an approved fertilizer programme on the
