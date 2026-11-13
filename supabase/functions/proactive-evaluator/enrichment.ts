@@ -106,7 +106,7 @@ export async function enrichAndUpdateAlerts(
       await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
       console.log(`[NeuralEnrichment] Rephrased alert ${alert.id} model=${r.apiModelId} invention_allowed=${cfg.neural_invention_allowed}`);
     } catch (e) {
-      console.warn('[NeuralEnrichment] Error:', e.message);
+      console.warn('[NeuralEnrichment] Error:', e instanceof Error ? e.message : String(e));
     }
   }
 }
