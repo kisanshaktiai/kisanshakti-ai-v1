@@ -11596,6 +11596,8 @@ export type Database = {
           rule_id_v2: string | null
           rule_intent: string | null
           rule_version: string | null
+          schedule_role: string | null
+          schedule_stage: string | null
           scientific_basis: string | null
           scientific_source: string | null
           scope: string
@@ -11781,6 +11783,8 @@ export type Database = {
           rule_id_v2?: string | null
           rule_intent?: string | null
           rule_version?: string | null
+          schedule_role?: string | null
+          schedule_stage?: string | null
           scientific_basis?: string | null
           scientific_source?: string | null
           scope?: string
@@ -11966,6 +11970,8 @@ export type Database = {
           rule_id_v2?: string | null
           rule_intent?: string | null
           rule_version?: string | null
+          schedule_role?: string | null
+          schedule_stage?: string | null
           scientific_basis?: string | null
           scientific_source?: string | null
           scope?: string
