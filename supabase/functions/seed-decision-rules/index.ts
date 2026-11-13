@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     // Import each JSON file
     for (const filePath of RULE_FILES) {
       try {
-        const module = await import(`./rules/${filePath}`, { assert: { type: 'json' } });
+        const module = await import(`./rules/${filePath}`, { with: { type: 'json' } });
         const fileRules = module.default?.rules || [];
         allRules.push(...fileRules);
         console.log(`✅ Loaded ${fileRules.length} rules from ${filePath}`);
