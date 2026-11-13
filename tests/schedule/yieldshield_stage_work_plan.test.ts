@@ -153,3 +153,25 @@ describe("merge only what is one job", () => {
     }
   });
 });
+
+describe("crop check stays observation only", () => {
+  it("a dosed pest card on a scouting day stays its own card; the scouting card carries no quantity and passes the gate", async () => {
+    const { monitoringViolations } = await import("../../supabase/functions/ai-smart-schedule/generator/monitoring-safety");
+    const out = consolidateByStage([
+      task({ task_name: "scout", task_type: "monitoring", days_from_sowing: 30, rule_ids: ["m1"] }),
+      task({ task_name: "spray", task_type: "pest_management", days_from_sowing: 30, quantity: { value: 1, unit: "l" }, rule_ids: ["p1"] }),
+    ]);
+    expect(out.tasks).toHaveLength(2);
+    const scout = out.tasks.find((t) => t.task_type === "monitoring")!;
+    expect(scout.quantity).toBeNull();
+    expect(monitoringViolations(scout)).toEqual([]);
+    expect(out.tasks.find((t) => t.task_type === "pest_management")!.quantity).toEqual({ value: 1, unit: "l" });
+  });
+  it("undosed crop-check cards of one day still fold into one scouting card", () => {
+    const out = consolidateByStage([
+      task({ task_name: "scout", task_type: "monitoring", days_from_sowing: 30 }),
+      task({ task_name: "look", task_type: "disease_management", days_from_sowing: 30, task_description: "Look at the leaves." }),
+    ]);
+    expect(out.tasks).toHaveLength(1);
+  });
+});

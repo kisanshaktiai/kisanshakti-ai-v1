@@ -146,7 +146,10 @@ export function consolidateByStage(tasks: BaselineTask[]): StageWorkPlan {
   for (const { group, members } of groups.values()) {
     // Two different repeat cadences are two schedules; they are never folded into one card.
     const cadences = new Set(members.filter((t) => t.recurrence).map((t) => JSON.stringify([t.recurrence!.interval_days, t.recurrence!.window_start, t.recurrence!.window_end])));
-    if (members.length > 1 && cadences.size <= 1) { mergedGroups += 1; out.push(merge(group, members)); } else out.push(...members);
+    // A crop check is observation only. A card that carries a dose or a water volume is a job of its
+    // own; folded under a scouting card it would put a quantity on that card (or lose the dose).
+    const dosedCheck = group === "crop_check" && members.some((t) => t.quantity != null || t.water_volume != null || (t.nutrient != null && text(t.nutrient) !== ""));
+    if (members.length > 1 && cadences.size <= 1 && !dosedCheck) { mergedGroups += 1; out.push(merge(group, members)); } else out.push(...members);
   }
   out.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order || a.task_type.localeCompare(b.task_type) || a.task_name.localeCompare(b.task_name));
   return { tasks: out, before: tasks.length, after: out.length, merged_groups: mergedGroups };
