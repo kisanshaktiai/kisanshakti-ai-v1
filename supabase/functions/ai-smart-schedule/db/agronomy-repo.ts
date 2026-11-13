@@ -34,7 +34,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
 export interface Provenance { table: string; row_id?: string | null; source?: string | null; authority?: string | null; confidence?: number | null; }
-export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null;  /** Set when the selected variety's own stage window (variety_phenology_profile) replaced the crop-level one. */ variety_window_source?:string|null;  /** crop_stage_master.phenology_index: the stage's position in the crop's biological sequence (null on some operational stages). */ phenology_index?:number|null; }
+export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null;  /** Set when the selected variety's own stage window (variety_phenology_profile) replaced the crop-level one. */ variety_window_source?:string|null; /** calendar_reliability of that variety window (e.g. indicative for a derived profile). */ variety_window_reliability?:string|null;  /** crop_stage_master.phenology_index: the stage's position in the crop's biological sequence (null on some operational stages). */ phenology_index?:number|null; }
 
 /** One active variety_phenology_profile row: the variety's own window for one crop stage. */
 export interface VarietyStageWindow { stage_uuid:string|null; das_min_override:number|null; das_max_override:number|null; das_reference:string|null; cultivation_method:string|null; source:string|null; calendar_reliability:string|null; }
@@ -64,7 +64,7 @@ export function applyVarietyStageWindows(rows:StageRow[],windows:VarietyStageWin
     if(!w) return r;
     const stageClock=norm(r.clock_reference??r.das_reference), windowClock=norm(w.das_reference);
     if(stageClock&&windowClock&&stageClock!==windowClock) return r;
-    return {...r,das_min:Number(w.das_min_override),das_max:Number(w.das_max_override),variety_window_source:w.source??"variety_phenology_profile"};
+    return {...r,das_min:Number(w.das_min_override),das_max:Number(w.das_max_override),variety_window_source:w.source??"variety_phenology_profile",variety_window_reliability:w.calendar_reliability??null};
   });
   return out.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
 }
@@ -198,9 +198,10 @@ export async function getFieldActionRules(supabase:SupabaseClient,cropCode:strin
   // treatment, nursery bed, puddling, gap filling) are stored as general advice rules, so they never
   // became a dated operation. decision_rules.schedule_role = 'operation' marks such a rule as a
   // stage operation of the static schedule and schedule_stage names its stage; the rule itself and
-  // its use elsewhere are untouched. Read tolerantly: without the columns nothing is added.
+  // its use elsewhere are untouched. Only an expert-approved rule is served (fail closed): these texts
+  // carry rates and doses. Read tolerantly: without the columns nothing is added.
   try{
-    const extra=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, schedule_role, schedule_stage").eq("is_active",true).eq("schedule_role","operation").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
+    const extra=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, schedule_role, schedule_stage").eq("is_active",true).eq("schedule_role","operation").eq("expert_approved",true).eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
     if(!extra.error){
       const have=new Set(rows.map(r=>r.rule_id));
       for(const r of (extra.data||[]) as Array<Record<string,unknown>>){

@@ -136,12 +136,18 @@ export function consolidateByStage(tasks: BaselineTask[]): StageWorkPlan {
     const stage = t.stage_uuid ?? t.stage_key ?? t.anchor_stage;
     if (!stage) { loose.push(t); continue; }
     const group = workGroupOf(t.task_type);
-    const key = `${stage}|${group}`;
+    // 2026-11-13: only cards due on the SAME day are one job. A weeding 15 days after transplanting
+    // and a water rule from the transplanting day are two events; merging them moved one of them.
+    const key = `${stage}|${group}|${t.days_from_sowing}`;
     (groups.get(key) ?? groups.set(key, { group, members: [] }).get(key)!).members.push(t);
   }
   let mergedGroups = 0;
   const out = [...loose];
-  for (const { group, members } of groups.values()) { if (members.length > 1) mergedGroups += 1; out.push(merge(group, members)); }
+  for (const { group, members } of groups.values()) {
+    // Two different repeat cadences are two schedules; they are never folded into one card.
+    const cadences = new Set(members.filter((t) => t.recurrence).map((t) => JSON.stringify([t.recurrence!.interval_days, t.recurrence!.window_start, t.recurrence!.window_end])));
+    if (members.length > 1 && cadences.size <= 1) { mergedGroups += 1; out.push(merge(group, members)); } else out.push(...members);
+  }
   out.sort((a, b) => a.days_from_sowing - b.days_from_sowing || a.stage_order - b.stage_order || a.task_type.localeCompare(b.task_type) || a.task_name.localeCompare(b.task_name));
   return { tasks: out, before: tasks.length, after: out.length, merged_groups: mergedGroups };
 }

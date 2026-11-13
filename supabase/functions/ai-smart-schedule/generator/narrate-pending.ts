@@ -13,6 +13,7 @@
 //   follow-up (`action=narrate`, one owned schedule), and the periodic cron sweep (service-role
 //   bearer, several schedules).
 
+import { detailedStepsOf } from "./timeline-integrity.ts";
 import { composerVarietyView, VARIETY_PROFILE_SCHEMA, type VarietyProfile } from "../db/variety-profile.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { narrateTasks } from "./narrate.ts";
@@ -111,6 +112,8 @@ export async function narrateScheduleTasks(
           task_name: out.task_name,
           task_description: out.task_description,
           instructions: out.instructions ?? source.instructions ?? [],
+          // keep the ordered-steps field in the same language as the steps it mirrors
+          detailed_steps: detailedStepsOf({ task_description: out.task_description, instructions: out.instructions ?? source.instructions ?? [] }),
           language,
           resources: { ...(source.resources ?? {}), needs_translation: false, source_language: language, narrated_by: NARRATE_ENGINE_VERSION },
           updated_at: new Date().toISOString(),
