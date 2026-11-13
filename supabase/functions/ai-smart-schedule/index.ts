@@ -664,7 +664,11 @@ serve(async (req) => {
     // Split heavy work across workers: compose inline only while this request is still light.
     const COMPOSE_INLINE_MAX_ELAPSED_MS = 45_000;
     const COMPOSE_INLINE_MAX_MS = 40_000;
-    const composeInline = Date.now() - startTime < COMPOSE_INLINE_MAX_ELAPSED_MS;
+    // 2026-11-13: decided by the time actually left, not only by the time already spent. A slow
+    // planner used to push the request past the elapsed limit and the schedule was saved with no
+    // farmer-language text at all, although most of the request budget was still unused.
+    const COMPOSE_INLINE_MIN_REMAINING_MS = 25_000;
+    const composeInline = Date.now() - startTime < COMPOSE_INLINE_MAX_ELAPSED_MS || HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS >= COMPOSE_INLINE_MIN_REMAINING_MS;
     const composeBudgetMs = composeInline ? Math.min(COMPOSE_INLINE_MAX_MS, Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS)) : 0;
     timePlan.compose_budget_ms = composeBudgetMs;
     const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId }, composerVarietyView(varietyProfile));

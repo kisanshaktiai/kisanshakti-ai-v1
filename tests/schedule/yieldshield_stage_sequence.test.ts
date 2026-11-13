@@ -84,3 +84,18 @@ describe("rule timing inside the stage", () => {
     expect(applyRuleStageOffsets([card("x", "est", "nutrition", 40, { rule_ids: ["BGA"] })], new Map(), order)).toBe(0);
   });
 });
+
+// ── 2026-11-13 (agronomy round): dated cards keep their date; a moved card is named for its stage ──
+import { consolidateByStage } from "../../supabase/functions/ai-smart-schedule/generator/stage-work-plan";
+describe("dated operation inside a merged card", () => {
+  const order = biologicalStageOrder(stages, 35);
+  it("first weeding stays 15 days after transplanting when a stage-long note is folded into its card, and is named for tillering", () => {
+    const weed = card("weed — transplant establishment", "est", "weed_management", 35, { rule_ids: ["WEED"] });
+    const note = card("weekly walk", "till", "advisory", 45, { rule_ids: ["SCOUT"] });
+    applyRuleStageOffsets([weed, note], new Map([["WEED", { rule_id: "WEED", offset_min: 15, offset_max: 45, stages: ["transplant_establishment", "tillering"] }]]), order);
+    const out = consolidateByStage([weed, note]).tasks;
+    expect(out).toHaveLength(1);
+    expect(out[0].days_from_sowing).toBe(50);
+    expect(out[0].task_name).toBe("weed — tillering");
+  });
+});

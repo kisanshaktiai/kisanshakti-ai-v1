@@ -169,7 +169,10 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
       const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language, unique.task_description);
       const translated = Array.isArray(item.instructions) && item.instructions.length === source.length ? item.instructions.map(String) : null;
       const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language, source[idx] ?? ""));
-      if (!nameOk && !descOk && !stepsOk) continue;
+      // 2026-11-13: a card counts as written only when EVERY field it has passed. Accepting a
+      // card on its title alone marked it complete while its description stayed in English.
+      const descNeeded = !!String(unique.task_description ?? "").trim(); const stepsNeeded = source.length > 0;
+      if (!nameOk || (descNeeded && !descOk) || (stepsNeeded && !stepsOk)) continue;
       for (const idx of members[item.i] ?? []) { const target = out[idx]; if (!target) continue; if (nameOk) target.task_name = String(item.name); if (descOk) target.task_description = String(item.desc); if (stepsOk && translated) target.instructions = translated; appliedIndices.add(idx); }
     } }
   } finally { clearTimeout(budgetTimer); }
