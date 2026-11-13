@@ -13,6 +13,7 @@
 //   follow-up (`action=narrate`, one owned schedule), and the periodic cron sweep (service-role
 //   bearer, several schedules).
 
+import { composerVarietyView, VARIETY_PROFILE_SCHEMA, type VarietyProfile } from "../db/variety-profile.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { narrateTasks } from "./narrate.ts";
 
@@ -81,6 +82,10 @@ export async function narrateScheduleTasks(
   if (error) throw error;
   const all = (rows || []) as TaskRow[];
   const pending = all.filter(isPendingNarration);
+  // 2026-11-13: the sweeper writes for the SAME crop and variety the schedule was generated for.
+  // The profile was persisted with the schedule; schedules saved before this change simply have none.
+  const storedProfile = sched.generation_params?.variety_profile as VarietyProfile | undefined;
+  const cropContext = storedProfile && storedProfile.schema === VARIETY_PROFILE_SCHEMA ? composerVarietyView(storedProfile) : null;
   const result: ScheduleNarrationResult = { schedule_id: sched.id, language, total: all.length, pending_before: pending.length, narrated_now: 0, still_pending: pending.length, batches: 0, reason: null, provider: null, model: null, failed_task_ids: [], stopped: "complete" };
   if (!pending.length) { await recordProgress(supabase, sched, all.length, 0, null, null, null); return result; }
 
@@ -93,6 +98,7 @@ export async function narrateScheduleTasks(
       language,
       budget,
       { db: supabase, farmerId: sched.farmer_id ?? null },
+      cropContext,
     );
     result.batches += 1;
     result.provider = narration.provider ?? result.provider;

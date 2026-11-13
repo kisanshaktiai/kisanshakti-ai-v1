@@ -49,12 +49,18 @@ const systemPrompt = () => [
   "8. The resolved context snapshot is factual request context only. It does NOT authorize deriving new agronomy from weather, soil, NDVI, dates, coordinates or model memory.",
   "9. Never invent or alter an input, product, quantity, dose, PHI, date, stage, trigger, dependency, regulatory fact or evidence. Never convert an evidence-only requirement into an application.",
   "10. Do not force every domain to appear. Preserve gaps. Dynamic weather/soil/NDVI adaptation belongs to the reconciler and Decision Brain, not to this plan.",
+  "SELECTED CROP CONTRACT (the farmer has already chosen the crop, variety and cultivation method; `selected_crop_profile` describes them):",
+  "11. This plan is for exactly that crop, that variety and that cultivation method, stage by stage along `selected_crop_profile.stage_timeline`. Every candidate is already filtered to them. If a candidate's stage_key or task_type does not belong to a stage in the timeline, keep its default status and list it in `uncertainties`; never move it to another stage.",
+  "12. `selected_crop_profile.maturity` is context. When `maturity.verified` is false the window is unverified: never use it to place, move or justify a maturity or harvest date, and never quote its numbers in a `reason`. Harvest timing comes only from the supplied candidates.",
+  "13. `selected_crop_profile.resistance` lists the variety's documented reaction to named threats. It is applied by the system, which lowers the scouting priority of a threat the variety resists. Do NOT change any candidate's status because of resistance, and never describe a resistant variety as immune: scouting for that threat stays in the plan.",
+  "14. `selected_crop_profile.data_limits` are evidence gaps for this variety. Copy the ones that affect the plan into `uncertainties`; do not fill them from model memory, and never substitute another variety's or the crop's general characteristics.",
   "Return JSON only, matching schedule_plan_intent_v3. status is READY when every required candidate is SCHEDULED and the ordering rules hold; NEEDS_DATA when a required candidate cannot be placed from the supplied evidence; NO_VALID_PLAN only when the supplied candidates contradict each other.",
 ].join("\n");
 
 const prompt = (c: ScheduleHarnessContext, errors: string[]) => JSON.stringify({
   crop_code: c.cropCode, cultivation_method: c.cultivationMethod, crop_cycle: c.cropCycle,
-  resolved_context: c.contextSnapshot, known_gaps: c.gaps, domain_summary: c.evidencePack.domain_summary,
+  selected_crop_profile: c.contextSnapshot?.variety_profile ?? null,
+  resolved_context: c.contextSnapshot ? { ...c.contextSnapshot, variety_profile: undefined } : null, known_gaps: c.gaps, domain_summary: c.evidencePack.domain_summary,
   candidate_count: c.graph.nodes.length,
   audited_domains: ["LAND_PREPARATION","SEED_TREATMENT","PLANTING","NUTRIENT","MICRONUTRIENT","ORGANIC_INPUT","BIOLOGICAL_INPUT","IRRIGATION","WEED","PEST","DISEASE","PGR","INTERCULTURAL","MONITORING","HARVEST","POST_HARVEST"],
   candidates: c.graph.nodes.map((n) => ({ id:n.id, required:n.required, materializable:n.materializable, default_status:n.default_status, domain:n.domain, task_type:n.task_type, days_from_sowing:n.days_from_sowing, stage_key:n.stage_key, stage_order:n.stage_order, priority:n.priority, weather_dependent:n.weather_dependent, trigger_class:n.trigger_class, condition_code:n.condition_code, depends_on:n.depends_on, rule_ids:n.rule_ids, evidence:n.evidence ?? null })),

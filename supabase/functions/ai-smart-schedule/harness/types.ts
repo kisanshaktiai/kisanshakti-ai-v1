@@ -1,7 +1,8 @@
 import type { BaselineTask } from "../generator/baseline-generator.ts";
 import type { AgronomicEvidencePack, CandidateStatus } from "./evidence-pack.ts";
+import type { VarietyProfile } from "../db/variety-profile.ts";
 
-export const HARNESS_VERSION = "crop-schedule-harness@3.3.0";
+export const HARNESS_VERSION = "crop-schedule-harness@3.4.0";
 export const PLAN_SCHEMA_VERSION = "schedule_plan_intent_v3" as const;
 
 export type HarnessStatus = "READY" | "NEEDS_DATA" | "NO_VALID_PLAN" | "INVALID_PLAN" | "MODEL_UNAVAILABLE" | "MODEL_TIMEOUT";
@@ -12,6 +13,8 @@ export interface HarnessContextSnapshot {
   cultivation_method: string | null; stage_clock_method: string | null; crop_cycle: string | null; sowing_date: string | null; transplant_date: string | null;
   language: string | null; farming_policy: string | null; soil: Record<string, unknown> | null; weather: Record<string, unknown> | null;
   ndvi: Record<string, unknown> | null; coordinates: { lat: number; lon: number } | null; agro_climatic_zone: string | null;
+  /** 2026-11-13 — crop + variety dossier (plannerVarietyView): maturity with evidence flag, resistance, stage timeline, data limits. */
+  variety_profile: Record<string, unknown> | null;
 }
 
 export interface CandidateNode {
@@ -30,6 +33,8 @@ export interface ScheduleCandidateGraph {
 export interface ScheduleHarnessContext {
   cropCode: string; cultivationMethod: string | null; cropCycle: string | null; gaps: string[];
   graph: ScheduleCandidateGraph; evidencePack: AgronomicEvidencePack; contextSnapshot: HarnessContextSnapshot | null;
+  /** 2026-11-13 — full crop/variety dossier; the snapshot carries only its planner view. */
+  varietyProfile?: VarietyProfile | null;
 }
 
 export interface PlanItem { candidate_id: string; sequence_order: number; status?: CandidateStatus; reason?: string; }

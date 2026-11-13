@@ -84,6 +84,7 @@
 //   valid DAS range, max 200 events per guideline row) — a 0-interval DB row looped forever
 //   and exhausted the edge worker memory.
 
+import { establishmentDescription } from "./establishment-text.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
@@ -105,7 +106,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.8.0-provisional-release";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.9.0-provisional-release";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -219,6 +220,8 @@ export interface BaselineResult {
   };
   provenance: Provenance[];
   generator_version: string;
+  /** 2026-11-13 — the crop's biological stages on the schedule's days-after-sowing axis (null where a boundary cannot be placed). */
+  stage_timeline?: Array<{ order: number; stage_key: string | null; stage_name: string | null; das_from: number | null; das_to: number | null }>;
 }
 
 const priorityFromRule = (p: number | null): string =>
@@ -361,8 +364,10 @@ export async function generateBaseline(
     inputs.cropCode,
     inputs.cropCycle,
     inputs.stageClockMethod ?? inputs.cultivationMethod,
+    inputs.varietyId,
   );
   coverage.stages = stages.length > 0;
+  if (stages.some((s) => s.variety_window_source)) gaps.push("stage_windows_from_variety_phenology_profile");
   if (!stages.length) {
     gaps.push(inputs.cultivationMethod ? "crop_stage_master_no_rows_for_method" : "crop_stage_master_no_rows");
   }
@@ -436,9 +441,9 @@ export async function generateBaseline(
       ? `If you broadcast the seed by hand instead, use ${[bc.min != null ? Number((bc.min * areaAcres).toFixed(2)) : null, bc.max != null ? Number((bc.max * areaAcres).toFixed(2)) : null].filter((x) => x != null).join(" to ")} kg for ${areaAcres} acre.`
       : null;
     if (seed && seed.basisCode && !broadcastLine) gaps.push(`seed_rate_broadcast_band_missing:${seed.basisCode}`);
-    const sowDescription = seedKg != null && areaAcres != null
-      ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
-      : "Plan establishment using certified seed; the seed quantity is pending verification for this crop, variety and method.";
+    // 2026-11-13: the day-0 card names the crop, the variety the farmer selected and the growth
+    // stage it belongs to (all database labels) instead of saying "the crop".
+    const sowDescription = establishmentDescription({ cropLabel: inputs.cropLabel, cropCode: inputs.cropCode, varietyName: inputs.varietyName, stageLabel: sowStage?.growth_stage ?? null, seedKg, areaAcres });
     const sowInstructions: string[] = [];
     if (seedBasisLine) sowInstructions.push(seedBasisLine);
     if (broadcastLine) sowInstructions.push(broadcastLine);
@@ -1099,6 +1104,9 @@ export async function generateBaseline(
           ? [`Window: DAS ${das} to ${end} (${stageLabel(stage)}).`]
           : [],
       precautions: [],
+      // The stage row authorizes the operation and its window only; the practice text comes from
+      // the stage's rule cards, which stage-work-plan.ts folds into this card.
+      resources: { stage_window_card: true },
     });
   }
 
@@ -1201,8 +1209,9 @@ export async function generateBaseline(
 
   // Re-anchor the transplanting operation to the farmer's actual recorded event,
   // not to the default nursery-age boundary. When that event falls outside the
-  // selected graph, all dependent doses remain review-only until verified.
+  // selected graph, the seedling age is stated on the stage's card; inputs are not withheld.
   if(inputs.transplantDate && transplantOffset!=null){
+    let seedlingAge:{age_days:number;expected_from:number;expected_to:number}|null=null;
     for(const t of tasks){
       const stage=t.stage_uuid?stages.find(s=>s.id===t.stage_uuid):null;
       if(String(stage?.growth_stage??"").toLowerCase()!=="transplanting")continue;
@@ -1220,15 +1229,19 @@ export async function generateBaseline(
       }
       if(graphFrom!=null && graphTo!=null &&
         (transplantOffset<graphFrom || transplantOffset>graphTo)){
-        gaps.push("nursery_age_outside_stage_graph_requires_review");
-        t.resources.requirement_semantics="NEEDS_TIMING_REVIEW";
-        if(t.task_type==="nutrition" || t.task_type==="irrigation"){
-          t.quantity=null;
-          t.water_volume=null;
-          t.task_description="The recorded transplant date differs from the crop stage's expected nursery window. Confirm this operation with an agronomist before applying inputs.";
-          t.instructions=["Check the recorded transplant date and actual crop establishment before choosing an application or irrigation event."];
-        }
+        // 2026-11-13: seedling age outside the stage's nursery window is a FIELD FACT to tell the
+        // farmer, not a reason to withhold the transplanting inputs. The basal dose is set per
+        // area and is due at transplanting whatever the seedling age; blanking it left the plan
+        // with no basal fertilizer at all. The fact is stated once, on one card of the stage.
+        gaps.push("seedling_age_outside_stage_nursery_window");
+        seedlingAge={ age_days:transplantOffset, expected_from:graphFrom, expected_to:graphTo };
+        t.resources.seedling_age=seedlingAge;
       }
+    }
+    if(seedlingAge){
+      const inStage=tasks.filter(t=>{const st=t.stage_uuid?stages.find(s=>s.id===t.stage_uuid):null;return String(st?.growth_stage??"").toLowerCase()==="transplanting";});
+      const target=inStage.find(t=>!["nutrition","micronutrient","irrigation","monitoring"].includes(t.task_type))??inStage[0];
+      if(target) target.instructions=[...target.instructions,`Seedlings were ${seedlingAge.age_days} days old at transplanting; the expected nursery age for this stage is ${seedlingAge.expected_from} to ${seedlingAge.expected_to} days. All later stage dates are counted from the recorded transplanting date.`];
     }
   }
 
@@ -1398,5 +1411,9 @@ export async function generateBaseline(
     },
     provenance,
     generator_version: GENERATOR_VERSION,
+    stage_timeline: stages
+      .map((st) => ({ stage_key: st.stage_code || null, stage_name: st.growth_stage || null, das_from: das0(st, st.das_min), das_to: das0(st, st.das_max) }))
+      .sort((a, b) => (a.das_from ?? Number.MAX_SAFE_INTEGER) - (b.das_from ?? Number.MAX_SAFE_INTEGER) || (a.das_to ?? Number.MAX_SAFE_INTEGER) - (b.das_to ?? Number.MAX_SAFE_INTEGER))
+      .map((st, i) => ({ order: i + 1, ...st })),
   };
 }

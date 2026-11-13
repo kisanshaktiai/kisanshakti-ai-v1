@@ -9,7 +9,9 @@ Deno.test("harness planner is deadline-aware and never sleeps on a rate limit", 
   assert(llm.includes("deadlineAt"));
   assert(!/Retry-After/.test(llm.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n"))); // code only, comments may mention it
   assert(!/await sleep\(/.test(llm));
-  assert(harness.includes("remaining() >= MIN_ATTEMPT_MS"));
+  // 2026-11-13: the bounded attempt loop is plan-assembly.runPlanner (one path for every caller);
+  // the harness hands it the deadline and the minimum useful attempt time.
+  assert(harness.includes("minAttemptMs: MIN_ATTEMPT_MS") && harness.includes("remainingMs: remaining"));
   assert(index.includes("budgetMs: harnessBudgetMs"));
   assert(index.includes("time_plan"));
 });
