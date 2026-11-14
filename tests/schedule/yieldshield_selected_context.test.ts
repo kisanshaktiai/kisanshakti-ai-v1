@@ -62,8 +62,12 @@ describe("buildSelectedContext", () => {
     expect(c.cultivation_method).toBe("direct_seeded");
   });
 
-  it("reflects the seed quantity only when the baseline resolved one (never fabricated)", () => {
-    expect(buildSelectedContext({ inputs: inputs(), totals: { seed_kg: null } })!.season_seed_quantity_kg).toBeNull();
-    expect(buildSelectedContext({ inputs: inputs(), totals: { seed_kg: 51.25 } })!.season_seed_quantity_kg).toBe(51.25);
+  it("carries the seed quantity and the basis to speak about it honestly (never fabricated)", () => {
+    const none = buildSelectedContext({ inputs: inputs(), totals: { seed_kg: null } })!.seed as Record<string, unknown>;
+    expect(none).toEqual({ season_quantity_kg: null, basis: "none", variety_tuned: false });
+    const std = buildSelectedContext({ inputs: inputs(), totals: { seed_kg: 49.7, seed_rate_basis: "crop_standard", seed_rate_variety_tuned: false } })!.seed as Record<string, unknown>;
+    expect(std).toEqual({ season_quantity_kg: 49.7, basis: "crop_standard", variety_tuned: false });
+    const verified = buildSelectedContext({ inputs: inputs(), totals: { seed_kg: 51.25, seed_rate_basis: "variety_verified", seed_rate_variety_tuned: true } })!.seed as Record<string, unknown>;
+    expect(verified).toEqual({ season_quantity_kg: 51.25, basis: "variety_verified", variety_tuned: true });
   });
 });

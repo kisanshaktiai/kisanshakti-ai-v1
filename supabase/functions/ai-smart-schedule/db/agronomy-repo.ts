@@ -85,18 +85,75 @@ export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycl
   return applyVarietyStageWindows(rows,(windows??[]) as VarietyStageWindow[],cultivationMethod);
 }
 
+/** Where a resolved seed rate came from, best (most specific + verified) first. */
+export type SeedRateBasis = "variety_verified" | "crop_standard" | "variety_unverified";
 export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance;
   /** What the rate assumes (e.g. drill / line-sown vs nursery), straight from the DB row. */
   basisCode:string|null;
   /** The same row's broadcast band, for a farmer sowing by hand rather than with a drill. */
-  broadcastKgPerAcre:{min:number|null;max:number|null}|null; }
+  broadcastKgPerAcre:{min:number|null;max:number|null}|null;
+  /** Which rung of the ladder supplied this number (for honest farmer text and review flags). */
+  basis:SeedRateBasis;
+  /** The DB evidence tier of the supplying row. */
+  tier:string|null;
+  /** True once the number is a verified, variety-specific rate; false for a crop standard or estimate. */
+  varietyTuned:boolean;
+  /** Cross-check: true when the rate falls outside the authored crop-standard band for this crop × method. */
+  outsideCropBand:boolean; }
 import { isUnverifiedTier, resolvedMaturityDas } from "../generator/agronomy-scientific-contract.ts";
 const RPC_TGW_UNVERIFIED="default_20g_UNVERIFIED";
+/** hybrid vs non-hybrid family of a DB variety-type token (opv_*, inbred → non_hybrid). */
+function seedRateFamily(varietyType: unknown): "hybrid" | "non_hybrid" {
+  const v = String(varietyType ?? "").toLowerCase();
+  return /hybrid/.test(v) && !/non[-_ ]?hybrid/.test(v) ? "hybrid" : "non_hybrid";
+}
+
+/**
+ * 2026-11-14 — The authored crop standard seed rate (a `variety_id IS NULL` row in
+ * variety_cultivation_agronomy), for the crop, method and hybrid/non-hybrid family. This is the
+ * fallback used when no verified variety rate exists, so the card never shows a blank seed rate. It
+ * is a documented SAU standard (e.g. MPKV), not a variety-tuned figure — the caller labels it so.
+ */
+async function getCropStandardSeedRate(
+  supabase: SupabaseClient,
+  cropCode: string | null,
+  method: string | null,
+  family: "hybrid" | "non_hybrid",
+): Promise<Record<string, unknown> | null> {
+  if (!cropCode || !method) return null;
+  // crop_seed_rate_standard is the authored crop × method × variety-family standard (e.g. MPKV / ICAR
+  // PoP). Column names mirror variety_cultivation_agronomy so the same readers apply. Absent table or
+  // no row simply means no standard for this crop/method yet — the caller then has no rung 2.
+  const { data, error } = await supabase
+    .from("crop_seed_rate_standard")
+    .select("id, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max, seed_rate_variety_type")
+    .eq("crop_code", cropCode)
+    .eq("cultivation_method", method)
+    .eq("is_active", true)
+    .eq("review_status", "approved");
+  if (error) return null;
+  const rows = (data || []) as Array<Record<string, unknown>>;
+  // Prefer the row for this family; a row with no family stated is a catch-all standard.
+  return rows.find((r) => seedRateFamily(r.seed_rate_variety_type) === family)
+    ?? rows.find((r) => r.seed_rate_variety_type == null)
+    ?? null;
+}
+
+const seedBand = (r: Record<string, unknown> | null): { min: number | null; max: number | null } => ({
+  min: r?.seed_rate_kg_per_acre_min != null ? Number(r.seed_rate_kg_per_acre_min) : null,
+  max: r?.seed_rate_kg_per_acre_max != null ? Number(r.seed_rate_kg_per_acre_max) : null,
+});
+const broadcastOf = (r: Record<string, unknown> | null): { min: number | null; max: number | null } | null =>
+  r?.seed_rate_broadcast_kg_per_acre_min != null || r?.seed_rate_broadcast_kg_per_acre_max != null
+    ? { min: r?.seed_rate_broadcast_kg_per_acre_min != null ? Number(r.seed_rate_broadcast_kg_per_acre_min) : null, max: r?.seed_rate_broadcast_kg_per_acre_max != null ? Number(r.seed_rate_broadcast_kg_per_acre_max) : null }
+    : null;
+
 export async function getSeedRate(
   supabase: SupabaseClient,
   varietyId: string | null,
   cultivationMethod: string | null,
-  stageClockMethod: string | null = null
+  stageClockMethod: string | null = null,
+  cropCode: string | null = null,
 ): Promise<SeedRateResult | null> {
   if (!varietyId || !cultivationMethod) return null;
   const candidateMethods = [...new Set([cultivationMethod, stageClockMethod].filter(Boolean))] as string[];
@@ -106,7 +163,7 @@ export async function getSeedRate(
   for (const method of candidateMethods) {
     const { data } = await supabase
       .from("variety_cultivation_agronomy")
-      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max")
+      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max, seed_rate_variety_type")
       .eq("variety_id", varietyId)
       .eq("cultivation_method", method)
       .eq("is_active", true)
@@ -118,35 +175,74 @@ export async function getSeedRate(
     }
   }
 
-  // Never authorize numeric seed quantities from unverified method records.
-  if (vca && isUnverifiedTier(vca.evidence_tier)) return null;
-  if (vca && vca.target_plants_per_m2 != null && vcaMethod) {
-    const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", {
-      p_variety_id: varietyId,
-      p_cultivation_method: vcaMethod,
-    });
+  // 2026-11-14 — SEED-RATE LADDER. A seed rate is never left blank: a verified variety rate is used
+  // first; when there is none, the authored CROP STANDARD for this crop, method and hybrid/non-hybrid
+  // family is used (labelled a standard, flagged for variety tuning); only if there is no standard
+  // either is an unverified variety estimate used, as a last resort. Each number comes from a DB row
+  // — nothing is invented. The chosen rate is then cross-checked against the crop-standard band.
+  const family = seedRateFamily((vca?.seed_rate_variety_type) ?? null);
+  const method = vcaMethod ?? cultivationMethod;
+  const cropStd = await getCropStandardSeedRate(supabase, cropCode, method, family);
+  const stdBand = seedBand(cropStd);
+  const withinStd = (kg: number): boolean => {
+    if (stdBand.min == null && stdBand.max == null) return true; // no band to check against
+    const lo = (stdBand.min ?? stdBand.max) as number, hi = (stdBand.max ?? stdBand.min) as number;
+    return kg >= lo * 0.8 && kg <= hi * 1.2;
+  };
+  const finish = (base: Omit<SeedRateResult, "outsideCropBand">): SeedRateResult =>
+    ({ ...base, outsideCropBand: !withinStd(base.kgPerAcre) });
+
+  const verifiedVariety = !!vca && !isUnverifiedTier(vca.evidence_tier);
+
+  // Rung 1 — verified variety rate (TGW-derived first, then the row's own band).
+  if (verifiedVariety && vca!.target_plants_per_m2 != null && vcaMethod) {
+    const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", { p_variety_id: varietyId, p_cultivation_method: vcaMethod });
     const r = Array.isArray(rpc) ? rpc[0] : rpc;
     if (r?.seed_rate_kg_per_acre != null && typeof r.tgw_source === "string" && r.tgw_source !== RPC_TGW_UNVERIFIED) {
-      return {
-        kgPerAcre: Number(r.seed_rate_kg_per_acre),
-        basisCode: vca.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
-        broadcastKgPerAcre: vca.seed_rate_broadcast_kg_per_acre_min != null || vca.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
-        rationale: r.rationale ?? null,
+      return finish({
+        kgPerAcre: Number(r.seed_rate_kg_per_acre), basis: "variety_verified", tier: String(vca!.evidence_tier ?? ""), varietyTuned: true,
+        basisCode: vca!.seed_rate_basis_code != null ? String(vca!.seed_rate_basis_code) : null,
+        broadcastKgPerAcre: broadcastOf(vca!), rationale: r.rationale ?? null,
         provenance: { table: "fn_calculate_seed_rate", source: `tgw:${r.tgw_source}; method:${vcaMethod}` },
-      };
+      });
+    }
+  }
+  if (verifiedVariety) {
+    const b = seedBand(vca!);
+    if (b.min != null || b.max != null) {
+      return finish({
+        kgPerAcre: b.min != null && b.max != null ? (b.min + b.max) / 2 : (b.min ?? b.max) as number,
+        basis: "variety_verified", tier: String(vca!.evidence_tier ?? ""), varietyTuned: true,
+        rationale: (vca!.seed_rate_rationale as string) ?? null, basisCode: vca!.seed_rate_basis_code != null ? String(vca!.seed_rate_basis_code) : null,
+        broadcastKgPerAcre: broadcastOf(vca!),
+        provenance: { table: "variety_cultivation_agronomy", row_id: (vca!.id as string) ?? null, source: `${(vca!.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
+      });
     }
   }
 
-  const min = vca?.seed_rate_kg_per_acre_min != null ? Number(vca.seed_rate_kg_per_acre_min) : null;
-  const max = vca?.seed_rate_kg_per_acre_max != null ? Number(vca.seed_rate_kg_per_acre_max) : null;
-  if (min == null && max == null) return null;
-  return {
-    kgPerAcre: min != null && max != null ? (min + max) / 2 : (min ?? max) as number,
-    rationale: (vca?.seed_rate_rationale as string) ?? null,
-    basisCode: vca?.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
-    broadcastKgPerAcre: vca?.seed_rate_broadcast_kg_per_acre_min != null || vca?.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca?.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca?.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
-    provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
-  };
+  // Rung 2 — authored CROP STANDARD (no verified variety rate): a real SAU standard, not variety-tuned.
+  if (cropStd && (stdBand.min != null || stdBand.max != null)) {
+    return finish({
+      kgPerAcre: stdBand.min != null && stdBand.max != null ? (stdBand.min + stdBand.max) / 2 : (stdBand.min ?? stdBand.max) as number,
+      basis: "crop_standard", tier: String(cropStd.evidence_tier ?? ""), varietyTuned: false,
+      rationale: (cropStd.seed_rate_rationale as string) ?? null, basisCode: cropStd.seed_rate_basis_code != null ? String(cropStd.seed_rate_basis_code) : null,
+      broadcastKgPerAcre: broadcastOf(cropStd),
+      provenance: { table: "variety_cultivation_agronomy", row_id: (cropStd.id as string) ?? null, source: `crop_standard:${(cropStd.source as string) ?? ""}; crop:${cropCode}; method:${method}; family:${family}` },
+    });
+  }
+
+  // Rung 3 — unverified variety estimate (last resort, better than a blank card).
+  const b = seedBand(vca ?? null);
+  if (b.min != null || b.max != null) {
+    return finish({
+      kgPerAcre: b.min != null && b.max != null ? (b.min + b.max) / 2 : (b.min ?? b.max) as number,
+      basis: "variety_unverified", tier: String(vca?.evidence_tier ?? ""), varietyTuned: false,
+      rationale: (vca?.seed_rate_rationale as string) ?? null, basisCode: vca?.seed_rate_basis_code != null ? String(vca?.seed_rate_basis_code) : null,
+      broadcastKgPerAcre: broadcastOf(vca ?? null),
+      provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `unverified:${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
+    });
+  }
+  return null;
 }
 
 export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance;cultivation_context:string|null;basis:FertilizerBasis; }

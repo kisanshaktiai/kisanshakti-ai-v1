@@ -21,7 +21,7 @@ export interface SelectedContextSources {
   /** The composer variety view (names, resistance, stage names) — merged in as-is when present. */
   varietyView?: Record<string, unknown> | null;
   /** Season programme totals from the baseline (whole-season sums, never a single application). */
-  totals?: { seed_kg?: number | null; n_kg?: number | null; p_kg?: number | null; k_kg?: number | null } | null;
+  totals?: { seed_kg?: number | null; seed_rate_basis?: string; seed_rate_variety_tuned?: boolean; n_kg?: number | null; p_kg?: number | null; k_kg?: number | null } | null;
   /** Whether the agronomic programme is approved or still provisional (scientific release status). */
   releaseStatus?: string | null;
   /** The loaded land context: soil row, latest weather/moisture state, latest NDVI. */
@@ -85,7 +85,12 @@ export function buildSelectedContext(src: SelectedContextSources): Record<string
     soil_moisture_pct: moisturePct,
     ndvi: ndviVal != null ? { value: ndviVal, date: str(pick(land?.ndvi, ["date"])) } : null,
     dates: { sowing: str(inputs.sowingDate), transplanting: str(inputs.transplantDate) },
-    season_seed_quantity_kg: num(totals?.seed_kg),
+    seed: {
+      season_quantity_kg: num(totals?.seed_kg),
+      // How to speak about the rate: a verified variety figure, the crop's general standard, or an estimate.
+      basis: str(totals?.seed_rate_basis) ?? "none",
+      variety_tuned: totals?.seed_rate_variety_tuned === true,
+    },
     season_fertilizer_programme: programme,
     // Names, resistance and stage names from the variety dossier, kept as-is.
     ...(varietyView ? { variety_profile: varietyView } : {}),
