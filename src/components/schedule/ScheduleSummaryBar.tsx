@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { CalendarDays, MapPin, Package, Sprout } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
@@ -9,6 +10,7 @@ interface ScheduleSummaryBarProps {
   sowingDate: string;
   harvestDate?: string;
   farmingType?: string;
+  actions?: ReactNode;
 }
 
 const dateLabel = (value?: string) => {
@@ -17,7 +19,7 @@ const dateLabel = (value?: string) => {
   return Number.isNaN(date.getTime()) ? null : format(date, 'dd MMM yyyy');
 };
 
-export default function ScheduleSummaryBar({ cropName, landName, variety, sowingDate, harvestDate, farmingType }: ScheduleSummaryBarProps) {
+export default function ScheduleSummaryBar({ cropName, landName, variety, sowingDate, harvestDate, farmingType, actions }: ScheduleSummaryBarProps) {
   const { t } = useTranslation();
   const farmingLabels: Record<string, string> = {
     organic_only: t('schedule.farming_type.organic'),
@@ -41,6 +43,7 @@ export default function ScheduleSummaryBar({ cropName, landName, variety, sowing
             <span className="min-w-0 break-words">{landName}<span className="mx-1.5 text-border" aria-hidden>·</span>{variety}</span>
           </div>
         </div>
+        {actions && <div className="shrink-0">{actions}</div>}
       </div>
       <div className="mt-1.5 grid grid-cols-2 gap-2">
         <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-success/20 bg-success-soft px-2 py-1.5">

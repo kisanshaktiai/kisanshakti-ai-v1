@@ -525,13 +525,21 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           sowingDate={schedule.sowing_date}
           harvestDate={realHarvestDate}
           farmingType={schedule.farming_type}
+          actions={<div className="relative flex rounded-full border border-border/60 bg-muted/60 p-0.5 shadow-inner" role="group" aria-label={t('schedule.graphical.view_label')}>
+            {(['basic', 'graphical'] as const).map((view) => (
+              <button key={view} type="button" aria-pressed={displayView === view} aria-label={t(`schedule.graphical.${view}`)} onClick={() => setDisplayView(view)}
+                className={`relative flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold transition-colors duration-300 ${displayView === view ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {displayView === view && <motion.span layoutId="schedule-view-pill" className="absolute inset-0 rounded-full border border-border/60 bg-background shadow-sm" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
+                <span className="relative flex items-center gap-1">
+                  {view === 'basic' ? <Calendar className="size-3.5" /> : <Sprout className="size-3.5" />}
+                  {view === 'graphical' && <span className="rounded-full bg-primary/15 px-1 text-[8px] font-bold leading-3 text-primary">β</span>}
+                </span>
+              </button>
+            ))}
+          </div>}
         />, summaryTarget
       )}
 
-      <div className="mx-3 mt-1 grid grid-cols-2 gap-0.5 rounded-full border border-border/60 bg-muted/50 p-0.5" role="group" aria-label={t('schedule.graphical.view_label')}>
-        <button type="button" aria-pressed={displayView === 'basic'} onClick={() => setDisplayView('basic')} className={`flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${displayView === 'basic' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}><Calendar className="size-3.5" />{t('schedule.graphical.basic')}</button>
-        <button type="button" aria-pressed={displayView === 'graphical'} onClick={() => setDisplayView('graphical')} className={`flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${displayView === 'graphical' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}><Sprout className="size-3.5" />{t('schedule.graphical.graphical')}<span className="rounded-full bg-primary/15 px-1.5 text-[9px] font-bold text-primary">Beta</span></button>
-      </div>
 
       {displayView === 'graphical' && <div className="px-3 pb-nav-safe pt-1.5">
         <ClimateAlertBanner data={climateData} />

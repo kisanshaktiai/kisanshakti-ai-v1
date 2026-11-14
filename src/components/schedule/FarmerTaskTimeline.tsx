@@ -156,11 +156,11 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
                   return (
                     <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
-                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
+                      <article className={cn('relative overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
                         <CollapsibleTrigger asChild>
                           <Button variant="ghost" className="h-auto min-h-20 w-full justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
                             <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : expired ? 'bg-muted' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
-                            <span className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3">
+                            <span className={cn('flex min-w-0 flex-1 items-start gap-3 py-3 pl-3', expired ? 'pr-3' : 'pr-14')}>
                               <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
                               <span className="min-w-0 flex-1 whitespace-normal">
                                 <span className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -176,10 +176,24 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                                   {task.climate_adjusted && <Badge variant="outline" className="border-2 font-bold"><Zap className="mr-1 size-3" />{t('schedule.badges.ai_adjusted')}</Badge>}
                                 </span>
                               </span>
-                              <ChevronDown className={cn('mt-2 size-6 shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
+                              <ChevronDown className={cn(!expired ? 'absolute bottom-3 right-4 size-5' : 'mt-2 size-6', 'shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
                             </span>
                           </Button>
                         </CollapsibleTrigger>
+                        {!expired && (
+                          <button
+                            type="button"
+                            aria-pressed={completed}
+                            aria-label={completed ? t('schedule.completion.unmark', 'Mark as not done') : t('schedule.completion.mark_complete', 'Mark complete')}
+                            onClick={(event) => { event.stopPropagation(); void complete(task.id, !completed).catch(() => undefined); }}
+                            className={cn('absolute right-2 top-2 z-10 flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                              completed ? 'border-success bg-success text-success-foreground shadow-md' : 'border-primary/40 bg-background text-primary hover:border-primary hover:bg-primary/10')}
+                          >
+                            <motion.span key={String(completed)} initial={reduceMotion ? false : { scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 18 }}>
+                              <Check className="size-5" strokeWidth={3} />
+                            </motion.span>
+                          </button>
+                        )}
 
                         <CollapsibleContent>
                           <div className="space-y-4 border-t-2 border-border bg-card p-3" onClick={(event) => event.stopPropagation()}>
