@@ -6,6 +6,12 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "graphical": {
+      "basic": "साधे", "graphical": "टप्पे", "view_label": "वेळापत्रकाचे दृश्य", "title": "पिकाचा प्रवास",
+      "current": "सध्याचा टप्पा", "unassigned": "इतर कामे", "stage_number": "टप्पा {{number}}",
+      "day_range": "दिवस {{from}}–{{to}}", "completed_count": "{{total}} पैकी {{completed}} कामे पूर्ण",
+      "previous": "मागील टप्पा", "next": "पुढील टप्पा", "no_tasks": "या टप्प्यात कामे नाहीत"
+    },
     "review": {
       "title": "तपासणीसाठी जतन केलेल्या योजना",
       "inactive": "अजून सक्रिय नाही. शेतातील कामे किंवा आठवणीच्या सूचना तयार झालेल्या नाहीत.",

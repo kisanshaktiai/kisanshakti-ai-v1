@@ -6,6 +6,12 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "graphical": {
+      "basic": "साधारण", "graphical": "चरण", "view_label": "अनुसूची का दृश्य", "title": "फसल का सफर",
+      "current": "वर्तमान चरण", "unassigned": "अन्य कार्य", "stage_number": "चरण {{number}}",
+      "day_range": "दिन {{from}}–{{to}}", "completed_count": "{{total}} में से {{completed}} कार्य पूरे",
+      "previous": "पिछला चरण", "next": "अगला चरण", "no_tasks": "इस चरण में कोई कार्य नहीं"
+    },
     "review": {
       "title": "समीक्षा के लिए सहेजी गई योजनाएं",
       "inactive": "अभी सक्रिय नहीं। खेत के काम या याद दिलाने वाली सूचनाएं नहीं बनी हैं।",

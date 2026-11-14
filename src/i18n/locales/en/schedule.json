@@ -6,6 +6,12 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "graphical": {
+      "basic": "Basic", "graphical": "Graphical", "view_label": "Schedule view", "title": "Crop journey",
+      "current": "Current stage", "unassigned": "Other tasks", "stage_number": "Stage {{number}}",
+      "day_range": "Day {{from}}–{{to}}", "completed_count": "{{completed}} of {{total}} tasks complete",
+      "previous": "Previous stage", "next": "Next stage", "no_tasks": "No tasks in this stage"
+    },
     "review": {
       "title": "Saved plans awaiting review",
       "inactive": "Not active. No field tasks or reminders have been created.",

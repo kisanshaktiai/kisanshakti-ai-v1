@@ -29,6 +29,7 @@ interface Task {
 }
 
 interface Props {
+  layout?: 'basic' | 'stage';
   tasks: Task[]; onTaskClick?: (task: Task) => void; onTaskComplete?: () => void;
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void; onTakePhoto?: (task: Task) => void;
   onEditTask?: (task: Task) => void; stagePhaseOfTask?: (task: { stage_uuid?: string | null }) => StagePhase;
@@ -41,11 +42,11 @@ const typeConfig = {
   other: { icon: AlertCircle },
 };
 
-export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate, onTakePhoto, stagePhaseOfTask }: Props) {
+export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate, onTakePhoto, stagePhaseOfTask, layout = 'basic' }: Props) {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguageStore();
   const reduceMotion = useReducedMotion();
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(() => layout === 'stage' ? tasks[0]?.id ?? null : null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   // Optional farmer MEASUREMENT; never default to the scheduled water volume.
@@ -115,8 +116,8 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   };
 
   return (
-    <section className="space-y-3" aria-labelledby="schedule-timeline-title">
-      <header className="flex items-end justify-between gap-3 border-b-2 border-foreground bg-card px-1 pb-3">
+    <section className="space-y-3" aria-labelledby={layout === 'basic' ? 'schedule-timeline-title' : undefined}>
+      {layout === 'basic' && <header className="flex items-end justify-between gap-3 border-b-2 border-foreground bg-card px-1 pb-3">
         <div>
           <p className="text-xs font-bold text-foreground">{t('schedule.timeline.current_work')}</p>
           <h3 id="schedule-timeline-title" className="text-xl font-extrabold text-card-foreground">{t('schedule.timeline.title')}</h3>
@@ -124,10 +125,10 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
         <Badge variant="outline" className="h-8 border-2 border-foreground bg-card px-3 text-sm font-bold text-card-foreground">
           {t('schedule.timeline.tasks_count', { count: tasks.length })}
         </Badge>
-      </header>
+      </header>}
 
-      <div className="relative space-y-5 pl-7">
-        <div className="absolute bottom-0 left-3 top-0 w-1 bg-border" aria-hidden="true" />
+      <div className={cn('relative space-y-5', layout === 'basic' && 'pl-7')}>
+        {layout === 'basic' && <div className="absolute bottom-0 left-3 top-0 w-1 bg-border" aria-hidden="true" />}
         {Object.entries(groupedTasks).map(([date, dateTasks], groupIndex) => {
           const d = new Date(date);
           const past = isPast(d) && !isToday(d);
@@ -135,12 +136,12 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
           const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE') : format(d, 'dd MMM');
           return (
             <motion.section key={date} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : groupIndex * 0.03 }} className="relative">
-              <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
+              {layout === 'basic' && <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
                 {past ? <Check className="size-3.5" strokeWidth={3} /> : <Clock className="size-3.5" strokeWidth={3} />}
-              </div>
-              <div className="mb-2 flex items-center gap-2 pl-4">
+              </div>}
+              <div className={cn('mb-2 flex items-center gap-2', layout === 'basic' && 'pl-4')}>
                 <h4 className="text-base font-extrabold text-foreground">{label}</h4>
-                <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM')}</span>
+                {layout === 'basic' && <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM')}</span>}
               </div>
 
               <div className="space-y-3">

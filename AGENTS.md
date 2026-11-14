@@ -23,6 +23,7 @@
 - Transient database read retries are bounded and rebuild the query; never apply them to writes. Why: recover intermittent timeouts without duplicating mutations.
 
 ## Schedule review isolation
+- Schedule Graphical view groups by saved stage UUID/key and reads windows/order from generation_params.variety_profile.stages; reuse FarmerTaskTimeline actions and never infer phenology from date percentages. Why: presentation must preserve DB-backed stages, repeated picking and task safety.
 - Read review drafts through the owner-checked schedules-api read route, independently of the generation function; why: unfinished generation releases must not break schedule-page loading.
 - Structurally unsound stage graphs (missing graph, identity/method/cycle conflict, no biological harvest stage or harvest task) persist only in the server-only review-draft ledger, never crop_schedules or schedule_tasks; why: drafts must not mutate land state or enter executable schedule workflows.
 - A missing, stale, expired or unreadable crop release approval, and missing variety/seed-rate/picking-interval evidence, produce a PROVISIONAL schedule (generation_params.scientific_release), never a review draft and never an outage; why: the registry is empty by design, so default-deny on it blocked every crop. Unverified quantities, maturity and harvest dates stay withheld, and each input action is authorized only by its own decision_rules evidence.

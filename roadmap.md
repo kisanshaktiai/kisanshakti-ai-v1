@@ -1,3 +1,9 @@
+# Schedule graphical view
+- [x] Remove the pending-sections notice and preserve the Basic view.
+- [x] Add a Beta horizontal biological-stage timeline from saved DB stage metadata, with stage-only tasks and existing actions.
+- [x] Test grouping, unknown stages and repeated-picking isolation; 11 regressions passed, new modules lint clean, preview build OK; isolated navigation verified at 394×732 and 1280×1800.
+- [ ] Verify signed-in stage navigation and task completion read-back: external unmanaged farmer session unavailable; isolated sample-task checks do not verify the authenticated flow.
+
 # Schedule availability repair
 - [x] Move review loading to the owner-checked schedules-api read route; deployed only schedules-api. 24 regressions passed, preview build OK, and unauthenticated/invalid-token probes return 401. Authenticated read-back remains blocked by the unavailable external farmer session below.
 - [x] Confirm activation blockers reject repeated-picking and missing-variety-evidence plans before persistence; no review-only flow exists.

@@ -21,7 +21,8 @@ import TaskTimeline from './TaskTimeline';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
-import PendingSectionsNotice from './PendingSectionsNotice';
+import CropStageTimeline from './CropStageTimeline';
+import type { SavedStage } from '@/lib/scheduleStageTimeline';
 import CurrentStageHeader from './CurrentStageHeader';
 import { useLandStage } from '@/hooks/useLandStage';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
@@ -63,6 +64,9 @@ interface ScheduleTask {
   language?: string;
   currency?: string;
   stage_uuid?: string | null;
+  stage_key?: string | null;
+  stage_name?: string | null;
+  stage_order?: number | null;
 
 }
 
@@ -111,6 +115,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [tasks, setTasks] = useState<ScheduleTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ScheduleTask | null>(null);
   const [viewMode, setViewMode] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [displayView, setDisplayView] = useState<'basic' | 'graphical'>('basic');
   const [climateData, setClimateData] = useState<ClimateState | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
@@ -218,6 +223,11 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           precautions: t.precautions,
           language: t.language,
           currency: t.currency,
+          stage_uuid: t.stage_uuid,
+          stage_key: t.stage_key,
+          stage_name: t.stage_name,
+          stage_order: t.stage_order,
+          resources: t.resources,
         }));
         console.log(`📦 [CropScheduleView] Loaded ${mappedTasks.length} tasks from localDB`);
         setTasks([...mappedTasks].sort(byDate));
@@ -546,6 +556,21 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>
 
 
+      <div className="mx-3 grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1" role="group" aria-label={t('schedule.graphical.view_label')}>
+        <Button variant="filter" aria-pressed={displayView === 'basic'} className="min-h-11 border-0" onClick={() => setDisplayView('basic')}><Calendar className="size-4" />{t('schedule.graphical.basic')}</Button>
+        <Button variant="filter" aria-pressed={displayView === 'graphical'} className="min-h-11 gap-1.5 border-0 px-2" onClick={() => setDisplayView('graphical')}><Sprout className="size-4" />{t('schedule.graphical.graphical')}<Badge variant="outline" className="px-1 text-[9px]">Beta</Badge></Button>
+      </div>
+
+      {displayView === 'graphical' && <div className="px-3 pb-nav-safe pt-2">
+        <ClimateAlertBanner data={climateData} />
+        <CropStageTimeline key={schedule.id} tasks={tasks}
+          savedStages={((schedule as any).generation_params?.variety_profile?.stages ?? []) as SavedStage[]}
+          landStage={landStage} onCropPhoto={() => setShowLandPhotoUpload(true)} onRefresh={refetchSchedules}
+          onTaskComplete={refetchSchedules} onTaskUpdate={handleTaskUpdate}
+          onTakePhoto={(task) => setPhotoUploadTask(task as ScheduleTask)} stagePhaseOfTask={phaseOfTask} />
+      </div>}
+
+      {displayView === 'basic' && <>
       {/* Quick Stats Cards - Mobile Optimized */}
       <div className="px-3 pt-3 pb-2">
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -595,13 +620,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           className="mb-3"
           stage={landStage}
           disagreement={hasStageDisagreement(tasks as any[])}
-        />
-
-        {/* Sections with no database-backed agronomy yet — shown as explicitly pending */}
-        <PendingSectionsNotice
-          className="mb-3"
-          missingSections={(schedule as any).metadata?.missing_sections}
-          coverage={(schedule as any).metadata?.coverage}
         />
 
         {/* Climate Alert Banner */}
@@ -705,6 +723,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           </TabsContent>
         </Tabs>
       </div>
+      </>}
 
       {/* Task Details Dialog - Read Only */}
       {selectedTask && (
