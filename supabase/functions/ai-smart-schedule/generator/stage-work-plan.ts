@@ -46,6 +46,36 @@ function anchorOf(group: WorkGroup, members: BaselineTask[]): BaselineTask {
 
 const uniq = (lines: string[]) => { const seen = new Set<string>(); return lines.map(text).filter((l) => l && !seen.has(l) && !!seen.add(l)); };
 
+/**
+ * 2026-11-15 — ORDER OF WORK INSIDE ONE CARD. Folded cards used to be read in generation order, so a
+ * nursery card could say "sow" before "treat the seed". The order comes from the database
+ * (decision_rules.sequence_after: this rule is done after those rules) plus one universal rule of
+ * agronomy, by canonical task type: seed is treated before it is sown. Returns null when no such
+ * constraint exists among the members (the card is then folded exactly as before); a cycle in the
+ * data also returns null rather than guessing.
+ */
+export function operationOrder(members: BaselineTask[]): BaselineTask[] | null {
+  const rulesOf = members.map((t) => new Set((t.rule_ids ?? []).map(String)));
+  const edges: Array<[number, number]> = [];
+  members.forEach((t, j) => {
+    const after = res(t).sequence_after;
+    for (const rid of Array.isArray(after) ? after.map(String) : []) members.forEach((_, i) => { if (i !== j && rulesOf[i].has(rid)) edges.push([i, j]); });
+  });
+  members.forEach((a, i) => { if (a.task_type !== "seed_treatment") return; members.forEach((b, j) => { if (b.task_type === "sowing") edges.push([i, j]); }); });
+  if (!edges.length) return null;
+  const indegree = members.map(() => 0); const next = members.map(() => [] as number[]);
+  for (const [a, b] of edges) { next[a].push(b); indegree[b] += 1; }
+  const ready = members.map((_, i) => i).filter((i) => indegree[i] === 0);
+  const order: number[] = [];
+  while (ready.length) {
+    ready.sort((a, b) => a - b);            // ties keep generation order
+    const i = ready.shift()!;
+    order.push(i);
+    for (const j of next[i]) { indegree[j] -= 1; if (indegree[j] === 0) ready.push(j); }
+  }
+  return order.length === members.length ? order.map((i) => members[i]) : null;
+}
+
 function merge(group: WorkGroup, members: BaselineTask[]): BaselineTask {
   if (members.length === 1) return members[0];
   const anchor = anchorOf(group, members);
@@ -55,15 +85,27 @@ function merge(group: WorkGroup, members: BaselineTask[]): BaselineTask {
   // A stage operation card states only its window. Once it leads real practice text, the first
   // folded card's description becomes the card's description and the window-only line is dropped.
   let description = text(anchor.task_description);
-  let ownSteps = anchor.instructions ?? [];
-  const folded: string[] = [];
-  for (const t of others) folded.push(text(t.task_description), ...(t.instructions ?? []));
-  if (isWindowCard(anchor) && uniq(folded).length) {
-    const windowLine = description;
-    description = uniq(folded)[0];
-    ownSteps = ownSteps.filter((l) => text(l) !== windowLine);
+  let instructions: string[];
+  const ordered = operationOrder(members);
+  if (ordered) {
+    // Steps in the order the work is done. A stage window card only states its window, so its own
+    // lines are left out once any member carries practice text.
+    const hasPractice = (t: BaselineTask) => !!text(t.task_description) || (t.instructions ?? []).some((l) => !!text(l));
+    const speaking = ordered.filter((t) => !(isWindowCard(t) && ordered.some((o) => o !== t && !isWindowCard(o) && hasPractice(o))));
+    const lines = uniq(speaking.flatMap((t) => [text(t.task_description), ...(t.instructions ?? [])]));
+    if (lines.length) description = lines[0];
+    instructions = lines.filter((l) => l !== description);
+  } else {
+    let ownSteps = anchor.instructions ?? [];
+    const folded: string[] = [];
+    for (const t of others) folded.push(text(t.task_description), ...(t.instructions ?? []));
+    if (isWindowCard(anchor) && uniq(folded).length) {
+      const windowLine = description;
+      description = uniq(folded)[0];
+      ownSteps = ownSteps.filter((l) => text(l) !== windowLine);
+    }
+    instructions = uniq([...ownSteps, ...folded]).filter((l) => l !== description);
   }
-  const instructions = uniq([...ownSteps, ...folded]).filter((l) => l !== description);
 
   // Quantities: one dosed card keeps its own quantity. Several dosed cards (the nutrients given on
   // the same stage) cannot share one quantity field, so each becomes a typed input line and the
