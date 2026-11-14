@@ -212,6 +212,10 @@ export interface BaselineResult {
   coverage: Record<string, boolean>;
   totals: {
     seed_kg: number | null;
+    /** Which rung of the seed-rate ladder supplied seed_kg: verified / crop standard / estimate / none. */
+    seed_rate_basis?: string;
+    /** True only when seed_kg is a verified, variety-specific rate. */
+    seed_rate_variety_tuned?: boolean;
     n_kg: number | null;
     p_kg: number | null;
     k_kg: number | null;
@@ -411,9 +415,16 @@ export async function generateBaseline(
   // The day-0 anchor operation is always emitted when a phenology spine exists.
   // A missing seed rate degrades the quantity to null (with a named gap) — it never
   // removes the operation itself.
-  const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod);
+  const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod, inputs.cropCode);
   coverage.seed = !!seed;
-  if(!seed) gaps.push("seed_rate_verified_source_required");
+  // 2026-11-14 — a seed rate is never left blank. getSeedRate falls back from a verified variety rate
+  // to the authored crop standard to an unverified variety estimate; the basis is carried so the card
+  // and the review flags stay honest about which one the farmer is looking at.
+  const seedBasis = seed?.basis ?? "none";
+  if (!seed) gaps.push("seed_rate_verified_source_required");
+  else if (seed.basis === "crop_standard") gaps.push("seed_rate_from_crop_standard_not_variety_tuned");
+  else if (seed.basis === "variety_unverified") gaps.push("seed_rate_from_unverified_variety_estimate");
+  if (seed?.outsideCropBand) gaps.push("seed_rate_outside_crop_standard_band_review");
   let seedKg: number | null = null;
   if (!seed) {
     gaps.push("seed_rate_unavailable");
@@ -446,6 +457,12 @@ export async function generateBaseline(
     // stage it belongs to (all database labels) instead of saying "the crop".
     const sowDescription = establishmentDescription({ cropLabel: inputs.cropLabel, cropCode: inputs.cropCode, varietyName: inputs.varietyName, stageLabel: sowStage?.growth_stage ?? null, seedKg, areaAcres });
     const sowInstructions: string[] = [];
+    // Say plainly which seed rate this is, so a standard or an estimate is never shown as if it were
+    // a verified figure for the farmer's own variety. Names are DB labels; the composer translates.
+    const cropWord = inputs.cropLabel || inputs.cropCode || "the crop";
+    const varietyWord = inputs.varietyName || "this variety";
+    if (seedBasis === "crop_standard") sowInstructions.push(`This is the standard seed rate for ${cropWord} (${inputs.cultivationMethod ?? "this method"}); it is a general recommendation, not yet tuned to the ${varietyWord} variety.`);
+    else if (seedBasis === "variety_unverified") sowInstructions.push(`This seed rate for ${varietyWord} is a working estimate and is still being verified.`);
     if (seedBasisLine) sowInstructions.push(seedBasisLine);
     if (broadcastLine) sowInstructions.push(broadcastLine);
     if (!sowDescription) {
@@ -1453,6 +1470,8 @@ export async function generateBaseline(
     coverage,
     totals: {
       seed_kg: seedKg,
+      seed_rate_basis: seedBasis,
+      seed_rate_variety_tuned: seed?.varietyTuned ?? false,
       n_kg: nKg,
       p_kg: pKg,
       k_kg: kKg,
