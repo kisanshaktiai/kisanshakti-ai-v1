@@ -35,6 +35,7 @@
 // Supabase Edge invocation from exhausting its request lifetime before persistence.
 // Farmer-language narration is a presentation step only. Agronomic selection stays DB/deterministic.
 import { varietyContextBlock } from "../db/variety-profile.ts";
+import { languageLabel, wrongSameScriptLanguage } from "./language-guard.ts";
 import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
 // deno-lint-ignore no-explicit-any
 export interface NarrationAIContext { db: { from(table: string): any }; farmerId?: string | null }
@@ -100,7 +101,7 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: farmerInstructionSource(t.instructions) }));
   const prompt = [
     `You are a village agriculture officer explaining farm tasks to a smallholder farmer who left school early.`,
-    language === "en" ? `Rewrite the supplied text in very simple spoken English, as a village extension officer would say it to a farmer with little schooling: short sentences; say what to do, when, how much to buy, how to mix, and why; keep every number, unit, product name and date exactly as given.` : `Rewrite the supplied text in natural, simple spoken ${language}, as a village extension officer would say it to a farmer with little schooling: short sentences; everyday farming words the farmer already uses; say what to do, when, how much to buy, how to mix, and why. Use the target language as the main language, not English transliteration. Keep every number, unit, date, product name and fertilizer grade exactly as given, in Latin script where the farmer reads them that way on the bag.`,
+    language === "en" ? `Rewrite the supplied text in very simple spoken English, as a village extension officer would say it to a farmer with little schooling: short sentences; say what to do, when, how much to buy, how to mix, and why; keep every number, unit, product name and date exactly as given.` : `Rewrite the supplied text in natural, simple spoken ${languageLabel(language)}, as a village extension officer would say it to a farmer with little schooling: short sentences; everyday farming words the farmer already uses; say what to do, when, how much to buy, how to mix, and why. Use the target language as the main language, not English transliteration. Keep every number, unit, date, product name and fertilizer grade exactly as given, in Latin script where the farmer reads them that way on the bag.`,
     language === "en" ? `` : `Translate EVERY ordinary English word, including words like day, days, week, field, spray, apply, seed and fertilizer type names where a common farmer word exists. Keep only numerals, units, brand/product names and fertilizer grades as given. No English word may remain unless it is such a supplied fact.`,
     `The database and deterministic pipeline are the agricultural authority. You only re-word the supplied facts.`,
     `Do NOT use model memory to add agricultural facts, products, doses, timings or treatments.`,
@@ -173,6 +174,8 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
       // card on its title alone marked it complete while its description stayed in English.
       const descNeeded = !!String(unique.task_description ?? "").trim(); const stepsNeeded = source.length > 0;
       if (!nameOk || (descNeeded && !descOk) || (stepsNeeded && !stepsOk)) continue;
+      // 2026-11-15: the whole card must read as the requested language, not another one of its script.
+      if (wrongSameScriptLanguage([item.name, item.desc, ...(translated ?? [])].map((x) => String(x ?? "")).join(" \n "), language)) continue;
       for (const idx of members[item.i] ?? []) { const target = out[idx]; if (!target) continue; if (nameOk) target.task_name = String(item.name); if (descOk) target.task_description = String(item.desc); if (stepsOk && translated) target.instructions = translated; appliedIndices.add(idx); }
     } }
   } finally { clearTimeout(budgetTimer); }

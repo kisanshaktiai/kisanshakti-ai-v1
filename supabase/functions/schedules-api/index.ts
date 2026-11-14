@@ -192,6 +192,9 @@ serve(async (req) => {
             .eq('farmer_id', farmerId)
             // Delta/pagination requires updated_at ordering; legacy callers keep task_date order.
             .order(isDeltaMode ? 'updated_at' : 'task_date', { ascending: true });
+          // 2026-11-15: same-day tasks keep the generator's agronomic order (sequence_order) instead of
+          // whatever order Postgres returns them in (seed treatment shown after scouting on day 0).
+          if (!isDeltaMode) query = query.order('sequence_order', { ascending: true, nullsFirst: false });
 
           if (scheduleIdParam) {
             query = query.eq('schedule_id', scheduleIdParam);
