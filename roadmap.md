@@ -1,3 +1,7 @@
+# Compact schedule top bar
+- [x] Move saved crop, land, variety and sowing/harvest summaries into the top bar; remove duplicate content below.
+- [x] Verify isolated compact layout at 394×732 and 1280×1800 with no horizontal overflow; 11 schedule regressions pass and preview build OK. Signed-in full-page verification remains unavailable with external unmanaged authentication.
+
 # Schedule graphical view
 - [x] Remove the pending-sections notice and preserve the Basic view.
 - [x] Add a Beta horizontal biological-stage timeline from saved DB stage metadata, with stage-only tasks and existing actions.

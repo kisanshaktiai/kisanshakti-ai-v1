@@ -60,6 +60,7 @@ export default function Schedule() {
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
+  const [summaryTarget, setSummaryTarget] = useState<HTMLDivElement | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<ScheduleReviewDraft[]>([]);
   const [editingReviewDraft, setEditingReviewDraft] = useState<ScheduleReviewDraft | null>(null);
   const [reviewLoadError, setReviewLoadError] = useState(false);
@@ -573,7 +574,7 @@ export default function Schedule() {
           <Button variant="ghost" size="icon" onClick={() => navigate('/app')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-xl font-bold">{t('schedule.main.ai_crop_schedule')}</h1>
+          <h1 className="text-xl font-bold">{t('schedule.title')}</h1>
         </div>
         <EmptyState
           icon={Calendar}
@@ -597,12 +598,12 @@ export default function Schedule() {
             variant="ghost"
             size="icon"
             onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all shrink-0"
+            className="h-8 w-8 rounded-lg shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-base font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent truncate">
-            {t('schedule.main.ai_crop_schedule')}
+          <h1 className="text-sm font-semibold text-foreground truncate">
+            {t('schedule.title')}
           </h1>
         </div>
 
@@ -626,7 +627,7 @@ export default function Schedule() {
           )}
 
           {/* Compact step indicator dots only */}
-          <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
+          {flowStep !== 'schedule-view' && <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
             {STEPS.map((step, index) => (
               <div
                 key={step}
@@ -639,9 +640,10 @@ export default function Schedule() {
                 }`}
               />
             ))}
-          </div>
+          </div>}
         </div>
       </div>
+      {flowStep === 'schedule-view' && <div ref={setSummaryTarget} />}
     </div>
   );
 
@@ -715,6 +717,7 @@ export default function Schedule() {
         {flowStep === 'schedule-view' && selectedLand && (
           <div className="animate-slide-in-right">
             <CropScheduleView
+              summaryTarget={summaryTarget}
               landId={selectedLand.id}
               landName={selectedLand.name}
               currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}

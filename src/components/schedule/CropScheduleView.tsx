@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Leaf, Package, Sparkles, RefreshCw, MapPin, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import ScheduleSummaryBar from './ScheduleSummaryBar';
+import { Calendar, RefreshCw, Plus, Sprout, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -75,9 +77,10 @@ interface CropScheduleViewProps {
   landName: string;
   currentCrop?: string;
   onBack?: () => void;
+  summaryTarget?: HTMLDivElement | null;
 }
 
-const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack }) => {
+const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack, summaryTarget }) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
@@ -514,47 +517,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   return (
     <div className="min-h-full bg-background">
-      {/* Compact inline crop summary (non-sticky — parent header handles back/nav) */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-bold text-foreground flex items-center gap-1.5 leading-tight truncate">
-              <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="truncate">{(schedule as any).metadata?.translated_crop_name || schedule.crop_name}</span>
-            </h2>
-            <p className="text-[11px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1 truncate">
-              <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate">{landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}</span>
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-2 py-0.5 h-5">
-              {t('schedule.schedule_view.ai_schedule')}
-            </Badge>
-            {schedule.farming_type && (
-              <Badge
-                className={cn(
-                  "text-[10px] border px-2 py-0.5 h-5",
-                  schedule.farming_type === 'organic_only' && "bg-success/10 text-success border-success/30",
-                  schedule.farming_type === 'organic_fertilizer' && "bg-info/10 text-info border-info/30",
-                  schedule.farming_type === 'fertilizer_pesticide' && "bg-warning/10 text-warning border-warning/30"
-                )}
-              >
-                {schedule.farming_type === 'organic_only' && (
-                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic')}</>
-                )}
-                {schedule.farming_type === 'organic_fertilizer' && (
-                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic_chemical')}</>
-                )}
-                {schedule.farming_type === 'fertilizer_pesticide' && (
-                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.chemical')}</>
-                )}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {summaryTarget && createPortal(
+        <ScheduleSummaryBar
+          cropName={(schedule as any).metadata?.translated_crop_name || schedule.crop_name}
+          landName={landName}
+          variety={schedule.crop_variety || t('schedule.schedule_view.standard_variety')}
+          sowingDate={schedule.sowing_date}
+          harvestDate={realHarvestDate}
+          farmingType={schedule.farming_type}
+        />, summaryTarget
+      )}
 
       <div className="mx-3 mt-1 grid grid-cols-2 gap-0.5 rounded-full border border-border/60 bg-muted/50 p-0.5" role="group" aria-label={t('schedule.graphical.view_label')}>
         <button type="button" aria-pressed={displayView === 'basic'} onClick={() => setDisplayView('basic')} className={`flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${displayView === 'basic' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}><Calendar className="size-3.5" />{t('schedule.graphical.basic')}</button>
@@ -571,50 +543,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>}
 
       {displayView === 'basic' && <>
-      {/* Quick Stats Cards - Mobile Optimized */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <Card className="relative overflow-hidden bg-success-soft border-success/30">
-            <div className="absolute inset-y-0 left-0 w-1 bg-success" aria-hidden />
-            <div className="p-3 pl-4 space-y-1">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-success/15">
-                  <Calendar className="h-3.5 w-3.5 text-success" />
-                </div>
-                <span className="text-[10px] font-semibold text-success uppercase tracking-wider">{t('schedule.sowing')}</span>
-              </div>
-              <p className="text-base font-bold text-foreground leading-tight">
-                {format(new Date(schedule.sowing_date), 'dd MMM')}
-              </p>
-              <p className="text-[10px] text-muted-foreground font-medium">
-                {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
-              </p>
-            </div>
-          </Card>
-
-          <Card className="relative overflow-hidden bg-warning-soft border-warning/30">
-            <div className="absolute inset-y-0 left-0 w-1 bg-warning" aria-hidden />
-            <div className="p-3 pl-4 space-y-1">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-warning/15">
-                  <Package className="h-3.5 w-3.5 text-warning" />
-                </div>
-                <span className="text-[10px] font-semibold text-warning uppercase tracking-wider">{t('schedule.harvest')}</span>
-              </div>
-              <p className="text-base font-bold text-foreground leading-tight">
-                {realHarvestDate
-                  ? format(new Date(realHarvestDate), 'dd MMM yyyy')
-                  : t('schedule.schedule_card.tbd')}
-              </p>
-              <p className="text-[10px] text-muted-foreground font-medium">
-                {realHarvestDate
-                  ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
-                  : ''}
-              </p>
-            </div>
-          </Card>
-        </div>
-
+      <div className="px-3 pt-2 pb-2">
         {/* Current crop stage from the land SSOT + stage-disagreement guardrail */}
         <CurrentStageHeader
           className="mb-3"

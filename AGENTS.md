@@ -23,6 +23,7 @@
 - Transient database read retries are bounded and rebuild the query; never apply them to writes. Why: recover intermittent timeouts without duplicating mutations.
 
 ## Schedule review isolation
+- The active schedule summary is rendered into the page header through a presentation-only portal; why: reuse the loaded owner-scoped schedule without duplicate reads or competing header state.
 - Schedule Graphical view groups by saved stage UUID/key and reads windows/order from generation_params.variety_profile.stages; reuse FarmerTaskTimeline actions and never infer phenology from date percentages. Why: presentation must preserve DB-backed stages, repeated picking and task safety.
 - Read review drafts through the owner-checked schedules-api read route, independently of the generation function; why: unfinished generation releases must not break schedule-page loading.
 - Structurally unsound stage graphs (missing graph, identity/method/cycle conflict, no biological harvest stage or harvest task) persist only in the server-only review-draft ledger, never crop_schedules or schedule_tasks; why: drafts must not mutate land state or enter executable schedule workflows.
