@@ -85,8 +85,14 @@ export async function narrateScheduleTasks(
   const pending = all.filter(isPendingNarration);
   // 2026-11-13: the sweeper writes for the SAME crop and variety the schedule was generated for.
   // The profile was persisted with the schedule; schedules saved before this change simply have none.
+  // 2026-11-14: prefer the full selected-context dossier the generator persisted (land, size, soil,
+  // moisture, NDVI, dates, variety, programme), so a pending task the sweeper finishes gets the same
+  // field context as one composed inline. Schedules saved before this change fall back to the variety
+  // view; schedules with neither get null.
   const storedProfile = sched.generation_params?.variety_profile as VarietyProfile | undefined;
-  const cropContext = storedProfile && storedProfile.schema === VARIETY_PROFILE_SCHEMA ? composerVarietyView(storedProfile) : null;
+  const storedSelectedContext = (sched.generation_params?.selected_context as Record<string, unknown> | null | undefined) ?? null;
+  const cropContext = storedSelectedContext
+    ?? (storedProfile && storedProfile.schema === VARIETY_PROFILE_SCHEMA ? composerVarietyView(storedProfile) : null);
   const result: ScheduleNarrationResult = { schedule_id: sched.id, language, total: all.length, pending_before: pending.length, narrated_now: 0, still_pending: pending.length, batches: 0, reason: null, provider: null, model: null, failed_task_ids: [], stopped: "complete" };
   if (!pending.length) { await recordProgress(supabase, sched, all.length, 0, null, null, null); return result; }
 

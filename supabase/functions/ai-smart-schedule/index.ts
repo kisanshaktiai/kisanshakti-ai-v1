@@ -68,6 +68,7 @@ import {
 import { generateBaseline, GENERATOR_VERSION, toDas, computeTransplantOffset } from "./generator/baseline-generator.ts";
 import { composeFarmerText, COMPOSER_VERSION, type TaskFacts } from "./generator/compose-farmer-text.ts";
 import { loadVarietyProfile, composerVarietyView } from "./db/variety-profile.ts";
+import { buildSelectedContext } from "./generator/selected-context.ts";
 import { consolidateByStage } from "./generator/stage-work-plan.ts";
 import { applyRuleStageOffsets, biologicalStageOrder, sequenceTasks } from "./generator/stage-sequence.ts";
 import { alignAfterHarvest, calendarStageAt, detailedStepsOf, labelStageClock, markTimingConfidence, runQualityGates, transplantDateDecision, withholdConflictingSeedRate } from "./generator/timeline-integrity.ts";
@@ -722,7 +723,18 @@ serve(async (req) => {
     const composeInline = Date.now() - startTime < COMPOSE_INLINE_MAX_ELAPSED_MS || HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS >= COMPOSE_INLINE_MIN_REMAINING_MS;
     const composeBudgetMs = composeInline ? Math.min(COMPOSE_INLINE_MAX_MS, Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS)) : 0;
     timePlan.compose_budget_ms = composeBudgetMs;
-    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId }, composerVarietyView(varietyProfile));
+    // 2026-11-14 — the composer carries the WHOLE resolved field context (land, size, region, soil,
+    // moisture, NDVI, dates, variety and the season programme), not just the variety dossier, so every
+    // task is written for THIS field and variety instead of a generic card. Background only: the fact
+    // boundary still requires every dose/product/threshold to come from the task's own facts.
+    const selectedContext = buildSelectedContext({
+      inputs,
+      varietyView: composerVarietyView(varietyProfile),
+      totals: baseline.totals,
+      releaseStatus: release.status,
+      land: { soil: landContext.soil, weather: landContext.weather, ndvi: landContext.ndvi },
+    });
+    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId }, selectedContext);
     // Composition is presentation only. Its fidelity is enforced inside composeFarmerText by the
     // language-independent fact boundary (every number/unit must exist in the source facts); a
     // rejected task keeps its deterministic text. No keyword filtering is applied here.
@@ -803,7 +815,7 @@ serve(async (req) => {
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, stage_work_plan: stageWorkTrace, quality_gates: qualityGateTrace, release_readiness: (qualityGateTrace as { readiness?: unknown } | null)?.readiness ?? null, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, selected_context: selectedContext, stage_work_plan: stageWorkTrace, quality_gates: qualityGateTrace, release_readiness: (qualityGateTrace as { readiness?: unknown } | null)?.readiness ?? null, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
       metadata: { variety_method_consent: varietyMethodConsentRecord, coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
