@@ -8129,6 +8129,94 @@ export type Database = {
         }
         Relationships: []
       }
+      crop_seed_rate_standard: {
+        Row: {
+          created_at: string
+          crop_code: string
+          cultivation_method: string
+          evidence_tier: string
+          id: string
+          is_active: boolean
+          region_code: string | null
+          review_status: string
+          seed_rate_basis_code: string | null
+          seed_rate_broadcast_kg_per_acre_max: number | null
+          seed_rate_broadcast_kg_per_acre_min: number | null
+          seed_rate_kg_per_acre_max: number | null
+          seed_rate_kg_per_acre_min: number | null
+          seed_rate_kg_per_ha_max: number | null
+          seed_rate_kg_per_ha_min: number | null
+          seed_rate_rationale: string | null
+          seed_rate_variety_type: string | null
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          crop_code: string
+          cultivation_method: string
+          evidence_tier?: string
+          id?: string
+          is_active?: boolean
+          region_code?: string | null
+          review_status?: string
+          seed_rate_basis_code?: string | null
+          seed_rate_broadcast_kg_per_acre_max?: number | null
+          seed_rate_broadcast_kg_per_acre_min?: number | null
+          seed_rate_kg_per_acre_max?: number | null
+          seed_rate_kg_per_acre_min?: number | null
+          seed_rate_kg_per_ha_max?: number | null
+          seed_rate_kg_per_ha_min?: number | null
+          seed_rate_rationale?: string | null
+          seed_rate_variety_type?: string | null
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string
+          cultivation_method?: string
+          evidence_tier?: string
+          id?: string
+          is_active?: boolean
+          region_code?: string | null
+          review_status?: string
+          seed_rate_basis_code?: string | null
+          seed_rate_broadcast_kg_per_acre_max?: number | null
+          seed_rate_broadcast_kg_per_acre_min?: number | null
+          seed_rate_kg_per_acre_max?: number | null
+          seed_rate_kg_per_acre_min?: number | null
+          seed_rate_kg_per_ha_max?: number | null
+          seed_rate_kg_per_ha_min?: number | null
+          seed_rate_rationale?: string | null
+          seed_rate_variety_type?: string | null
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_seed_rate_standard_crop_code_fkey"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "crop_code_registry"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "crop_seed_rate_standard_crop_code_fkey"
+            columns: ["crop_code"]
+            isOneToOne: false
+            referencedRelation: "v_crop_codes"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "crop_seed_rate_standard_cultivation_method_fkey"
+            columns: ["cultivation_method"]
+            isOneToOne: false
+            referencedRelation: "cultivation_method_master"
+            referencedColumns: ["method_code"]
+          },
+        ]
+      }
       crop_stage_aliases: {
         Row: {
           alias_text: string
@@ -32377,6 +32465,134 @@ export type Database = {
           },
           {
             foreignKeyName: "soil_health_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      soil_source_observations: {
+        Row: {
+          depth_bottom_cm: number | null
+          depth_top_cm: number | null
+          land_id: string
+          observed_at: string | null
+          property_code: string
+          provider: string
+          record_key: string
+          requested_lat: number
+          requested_lon: number
+          retrieved_at: string
+          source_metadata: Json
+          source_reference: string
+          statistic: string
+          tenant_id: string
+          unit: string
+          value: number
+        }
+        Insert: {
+          depth_bottom_cm?: number | null
+          depth_top_cm?: number | null
+          land_id: string
+          observed_at?: string | null
+          property_code: string
+          provider: string
+          record_key: string
+          requested_lat: number
+          requested_lon: number
+          retrieved_at?: string
+          source_metadata?: Json
+          source_reference: string
+          statistic: string
+          tenant_id: string
+          unit: string
+          value: number
+        }
+        Update: {
+          depth_bottom_cm?: number | null
+          depth_top_cm?: number | null
+          land_id?: string
+          observed_at?: string | null
+          property_code?: string
+          provider?: string
+          record_key?: string
+          requested_lat?: number
+          requested_lon?: number
+          retrieved_at?: string
+          source_metadata?: Json
+          source_reference?: string
+          statistic?: string
+          tenant_id?: string
+          unit?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_source_observations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
