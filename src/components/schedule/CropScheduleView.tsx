@@ -556,12 +556,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>
 
 
-      <div className="mx-3 grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1" role="group" aria-label={t('schedule.graphical.view_label')}>
-        <Button variant="filter" aria-pressed={displayView === 'basic'} className="min-h-11 border-0" onClick={() => setDisplayView('basic')}><Calendar className="size-4" />{t('schedule.graphical.basic')}</Button>
-        <Button variant="filter" aria-pressed={displayView === 'graphical'} className="min-h-11 gap-1.5 border-0 px-2" onClick={() => setDisplayView('graphical')}><Sprout className="size-4" />{t('schedule.graphical.graphical')}<Badge variant="outline" className="px-1 text-[9px]">Beta</Badge></Button>
+      <div className="mx-3 mt-1 grid grid-cols-2 gap-0.5 rounded-full border border-border/60 bg-muted/50 p-0.5" role="group" aria-label={t('schedule.graphical.view_label')}>
+        <button type="button" aria-pressed={displayView === 'basic'} onClick={() => setDisplayView('basic')} className={`flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${displayView === 'basic' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}><Calendar className="size-3.5" />{t('schedule.graphical.basic')}</button>
+        <button type="button" aria-pressed={displayView === 'graphical'} onClick={() => setDisplayView('graphical')} className={`flex h-8 items-center justify-center gap-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${displayView === 'graphical' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}><Sprout className="size-3.5" />{t('schedule.graphical.graphical')}<span className="rounded-full bg-primary/15 px-1.5 text-[9px] font-bold text-primary">Beta</span></button>
       </div>
 
-      {displayView === 'graphical' && <div className="px-3 pb-nav-safe pt-2">
+      {displayView === 'graphical' && <div className="px-3 pb-nav-safe pt-1.5">
         <ClimateAlertBanner data={climateData} />
         <CropStageTimeline key={schedule.id} tasks={tasks}
           savedStages={((schedule as any).generation_params?.variety_profile?.stages ?? []) as SavedStage[]}
