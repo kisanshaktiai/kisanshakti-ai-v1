@@ -73,7 +73,7 @@ export default function CropStageTimeline({ savedStages, landStage, onCropPhoto,
                   {done ? <Check className="size-3" /> : position === 0 ? <Sprout className="size-3" /> : <Leaf className="size-3" />}
                 </motion.span>
                 <span className="whitespace-nowrap text-xs font-semibold">{labelOf(stage, position)}</span>
-                {stage.dasFrom != null && stage.dasTo != null && <span className="whitespace-nowrap text-[10px] text-muted-foreground">{stage.dasFrom}–{stage.dasTo}</span>}
+                {stage.dasFrom != null && stage.dasTo != null && <span className="whitespace-nowrap text-[10px] text-muted-foreground">{stage.dasFrom}–{stage.dasTo} {t('schedule.units.day')}</span>}
               </button>
             );
           })}

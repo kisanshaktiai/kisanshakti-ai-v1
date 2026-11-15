@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { enUS, hi as hiLocale, mr as mrLocale } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -35,6 +36,29 @@ interface Props {
   onEditTask?: (task: Task) => void; stagePhaseOfTask?: (task: { stage_uuid?: string | null }) => StagePhase;
 }
 
+// Measures whatever fixed/sticky bars cover the top and bottom of the viewport
+// (app header, page header, bottom nav) so an opened card fills exactly the gap.
+function measureObstructions(): { top: number; bottom: number } {
+  if (typeof document === 'undefined') return { top: 0, bottom: 0 };
+  const x = Math.round(window.innerWidth / 2);
+  const coveredBy = (y: number) => {
+    let rect: DOMRect | null = null;
+    for (const el of document.elementsFromPoint(x, y)) {
+      for (let n: Element | null = el; n && n !== document.body; n = n.parentElement) {
+        const pos = getComputedStyle(n).position;
+        if (pos === 'fixed' || pos === 'sticky') { rect = n.getBoundingClientRect(); break; }
+      }
+      if (rect) break;
+    }
+    return rect;
+  };
+  const topRect = coveredBy(2);
+  const bottomRect = coveredBy(window.innerHeight - 2);
+  const top = topRect && topRect.top <= 2 ? Math.min(topRect.bottom, window.innerHeight / 2) : 0;
+  const bottom = bottomRect && bottomRect.bottom >= window.innerHeight - 2 ? Math.min(window.innerHeight - bottomRect.top, window.innerHeight / 3) : 0;
+  return { top, bottom };
+}
+
 const typeConfig = {
   irrigation: { icon: Droplets }, fertilizer: { icon: Leaf }, nutrition: { icon: Leaf },
   pesticide: { icon: Bug }, pest_management: { icon: Bug }, disease_management: { icon: Bug },
@@ -56,6 +80,27 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   // to en-US, which read Indian-script text with an English voice).
   const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: currentLanguage });
+  const [fit, setFit] = useState<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
+  const dateLocale = currentLanguage === 'mr' ? mrLocale : currentLanguage === 'hi' ? hiLocale : enUS;
+  const fitCard = useCallback((taskId: string) => {
+    requestAnimationFrame(() => {
+      const insets = measureObstructions();
+      setFit(insets);
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`task-card-${taskId}`);
+        if (!el) return;
+        el.style.scrollMarginTop = `${insets.top + 8}px`;
+        el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      });
+    });
+  }, [reduceMotion]);
+  useEffect(() => {
+    if (!expandedTaskId) return;
+    const onResize = () => setFit(measureObstructions());
+    window.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); window.visualViewport?.removeEventListener('resize', onResize); };
+  }, [expandedTaskId]);
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
 
   // Ask which natural voices exist as soon as the screen opens, so tapping the
@@ -133,7 +178,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
           const d = new Date(date);
           const past = isPast(d) && !isToday(d);
           const days = differenceInDays(d, new Date());
-          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE') : format(d, 'dd MMM');
+          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE', { locale: dateLocale }) : format(d, 'dd MMM', { locale: dateLocale });
           return (
             <motion.section key={date} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : groupIndex * 0.03 }} className="relative">
               {layout === 'basic' && <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
@@ -141,7 +186,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
               </div>}
               <div className={cn('mb-2 flex items-center gap-2', layout === 'basic' && 'pl-4')}>
                 <h4 className="text-base font-extrabold text-foreground">{label}</h4>
-                {layout === 'basic' && <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM')}</span>}
+                {layout === 'basic' && <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM', { locale: dateLocale })}</span>}
               </div>
 
               <div className="space-y-3">
@@ -155,10 +200,10 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const expanded = expandedTaskId === task.id;
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
                   return (
-                    <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
-                      <article className={cn('relative overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
+                    <Collapsible key={task.id} open={expanded} onOpenChange={(open) => { setExpandedTaskId(open ? task.id : null); if (open) fitCard(task.id); }}>
+                      <article id={`task-card-${task.id}`} style={expanded ? { maxHeight: `calc(100dvh - ${fit.top + fit.bottom + 16}px)` } : undefined} className={cn('relative flex flex-col overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
                         <CollapsibleTrigger asChild>
-                          <Button variant="ghost" className="h-auto min-h-20 w-full justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
+                          <Button variant="ghost" className="h-auto min-h-20 w-full shrink-0 justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
                             <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : expired ? 'bg-muted' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
                             <span className={cn('flex min-w-0 flex-1 items-start gap-3 py-3 pl-3', expired ? 'pr-3' : 'pr-14')}>
                               <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
@@ -195,7 +240,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                           </button>
                         )}
 
-                        <CollapsibleContent>
+                        <CollapsibleContent className="min-h-0 flex-1 overflow-y-auto overscroll-auto">
                           <div className="space-y-4 border-t-2 border-border bg-card p-3" onClick={(event) => event.stopPropagation()}>
                             {p.howMuch.length > 0 && (
                               <section className="grid gap-2 sm:grid-cols-2">
@@ -210,7 +255,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                             {p.needsTranslation && <p className="rounded-md border-2 border-warning bg-warning-soft p-3 text-sm font-bold text-foreground">{t('schedule.farmer_task.translation_pending')}</p>}
                             {p.technicalDetails.length > 0 && <details className="rounded-md border border-border bg-muted p-3"><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-bold text-foreground"><BookOpen className="size-4" />{t('schedule.farmer_task.technical_details')}</summary><ul className="mt-2 space-y-2">{p.technicalDetails.map((line, index) => <li key={index} className="text-sm leading-relaxed text-foreground">{line}</li>)}</ul></details>}
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                              {onTakePhoto && <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => onTakePhoto(task)}><Camera className="size-4" />{t('cropGrowth.takePhoto', 'Photo')}</Button>}
+                              {onTakePhoto && <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => onTakePhoto(task)}><Camera className="size-4" />{t('schedule.task_card.photo', 'Photo')}</Button>}
                               <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => setEditingTask(task)}><Pencil className="size-4" />{t('schedule.dialog.edit')}</Button>
                               <VideoHelpButton category={task.task_type} taskType={p.what} />
                               <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => speakTask(task)} disabled={!isSupported || !isVoicesLoaded} aria-label={t('schedule.listen')}>

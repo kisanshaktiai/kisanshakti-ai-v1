@@ -363,7 +363,8 @@
       "yield_impact": "Yield Impact",
       "repeats": "Repeats every {{days}} days",
       "repeats_window": "From day {{start}} to day {{end}}",
-      "recurring": "Recurring"
+      "recurring": "Recurring",
+      "photo": "Photo"
     },
     "schedule_card": {
       "variety": "Variety",
@@ -656,6 +657,23 @@
       "scout_now": "Check your crop today — risk reported for your field.",
       "water_sufficient": "No water needed today — the soil already has enough.",
       "application_window_exhausted": "No good spraying day was left in this stage — do it today, in the calmest hours."
+    },
+    "units": {
+      "day": "days",
+      "week": "weeks",
+      "hour": "hours",
+      "kg": "kg",
+      "g": "g",
+      "ml": "ml",
+      "l": "L",
+      "mm": "mm",
+      "cm": "cm",
+      "acre": "acre",
+      "ha": "ha"
+    },
+    "frequency": {
+      "every_day": "every day",
+      "every_week": "every week"
     }
   },
   "common": {
