@@ -7,6 +7,8 @@ export interface TimelineTask {
   stage_key?: string | null;
   stage_name?: string | null;
   stage_order?: number | null;
+  /** The generator's order of work within a day (agronomic sequence). */
+  sequence_order?: number | null;
 }
 
 export interface SavedStage {
@@ -27,6 +29,8 @@ export interface TimelineStage<T extends TimelineTask> {
   current: boolean;
   unassigned: boolean;
 }
+
+const seqOf = (t: TimelineTask): number => (t.sequence_order != null && Number.isFinite(Number(t.sequence_order)) ? Number(t.sequence_order) : Number.MAX_SAFE_INTEGER);
 
 export function buildStageTimeline<T extends TimelineTask>(tasks: T[], saved: SavedStage[], currentUuid?: string | null): TimelineStage<T>[] {
   const groups = new Map<string, TimelineStage<T>>();
@@ -53,7 +57,7 @@ export function buildStageTimeline<T extends TimelineTask>(tasks: T[], saved: Sa
     if (!group.label && task.stage_name) group.label = task.stage_name;
   });
   return [...groups.values()].sort((a, b) => Number(a.unassigned) - Number(b.unassigned) || a.order - b.order).map((stage) => ({
-    ...stage, tasks: [...stage.tasks].sort((a, b) => a.task_date.localeCompare(b.task_date)),
+    ...stage, tasks: [...stage.tasks].sort((a, b) => a.task_date.localeCompare(b.task_date) || seqOf(a) - seqOf(b)),
   }));
 }
 

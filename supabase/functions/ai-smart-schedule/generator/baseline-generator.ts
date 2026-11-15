@@ -337,6 +337,9 @@ function dasFromSplit(
   return { das: null, stage: null };
 }
 
+/** decision_rules.application_method says the input is applied to the seed (seed_treatment, seed_treatment_slurry, …). */
+export const isSeedApplied = (applicationMethod: unknown): boolean => /^seed[_ ]?treatment/i.test(String(applicationMethod ?? "").trim());
+
 export async function generateBaseline(
   supabase: SupabaseClient,
   inputs: ResolvedInputs,
@@ -891,7 +894,11 @@ export async function generateBaseline(
       if (timing.gap) gaps.push(timing.gap);
       const stage = matched[timing.stageIndex].stage;
       const das = timing.das ?? matched[timing.stageIndex].das;
-      const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
+      // 2026-11-15: an input applied TO THE SEED (decision_rules.application_method seed_treatment…)
+      // is a seed treatment whatever its category (a fungicide dressing filed under disease, a
+      // biofertilizer filed under organic). It is done before sowing, not as field feeding or scouting.
+      const ruleCategory = isSeedApplied(rule.application_method) ? "seed_treatment" : rule.category;
+      const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, ruleCategory, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
       // 2026-09-03: ETL / dose / PHI / source are AUDIT detail — they used to be the
       // farmer instruction list. They now ride in technical_details.
@@ -912,7 +919,7 @@ export async function generateBaseline(
 
       // v1.5.0: the name is a LABEL. Previously rule.action_text (a full advisory
       // paragraph) became the task_name, so cards showed prose as a title.
-      const ruleLabel = String(rule.category ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
+      const ruleLabel = String(ruleCategory ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
       const stageTag = stageLabel(stage);
       tasks.push({
         task_name:
@@ -948,7 +955,9 @@ export async function generateBaseline(
         instructions: ruleInstructions,
         precautions: rulePrecautions,
         technical_details: ruleTechnical,
-        resources: { timing_basis: timing.basis, timing_window_das: [das as number, timing.dasEnd ?? das0(stage, stage.das_max)], ...(timing.gap ? { timing_review: timing.gap.split(":")[0] } : {}) },
+        resources: { timing_basis: timing.basis, timing_window_das: [das as number, timing.dasEnd ?? das0(stage, stage.das_max)], ...(timing.gap ? { timing_review: timing.gap.split(":")[0] } : {}),
+          // DB order of operations within the day (stage-work-plan.ts orders folded steps by it).
+          ...(Array.isArray(rule.sequence_after) && rule.sequence_after.length ? { sequence_after: rule.sequence_after.map(String) } : {}) },
 
       });
     }
@@ -1190,7 +1199,12 @@ export async function generateBaseline(
   // different labels on the same day remain separate tasks (that is real agronomy).
   const dedup = new Map<string, BaselineTask>();
   for (const t of tasks) {
-    const key = `${t.task_type}|${t.task_name}|${t.days_from_sowing}|${t.nutrient ?? ""}`;
+    // 2026-11-15: the practice text is part of the identity. Rule cards are named "<category> — <stage>",
+    // so five different nursery practices shared one key and only the FIRST description survived:
+    // the fungicide seed dressing, the seed rate, the nursery bed and sowing window were dropped from
+    // every transplanted-rice schedule. Only cards that say the same thing are duplicates now; distinct
+    // practices of one stage are folded later, with all their text, by stage-work-plan.ts.
+    const key = `${t.task_type}|${t.task_name}|${t.days_from_sowing}|${t.nutrient ?? ""}|${String(t.task_description ?? "").trim().toLowerCase()}`;
     const prev = dedup.get(key);
     if (!prev) { dedup.set(key, t); continue; }
     prev.rule_ids = [...new Set([...prev.rule_ids, ...t.rule_ids])];

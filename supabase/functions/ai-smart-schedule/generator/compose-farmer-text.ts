@@ -39,6 +39,7 @@
 //   No language-specific vocabulary, no crop-specific wording, lives in this file.
 
 import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
+import { languageLabel, wrongSameScriptLanguage } from "./language-guard.ts";
 // deno-lint-ignore no-explicit-any
 export interface ComposeAIContext { db: { from(table: string): any }; farmerId?: string | null }
 type ComposeRoute = { chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean };
@@ -136,6 +137,9 @@ export function respectsFactBoundary(composed: ComposedTask, f: TaskFacts, langu
   if (!isTargetLanguage(composed.task_name, language)) return false;
   if (!isTargetLanguage(composed.task_description, language)) return false;
   for (const line of composed.instructions ?? []) if (line.trim() && !isTargetLanguage(line, language)) return false;
+  // 2026-11-15: a card in ANOTHER language of the same script (Hindi for Marathi) passes the script
+  // check above; judged on the whole card by the registered trigram model (language-guard.ts).
+  if (wrongSameScriptLanguage(all, language)) return false;
 
   const supplied = factNumbers(f);
   const suppliedSet = new Set(supplied);
@@ -181,7 +185,7 @@ export function isTargetLanguage(value: string, language: string): boolean {
 export type CropContext = Record<string, unknown> | null;
 function prompt(chunk: TaskFacts[], language: string, cropContext: CropContext = null): string {
   return JSON.stringify({
-    write_in_language: language,
+    write_in_language: languageLabel(language),
     audience: "a smallholder farmer who left school early and reads slowly on a small phone",
     voice: "a village agriculture extension officer speaking to him in his own language",
     your_job: [
@@ -199,18 +203,16 @@ function prompt(chunk: TaskFacts[], language: string, cropContext: CropContext =
       "Copy every number, unit, product name and fertilizer grade EXACTLY as supplied. Do not convert, round, add or drop a single number.",
       "Never introduce a number, dose, product, date or threshold that is not in the supplied facts.",
       "Product names and fertilizer grades stay in the script the farmer reads on the bag; the sentence around them is written in his language.",
-      "Everything else is written in the farmer's own language and script — including the units of measurement and the everyday words around the numbers (the source words for kilogram, gram, litre, millilitre, millimetre, day, week, acre, hectare and the like). Keep the digits; carry the unit and the words into his language. The only tokens left in their original script are genuine product brand names and fertilizer grades printed on the bag.",
+      "Translate every ordinary English word, including day, days, week and DAS (days after sowing). Keep only numerals, the unit of a supplied quantity, product names and fertilizer grades exactly as given.",
       "When a condition is supplied, begin the steps with that condition so the farmer knows this is done only if he sees it.",
       "Do not add advice, cautions or agronomy of your own — only what the supplied facts and reference material already say.",
       "One card is one job at one crop stage. Put the steps in the order the farmer does them in the field. Say each thing once: when two supplied lines state the same dose or the same instruction, write it one time.",
       "A crop-check card (task_type monitoring) only tells the farmer what to look for and to get it checked. Never name a pesticide, a dose or a spray on it, even if you know one.",
       "Never output internal codes or English placeholders (words joined by underscores, rule names, 'stage general'). If a supplied line is only such a code, leave it out.",
       ...(cropContext ? [
-        "selected_crop is the whole context of the field the farmer is standing in: the crop and variety he chose, the land and its size and region, the soil, the dates and the season programme. Every task is for THIS crop and variety at the growth stage given in the task's `stage`. Never describe the crop in general, another crop or another variety.",
-        "Name the chosen variety and the growth stage in the card where it makes the instruction concrete — write the variety's own name (selected_crop.variety) instead of 'this variety' or 'the recommended variety', and the stage instead of a generic heading.",
-        "Use the field's size and region (selected_crop.land) to make an instruction concrete for THIS field when it helps the farmer act (for example framing an operation for his own acreage), but state an amount only when that amount is in the task's own supplied facts — never divide or scale a dose yourself.",
-        "If selected_crop.not_available_for_this_field lists soil_test, soil_moisture or satellite_ndvi, do not invent those readings; where a step would otherwise lean on them, phrase it for a farmer who does not have that reading yet.",
-        "selected_crop is background only: never copy a number, product, dose or treatment from it (including the season_fertilizer_programme totals, which are whole-season sums, not one application) into a task unless that exact value is in the task's own supplied facts. Never say a resistant variety cannot get a problem.",
+        "selected_crop is the crop and variety this farmer chose. Every task is for that crop and variety at the growth stage given in the task's `stage`. Never describe the crop in general, another crop or another variety.",
+        "task_name says the operation for THIS stage of THIS crop (the stage or the crop name may appear in it when that makes it clearer), not a generic heading.",
+        "selected_crop is background only: never copy a number, product, dose or treatment from it unless that exact value is in the task's own supplied facts. Never say a resistant variety cannot get a problem.",
       ] : []),
     ],
     ...(cropContext ? { selected_crop: cropContext } : {}),

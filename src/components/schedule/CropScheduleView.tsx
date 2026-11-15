@@ -205,8 +205,10 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         tasksError = e;
       }
 
+      // Same-day tasks follow the generator's agronomic order (sequence_order), never fetch order.
+      const seqOf = (t: any) => (Number.isFinite(Number(t?.sequence_order)) && t?.sequence_order != null ? Number(t.sequence_order) : Number.MAX_SAFE_INTEGER);
       const byDate = (a: any, b: any) =>
-        String(a.task_date || '').localeCompare(String(b.task_date || ''));
+        String(a.task_date || '').localeCompare(String(b.task_date || '')) || seqOf(a) - seqOf(b);
 
       if (tasksError) {
         console.warn('⚠️ [CropScheduleView] Failed to fetch tasks online:', tasksError);
