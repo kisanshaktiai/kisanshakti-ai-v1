@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { enUS, hi as hiLocale, mr as mrLocale } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -81,7 +80,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: currentLanguage });
   const [fit, setFit] = useState<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
-  const dateLocale = currentLanguage === 'mr' ? mrLocale : currentLanguage === 'hi' ? hiLocale : enUS;
+  const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) => { try { return new Intl.DateTimeFormat(`${currentLanguage || 'en'}-IN`, opts).format(d); } catch { return format(d, 'dd MMM'); } };
   const fitCard = useCallback((taskId: string) => {
     requestAnimationFrame(() => {
       const insets = measureObstructions();
@@ -178,7 +177,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
           const d = new Date(date);
           const past = isPast(d) && !isToday(d);
           const days = differenceInDays(d, new Date());
-          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE', { locale: dateLocale }) : format(d, 'dd MMM', { locale: dateLocale });
+          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? fmt(d, { weekday: 'long' }) : fmt(d, { day: '2-digit', month: 'short' });
           return (
             <motion.section key={date} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : groupIndex * 0.03 }} className="relative">
               {layout === 'basic' && <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
@@ -186,7 +185,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
               </div>}
               <div className={cn('mb-2 flex items-center gap-2', layout === 'basic' && 'pl-4')}>
                 <h4 className="text-base font-extrabold text-foreground">{label}</h4>
-                {layout === 'basic' && <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM', { locale: dateLocale })}</span>}
+                {layout === 'basic' && <span className="text-xs font-bold text-foreground">{fmt(d, { day: '2-digit', month: 'short' })}</span>}
               </div>
 
               <div className="space-y-3">
