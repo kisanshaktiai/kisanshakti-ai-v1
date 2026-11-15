@@ -39,6 +39,14 @@
     "amendment": "Soil Amendment",
     "improvement": "Improvement Tips",
     "noData": "No soil data available",
-    "testRequired": "Soil test required"
+    "testRequired": "Soil test required",
+    "loadError": "Unable to load soil report",
+    "signInRequired": "Sign in again to view this land’s soil report.",
+    "retryHelp": "Check your connection and try again. The land may also be unavailable to your account.",
+    "emptyHelp": "No saved soil report is available for this land yet. Automatic soil-data fetching is not available yet.",
+    "backToLand": "Back to land",
+    "checkAgain": "Check again",
+    "checking": "Checking…",
+    "modelledNotice": "Estimated from soil maps — not a laboratory soil test."
   }
 }
