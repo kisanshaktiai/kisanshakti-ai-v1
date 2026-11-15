@@ -22,7 +22,6 @@ import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
-import { TaskStatisticsWidget } from './TaskStatisticsWidget';
 import CropStageTimeline from './CropStageTimeline';
 import type { SavedStage } from '@/lib/scheduleStageTimeline';
 import CurrentStageHeader from './CurrentStageHeader';
@@ -556,7 +555,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       <div className="px-3 pt-2 pb-2">
         {/* Current crop stage from the land SSOT + stage-disagreement guardrail */}
         <CurrentStageHeader
-          className="mb-3"
+          className="mb-2"
           stage={landStage}
           disagreement={hasStageDisagreement(tasks as any[])}
         />
@@ -564,81 +563,37 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         {/* Climate Alert Banner */}
         <ClimateAlertBanner data={climateData} />
 
-        {/* Task Statistics Widget */}
-        <TaskStatisticsWidget scheduleId={schedule.id} className="mb-3" />
-
-        {/* Crop Growth Tracking Card - Upload Photo Button */}
-        <Card 
-          className="mb-3 border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5"
-        >
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-primary/10">
-                  <Camera className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">{t('schedule.crop_growth.title')}</h3>
-                  <p className="text-xs text-muted-foreground">{t('schedule.crop_growth.description')}</p>
-                </div>
+        {/* Compact HUD: merged counts + photo/refresh actions (replaces 3 stacked cards) */}
+        <div className="flex items-stretch gap-2">
+          <div className="grid flex-1 grid-cols-3 divide-x divide-border/60 rounded-2xl border border-border/60 bg-card shadow-sm">
+            {[
+              { v: upcomingCount, l: i18n.t('schedule.upcoming'), c: 'text-primary' },
+              { v: completedTasks.length, l: i18n.t('schedule.complete'), c: 'text-success' },
+              { v: pendingTasks.filter(t => isPast(new Date(t.task_date))).length, l: i18n.t('schedule.overdue'), c: 'text-destructive' },
+            ].map((s) => (
+              <div key={s.l} className="flex flex-col items-center justify-center py-1.5">
+                <span className={cn('text-lg font-bold leading-6', s.v ? s.c : 'text-muted-foreground')}>{s.v}</span>
+                <span className="truncate px-1 text-[11px] font-medium text-muted-foreground">{s.l}</span>
               </div>
-              <Sprout className="h-5 w-5 text-primary" />
-            </div>
-            {/* Quick Upload Button */}
-            <Button
-              variant="default"
-              size="sm"
-              className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:shadow-lg"
-              onClick={() => setShowLandPhotoUpload(true)}
-            >
-              <Camera className="h-4 w-4" />
-              {t('schedule.crop_growth.upload_photo')}
-            </Button>
+            ))}
           </div>
-        </Card>
-
-        {/* Tasks Summary */}
-        <Card className="border-2 border-border bg-card">
-          <div className="p-3">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-primary/10 rounded-lg p-3">
-                <p className="text-2xl font-bold text-primary">{upcomingCount}</p>
-                <p className="text-[10px] text-muted-foreground font-medium">{i18n.t('schedule.upcoming')}</p>
-              </div>
-              <div className="bg-success/10 rounded-lg p-3">
-                <p className="text-2xl font-bold text-success">{completedTasks.length}</p>
-                <p className="text-[10px] text-muted-foreground font-medium">{i18n.t('schedule.complete')}</p>
-              </div>
-              <div className="bg-destructive/10 rounded-lg p-3">
-                <p className="text-2xl font-bold text-destructive">
-                  {pendingTasks.filter(t => isPast(new Date(t.task_date))).length}
-                </p>
-                <p className="text-[10px] text-muted-foreground font-medium">{i18n.t('schedule.overdue')}</p>
-              </div>
-            </div>
-
-            {/* Refresh Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetchSchedules()}
-              className="mt-3 min-h-11 w-full border-2 border-primary bg-card text-card-foreground"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              {i18n.t('schedule.refreshSchedule')}
-            </Button>
-          </div>
-        </Card>
+          <Button size="icon" className="h-auto min-h-12 w-12 shrink-0 rounded-2xl" aria-label={t('schedule.crop_growth.upload_photo')} title={t('schedule.crop_growth.upload_photo')} onClick={() => setShowLandPhotoUpload(true)}>
+            <Camera className="size-5" />
+          </Button>
+          <Button variant="outline" size="icon" className="h-auto min-h-12 w-12 shrink-0 rounded-2xl" aria-label={i18n.t('schedule.refreshSchedule')} title={i18n.t('schedule.refreshSchedule')} onClick={() => refetchSchedules()}>
+            <RefreshCw className="size-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Task Tabs - Simple View Switcher */}
       <div className="px-2 pb-nav-safe">
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="mt-4">
-          <TabsList className="grid min-h-12 w-full grid-cols-4 border-2 border-border bg-card p-1">
-            <TabsTrigger value="today" className="min-h-10 text-sm font-bold">{i18n.t('schedule.today')}</TabsTrigger>
-            <TabsTrigger value="week" className="min-h-10 text-sm font-bold">{i18n.t('schedule.week')}</TabsTrigger>
-            <TabsTrigger value="month" className="min-h-10 text-sm font-bold">{i18n.t('schedule.month')}</TabsTrigger>
-            <TabsTrigger value="all" className="min-h-10 text-sm font-bold">{i18n.t('schedule.all')}</TabsTrigger>
+        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="mt-1">
+          <TabsList className="grid h-11 w-full grid-cols-4 rounded-full border border-border/60 bg-muted/60 p-1">
+            <TabsTrigger value="today" className="h-9 rounded-full text-sm font-bold data-[state=active]:shadow-sm">{i18n.t('schedule.today')}</TabsTrigger>
+            <TabsTrigger value="week" className="h-9 rounded-full text-sm font-bold data-[state=active]:shadow-sm">{i18n.t('schedule.week')}</TabsTrigger>
+            <TabsTrigger value="month" className="h-9 rounded-full text-sm font-bold data-[state=active]:shadow-sm">{i18n.t('schedule.month')}</TabsTrigger>
+            <TabsTrigger value="all" className="h-9 rounded-full text-sm font-bold data-[state=active]:shadow-sm">{i18n.t('schedule.all')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value={viewMode} className="mt-3 space-y-3">
