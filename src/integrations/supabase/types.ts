@@ -32171,6 +32171,148 @@ export type Database = {
           },
         ]
       }
+      soil_engine_workers: {
+        Row: {
+          algorithm_version: string
+          heartbeat_at: string
+          source_version: string
+          worker_id: string
+        }
+        Insert: {
+          algorithm_version: string
+          heartbeat_at?: string
+          source_version: string
+          worker_id: string
+        }
+        Update: {
+          algorithm_version?: string
+          heartbeat_at?: string
+          source_version?: string
+          worker_id?: string
+        }
+        Relationships: []
+      }
+      soil_fetch_jobs: {
+        Row: {
+          algorithm_version: string
+          attempts: number
+          boundary_hash: string
+          created_at: string
+          error_code: string | null
+          farmer_id: string
+          geometry: Json
+          id: string
+          land_id: string
+          lease_token: string | null
+          lease_until: string | null
+          progress: number
+          source_version: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          algorithm_version: string
+          attempts?: number
+          boundary_hash: string
+          created_at?: string
+          error_code?: string | null
+          farmer_id: string
+          geometry: Json
+          id?: string
+          land_id: string
+          lease_token?: string | null
+          lease_until?: string | null
+          progress?: number
+          source_version: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          algorithm_version?: string
+          attempts?: number
+          boundary_hash?: string
+          created_at?: string
+          error_code?: string | null
+          farmer_id?: string
+          geometry?: Json
+          id?: string
+          land_id?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          progress?: number
+          source_version?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_fetch_jobs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+        ]
+      }
       soil_health: {
         Row: {
           agro_climatic_zone: string | null
@@ -32469,6 +32611,119 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      soil_parcel_reports: {
+        Row: {
+          algorithm_version: string
+          boundary_hash: string
+          expires_at: string
+          farmer_id: string
+          id: string
+          land_id: string
+          quality: string
+          report: Json
+          retrieved_at: string
+          source_version: string
+          tenant_id: string
+        }
+        Insert: {
+          algorithm_version: string
+          boundary_hash: string
+          expires_at?: string
+          farmer_id: string
+          id: string
+          land_id: string
+          quality: string
+          report: Json
+          retrieved_at?: string
+          source_version: string
+          tenant_id: string
+        }
+        Update: {
+          algorithm_version?: string
+          boundary_hash?: string
+          expires_at?: string
+          farmer_id?: string
+          id?: string
+          land_id?: string
+          quality?: string
+          report?: Json
+          retrieved_at?: string
+          source_version?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soil_parcel_reports_id_fkey"
+            columns: ["id"]
+            isOneToOne: true
+            referencedRelation: "soil_fetch_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_parcel_reports_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -45527,6 +45782,36 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      soil_claim: {
+        Args: { p_algorithm: string; p_source: string }
+        Returns: Json
+      }
+      soil_complete: {
+        Args: { p_job: string; p_lease: string; p_report: Json }
+        Returns: boolean
+      }
+      soil_enqueue: {
+        Args: {
+          p_algorithm: string
+          p_farmer: string
+          p_land: string
+          p_source: string
+          p_tenant: string
+        }
+        Returns: Json
+      }
+      soil_fail: {
+        Args: { p_code: string; p_job: string; p_lease: string }
+        Returns: boolean
+      }
+      soil_progress: {
+        Args: { p_job: string; p_lease: string; p_progress: number }
+        Returns: boolean
+      }
+      soil_state: {
+        Args: { p_farmer: string; p_land: string; p_tenant: string }
+        Returns: Json
+      }
       st_3dclosestpoint: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: unknown
