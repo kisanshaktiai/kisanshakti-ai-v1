@@ -5,7 +5,7 @@
 # Soil source configuration error
 - [x] Confirm ENGINE_NOT_CONFIGURED is the missing SOILGRIDS_SOURCE_VERSION gate, not a land-ownership failure.
 - [x] Prevent known configuration-blocked fetches while preserving saved-report reads, back navigation, and retries for unknown readiness.
-- [ ] Configure the matching soil-source version: waiting for the operator-verified value used by kisanshakti-soil-engine.
+- [x] Set SOILGRIDS_SOURCE_VERSION to the operator-confirmed soilgrids-2.0-2020 and redeploy lands-api; unauthenticated soil read returns 401.
 - [ ] Verify authenticated soil job completion/read-back: external unmanaged farmer authentication is unavailable.
 
 # Schedule graphical view
