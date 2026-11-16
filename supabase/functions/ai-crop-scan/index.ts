@@ -1022,7 +1022,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
           created_at: new Date().toISOString()
         }).then(() => {
           console.log('📊 Scan logged to database');
-        }).catch((dbError: Error) => {
+        }, (dbError: Error) => {
           console.error('Failed to log scan:', dbError);
         });
       } catch (dbError) {

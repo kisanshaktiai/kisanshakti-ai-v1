@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
     console.error('[app-version] Error:', error);
     return new Response(
       JSON.stringify({
-        error: error.message || 'Internal server error',
+        error: error instanceof Error ? error.message : 'Internal server error',
         version: '1.0.0',
         build_hash: 'error',
         force_update: false,
