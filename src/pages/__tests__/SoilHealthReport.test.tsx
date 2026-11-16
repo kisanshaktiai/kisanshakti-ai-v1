@@ -61,8 +61,21 @@ it('starts the soil fetch from the empty page and displays real job progress', a
   await waitFor(()=>expect(mocks.load).toHaveBeenCalledWith('land','farmer','tenant',true));
   expect(await screen.findByText('37%')).toBeInTheDocument();
 });
-it('does not offer a fake fetch while the engine is offline', async()=>{
-  mocks.load.mockResolvedValue({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:false});
-  show();expect(await screen.findByText('soil.getSoil')).toBeDisabled();
-  expect(screen.getByText('soil.engineOffline')).toBeInTheDocument();
+it('lets a farmer attempt an explicit fetch when readiness check fails, with a clear backend error', async()=>{
+  mocks.load.mockImplementation((_id:string,_farmer:string,_tenant:string,start?:boolean)=>
+    start ? Promise.reject(new Error('ENGINE_NOT_CONFIGURED')) :
+    Promise.resolve({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:false,engine_status:'SOURCE_NOT_CONFIGURED'}));
+  show();
+  const btn=await screen.findByText('soil.getSoil');
+  expect(btn).toBeEnabled();
+  expect(screen.getByText('soil.sourceNotConfigured')).toBeInTheDocument();
+  fireEvent.click(btn);
+  await waitFor(()=>expect(mocks.load).toHaveBeenCalledWith('land','farmer','tenant',true));
+  expect(await screen.findByRole('alert')).toHaveTextContent('soil.sourceNotConfigured');
+});
+it('explains scheduled processing when GitHub immediate dispatch is not configured',async()=>{
+  mocks.load.mockResolvedValue({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:true,dispatch_mode:'scheduled'});
+  show();
+  expect(await screen.findByText('soil.getSoil')).toBeEnabled();
+  expect(screen.getByText('soil.scheduledDispatch')).toBeInTheDocument();
 });
