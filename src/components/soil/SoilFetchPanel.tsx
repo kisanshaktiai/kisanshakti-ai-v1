@@ -10,6 +10,7 @@ export function SoilFetchPanel({state,requesting,error,onFetch}:{state:SoilState
   const [depth,setDepth]=useState('0-5cm');
   const {model,job}=state;
   const active=job?.status==='queued'||job?.status==='running';
+  const configurationBlocked=!state.engine_available && (state.engine_status==='SOURCE_NOT_CONFIGURED'||state.engine_status==='QUEUE_UNAVAILABLE');
   const stale=state.boundary_changed||state.source_changed||!!model&&Date.parse(model.expires_at)<Date.now();
   const points=model?.sampling.points || [];
   const xs=points.map(p=>p.x_m),ys=points.map(p=>p.y_m);
@@ -31,7 +32,7 @@ export function SoilFetchPanel({state,requesting,error,onFetch}:{state:SoilState
         <span className="rounded-full bg-background px-3 py-1.5">{t('soil.savedForReuse')}</span>
       </div>
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <Button className="min-h-12 rounded-xl px-6" onClick={onFetch} disabled={requesting||active}>
+        <Button className="min-h-12 rounded-xl px-6" onClick={onFetch} disabled={requesting||active||configurationBlocked}>
           {requesting||active?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:model?<RefreshCw className="mr-2 h-4 w-4"/>:<ScanLine className="mr-2 h-4 w-4"/>}
           {t(active?'soil.processing':requesting?'soil.starting':model?'soil.checkSoil':'soil.getSoil')}
         </Button>

@@ -52,9 +52,16 @@ No server connection has been supplied to this session. Docker/Compose files in
 7. Only after successful staging acceptance, deploy the same migration, worker,
    Edge route and UI to production with separately supplied production secrets.
 
-Readiness uses worker heartbeat within two minutes. A service-only diagnostic
-HTTP sampling endpoint is not sufficient; the continuously running queue worker
-is required. No heartbeat → fetch button unavailable, saved reports still load.
+The current Edge route uses the operator-verified `SOILGRIDS_SOURCE_VERSION`
+and queue availability for readiness, not a continuously running heartbeat.
+Set the same source version on `lands-api` and the soil-engine worker; no default
+is invented because jobs and saved evidence are version-bound. Missing source
+configuration returns `SOURCE_NOT_CONFIGURED` on GET and rejects POST with
+`ENGINE_NOT_CONFIGURED`; saved reports remain readable. The UI does not send
+requests while the server explicitly reports that setup failure.
+`SOIL_GITHUB_DISPATCH_TOKEN` optionally dispatches `soil-on-demand.yml`
+immediately; without it, a separately configured scheduled worker must sweep
+queued jobs. Queue readiness alone does not prove that worker is running.
 No inbound worker HTTP port is needed. Worker crashes recover through lease expiry
 (up to three attempts). Stale leases cannot commit. Changed land ownership or
 boundaries are rejected at completion. Source-version changes invalidate cache.

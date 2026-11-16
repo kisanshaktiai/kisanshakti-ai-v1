@@ -94,7 +94,7 @@
       "device": "Soil device",
       "sensor": "Soil device"
     },
-    "sourceNotConfigured": "Soil source version is not configured on the server. Contact support.",
+    "sourceNotConfigured": "Soil fetching is not set up yet. Your saved reports remain available.",
     "queueUnavailable": "The soil request queue is unavailable. Saved reports remain accessible.",
     "scheduledDispatch": "Soil requests are queued for GitHub Actions processing. The next scheduled run may be delayed.",
     "scheduledQueueHelp": "Waiting for the next scheduled worker run. GitHub Actions schedules are not guaranteed to start immediately."

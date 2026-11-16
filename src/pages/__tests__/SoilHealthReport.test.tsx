@@ -61,17 +61,35 @@ it('starts the soil fetch from the empty page and displays real job progress', a
   await waitFor(()=>expect(mocks.load).toHaveBeenCalledWith('land','farmer','tenant',true));
   expect(await screen.findByText('37%')).toBeInTheDocument();
 });
-it('lets a farmer attempt an explicit fetch when readiness check fails, with a clear backend error', async()=>{
+it('does not send a fetch when the server explicitly reports missing source configuration', async()=>{
   mocks.load.mockImplementation((_id:string,_farmer:string,_tenant:string,start?:boolean)=>
     start ? Promise.reject(new Error('ENGINE_NOT_CONFIGURED')) :
     Promise.resolve({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:false,engine_status:'SOURCE_NOT_CONFIGURED'}));
   show();
   const btn=await screen.findByText('soil.getSoil');
-  expect(btn).toBeEnabled();
+  expect(btn).toBeDisabled();
   expect(screen.getByText('soil.sourceNotConfigured')).toBeInTheDocument();
   fireEvent.click(btn);
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(mocks.load).not.toHaveBeenCalledWith('land','farmer','tenant',true);
+  fireEvent.click(screen.getByText('soil.backToLand'));
+  expect(screen.getByText('Land details')).toBeInTheDocument();
+});
+it('does not enqueue when the server reports an unavailable queue', async()=>{
+  mocks.load.mockResolvedValue({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:false,engine_status:'QUEUE_UNAVAILABLE'});
+  show();
+  const button=await screen.findByText('soil.getSoil');
+  fireEvent.click(button);
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(mocks.load).not.toHaveBeenCalledWith('land','farmer','tenant',true);
+});
+it('still permits an explicit retry when readiness is unknown rather than configuration-blocked', async()=>{
+  mocks.load.mockImplementation((_id:string,_farmer:string,_tenant:string,start?:boolean)=>
+    start ? Promise.reject(new Error('ENGINE_OFFLINE')) :
+    Promise.resolve({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:false}));
+  show();
+  fireEvent.click(await screen.findByText('soil.getSoil'));
   await waitFor(()=>expect(mocks.load).toHaveBeenCalledWith('land','farmer','tenant',true));
-  expect(await screen.findByRole('alert')).toHaveTextContent('soil.sourceNotConfigured');
 });
 it('explains scheduled processing when GitHub immediate dispatch is not configured',async()=>{
   mocks.load.mockResolvedValue({land:{id:'land',name:'Test land'},legacy:null,model:null,job:null,engine_available:true,dispatch_mode:'scheduled'});

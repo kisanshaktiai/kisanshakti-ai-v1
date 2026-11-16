@@ -2,6 +2,12 @@
 - [x] Move saved crop, land, variety and sowing/harvest summaries into the top bar; remove duplicate content below.
 - [x] Verify isolated compact layout at 394×732 and 1280×1800 with no horizontal overflow; 11 schedule regressions pass and preview build OK. Signed-in full-page verification remains unavailable with external unmanaged authentication.
 
+# Soil source configuration error
+- [x] Confirm ENGINE_NOT_CONFIGURED is the missing SOILGRIDS_SOURCE_VERSION gate, not a land-ownership failure.
+- [x] Prevent known configuration-blocked fetches while preserving saved-report reads, back navigation, and retries for unknown readiness.
+- [ ] Configure the matching soil-source version: waiting for the operator-verified value used by kisanshakti-soil-engine.
+- [ ] Verify authenticated soil job completion/read-back: external unmanaged farmer authentication is unavailable.
+
 # Schedule graphical view
 - [x] Remove the pending-sections notice and preserve the Basic view.
 - [x] Add a Beta horizontal biological-stage timeline from saved DB stage metadata, with stage-only tasks and existing actions.
