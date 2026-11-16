@@ -4,6 +4,34 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
 });
 
+// Dispatch uses a server-only fine-grained GitHub token (Actions: write on soil-engine).
+// A dispatch failure does not erase a durable queued job: scheduled Actions sweep it.
+const SOIL_ALGORITHM = 'parcel-native-area-zigzag-v2';
+const GH_DISPATCH_URL = 'https://api.github.com/repos/kisanshaktiai/kisanshakti-soil-engine/actions/workflows/soil-on-demand.yml/dispatches';
+
+async function dispatchSoilJob(): Promise<boolean> {
+  const token = typeof Deno !== 'undefined' ? Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN') : undefined;
+  if (!token) return false;
+  try {
+    const response = await fetch(GH_DISPATCH_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main' }),
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(10000) : undefined,
+    });
+    if (!response.ok) console.warn('Soil GitHub dispatch unavailable', response.status);
+    return response.status === 204;
+  } catch {
+    console.warn('Soil GitHub dispatch request unavailable');
+    return false;
+  }
+}
+
 /** Return summary layers only; raw source pixels stay in the server-side report. */
 export function summarizeModel(model: any) {
   if (!model?.report) return null;
@@ -27,17 +55,19 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
   const owned = await supabase.from('lands').select('id,name').eq('id',landId).eq('farmer_id',farmerId).eq('tenant_id',tenantId).maybeSingle();
   if (owned.error) return json({ code: 'SOIL_READ_FAILED' }, 503);
   if (!owned.data) return json({ code: 'LAND_NOT_FOUND' }, 404);
-  const workers = await supabase.from('soil_engine_workers').select('source_version,algorithm_version')
-    .gte('heartbeat_at',new Date(Date.now()-120000).toISOString()).order('heartbeat_at',{ascending:false}).limit(1);
-  const worker = workers.error ? null : workers.data?.[0];
+  const sourceVersion = (typeof Deno !== 'undefined' ? Deno.env.get('SOILGRIDS_SOURCE_VERSION') : undefined)?.trim() || '';
+  // Readiness means dispatch configuration, not an always-running container heartbeat.
+  // The scheduled sweep can process already queued jobs even if immediate dispatch fails.
+  const engineConfigured = !!sourceVersion && !!(typeof Deno !== 'undefined' ? Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN') : undefined);
   if (req.method === 'POST') {
-    if (!worker) return json({ code: 'ENGINE_OFFLINE' }, 503);
+    if (!engineConfigured) return json({ code: 'ENGINE_NOT_CONFIGURED' }, 503);
     const queued = await supabase.rpc('soil_enqueue', { p_land:landId,p_tenant:tenantId,p_farmer:farmerId,
-      p_source:worker.source_version,p_algorithm:worker.algorithm_version });
+      p_source:sourceVersion,p_algorithm:SOIL_ALGORITHM });
     if (queued.error) {
       const code = ['INVALID_BOUNDARY','RETRY_LATER','ENGINE_OFFLINE'].find(c=>queued.error!.message.includes(c)) || 'SOIL_REQUEST_FAILED';
       return json({ code }, code==='RETRY_LATER'?429:code==='INVALID_BOUNDARY'?422:503);
     }
+    if (queued.data?.status === 'queued') await dispatchSoilJob();
     return json(queued.data, queued.data?.status==='cached'?200:202);
   }
   const [state, legacy, profile] = await Promise.all([
@@ -54,6 +84,6 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
   return json({ land:owned.data, legacy:saved, profile:profile.data || null,
     job:state.data?.job || null, model:summarizeModel(state.data?.model),
     boundary_changed:state.data?.boundary_changed || false,
-    engine_available:!!worker && !state.error,
-    source_changed:!!worker && !!state.data?.model && (worker.source_version!==state.data.model.source_version || worker.algorithm_version!==state.data.model.algorithm_version) });
+    engine_available:engineConfigured && !state.error,
+    source_changed:!!state.data?.model && (sourceVersion!==state.data.model.source_version || SOIL_ALGORITHM!==state.data.model.algorithm_version) });
 }
