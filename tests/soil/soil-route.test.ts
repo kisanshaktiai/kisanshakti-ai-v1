@@ -39,3 +39,34 @@ it('a failed dispatch preserves the durable queued job',async()=>{
  expect(r.status).toBe(202);
  expect((await r.json()).status).toBe('queued');
 });
+
+it('keeps the request queue available when immediate GitHub dispatch is unconfigured',async()=>{
+ vi.stubGlobal('Deno',{env:{get:(key:string)=>key==='SOILGRIDS_SOURCE_VERSION'?'v1':undefined}});
+ const get=await handleSoil(new Request(`https://x/?land_id=${id}`),guard);
+ expect(get.status).toBe(200);
+ expect(await get.json()).toMatchObject({engine_available:true,engine_status:'READY',dispatch_mode:'scheduled'});
+ rpc.mockResolvedValue({data:{status:'queued',job_id:'job'},error:null});
+ const post=await handleSoil(new Request(`https://x/?land_id=${id}`,{method:'POST'}),guard);
+ expect(post.status).toBe(202);
+ expect(await post.json()).toMatchObject({status:'queued',dispatch_mode:'scheduled'});
+ expect(fetch).not.toHaveBeenCalled();
+});
+it('does not claim immediate dispatch when GitHub rejects workflow dispatch',async()=>{
+ rpc.mockResolvedValue({data:{status:'queued',job_id:'job'},error:null});
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({status:403,ok:false}));
+ const r=await handleSoil(new Request(`https://x/?land_id=${id}`,{method:'POST'}),guard);
+ expect(r.status).toBe(202);
+ expect(await r.json()).toMatchObject({status:'queued',dispatch_mode:'scheduled'});
+});
+it('labels successfully dispatched requests accurately',async()=>{
+ rpc.mockResolvedValue({data:{status:'queued',job_id:'job'},error:null});
+ const r=await handleSoil(new Request(`https://x/?land_id=${id}`,{method:'POST'}),guard);
+ expect(await r.json()).toMatchObject({status:'queued',dispatch_mode:'immediate'});
+});
+it('still refuses to enqueue when source version is unconfigured',async()=>{
+ vi.stubGlobal('Deno',{env:{get:()=>undefined}});
+ const r=await handleSoil(new Request(`https://x/?land_id=${id}`,{method:'POST'}),guard);
+ expect(r.status).toBe(503);
+ expect(await r.json()).toMatchObject({code:'ENGINE_NOT_CONFIGURED'});
+ expect(rpc).not.toHaveBeenCalled();
+});
