@@ -1,0 +1,33 @@
+name: YieldShield agronomy integrity (no deployment)
+
+on:
+  push:
+    branches:
+      - fix/yieldshield-agronomy-clock-evidence-hardening-20261111
+  pull_request:
+    paths:
+      - 'supabase/functions/ai-smart-schedule/**'
+      - 'tests/schedule/yieldshield_agronomy_scientific_contract.test.ts'
+      - '.github/workflows/yieldshield-agronomy-integrity.yml'
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        run: npm install -g bun@1.4.4
+      - name: Install pinned dependencies
+        run: bun install --frozen-lockfile
+      - name: Agronomy reference-clock and treatment safety tests
+        run: bun run test -- tests/schedule/yieldshield_agronomy_scientific_contract.test.ts
+      - name: Frontend production build (no deployment)
+        run: bun run build
+      - name: Install Deno for Supabase Edge Function check
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check AI crop schedule Edge Function without deploying
+        run: deno check --node-modules-dir=auto supabase/functions/ai-smart-schedule/index.ts

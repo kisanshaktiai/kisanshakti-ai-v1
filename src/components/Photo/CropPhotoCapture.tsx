@@ -6,6 +6,7 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-10-29 — Fix shared translations, mobile overflow and preview lifecycle.
  * 2026-09-23 — v2 REWRITE. Opens with a purpose (chat_question, instascan,
  *   schedule_task, growth_tracking, land_card) and a land (or asks which land).
  *   Guides up to three shots (close-up of the problem, whole plant, field
@@ -17,7 +18,7 @@
  *
  * Styling: shadcn Dialog/Button/Textarea, semantic theme tokens only
  * (primary / muted / destructive / warning / success), lucide icons, sonner.
- * i18n: cropGrowth:cropGrowth.capture.* (en/hi/mr added 2026-09-23).
+ * i18n: translation:cropGrowth.capture.* (en/hi/mr added 2026-09-23).
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -25,7 +26,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -76,7 +77,6 @@ export interface CropPhotoCaptureProps {
 }
 
 const ROLES: ShotRole[] = ['symptom_closeup', 'whole_plant', 'field_view'];
-const NS = 'cropGrowth';
 const K = 'cropGrowth.capture';
 
 interface Shot {
@@ -92,7 +92,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
     isOpen, onClose, purpose, farmerId, tenantId, lands, sessionId, scheduleId, taskId,
     uploadType, requireLocation, initialFiles, initialText, onDiagnosed, onAnswer,
   } = props;
-  const { t, i18n } = useTranslation(NS);
+  const { t, i18n } = useTranslation();
   const [landId, setLandId] = useState<string | undefined>(props.landId);
   const [phase, setPhase] = useState<Phase>(props.landId ? 'capture' : 'land');
   const [shots, setShots] = useState<Shot[]>([]);
@@ -102,10 +102,16 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   const [answerText, setAnswerText] = useState<string>('');
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
+  const previewUrls = useRef(new Set<string>());
+  const captureGeneration = useRef(0);
+  const [picking, setPicking] = useState(false);
   const identity = { farmerId, tenantId };
 
   // Reset on open; release preview URLs on close.
   useEffect(() => {
+    captureGeneration.current += 1;
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
     if (!isOpen) return;
     setLandId(props.landId);
     setPhase(props.landId ? 'capture' : 'land');
@@ -113,14 +119,26 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
     setText(initialText ?? '');
     setProblem(null);
     setAnswerText('');
-  }, [isOpen, props.landId, initialText]);
-  useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.photo.previewUrl)), [shots]);
+    setPicking(false);
+  }, [isOpen, props.landId, initialText, farmerId, tenantId]);
+  useEffect(() => () => {
+    captureGeneration.current += 1;
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
 
   const addPhoto = useCallback(async (photo: CapturedPhoto, replaceIndex?: number) => {
+    const generation = captureGeneration.current;
+    previewUrls.current.add(photo.previewUrl);
     const reason = await quickQualityCheck(photo.blob).catch(() => null);
+    if (generation !== captureGeneration.current) {
+      URL.revokeObjectURL(photo.previewUrl);
+      previewUrls.current.delete(photo.previewUrl);
+      return;
+    }
     setShots((prev) => {
       const next = [...prev];
-      const role = replaceIndex !== undefined ? prev[replaceIndex].role : ROLES[prev.length];
+      const role = replaceIndex !== undefined ? prev[replaceIndex]?.role : ROLES[prev.length];
       if (!role) return prev;
       const shot: Shot = { role, photo, retake: reason };
       if (replaceIndex !== undefined) next[replaceIndex] = shot; else next.push(shot);
@@ -131,15 +149,29 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   // Pre-picked files (chat attachments) enter the same path.
   useEffect(() => {
     if (!isOpen || !initialFiles?.length) return;
-    initialFiles.slice(0, ROLES.length).forEach((f) => { void addPhoto(capturedFromFile(f, false)); });
-  }, [isOpen, initialFiles, addPhoto]);
+    const generation = captureGeneration.current;
+    void (async () => {
+      for (const file of initialFiles.slice(0, ROLES.length)) {
+        if (generation !== captureGeneration.current) return;
+        await addPhoto(capturedFromFile(file, false));
+      }
+    })();
+  }, [isOpen, initialFiles, addPhoto, props.landId, farmerId, tenantId]);
 
   const replaceRef = useRef<number | undefined>(undefined);
   const openCamera = async (replaceIndex?: number) => {
+    if (picking) return;
     replaceRef.current = replaceIndex;
     if (isNativeCamera()) {
-      const photo = await takeStillPhoto();
-      if (photo) await addPhoto(photo, replaceIndex);
+      const generation = captureGeneration.current;
+      setPicking(true);
+      try {
+        const photo = await takeStillPhoto();
+        if (photo && generation === captureGeneration.current) await addPhoto(photo, replaceIndex);
+        else if (photo) URL.revokeObjectURL(photo.previewUrl);
+      } finally {
+        if (generation === captureGeneration.current) setPicking(false);
+      }
       return;
     }
     cameraInput.current?.click();
@@ -157,10 +189,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
   const send = async () => {
     if (!landId || !canSend) return;
+    const generation = captureGeneration.current;
     setProblem(null);
     setPhase('working');
     try {
       const location = await getCurrentLocation();
+      if (generation !== captureGeneration.current) return;
       if (requireLocation && !location) {
         toast.error(t('cropGrowth.pleaseAddLocation'));
         setPhase('capture');
@@ -173,6 +207,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
           id: identity, landId, purpose, shotRole: s.role,
           scheduleId: scheduleId ?? null, taskId: taskId ?? null, subjectType: uploadType ?? null, location,
         }));
+        if (generation !== captureGeneration.current) return;
       }
       if (!navigator.onLine) {
         toast.success(t(`${K}.savedOffline`));
@@ -184,6 +219,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       const uploads = [];
       for (let i = 0; i < queued.length; i++) {
         uploads.push({ upload_id: await uploadQueued(queued[i]), shot_role: shots[i].role });
+        if (generation !== captureGeneration.current) return;
       }
       // 3. Perception.
       setWorkLabel(t(`${K}.diagnosing`));
@@ -192,6 +228,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
         id: identity, landId, purpose, photos: uploads, taskId: taskId ?? null,
         sessionId: sessionId ?? null, language, farmerText: text,
       });
+      if (generation !== captureGeneration.current) return;
       if (d.status === 'retake_requested') {
         const idx = d.retake?.photo_index ?? 0;
         setShots((prev) => prev.map((s, i) => (i === idx ? { ...s, retake: d.retake?.reason_code ?? 'generic' } : s)));
@@ -212,10 +249,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       const answer = await askDecisionBrain({
         id: identity, landId, sessionId: sessionId ?? null, language, diagnosisId: d.diagnosis_id, farmerText: text,
       });
+      if (generation !== captureGeneration.current) return;
       setAnswerText(typeof answer?.response === 'string' ? answer.response : '');
       setPhase('result');
       onAnswer?.({ diagnosisId: d.diagnosis_id, landId, answer });
     } catch (e) {
+      if (generation !== captureGeneration.current) return;
       console.error('[CropPhotoCapture] send failed', e);
       setProblem(t(`${K}.failed`));
       setPhase('capture');
@@ -226,22 +265,25 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md w-[95vw] p-0 overflow-hidden rounded-2xl">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-base font-semibold text-foreground">{t(`${K}.title`)}</h2>
-          <button type="button" onClick={onClose} className="p-1 rounded-full hover:bg-muted" aria-label={t(`${K}.done`)}>
+      <DialogContent aria-describedby={undefined} className="flex flex-col gap-0 max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 overflow-hidden rounded-lg [&>button]:hidden">
+        <div className="flex shrink-0 min-w-0 items-center justify-between gap-2 px-4 py-3 border-b border-border">
+          <DialogTitle className="min-w-0 break-words text-base font-semibold text-foreground tracking-normal">{t(`${K}.title`)}</DialogTitle>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} className="shrink-0" aria-label={t(`${K}.done`)}>
             <X className="h-5 w-5 text-muted-foreground" />
-          </button>
+          </Button>
         </div>
 
         <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onFile(e, true)} />
         <input ref={galleryInput} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e, false)} />
 
-        <div className="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="min-h-0 min-w-0 p-4 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain break-words">
           {phase === 'land' && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-foreground">{t(`${K}.chooseLand`)}</p>
-              {(lands ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t('cropGrowth.addLandFirst')}</p>}
+              {(lands ?? []).length === 0 && <>
+                <p className="text-sm text-muted-foreground">{t('cropGrowth.addLandFirst')}</p>
+                <Button variant="outline" className="w-full" onClick={onClose}>{t(`${K}.done`)}</Button>
+              </>}
               {(lands ?? []).map((l) => (
                 <Button key={l.id} variant="outline" className="w-full justify-start h-12"
                   onClick={() => { setLandId(l.id); setPhase('capture'); }}>
@@ -262,11 +304,11 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
               {shots.map((s, i) => (
                 <div key={s.photo.captureId} className="rounded-xl border border-border overflow-hidden">
                   <img src={s.photo.previewUrl} alt={t(`${K}.shot.${s.role}.title`)} className="w-full max-h-56 object-cover" />
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <span className="text-sm font-medium text-foreground">{t(`${K}.shot.${s.role}.title`)}</span>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openCamera(i)}><RotateCcw className="h-4 w-4 mr-1" />{t(`${K}.retakeThis`)}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => removeShot(i)}>{t(`${K}.remove`)}</Button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                    <span className="min-w-0 text-sm font-medium text-foreground">{t(`${K}.shot.${s.role}.title`)}</span>
+                    <div className="flex shrink-0 gap-1">
+                      <Button size="icon" variant="ghost" disabled={picking} title={t(`${K}.retakeThis`)} aria-label={t(`${K}.retakeThis`)} onClick={() => openCamera(i)}><RotateCcw className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" title={t(`${K}.remove`)} aria-label={t(`${K}.remove`)} onClick={() => removeShot(i)}><X className="h-4 w-4" /></Button>
                     </div>
                   </div>
                   {s.retake && (
@@ -282,12 +324,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
                     <p className="text-sm font-semibold text-foreground">{t(`${K}.shot.${nextRole}.title`)}</p>
                     <p className="text-sm text-muted-foreground">{t(`${K}.shot.${nextRole}.hint`)}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button className="h-12" onClick={() => openCamera()}>
-                      <Camera className="h-5 w-5 mr-2" />{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button className="min-h-12 h-auto min-w-0 whitespace-normal py-3 sm:flex-1" disabled={picking} onClick={() => openCamera()}>
+                      <Camera className="h-5 w-5 mr-2 shrink-0" /><span className="min-w-0">{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}</span>
                     </Button>
-                    <Button className="h-12" variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
-                      <Images className="h-5 w-5 mr-2" />{t(`${K}.addFromGallery`)}
+                    <Button className="min-h-12 h-auto min-w-0 whitespace-normal py-3 sm:flex-1" disabled={picking} variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
+                      <Images className="h-5 w-5 mr-2 shrink-0" /><span className="min-w-0">{t(`${K}.addFromGallery`)}</span>
                     </Button>
                   </div>
                 </div>

@@ -11,6 +11,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 interface TaskStatisticsWidgetProps {
   scheduleId: string;
   className?: string;
+  /** Changes whenever the farmer ticks a task, so the numbers refresh at once. */
+  refreshKey?: number;
 }
 
 interface TaskStats {
@@ -21,7 +23,7 @@ interface TaskStats {
   longestStreak: number;
 }
 
-export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWidgetProps) {
+export function TaskStatisticsWidget({ scheduleId, className, refreshKey }: TaskStatisticsWidgetProps) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [stats, setStats] = useState<TaskStats>({
@@ -35,16 +37,9 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
 
   const fetchTaskStatistics = useCallback(async () => {
     try {
-      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-      const client = supabaseWithAuth();
-
-      const { data: tasks, error } = await client
-        .from('schedule_tasks')
-        .select('id, status, completed_at, task_date')
-        .eq('schedule_id', scheduleId)
-        .order('task_date', { ascending: true });
-
-      if (error) throw error;
+      // Session-verified edge read; direct PostgREST on schedule_tasks is denied for anon.
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      const tasks = await schedulesApi.fetchTasks(scheduleId);
 
       if (!tasks || tasks.length === 0) {
         setLoading(false);
@@ -71,6 +66,8 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
       setLoading(false);
     }
   }, [scheduleId]);
+
+  useEffect(() => { if (refreshKey !== undefined) fetchTaskStatistics(); }, [refreshKey, fetchTaskStatistics]);
 
   // Initial fetch and real-time subscription
   useEffect(() => {

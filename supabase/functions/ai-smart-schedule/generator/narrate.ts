@@ -34,6 +34,8 @@
 // LLM request instead of several sequential/parallel chunk requests. This prevents the
 // Supabase Edge invocation from exhausting its request lifetime before persistence.
 // Farmer-language narration is a presentation step only. Agronomic selection stays DB/deterministic.
+import { varietyContextBlock } from "../db/variety-profile.ts";
+import { languageLabel, wrongSameScriptLanguage } from "./language-guard.ts";
 import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
 // deno-lint-ignore no-explicit-any
 export interface NarrationAIContext { db: { from(table: string): any }; farmerId?: string | null }
@@ -95,11 +97,11 @@ function hasFarmerLanguageQuality(value: string, language: string, source?: stri
 }
 function containsExpectedScript(value: string, language: string, source?: string): boolean { return hasFarmerLanguageQuality(value, language, source); }
 
-async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
+async function narrateChunk(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext, cropContext: Record<string, unknown> | null = null): Promise<{ items: Array<{ i: number; name?: string; desc?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
   const payload = chunk.map((t, i) => ({ i, name: t.task_name, desc: t.task_description, instructions: farmerInstructionSource(t.instructions) }));
   const prompt = [
     `You are a village agriculture officer explaining farm tasks to a smallholder farmer who left school early.`,
-    language === "en" ? `Rewrite the supplied text in very simple spoken English, as a village extension officer would say it to a farmer with little schooling: short sentences; say what to do, when, how much to buy, how to mix, and why; keep every number, unit, product name and date exactly as given.` : `Rewrite the supplied text in natural, simple spoken ${language}, as a village extension officer would say it to a farmer with little schooling: short sentences; everyday farming words the farmer already uses; say what to do, when, how much to buy, how to mix, and why. Use the target language as the main language, not English transliteration. Keep every number, unit, date, product name and fertilizer grade exactly as given, in Latin script where the farmer reads them that way on the bag.`,
+    language === "en" ? `Rewrite the supplied text in very simple spoken English, as a village extension officer would say it to a farmer with little schooling: short sentences; say what to do, when, how much to buy, how to mix, and why; keep every number, unit, product name and date exactly as given.` : `Rewrite the supplied text in natural, simple spoken ${languageLabel(language)}, as a village extension officer would say it to a farmer with little schooling: short sentences; everyday farming words the farmer already uses; say what to do, when, how much to buy, how to mix, and why. Use the target language as the main language, not English transliteration. Keep every number, unit, date, product name and fertilizer grade exactly as given, in Latin script where the farmer reads them that way on the bag.`,
     language === "en" ? `` : `Translate EVERY ordinary English word, including words like day, days, week, field, spray, apply, seed and fertilizer type names where a common farmer word exists. Keep only numerals, units, brand/product names and fertilizer grades as given. No English word may remain unless it is such a supplied fact.`,
     `The database and deterministic pipeline are the agricultural authority. You only re-word the supplied facts.`,
     `Do NOT use model memory to add agricultural facts, products, doses, timings or treatments.`,
@@ -112,6 +114,7 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
     `desc: 1-2 short sentences using only supplied facts.`,
     `instructions: rewrite each supplied line into one clear farmer action step; keep count and order.`,
     `Return STRICT JSON only: [{"i":0,"name":"...","desc":"...","instructions":["..."]}]`,
+    ...(cropContext ? [varietyContextBlock(cropContext)] : []),
     `INPUT:`, JSON.stringify(payload)
   ].join("\n");
   let lastError: unknown = new Error("MODEL_UNAVAILABLE"); const chain = route.chain.filter((m) => hasAIProviderKey(m.provider));
@@ -134,15 +137,15 @@ async function narrateChunk(chunk: NarratableTask[], offset: number, language: s
   if (lastModel && route.chain.length) await recordAITaskCall(ai.db, { task: "schedule.compose", functionName: "ai-smart-schedule", model: lastModel, modelRequested: route.chain[0], ok: false, errorClass: lastStatus ? classifyAIFailure(lastStatus, "") : signal.aborted ? "timeout" : "other", httpStatus: lastStatus, latencyMs: Date.now() - callStarted, farmerId: ai.farmerId ?? null, emergency: route.emergency, metadata: { caller: "narrateChunk", attempts, detail: (lastError as Error)?.message ?? null }, key: lastKey && lastKey.slot !== null ? { slot: lastKey.slot, pool: lastKey.pool, group: lastKey.group } : null });
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext) {
+async function narrateChunkWithRetry(chunk: NarratableTask[], offset: number, language: string, signal: AbortSignal, route: NarrationRoute, ai: NarrationAIContext, cropContext: Record<string, unknown> | null = null) {
   let lastError: unknown = new Error("MODEL_UNAVAILABLE");
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) { const wait = lastError instanceof RetryableError && lastError.retryAfterMs != null ? lastError.retryAfterMs : RETRY_DELAYS_MS[attempt - 1]; await sleep(wait, signal); if (signal.aborted) break; }
-    try { return await narrateChunk(chunk, offset, language, signal, route, ai); } catch (error) { lastError = error; if (signal.aborted || !(error instanceof RetryableError)) break; }
+    try { return await narrateChunk(chunk, offset, language, signal, route, ai, cropContext); } catch (error) { lastError = error; if (signal.aborted || !(error instanceof RetryableError)) break; }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs: number | undefined, ai: NarrationAIContext): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; timedOut: boolean; reason?: string; provider?: string; model?: string }> {
+export async function narrateTasks(tasks: NarratableTask[], language: string, budgetMs: number | undefined, ai: NarrationAIContext, cropContext: Record<string, unknown> | null = null): Promise<{ tasks: NarratableTask[]; narrated: boolean; narratedCount: number; totalCount: number; appliedIndices: number[]; timedOut: boolean; reason?: string; provider?: string; model?: string }> {
   const totalCount = tasks.length; if (budgetMs !== undefined && budgetMs <= 2_000) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: true, reason: "narration_skipped_time_budget" };
   if (!totalCount) return { tasks, narrated: false, narratedCount: 0, totalCount, appliedIndices: [], timedOut: false, reason: "no_tasks" };
   // Model chain from the registry (task schedule.compose); "configured" keeps its old meaning: route steps whose provider key is set.
@@ -160,14 +163,19 @@ export async function narrateTasks(tasks: NarratableTask[], language: string, bu
   const controller = new AbortController(); const budgetTimer = setTimeout(() => controller.abort(), Math.max(0, Math.min(NARRATION_BUDGET_MS, budgetMs ?? NARRATION_BUDGET_MS))); const out = tasks.map((t) => ({ ...t, instructions: farmerInstructionSource(t.instructions) })); const failures: string[] = []; const appliedIndices = new Set<number>();
   try {
     const results: PromiseSettledResult<Awaited<ReturnType<typeof narrateChunk>>>[] = []; let i = 0;
-    while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal, route, ai)))); i += MAX_CONCURRENCY; }
+    while (i < chunks.length) { if (controller.signal.aborted) break; if (configured.every((p) => cooldownRemaining(p.provider) > 0)) break; results.push(...await Promise.allSettled(chunks.slice(i, i + MAX_CONCURRENCY).map((c) => narrateChunkWithRetry(c.items, c.offset, language, controller.signal, route, ai, cropContext)))); i += MAX_CONCURRENCY; }
     for (const result of results) { if (result.status !== "fulfilled") { failures.push((result.reason as Error)?.message || "unknown"); continue; } provider = result.value.provider; model = result.value.model; for (const item of result.value.items) { const unique = uniqueTasks[item.i]; if (!unique) continue;
       const source = farmerInstructionSource(unique.instructions);
       const nameOk = !!item.name && isFaithful(unique.task_name, item.name) && containsExpectedScript(item.name, language, unique.task_name);
       const descOk = !!item.desc && isFaithful(unique.task_description, item.desc) && containsExpectedScript(item.desc, language, unique.task_description);
       const translated = Array.isArray(item.instructions) && item.instructions.length === source.length ? item.instructions.map(String) : null;
       const stepsOk = !!translated && translated.every((line, idx) => isFaithful(source[idx] ?? "", line) && containsExpectedScript(line, language, source[idx] ?? ""));
-      if (!nameOk && !descOk && !stepsOk) continue;
+      // 2026-11-13: a card counts as written only when EVERY field it has passed. Accepting a
+      // card on its title alone marked it complete while its description stayed in English.
+      const descNeeded = !!String(unique.task_description ?? "").trim(); const stepsNeeded = source.length > 0;
+      if (!nameOk || (descNeeded && !descOk) || (stepsNeeded && !stepsOk)) continue;
+      // 2026-11-15: the whole card must read as the requested language, not another one of its script.
+      if (wrongSameScriptLanguage([item.name, item.desc, ...(translated ?? [])].map((x) => String(x ?? "")).join(" \n "), language)) continue;
       for (const idx of members[item.i] ?? []) { const target = out[idx]; if (!target) continue; if (nameOk) target.task_name = String(item.name); if (descOk) target.task_description = String(item.desc); if (stepsOk && translated) target.instructions = translated; appliedIndices.add(idx); }
     } }
   } finally { clearTimeout(budgetTimer); }

@@ -34,28 +34,126 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 
 export interface Provenance { table: string; row_id?: string | null; source?: string | null; authority?: string | null; confidence?: number | null; }
-export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null; }
+export interface StageRow { id:string; crop_code:string; growth_stage:string; stage_code:string|null; das_min:number|null; das_max:number|null; das_reference:string|null; clock_reference:string|null; gdd_min:number|null; gdd_max:number|null; base_temperature_c:number|null; cultivation_method:string|null; crop_cycle:string|null; is_moisture_critical:boolean|null; kc_coefficient:number|null; boundary_grace_days:number|null;  /** Set when the selected variety's own stage window (variety_phenology_profile) replaced the crop-level one. */ variety_window_source?:string|null; /** calendar_reliability of that variety window (e.g. indicative for a derived profile). */ variety_window_reliability?:string|null;  /** crop_stage_master.phenology_index: the stage's position in the crop's biological sequence (null on some operational stages). */ phenology_index?:number|null; }
 
-export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycle:string|null,cultivationMethod:string|null):Promise<StageRow[]> {
-  let q=supabase.from("crop_stage_master").select("id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days").eq("crop_code",cropCode).eq("is_active",true).order("das_min",{ascending:true,nullsFirst:true});
-  if(cropCycle) q=q.or(`crop_cycle.eq.${cropCycle},crop_cycle.eq.universal,crop_cycle.is.null`);
-  const {data}=await q; let rows=(data||[]) as StageRow[];
-  if(cropCycle){const wanted=cropCycle.toLowerCase();const byKey=new Map<string,StageRow>();for(const r of rows){const key=(r.stage_code||r.growth_stage||r.id).toLowerCase();const prev=byKey.get(key);if(!prev){byKey.set(key,r);continue;}const rs=String(r.crop_cycle??"").toLowerCase()===wanted;const ps=String(prev.crop_cycle??"").toLowerCase()===wanted;if(rs&&!ps)byKey.set(key,r);}rows=[...byKey.values()];}
-  if(cultivationMethod){const wanted=cultivationMethod.toLowerCase();rows=rows.filter(r=>{const m=String(r.cultivation_method??"").trim().toLowerCase();return !m||m==="any"||m===wanted;});}
-  return rows.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
+/** One active variety_phenology_profile row: the variety's own window for one crop stage. */
+export interface VarietyStageWindow { stage_uuid:string|null; das_min_override:number|null; das_max_override:number|null; das_reference:string|null; cultivation_method:string|null; source:string|null; calendar_reliability:string|null; }
+/**
+ * 2026-11-13 — the SELECTED VARIETY's stage windows replace the crop-level ones.
+ * The static schedule dated every stage from crop_stage_master (the crop's generic graph), while the
+ * dynamic engine (evaluate_stage_transitions / fn_resolve_stage_v) already uses the variety's own
+ * windows. A medium-duration variety therefore got its panicle-initiation dose two weeks early in
+ * the static plan and the two engines disagreed about the current stage.
+ * A window is replaced only when the profile row is for the same stage row, the same method and
+ * the SAME day-count clock as the stage; nothing is scaled or estimated here.
+ */
+export function applyVarietyStageWindows(rows:StageRow[],windows:VarietyStageWindow[],cultivationMethod:string|null):StageRow[] {
+  if(!windows.length) return rows;
+  const norm=(v:unknown)=>String(v??"").trim().toLowerCase();
+  const wanted=norm(cultivationMethod);
+  const byStage=new Map<string,VarietyStageWindow>();
+  for(const w of windows){
+    if(!w.stage_uuid||w.das_min_override==null||w.das_max_override==null) continue;
+    if(Number(w.das_min_override)>Number(w.das_max_override)) continue;
+    const m=norm(w.cultivation_method);
+    if(m&&m!=="any"&&wanted&&m!==wanted) continue;
+    if(!byStage.has(w.stage_uuid)||m===wanted) byStage.set(w.stage_uuid,w);
+  }
+  const out=rows.map(r=>{
+    const w=byStage.get(r.id);
+    if(!w) return r;
+    const stageClock=norm(r.clock_reference??r.das_reference), windowClock=norm(w.das_reference);
+    if(stageClock&&windowClock&&stageClock!==windowClock) return r;
+    return {...r,das_min:Number(w.das_min_override),das_max:Number(w.das_max_override),variety_window_source:w.source??"variety_phenology_profile",variety_window_reliability:w.calendar_reliability??null};
+  });
+  return out.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
 }
 
+export async function getStages(supabase:SupabaseClient,cropCode:string,cropCycle:string|null,cultivationMethod:string|null,varietyId:string|null=null):Promise<StageRow[]> {
+  let q=supabase.from("crop_stage_master").select("id, crop_code, growth_stage, stage_code, das_min, das_max, das_reference, clock_reference, gdd_min, gdd_max, base_temperature_c, cultivation_method, crop_cycle, is_moisture_critical, kc_coefficient, boundary_grace_days, stage_node_type, phenology_index").eq("crop_code",cropCode).eq("is_active",true).order("das_min",{ascending:true,nullsFirst:true});
+  if(cropCycle) q=q.or(`crop_cycle.eq.${cropCycle},crop_cycle.eq.universal,crop_cycle.is.null`);
+  const {data}=await q;
+  // 2026-11-12: an alias row is a second NAME for a biological stage, not a stage. Counting it
+  // duplicated stage cards and stage-anchored tasks (sugarcane plant graph: 6 of 21 rows).
+  let rows=((data||[]) as Array<StageRow&{stage_node_type?:string|null}>).filter(r=>String(r.stage_node_type??"").trim().toLowerCase()!=="alias").map(({stage_node_type:_n,...r})=>r as StageRow);
+  if(cropCycle){const wanted=cropCycle.toLowerCase();const byKey=new Map<string,StageRow>();for(const r of rows){const key=(r.stage_code||r.growth_stage||r.id).toLowerCase();const prev=byKey.get(key);if(!prev){byKey.set(key,r);continue;}const rs=String(r.crop_cycle??"").toLowerCase()===wanted;const ps=String(prev.crop_cycle??"").toLowerCase()===wanted;if(rs&&!ps)byKey.set(key,r);}rows=[...byKey.values()];}
+  if(cultivationMethod){const wanted=cultivationMethod.toLowerCase();rows=rows.filter(r=>{const m=String(r.cultivation_method??"").trim().toLowerCase();return !m||m==="any"||m===wanted;});}
+  rows=rows.sort((a,b)=>(a.das_min??0)-(b.das_min??0)||String(a.stage_code??"").localeCompare(String(b.stage_code??"")));
+  if(!varietyId||!rows.length) return rows;
+  const {data:windows,error}=await supabase.from("variety_phenology_profile").select("stage_uuid, das_min_override, das_max_override, das_reference, cultivation_method, source, calendar_reliability").eq("variety_id",varietyId).eq("is_active",true);
+  if(error) return rows;
+  return applyVarietyStageWindows(rows,(windows??[]) as VarietyStageWindow[],cultivationMethod);
+}
+
+/** Where a resolved seed rate came from, best (most specific + verified) first. */
+export type SeedRateBasis = "variety_verified" | "crop_standard" | "variety_unverified";
 export interface SeedRateResult { kgPerAcre:number; rationale:string|null; provenance:Provenance;
   /** What the rate assumes (e.g. drill / line-sown vs nursery), straight from the DB row. */
   basisCode:string|null;
   /** The same row's broadcast band, for a farmer sowing by hand rather than with a drill. */
-  broadcastKgPerAcre:{min:number|null;max:number|null}|null; }
+  broadcastKgPerAcre:{min:number|null;max:number|null}|null;
+  /** Which rung of the ladder supplied this number (for honest farmer text and review flags). */
+  basis:SeedRateBasis;
+  /** The DB evidence tier of the supplying row. */
+  tier:string|null;
+  /** True once the number is a verified, variety-specific rate; false for a crop standard or estimate. */
+  varietyTuned:boolean;
+  /** Cross-check: true when the rate falls outside the authored crop-standard band for this crop × method. */
+  outsideCropBand:boolean; }
+import { isUnverifiedTier, resolvedMaturityDas } from "../generator/agronomy-scientific-contract.ts";
 const RPC_TGW_UNVERIFIED="default_20g_UNVERIFIED";
+/** hybrid vs non-hybrid family of a DB variety-type token (opv_*, inbred → non_hybrid). */
+function seedRateFamily(varietyType: unknown): "hybrid" | "non_hybrid" {
+  const v = String(varietyType ?? "").toLowerCase();
+  return /hybrid/.test(v) && !/non[-_ ]?hybrid/.test(v) ? "hybrid" : "non_hybrid";
+}
+
+/**
+ * 2026-11-14 — The authored crop standard seed rate (a `variety_id IS NULL` row in
+ * variety_cultivation_agronomy), for the crop, method and hybrid/non-hybrid family. This is the
+ * fallback used when no verified variety rate exists, so the card never shows a blank seed rate. It
+ * is a documented SAU standard (e.g. MPKV), not a variety-tuned figure — the caller labels it so.
+ */
+async function getCropStandardSeedRate(
+  supabase: SupabaseClient,
+  cropCode: string | null,
+  method: string | null,
+  family: "hybrid" | "non_hybrid",
+): Promise<Record<string, unknown> | null> {
+  if (!cropCode || !method) return null;
+  // crop_seed_rate_standard is the authored crop × method × variety-family standard (e.g. MPKV / ICAR
+  // PoP). Column names mirror variety_cultivation_agronomy so the same readers apply. Absent table or
+  // no row simply means no standard for this crop/method yet — the caller then has no rung 2.
+  const { data, error } = await supabase
+    .from("crop_seed_rate_standard")
+    .select("id, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max, seed_rate_variety_type")
+    .eq("crop_code", cropCode)
+    .eq("cultivation_method", method)
+    .eq("is_active", true)
+    .eq("review_status", "approved");
+  if (error) return null;
+  const rows = (data || []) as Array<Record<string, unknown>>;
+  // Prefer the row for this family; a row with no family stated is a catch-all standard.
+  return rows.find((r) => seedRateFamily(r.seed_rate_variety_type) === family)
+    ?? rows.find((r) => r.seed_rate_variety_type == null)
+    ?? null;
+}
+
+const seedBand = (r: Record<string, unknown> | null): { min: number | null; max: number | null } => ({
+  min: r?.seed_rate_kg_per_acre_min != null ? Number(r.seed_rate_kg_per_acre_min) : null,
+  max: r?.seed_rate_kg_per_acre_max != null ? Number(r.seed_rate_kg_per_acre_max) : null,
+});
+const broadcastOf = (r: Record<string, unknown> | null): { min: number | null; max: number | null } | null =>
+  r?.seed_rate_broadcast_kg_per_acre_min != null || r?.seed_rate_broadcast_kg_per_acre_max != null
+    ? { min: r?.seed_rate_broadcast_kg_per_acre_min != null ? Number(r.seed_rate_broadcast_kg_per_acre_min) : null, max: r?.seed_rate_broadcast_kg_per_acre_max != null ? Number(r.seed_rate_broadcast_kg_per_acre_max) : null }
+    : null;
+
 export async function getSeedRate(
   supabase: SupabaseClient,
   varietyId: string | null,
   cultivationMethod: string | null,
-  stageClockMethod: string | null = null
+  stageClockMethod: string | null = null,
+  cropCode: string | null = null,
 ): Promise<SeedRateResult | null> {
   if (!varietyId || !cultivationMethod) return null;
   const candidateMethods = [...new Set([cultivationMethod, stageClockMethod].filter(Boolean))] as string[];
@@ -65,7 +163,7 @@ export async function getSeedRate(
   for (const method of candidateMethods) {
     const { data } = await supabase
       .from("variety_cultivation_agronomy")
-      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max")
+      .select("id, target_plants_per_m2, seed_rate_kg_per_acre_min, seed_rate_kg_per_acre_max, seed_rate_rationale, source, evidence_tier, seed_rate_basis_code, seed_rate_broadcast_kg_per_acre_min, seed_rate_broadcast_kg_per_acre_max, seed_rate_variety_type")
       .eq("variety_id", varietyId)
       .eq("cultivation_method", method)
       .eq("is_active", true)
@@ -77,43 +175,93 @@ export async function getSeedRate(
     }
   }
 
-  if (vca && vca.target_plants_per_m2 != null && vcaMethod) {
-    const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", {
-      p_variety_id: varietyId,
-      p_cultivation_method: vcaMethod,
-    });
+  // 2026-11-14 — SEED-RATE LADDER. A seed rate is never left blank: a verified variety rate is used
+  // first; when there is none, the authored CROP STANDARD for this crop, method and hybrid/non-hybrid
+  // family is used (labelled a standard, flagged for variety tuning); only if there is no standard
+  // either is an unverified variety estimate used, as a last resort. Each number comes from a DB row
+  // — nothing is invented. The chosen rate is then cross-checked against the crop-standard band.
+  const family = seedRateFamily((vca?.seed_rate_variety_type) ?? null);
+  const method = vcaMethod ?? cultivationMethod;
+  const cropStd = await getCropStandardSeedRate(supabase, cropCode, method, family);
+  const stdBand = seedBand(cropStd);
+  const withinStd = (kg: number): boolean => {
+    if (stdBand.min == null && stdBand.max == null) return true; // no band to check against
+    const lo = (stdBand.min ?? stdBand.max) as number, hi = (stdBand.max ?? stdBand.min) as number;
+    return kg >= lo * 0.8 && kg <= hi * 1.2;
+  };
+  const finish = (base: Omit<SeedRateResult, "outsideCropBand">): SeedRateResult =>
+    ({ ...base, outsideCropBand: !withinStd(base.kgPerAcre) });
+
+  const verifiedVariety = !!vca && !isUnverifiedTier(vca.evidence_tier);
+
+  // Rung 1 — verified variety rate (TGW-derived first, then the row's own band).
+  if (verifiedVariety && vca!.target_plants_per_m2 != null && vcaMethod) {
+    const { data: rpc } = await supabase.rpc("fn_calculate_seed_rate", { p_variety_id: varietyId, p_cultivation_method: vcaMethod });
     const r = Array.isArray(rpc) ? rpc[0] : rpc;
     if (r?.seed_rate_kg_per_acre != null && typeof r.tgw_source === "string" && r.tgw_source !== RPC_TGW_UNVERIFIED) {
-      return {
-        kgPerAcre: Number(r.seed_rate_kg_per_acre),
-        basisCode: vca.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
-        broadcastKgPerAcre: vca.seed_rate_broadcast_kg_per_acre_min != null || vca.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
-        rationale: r.rationale ?? null,
+      return finish({
+        kgPerAcre: Number(r.seed_rate_kg_per_acre), basis: "variety_verified", tier: String(vca!.evidence_tier ?? ""), varietyTuned: true,
+        basisCode: vca!.seed_rate_basis_code != null ? String(vca!.seed_rate_basis_code) : null,
+        broadcastKgPerAcre: broadcastOf(vca!), rationale: r.rationale ?? null,
         provenance: { table: "fn_calculate_seed_rate", source: `tgw:${r.tgw_source}; method:${vcaMethod}` },
-      };
+      });
+    }
+  }
+  if (verifiedVariety) {
+    const b = seedBand(vca!);
+    if (b.min != null || b.max != null) {
+      return finish({
+        kgPerAcre: b.min != null && b.max != null ? (b.min + b.max) / 2 : (b.min ?? b.max) as number,
+        basis: "variety_verified", tier: String(vca!.evidence_tier ?? ""), varietyTuned: true,
+        rationale: (vca!.seed_rate_rationale as string) ?? null, basisCode: vca!.seed_rate_basis_code != null ? String(vca!.seed_rate_basis_code) : null,
+        broadcastKgPerAcre: broadcastOf(vca!),
+        provenance: { table: "variety_cultivation_agronomy", row_id: (vca!.id as string) ?? null, source: `${(vca!.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
+      });
     }
   }
 
-  const min = vca?.seed_rate_kg_per_acre_min != null ? Number(vca.seed_rate_kg_per_acre_min) : null;
-  const max = vca?.seed_rate_kg_per_acre_max != null ? Number(vca.seed_rate_kg_per_acre_max) : null;
-  if (min == null && max == null) return null;
-  return {
-    kgPerAcre: min != null && max != null ? (min + max) / 2 : (min ?? max) as number,
-    rationale: (vca?.seed_rate_rationale as string) ?? null,
-    basisCode: vca?.seed_rate_basis_code != null ? String(vca.seed_rate_basis_code) : null,
-    broadcastKgPerAcre: vca?.seed_rate_broadcast_kg_per_acre_min != null || vca?.seed_rate_broadcast_kg_per_acre_max != null ? { min: vca?.seed_rate_broadcast_kg_per_acre_min != null ? Number(vca.seed_rate_broadcast_kg_per_acre_min) : null, max: vca?.seed_rate_broadcast_kg_per_acre_max != null ? Number(vca.seed_rate_broadcast_kg_per_acre_max) : null } : null,
-    provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
-  };
+  // Rung 2 — authored CROP STANDARD (no verified variety rate): a real SAU standard, not variety-tuned.
+  if (cropStd && (stdBand.min != null || stdBand.max != null)) {
+    return finish({
+      kgPerAcre: stdBand.min != null && stdBand.max != null ? (stdBand.min + stdBand.max) / 2 : (stdBand.min ?? stdBand.max) as number,
+      basis: "crop_standard", tier: String(cropStd.evidence_tier ?? ""), varietyTuned: false,
+      rationale: (cropStd.seed_rate_rationale as string) ?? null, basisCode: cropStd.seed_rate_basis_code != null ? String(cropStd.seed_rate_basis_code) : null,
+      broadcastKgPerAcre: broadcastOf(cropStd),
+      provenance: { table: "variety_cultivation_agronomy", row_id: (cropStd.id as string) ?? null, source: `crop_standard:${(cropStd.source as string) ?? ""}; crop:${cropCode}; method:${method}; family:${family}` },
+    });
+  }
+
+  // Rung 3 — unverified variety estimate (last resort, better than a blank card).
+  const b = seedBand(vca ?? null);
+  if (b.min != null || b.max != null) {
+    return finish({
+      kgPerAcre: b.min != null && b.max != null ? (b.min + b.max) / 2 : (b.min ?? b.max) as number,
+      basis: "variety_unverified", tier: String(vca?.evidence_tier ?? ""), varietyTuned: false,
+      rationale: (vca?.seed_rate_rationale as string) ?? null, basisCode: vca?.seed_rate_basis_code != null ? String(vca?.seed_rate_basis_code) : null,
+      broadcastKgPerAcre: broadcastOf(vca ?? null),
+      provenance: { table: "variety_cultivation_agronomy", row_id: (vca?.id as string) ?? null, source: `unverified:${(vca?.source as string) ?? ""}; method:${vcaMethod ?? ""}` },
+    });
+  }
+  return null;
 }
 
-export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance;cultivation_context:string|null; }
-export async function getFertilizerPlan(supabase:SupabaseClient,cropCode:string,regionCode:string|null,fertilityClass:string|null,methodTokens:string[]=[]):Promise<FertilizerPlan|null>{
-  const {data}=await supabase.from("fertilizer_recommendation_master").select("id, crop_code, region_code, soil_fertility_class, n_kg_ha, p2o5_kg_ha, k2o_kg_ha, split_schedule, source, authority, confidence, cultivation_context").ilike("crop_code",cropCode);const rows=data||[];if(!rows.length)return null;
-  const tokens=[...new Set(methodTokens.filter(Boolean).map(t=>String(t).toLowerCase()))];const contextMatches=(r:Record<string,unknown>)=>{const c=String(r.cultivation_context??"").toLowerCase();return !!c&&tokens.some(t=>c.includes(t));};
-  const score=(r:Record<string,unknown>)=>(contextMatches(r)?4:0)+(regionCode&&String(r.region_code??"").toLowerCase()===regionCode.toLowerCase()?2:0)+(fertilityClass&&String(r.soil_fertility_class??"").toLowerCase()===fertilityClass.toLowerCase()?2:0)+(r.region_code==null?1:0);const best=[...rows].sort((a,b)=>score(b)-score(a))[0];const gaps:string[]=[];let splitParsed:unknown=best.split_schedule;
-  if(tokens.length&&best.cultivation_context&&!contextMatches(best))gaps.push(`fertilizer_context_mismatch:${String(best.cultivation_context)}`);
+export interface FertilizerPlan { n_kg_ha:number|null;p2o5_kg_ha:number|null;k2o_kg_ha:number|null;splits:Array<Record<string,unknown>>;gaps:string[];provenance:Provenance;cultivation_context:string|null;basis:FertilizerBasis; }
+import { selectFertilizerRow, type FertilizerBasis, type FertilizerRow } from "../generator/fertilizer-selection.ts";
+export async function getFertilizerPlan(supabase:SupabaseClient,cropCode:string,regionCode:string|null,fertilityClass:string|null,methodTokens:string[]=[],cropCycle:string|null=null):Promise<FertilizerPlan|null>{
+  const {data}=await supabase.from("fertilizer_recommendation_master").select("id, crop_code, region_code, soil_fertility_class, n_kg_ha, p2o5_kg_ha, k2o_kg_ha, split_schedule, source, authority, confidence, cultivation_context, review_status").ilike("crop_code",cropCode).eq("review_status","approved");const rows=(data||[]) as FertilizerRow[];if(!rows.length)return null;
+  // 2026-11-12: selection moved to generator/fertilizer-selection.ts (pure). Vocabulary for
+  // "does this context name ANOTHER method / crop cycle" comes from the DB masters only.
+  const [{data:methodRows},{data:cycleRows}]=await Promise.all([
+    supabase.from("cultivation_method_master").select("method_code").limit(500),
+    supabase.from("crop_stage_master").select("crop_cycle").ilike("crop_code",cropCode).eq("is_active",true).limit(1000),
+  ]);
+  const selection=selectFertilizerRow(rows,{regionCode,soilFertilityClass:fertilityClass,methodCodes:methodTokens,cropCycle,
+    methodVocabulary:[...new Set((methodRows||[]).map((r:Record<string,unknown>)=>String(r.method_code??"")).filter(Boolean))],
+    cycleVocabulary:[...new Set((cycleRows||[]).map((r:Record<string,unknown>)=>String(r.crop_cycle??"")).filter(Boolean))]});
+  if(!selection)return null;
+  const best=selection.row as Record<string,unknown>;const gaps:string[]=[...selection.gaps];let splitParsed:unknown=best.split_schedule;
   if(typeof splitParsed==="string"){const trimmed=splitParsed.trim();if(!trimmed)splitParsed=null;else{try{splitParsed=JSON.parse(trimmed);}catch{splitParsed=null;gaps.push("fertilizer_split_schedule_unparseable");}}}
-  const splits=Array.isArray(splitParsed)?splitParsed:splitParsed&&typeof splitParsed==="object"?Object.values(splitParsed):[];return{n_kg_ha:best.n_kg_ha!=null?Number(best.n_kg_ha):null,p2o5_kg_ha:best.p2o5_kg_ha!=null?Number(best.p2o5_kg_ha):null,k2o_kg_ha:best.k2o_kg_ha!=null?Number(best.k2o_kg_ha):null,splits:splits as Array<Record<string,unknown>>,gaps,provenance:{table:"fertilizer_recommendation_master",row_id:best.id,source:best.source??null,authority:best.authority??null,confidence:best.confidence!=null?Number(best.confidence):null},cultivation_context:best.cultivation_context!=null?String(best.cultivation_context):null};
+  const splits=Array.isArray(splitParsed)?splitParsed:splitParsed&&typeof splitParsed==="object"?Object.values(splitParsed):[];return{n_kg_ha:best.n_kg_ha!=null?Number(best.n_kg_ha):null,p2o5_kg_ha:best.p2o5_kg_ha!=null?Number(best.p2o5_kg_ha):null,k2o_kg_ha:best.k2o_kg_ha!=null?Number(best.k2o_kg_ha):null,splits:splits as Array<Record<string,unknown>>,gaps,basis:selection.basis,provenance:{table:"fertilizer_recommendation_master",row_id:String(best.id),source:(best.source as string)??null,authority:(best.authority as string)??null,confidence:best.confidence!=null?Number(best.confidence):null},cultivation_context:best.cultivation_context!=null?String(best.cultivation_context):null};
 }
 
 /** Clock-origin names used by this crop's stage graphs (e.g. the values of clock_reference/das_reference). DB-derived; no crop-specific list. */
@@ -135,23 +283,126 @@ export async function getIrrigationGuidelines(supabase:SupabaseClient,cropCode:s
   return rows.filter((r:Record<string,unknown>)=>r.irrigation_interval_days!=null||r.water_requirement_mm!=null).map((r:Record<string,unknown>)=>({stageId:(r.stage_master_id as string)??null,growthStage:(r.growth_stage as string)??null,dasStart:r.das_start!=null?Number(r.das_start):null,dasEnd:r.das_end!=null?Number(r.das_end):null,intervalDays:r.irrigation_interval_days!=null?Number(r.irrigation_interval_days):null,waterMm:r.water_requirement_mm!=null?Number(r.water_requirement_mm):null,notes:(r.notes as string)??null,criticalMoisturePercent:r.critical_moisture_percent!=null?Number(r.critical_moisture_percent):null,provenance:{table:"crop_baseline_guidelines_v2",row_id:(r.id as string)??null,source:(r.source_reference as string)??null}}));
 }
 
-export interface FieldActionRule {rule_id:string;category:string|null;action_type:string|null;action_text:string|null;stage_applicable:unknown;priority:number|null;phi_days:number|null;chemical_class:string|null;scientific_source:string|null;biological_group:string|null;etl_threshold:string|null;dosage_per_acre:string|null;contraindications:unknown;organic_alternative?:string|null;ipm_level?:number|string|null;}
+export interface FieldActionRule {rule_id:string;category:string|null;action_type:string|null;action_text:string|null;stage_applicable:unknown;priority:number|null;phi_days:number|null;chemical_class:string|null;scientific_source:string|null;biological_group:string|null;etl_threshold:string|null;dosage_per_acre:string|null;contraindications:unknown;organic_alternative?:string|null;ipm_level?:number|string|null;expert_approved:boolean|null;crop_age_days_min?:number|null;crop_age_days_max?:number|null;condition_code?:string|null;schedule_role?:string|null;/** How the input is applied (e.g. seed_treatment_slurry): DB column. */application_method?:string|null;/** Rules this one is done after, on the same day (DB order of operations). */sequence_after?:string[]|null;}
 const regionFilter=(regionCode:string|null):string=>regionCode?`region_code.is.null,region_code.eq.${regionCode}`:`region_code.is.null`;
 const methodFilter=(methods:string[]|null|undefined):string=>`cultivation_method_applicable.is.null,cultivation_method_applicable.ov.{${[...new Set(["any",...(methods??[]).filter(Boolean)])].join(",")}}`;
 export async function getFieldActionRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<FieldActionRule[]>{
   const FIELD_ACTION_RULE_LIMIT=1000;
-  const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
-  return (data||[]) as FieldActionRule[];
+  const {data}=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, condition_code, application_method, sequence_after").eq("is_active",true).eq("requires_field_action",true).eq("trigger_class","CONTEXT_SCHEDULE").eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
+  const rows=(data||[]) as FieldActionRule[];
+  // 2026-11-13 — SCHEDULE OPERATIONS filed under another trigger class. Core practices (seed
+  // treatment, nursery bed, puddling, gap filling) are stored as general advice rules, so they never
+  // became a dated operation. decision_rules.schedule_role = 'operation' marks such a rule as a
+  // stage operation of the static schedule and schedule_stage names its stage; the rule itself and
+  // its use elsewhere are untouched. Only an expert-approved rule is served (fail closed): these texts
+  // carry rates and doses. Read tolerantly: without the columns nothing is added.
+  try{
+    const extra=await supabase.from("decision_rules").select("rule_id, category, action_type, action_text, stage_applicable, priority, phi_days, chemical_class, scientific_source, biological_group, etl_threshold, dosage_per_acre, contraindications, crop_code, organic_alternative, ipm_level, expert_approved, crop_age_days_min, crop_age_days_max, schedule_role, schedule_stage, condition_code, application_method, sequence_after").eq("is_active",true).eq("schedule_role","operation").eq("expert_approved",true).eq("is_safety_block",false).neq("is_farmer_servable",false).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(FIELD_ACTION_RULE_LIMIT);
+    if(!extra.error){
+      const have=new Set(rows.map(r=>r.rule_id));
+      for(const r of (extra.data||[]) as Array<Record<string,unknown>>){
+        if(have.has(String(r.rule_id))) continue;
+        const stage=String(r.schedule_stage??"").trim();
+        rows.push({...(r as unknown as FieldActionRule),category:"management",stage_applicable:stage?[stage]:r.stage_applicable});
+      }
+    }
+  }catch{ /* tolerant by design */ }
+  return rows;
 }
 
-export interface ObservationRuleRef {rule_id:string;stage_applicable:unknown;priority:number|null;category:string|null;condition_code:string|null;etl_threshold:string|null;action_text:string|null;}
+/** What the database knows about an observation code: its farmer label and whether it is a real, farmer-visible symptom. */
+export interface SymptomInfo { label:string; diagnostic:boolean; }
+/**
+ * 2026-11-13 — farmer labels and diagnostic flags for observation codes (observation_master +
+ * observation_translations). A code that is not a diagnostic, farmer-observable symptom (a generic
+ * "any stage" or "pest present" bucket) is not something a farmer can look for. Never throws.
+ */
+export async function getSymptomCatalog(supabase:SupabaseClient,codes:string[],language:string|null):Promise<Map<string,SymptomInfo>|null>{
+  const ids=[...new Set(codes.map(c=>String(c??"").trim()).filter(Boolean))];
+  if(!ids.length) return new Map();
+  try{
+    const lang=String(language||"en").trim().toLowerCase();
+    const [m,t]=await Promise.all([
+      supabase.from("observation_master").select("observation_code, is_diagnostic, is_farmer_observable, is_active").in("observation_code",ids),
+      supabase.from("observation_translations").select("observation_code, language_code, display_text").in("observation_code",ids).in("language_code",[lang,"en"]),
+    ]);
+    if(m.error||t.error) return null;
+    const label=new Map<string,string>();
+    for(const r of (t.data||[]) as Array<Record<string,unknown>>){const code=String(r.observation_code);const text=String(r.display_text??"").trim();if(!text)continue;if(String(r.language_code).toLowerCase()===lang||!label.has(code))label.set(code,text);}
+    const out=new Map<string,SymptomInfo>();
+    for(const r of (m.data||[]) as Array<Record<string,unknown>>){const code=String(r.observation_code);const l=label.get(code);if(!l)continue;out.set(code,{label:l,diagnostic:r.is_diagnostic===true&&r.is_farmer_observable!==false&&r.is_active!==false});}
+    return out;
+  }catch{ return null; }
+}
+
+/**
+ * 2026-11-13 — which condition codes are diagnostic field symptoms (observation_master.is_diagnostic),
+ * independent of whether a farmer-language label exists. null when the read fails (callers then treat
+ * no code as diagnostic and rely on the rule's own wording).
+ */
+export async function getDiagnosticCodes(supabase:SupabaseClient,codes:string[]):Promise<Set<string>|null>{
+  const ids=[...new Set(codes.map(c=>String(c??"").trim()).filter(Boolean))];
+  if(!ids.length) return new Set();
+  try{
+    const {data,error}=await supabase.from("observation_master").select("observation_code, is_diagnostic, is_active").in("observation_code",ids);
+    if(error) return null;
+    return new Set(((data||[]) as Array<Record<string,unknown>>).filter(r=>r.is_diagnostic===true&&r.is_active!==false).map(r=>String(r.observation_code)));
+  }catch{ return null; }
+}
+
+export interface ObservationRuleRef {rule_id:string;stage_applicable:unknown;priority:number|null;category:string|null;condition_code:string|null;etl_threshold:string|null;action_text:string|null;cultivation_method_applicable?:unknown;is_farmer_servable?:boolean|null;is_safety_block?:boolean|null;}
 export const SCOUTING_RULE_CATEGORIES=["pest","disease","weed","stress","ipm","proactive_pest","proactive_monitoring"];
 export async function getObservationRules(supabase:SupabaseClient,cropCode:string,regionCode:string|null,methods:string[]):Promise<ObservationRuleRef[]>{
-  const OBSERVATION_RULE_LIMIT=2000;const {data}=await supabase.from("decision_rules").select("rule_id, stage_applicable, priority, category, condition_code, etl_threshold, action_text, crop_code").eq("is_active",true).eq("trigger_class","OBSERVATION").in("category",SCOUTING_RULE_CATEGORIES).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(OBSERVATION_RULE_LIMIT);return(data||[]) as ObservationRuleRef[];
+  const OBSERVATION_RULE_LIMIT=2000;const {data}=await supabase.from("decision_rules").select("rule_id, stage_applicable, priority, category, condition_code, etl_threshold, action_text, crop_code, cultivation_method_applicable, is_farmer_servable, is_safety_block").eq("is_active",true).eq("trigger_class","OBSERVATION").in("category",SCOUTING_RULE_CATEGORIES).or(`crop_code.ilike.${cropCode},crop_code.ilike.ALL`).or(regionFilter(regionCode)).or(methodFilter(methods)).limit(OBSERVATION_RULE_LIMIT);return(data||[]).filter((r:Record<string,unknown>)=>{
+    if(r.is_farmer_servable===false || r.is_safety_block===true)return false;
+    if(methods.some(x=>String(x).toLowerCase()==="transplanted") && /(?:^|_)DSR(?:_|$)/i.test(String(r.rule_id)))return false;
+    const scoped=Array.isArray(r.cultivation_method_applicable)?r.cultivation_method_applicable.map(x=>String(x).toLowerCase()):[];
+    return !scoped.length || scoped.includes("any") || methods.some(x=>scoped.includes(String(x).toLowerCase()));
+  }) as ObservationRuleRef[];
 }
 
-export async function getVarietyDuration(supabase:SupabaseClient,varietyId:string|null,methods:string[]):Promise<{maxDays:number|null;provenance:Provenance}|null>{
-  if(!varietyId)return null;for(const method of [...new Set(methods.filter(Boolean))]){const {data}=await supabase.from("variety_cultivation_agronomy").select("id, duration_days_min, duration_days_max, source, evidence_tier").eq("variety_id",varietyId).eq("cultivation_method",method).eq("is_active",true).maybeSingle();if(data)return{maxDays:data.duration_days_max!=null?Number(data.duration_days_max):null,provenance:{table:"variety_cultivation_agronomy",row_id:data.id,source:data.source??null}};}return null;}
+export interface VarietyDurationEvidence {maxDays:number|null;durationReference:string|null;evidenceTier:string|null;issue:string|null;provenance:Provenance;}
+export async function getVarietyDuration(
+  supabase:SupabaseClient,varietyId:string|null,methods:string[],transplantOffset:number|null
+):Promise<VarietyDurationEvidence|null>{
+  if(!varietyId)return null;
+  for(const method of [...new Set(methods.filter(Boolean))]){
+    const {data,error}=await supabase.from("variety_cultivation_agronomy")
+      .select("id, duration_days_min, duration_days_max, duration_reference, source, evidence_tier")
+      .eq("variety_id",varietyId).eq("cultivation_method",method).eq("is_active",true).maybeSingle();
+    if(error)throw error;
+    if(!data)continue;
+    const resolved=resolvedMaturityDas(data.duration_days_max!=null?Number(data.duration_days_max):null,
+      data.duration_reference,data.evidence_tier,transplantOffset);
+    return {maxDays:resolved.maxDas,durationReference:data.duration_reference??null,evidenceTier:data.evidence_tier??null,
+      issue:resolved.issue,provenance:{table:"variety_cultivation_agronomy",row_id:data.id,source:data.source??null}};
+  }
+  return null;
+}
 
 export async function getBannedChemicals(supabase:SupabaseClient):Promise<Set<string>>{const {data}=await supabase.from("chemical_regulatory_status").select("chemical_name, status").limit(1000);const out=new Set<string>();for(const r of data||[]){if(String(r.status??"").toLowerCase()!=="approved")out.add(String(r.chemical_name??"").toLowerCase());}return out;}
 export async function getLaborRate(supabase:SupabaseClient,state:string|null,operationType:string|null):Promise<number|null>{if(!state)return null;let q=supabase.from("labor_rates").select("daily_wage").ilike("state",state).eq("is_active",true).order("effective_date",{ascending:false}).limit(1);if(operationType)q=q.eq("operation_type",operationType);const {data}=await q;const row=(data||[])[0];return row?.daily_wage!=null?Number(row.daily_wage):null;}
+
+/** A rule's own timing inside its stage: days after the stage starts (decision_rules.stage_offset_days_min/max). */
+export interface RuleStageOffset { rule_id:string; offset_min:number; offset_max:number|null; stages:string[]; }
+/**
+ * 2026-11-13 — read the stage offsets of the given rules. Read separately and tolerantly: where the
+ * columns are not deployed yet (or the read fails) the result is empty and every card keeps the
+ * stage-start date it has today, so the function never depends on the migration's timing.
+ */
+export async function getRuleStageOffsets(supabase:SupabaseClient,ruleIds:string[]):Promise<Map<string,RuleStageOffset>>{
+  const out=new Map<string,RuleStageOffset>();
+  const ids=[...new Set(ruleIds.filter(Boolean))];
+  if(!ids.length) return out;
+  try{
+    const {data,error}=await supabase.from("decision_rules").select("rule_id, stage_offset_days_min, stage_offset_days_max, stage_applicable").in("rule_id",ids).not("stage_offset_days_min","is",null);
+    if(error) return out;
+    for(const r of (data??[]) as Array<Record<string,unknown>>){
+      const min=Number(r.stage_offset_days_min);
+      if(!Number.isFinite(min)||min<0) continue;
+      const max=r.stage_offset_days_max==null?null:Number(r.stage_offset_days_max);
+      out.set(String(r.rule_id),{rule_id:String(r.rule_id),offset_min:min,offset_max:max!=null&&Number.isFinite(max)&&max>=min?max:null,stages:Array.isArray(r.stage_applicable)?r.stage_applicable.map((x)=>String(x).trim().toLowerCase()).filter(Boolean):[]});
+    }
+  }catch{ /* tolerant by design */ }
+  return out;
+}

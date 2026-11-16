@@ -379,8 +379,9 @@ Deno.serve(async (req) => {
       execution_time_ms: elapsed,
     });
   } catch (error) {
-    console.error('[ProactiveEvaluator] Fatal error:', error.message);
-    return jsonResponse({ success: false, error: error.message }, 500);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[ProactiveEvaluator] Fatal error:', errorMessage);
+    return jsonResponse({ success: false, error: errorMessage }, 500);
   }
 });
 

@@ -136,23 +136,14 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
     }
 
     try {
-      const landIds = lands.map(l => l.id);
+      const landIds = new Set(lands.map(l => l.id));
       const client = supabaseWithAuth(user.id, user.tenantId);
-      
-      console.log('Fetching schedules with auth:', { userId: user.id, tenantId: user.tenantId, landIds });
-      
-      const { data, error } = await client
-        .from('crop_schedules')
-        .select('id, land_id, crop_name')
-        .in('land_id', landIds)
-        .eq('is_active', true);
 
-      if (error) {
-        console.error('Error fetching schedules:', error);
-        throw error;
-      }
-      
-      console.log('Fetched schedules:', data);
+      // Direct PostgREST reads of crop_schedules are denied for the anon role;
+      // the schedules-api edge function verifies the session and scopes rows server-side.
+      const { schedulesApi } = await import('@/services/schedulesApi');
+      const all = await schedulesApi.fetchSchedules();
+      const data = (all || []).filter(s => s.is_active !== false && landIds.has(s.land_id));
 
       const statuses: LandScheduleStatus[] = lands.map(land => {
         const schedule = data?.find(s => s.land_id === land.id);

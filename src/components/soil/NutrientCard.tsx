@@ -61,11 +61,11 @@ export function NutrientCard({
       <div className="grid grid-cols-2 gap-4 pl-13">
         <div>
           <p className={`text-2xl font-bold ${letterColor.replace('bg-', 'text-').replace('/10', '')}`}>
-            {kgPerHa || 'N/A'}
+            {kgPerHa ?? 'N/A'}
           </p>
           <p className="text-xs text-muted-foreground">kg/ha</p>
         </div>
-        {totalKg && (
+        {totalKg != null && (
           <div>
             <p className={`text-2xl font-bold ${letterColor.replace('bg-', 'text-').replace('/10', '')}`}>
               {totalKg}
@@ -77,7 +77,7 @@ export function NutrientCard({
       {text && (
         <p className="text-sm text-muted-foreground mt-2 pl-13">{text}</p>
       )}
-      {kgPerHa && (
+      {kgPerHa != null && (
         <Progress value={getNutrientProgress(kgPerHa)} className="mt-3 h-2" />
       )}
     </div>

@@ -22,7 +22,12 @@ export function validatePlanIntent(plan: PlanIntent, graph: ScheduleCandidateGra
     if (node.default_status === "INSUFFICIENT_DATA" && x.status === "SCHEDULED") e.push(`insufficient_evidence_promoted_to_scheduled:${x.candidate_id}`);
     if (node.trigger_class?.toUpperCase() === "OBSERVATION" && x.status === "SCHEDULED") e.push(`observation_candidate_promoted_to_scheduled:${x.candidate_id}`);
     if (!node.required && x.status === "SCHEDULED" && node.default_status === "CONDITIONAL") e.push(`conditional_candidate_promoted_to_scheduled:${x.candidate_id}`);
-    if (!node.required && x.status === "CONDITIONAL" && !node.materializable) e.push(`non_materializable_conditional:${x.candidate_id}`);
+    // A non-materializable node whose evidence default is already CONDITIONAL is a scouting/watch
+    // candidate: the harness folds it into the stage's single scouting card and never creates a
+    // field task for it, so keeping its own status is valid. Only PROMOTING a node (MONITOR or
+    // INSUFFICIENT_DATA) to CONDITIONAL is an invalid planner intent. Without this carve-out every
+    // plan that leaves a watch candidate at its default failed validation on real graphs.
+    if (!node.required && x.status === "CONDITIONAL" && !node.materializable && node.default_status !== "CONDITIONAL") e.push(`non_materializable_conditional:${x.candidate_id}`);
   }
 
   if (plan.status === "READY") {

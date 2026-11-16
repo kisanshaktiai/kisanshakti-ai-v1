@@ -1,9 +1,9 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { Volume2, Sprout, AlertTriangle, CloudOff, HelpCircle, TrendingDown } from 'lucide-react';
+import { Volume2, Sprout, AlertTriangle, CloudOff, HelpCircle, TrendingDown, Leaf } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatSkyDay, type FieldSky } from '@/hooks/useFieldSky';
+import { formatSkyDay, stageKey, type FieldSky } from '@/hooks/useFieldSky';
 import { useSignedSatelliteImage } from '@/hooks/useSignedSatelliteImage';
 
 /**
@@ -28,6 +28,7 @@ export function FieldStateCard({ sky, landName, landId, farmerId, tenantId, onSp
   const line = (() => {
     switch (sky.state) {
       case 'as_expected': return t('sky.state.as_expected', '{{land}} is growing as expected for this stage.', { land: landName });
+      case 'above_band': return t('sky.state.above_band', '{{land}} looks greener than expected for this stage.', { land: landName });
       case 'slower': return t('sky.state.slower', '{{land}} is growing a little slower than nearby fields.', { land: landName });
       case 'something_wrong': return t('sky.state.something_wrong', 'Something looks off in {{land}}. Worth a walk through the field.', { land: landName });
       case 'unclear': return t('sky.state.unclear', 'Clouds have hidden {{land}} for a while. We will look again on the next clear day.', { land: landName });
@@ -38,8 +39,9 @@ export function FieldStateCard({ sky, landName, landId, farmerId, tenantId, onSp
   const detail = (() => {
     if (sky.state === 'unclear' && sky.radar) return t('sky.state.radar_note', 'Radar can see through cloud. It last saw this field on {{date}}.', { date: formatSkyDay(sky.radar.date, i18n.language) });
     if (sky.stage.state === 'no_sowing_date') return t('sky.state.need_sowing', 'Tell us when you sowed and we can compare with what the crop should look like now.');
+    if (sky.stage.state === 'not_resolved') return t('sky.season.not_resolved', 'The stage of your crop has not been worked out yet. Check the sowing date in your crop schedule.');
     // stage names are translated by the same keys the crop figure uses (sky.stage.<name>), falling back to the table's own text
-    if (sky.stage.stageName) return t('sky.state.stage_line', 'Day {{das}} · {{stage}}', { das: sky.stage.das ?? '–', stage: t(`sky.stage.${sky.stage.stageName.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '')}`, sky.stage.stageName) });
+    if (sky.stage.stageName) return t('sky.state.stage_line', 'Day {{das}} · {{stage}}', { das: sky.stage.das ?? '–', stage: t(stageKey(sky.stage.stageName), sky.stage.stageName) });
     return null;
   })();
 
@@ -90,6 +92,7 @@ export function FieldStateCard({ sky, landName, landId, farmerId, tenantId, onSp
 
 const STATE_UI = {
   as_expected:     { icon: Sprout,        bg: 'bg-success/10',     border: 'border-success/30',     iconBg: 'bg-success/15',     iconFg: 'text-success',     fg: 'text-foreground' },
+  above_band:      { icon: Leaf,          bg: 'bg-info/10',        border: 'border-info/30',        iconBg: 'bg-info/15',        iconFg: 'text-info',        fg: 'text-foreground' },
   slower:          { icon: TrendingDown,  bg: 'bg-warning/10',     border: 'border-warning/30',     iconBg: 'bg-warning/15',     iconFg: 'text-warning',     fg: 'text-foreground' },
   something_wrong: { icon: AlertTriangle, bg: 'bg-destructive/10', border: 'border-destructive/30', iconBg: 'bg-destructive/15', iconFg: 'text-destructive', fg: 'text-foreground' },
   unclear:         { icon: CloudOff,      bg: 'bg-muted/50',       border: 'border-border/40',      iconBg: 'bg-muted',          iconFg: 'text-muted-foreground', fg: 'text-foreground' },

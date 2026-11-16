@@ -87,7 +87,7 @@ export function prepareCurrentFieldTasks(
   }
 
   const todayDas = currentStage.currentDas;
-  const prepared = tasks.map((task) => {
+  const prepared: PreparedTask[] = tasks.map((task): PreparedTask => {
     const baseDate = sowingDate
       ? new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 86400000).toISOString().split("T")[0]
       : todayIso;

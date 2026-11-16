@@ -2,9 +2,12 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { brokeredPreviewStorage } from './previewAuthStorage';
+import { SUPABASE_CONFIG } from '@/config/supabase';
 
-const SUPABASE_URL = "https://qfklkkzxemsbeniyugiz.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4";
+// Keep every schedule read and function invocation on the SAME isolated
+// project as schedulesApi. The original generated client hardcoded production.
+const SUPABASE_URL = SUPABASE_CONFIG.URL;
+const SUPABASE_PUBLISHABLE_KEY = SUPABASE_CONFIG.ANON_KEY;
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {

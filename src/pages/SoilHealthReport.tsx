@@ -1,12 +1,18 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Droplets, Leaf, TestTube, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { supabase } from '@/integrations/supabase/client';
+import { getSessionToken } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+import { loadSoilState, soilNumber } from '@/services/soil/soilReport';
 import { useToast } from '@/hooks/use-toast';
+import { SoilFetchPanel } from '@/components/soil/SoilFetchPanel';
 import { SoilReportHeader } from '@/components/soil/SoilReportHeader';
 import { SoilReportBanner } from '@/components/soil/SoilReportBanner';
 import { NutrientCard } from '@/components/soil/NutrientCard';
@@ -14,7 +20,6 @@ import { SoilHealthSkeleton } from '@/components/skeletons';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
-type SoilData = any;
 
 export default function SoilHealthReport() {
   const { id } = useParams();
@@ -22,57 +27,40 @@ export default function SoilHealthReport() {
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
   
-  const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
+  const { session, user, isLoading: authLoading } = useAuthStore();
+  const farmerId = session?.farmerId;
+  const tenantId = session?.tenantId;
+  const authenticated = !!farmerId && !!tenantId && !!getSessionToken();
   const [exporting, setExporting] = useState(false);
-  const [data, setData] = useState<SoilData>(null);
-
+  const queryClient = useQueryClient();
+  const report = useQuery({
+    queryKey: ['soil-report', id, farmerId, tenantId, session?.createdAt],
+    enabled: !authLoading && authenticated && !!id,
+    queryFn: () => loadSoilState(id!, farmerId!, tenantId!),
+    refetchInterval: query => ['queued','running'].includes(query.state.data?.job?.status || '') ? 4000 : false,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const state = authenticated ? report.data : null;
+  const data = state?.legacy && (!state.model || state.legacy.source !== 'soilgrid') ? {...state.legacy, lands:state.land, user_profiles:state.profile} : null;
+  const fetchSoil = useMutation({
+    mutationFn: () => loadSoilState(id!, farmerId!, tenantId!, true),
+    onSuccess: () => report.refetch(),
+  });
+  const resetFetchSoil = fetchSoil.reset;
+  useEffect(() => { resetFetchSoil(); }, [id, farmerId, tenantId, resetFetchSoil]);
   useEffect(() => {
-    fetchData();
-  }, [id]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      
-      const { data: soilData, error: soilError } = await supabase
-        .from('soil_health')
-        .select('*')
-        .eq('land_id', id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (soilError) throw soilError;
-      if (!soilData) {
-        toast({ title: 'No Data', description: 'No soil health data available', variant: 'destructive' });
-        navigate(-1);
-        return;
-      }
-
-      const { data: profileData } = await supabase
-        .from('user_profiles')
-        .select('full_name, farmer_code')
-        .eq('farmer_id', soilData.farmer_id)
-        .maybeSingle();
-
-      const { data: landData } = await supabase
-        .from('lands')
-        .select('name')
-        .eq('id', soilData.land_id)
-        .maybeSingle();
-
-      setData({
-        ...soilData,
-        user_profiles: profileData,
-        lands: landData
-      });
-    } catch (error) {
-      console.error('Error:', error);
-      toast({ title: 'Error', description: 'Failed to load data', variant: 'destructive' });
-    } finally {
-      setLoading(false);
+    if (state?.model?.id) {
+      for (const key of ['lands','analytics-data','land-chat-context','land-details']) queryClient.invalidateQueries({queryKey:[key]});
     }
-  };
+  }, [state?.model?.id, queryClient]);
+  const panel = state ? <SoilFetchPanel state={state} requesting={fetchSoil.isPending}
+    error={fetchSoil.error?.message || null} onFetch={() => fetchSoil.mutate()}/> : null;
+  const ph = soilNumber(data?.ph_level);
+  const organicCarbon = soilNumber(data?.organic_carbon);
+  const backToLand = () => navigate(id ? `/app/lands/${id}` : '/app/lands');
 
   const downloadAsPDF = async () => {
     if (!reportRef.current) return;
@@ -106,7 +94,7 @@ export default function SoilHealthReport() {
         heightLeft -= pdfHeight;
       }
       
-      pdf.save(`soil-health-report-${data.lands?.name || 'report'}.pdf`);
+      pdf.save(`soil-health-report-${state?.land.name || 'report'}.pdf`);
       toast({ title: 'Success', description: 'PDF downloaded successfully' });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to generate PDF', variant: 'destructive' });
@@ -132,7 +120,7 @@ export default function SoilHealthReport() {
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `soil-health-report-${data.lands?.name || 'report'}.jpg`;
+          link.download = `soil-health-report-${state?.land.name || 'report'}.jpg`;
           link.click();
           URL.revokeObjectURL(url);
           toast({ title: 'Success', description: 'Image downloaded successfully' });
@@ -158,7 +146,7 @@ export default function SoilHealthReport() {
           const file = new File([blob], 'soil-report.jpg', { type: 'image/jpeg' });
           await navigator.share({
             title: 'Soil Health Report',
-            text: `Soil Health Report for ${data.lands?.name}`,
+            text: `Soil Health Report for ${state?.land.name}`,
             files: [file]
           });
         } else {
@@ -175,17 +163,33 @@ export default function SoilHealthReport() {
     return Math.min((value / max) * 100, 100);
   };
 
-  if (loading) {
+  if (authLoading || (authenticated && !!id && report.isPending)) {
     return <SoilHealthSkeleton />;
   }
 
+  if (state && !data) return <main className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
+    {state.model ? <SoilReportHeader landName={state.land.name} exporting={exporting} onBack={backToLand}
+      onDownloadPDF={downloadAsPDF} onDownloadImage={downloadAsImage} onShare={shareReport}/> :
+      <Button variant="outline" onClick={backToLand}>{t('soil.backToLand')}</Button>}
+    <div ref={reportRef}>{panel}</div>
+  </main>;
+
   if (!data) {
+    const failed = report.isError || !authenticated || !id;
     return (
-      <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardContent className="pt-6 text-center space-y-4">
-            <h2 className="text-xl font-semibold">No Data Available</h2>
-            <p className="text-sm text-muted-foreground">No soil health data found for this land</p>
+      <div className="min-h-full p-4">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="pt-6 text-center space-y-4" role={failed ? 'alert' : 'status'}>
+            <h2 className="text-xl font-semibold">{t(failed ? 'soil.loadError' : 'soil.noData')}</h2>
+            <p className="text-sm text-muted-foreground">
+              {t(!authenticated ? 'soil.signInRequired' : failed ? 'soil.retryHelp' : 'soil.emptyHelp')}
+            </p>
+            <div className="flex justify-center gap-2">
+              <Button variant="outline" onClick={backToLand}>{t('soil.backToLand')}</Button>
+              {authenticated && id && <Button onClick={() => report.refetch()} disabled={report.isFetching}>
+                {t(report.isFetching ? 'soil.checking' : 'soil.checkAgain')}
+              </Button>}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -195,19 +199,24 @@ export default function SoilHealthReport() {
   return (
     <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20">
       <SoilReportHeader
-        landName={data.lands?.name}
+        landName={state?.land.name}
         exporting={exporting}
-        onBack={() => navigate(-1)}
+        onBack={backToLand}
         onDownloadPDF={downloadAsPDF}
         onDownloadImage={downloadAsImage}
         onShare={shareReport}
       />
 
-      <div className="max-w-4xl mx-auto p-4 pb-8" ref={reportRef}>
+      <div className="max-w-4xl mx-auto space-y-5 p-4 pb-24" ref={reportRef}>
+        {panel}
+        <h2 className="text-lg font-semibold">{t('soil.savedReport')}</h2>
+        {data.source === 'soilgrid' && <p className="mb-4 text-sm text-muted-foreground" role="note">
+          {t('soil.modelledNotice')}
+        </p>}
         <SoilReportBanner
-          farmerName={data.user_profiles?.full_name}
-          farmerCode={data.user_profiles?.farmer_code}
-          landName={data.lands?.name}
+          farmerName={data.user_profiles?.full_name || user?.fullName || user?.name}
+          farmerCode={data.user_profiles?.farmer_code || user?.farmerCode}
+          landName={state?.land.name}
           fertilityClass={data.fertility_class}
           testDate={data.test_date}
           fieldArea={data.field_area_ha}
@@ -226,10 +235,10 @@ export default function SoilHealthReport() {
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold mb-2 text-info">
-                {data.ph_level?.toFixed(1) || 'N/A'}
+                {ph === null ? 'N/A' : ph.toFixed(1)}
               </div>
               {data.ph_text && <p className="text-sm text-muted-foreground">{data.ph_text}</p>}
-              {data.ph_level && <Progress value={getNutrientProgress(data.ph_level, 14)} className="mt-3 h-2" />}
+              {ph !== null && <Progress value={getNutrientProgress(ph, 14)} className="mt-3 h-2" />}
             </CardContent>
           </Card>
 
@@ -244,10 +253,10 @@ export default function SoilHealthReport() {
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold mb-2 text-success">
-                {data.organic_carbon?.toFixed(2) || 'N/A'}%
+                {organicCarbon === null ? 'N/A' : `${organicCarbon.toFixed(2)}%`}
               </div>
               {data.organic_carbon_text && <p className="text-sm text-muted-foreground">{data.organic_carbon_text}</p>}
-              {data.organic_carbon && <Progress value={getNutrientProgress(data.organic_carbon, 5)} className="mt-3 h-2" />}
+              {organicCarbon !== null && <Progress value={getNutrientProgress(organicCarbon, 5)} className="mt-3 h-2" />}
             </CardContent>
           </Card>
         </div>

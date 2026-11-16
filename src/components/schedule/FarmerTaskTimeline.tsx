@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -29,9 +29,33 @@ interface Task {
 }
 
 interface Props {
+  layout?: 'basic' | 'stage';
   tasks: Task[]; onTaskClick?: (task: Task) => void; onTaskComplete?: () => void;
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void; onTakePhoto?: (task: Task) => void;
   onEditTask?: (task: Task) => void; stagePhaseOfTask?: (task: { stage_uuid?: string | null }) => StagePhase;
+}
+
+// Measures whatever fixed/sticky bars cover the top and bottom of the viewport
+// (app header, page header, bottom nav) so an opened card fills exactly the gap.
+function measureObstructions(): { top: number; bottom: number } {
+  if (typeof document === 'undefined') return { top: 0, bottom: 0 };
+  const x = Math.round(window.innerWidth / 2);
+  const coveredBy = (y: number) => {
+    let rect: DOMRect | null = null;
+    for (const el of document.elementsFromPoint(x, y)) {
+      for (let n: Element | null = el; n && n !== document.body; n = n.parentElement) {
+        const pos = getComputedStyle(n).position;
+        if (pos === 'fixed' || pos === 'sticky') { rect = n.getBoundingClientRect(); break; }
+      }
+      if (rect) break;
+    }
+    return rect;
+  };
+  const topRect = coveredBy(2);
+  const bottomRect = coveredBy(window.innerHeight - 2);
+  const top = topRect && topRect.top <= 2 ? Math.min(topRect.bottom, window.innerHeight / 2) : 0;
+  const bottom = bottomRect && bottomRect.bottom >= window.innerHeight - 2 ? Math.min(window.innerHeight - bottomRect.top, window.innerHeight / 3) : 0;
+  return { top, bottom };
 }
 
 const typeConfig = {
@@ -41,18 +65,41 @@ const typeConfig = {
   other: { icon: AlertCircle },
 };
 
-export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate, onTakePhoto, stagePhaseOfTask }: Props) {
+export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate, onTakePhoto, stagePhaseOfTask, layout = 'basic' }: Props) {
   const { t } = useTranslation();
   const { currentLanguage } = useLanguageStore();
   const reduceMotion = useReducedMotion();
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(() => layout === 'stage' ? tasks[0]?.id ?? null : null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
+  // Optional farmer MEASUREMENT; never default to the scheduled water volume.
+  const [actualIrrigationLitres, setActualIrrigationLitres] = useState<Record<string, string>>({});
   // The TTS service maps the app language to a device locale itself, so no
   // per-language map is kept here (a map silently sent every unlisted language
   // to en-US, which read Indian-script text with an English voice).
   const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, voiceUnavailable, openVoiceInstall, canInstallVoice } =
     useTextToSpeech({ language: currentLanguage });
+  const [fit, setFit] = useState<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
+  const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) => { try { return new Intl.DateTimeFormat(`${currentLanguage || 'en'}-IN`, opts).format(d); } catch { return format(d, 'dd MMM'); } };
+  const fitCard = useCallback((taskId: string) => {
+    requestAnimationFrame(() => {
+      const insets = measureObstructions();
+      setFit(insets);
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`task-card-${taskId}`);
+        if (!el) return;
+        el.style.scrollMarginTop = `${insets.top + 8}px`;
+        el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      });
+    });
+  }, [reduceMotion]);
+  useEffect(() => {
+    if (!expandedTaskId) return;
+    const onResize = () => setFit(measureObstructions());
+    window.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); window.visualViewport?.removeEventListener('resize', onResize); };
+  }, [expandedTaskId]);
   const groupedTasks = useMemo(() => tasks.reduce((acc, task) => { (acc[task.task_date] ||= []).push(task); return acc; }, {} as Record<string, Task[]>), [tasks]);
 
   // Ask which natural voices exist as soon as the screen opens, so tapping the
@@ -85,22 +132,36 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
   }, [voiceUnavailable, canInstallVoice, openVoiceInstall, t]);
 
   const complete = async (taskId: string, completed: boolean) => {
+    const irrigationTask = tasks.find((task) => task.id === taskId && task.task_type === 'irrigation');
+    const rawLitres = actualIrrigationLitres[taskId]?.trim() ?? '';
+    const parsedLitres = rawLitres ? Number(rawLitres) : null;
+    if (completed && irrigationTask && rawLitres && (parsedLitres === null || !Number.isFinite(parsedLitres) || parsedLitres <= 0)) {
+      toast.error(t('schedule.irrigation.invalid_actual_litres', 'Enter a positive measured volume in litres, or leave blank if unknown.'));
+      throw new Error('Invalid measured irrigation volume');
+    }
+    const actualResources = completed && irrigationTask && parsedLitres != null
+      ? { volume_litres: parsedLitres } : null;
     const completedAt = completed ? new Date().toISOString() : undefined;
     onTaskUpdate?.(taskId, { status: completed ? 'completed' : 'pending', completed_at: completedAt });
     try {
       const { schedulesApi } = await import('@/services/schedulesApi');
-      await schedulesApi.setTaskCompletion(taskId, completed, completedAt);
+      const saved = await schedulesApi.setTaskCompletion(taskId, completed, completedAt, actualResources);
+      // Recurring irrigation/scouting cards can remain pending after an event.
+      // Always render server-confirmed date/status rather than optimistic "done".
+      if (saved) onTaskUpdate?.(taskId, saved);
+      if (completed && irrigationTask) setActualIrrigationLitres((prev) => ({ ...prev, [taskId]: '' }));
       onTaskComplete?.();
     } catch (error) {
       onTaskUpdate?.(taskId, { status: completed ? 'pending' : 'completed' });
       toast.error(t('schedule.toast.sync_failed'));
       console.error('Task completion sync failed', error);
+      throw error;
     }
   };
 
   return (
-    <section className="space-y-3" aria-labelledby="schedule-timeline-title">
-      <header className="flex items-end justify-between gap-3 border-b-2 border-foreground bg-card px-1 pb-3">
+    <section className="space-y-3" aria-labelledby={layout === 'basic' ? 'schedule-timeline-title' : undefined}>
+      {layout === 'basic' && <header className="flex items-end justify-between gap-3 border-b-2 border-foreground bg-card px-1 pb-3">
         <div>
           <p className="text-xs font-bold text-foreground">{t('schedule.timeline.current_work')}</p>
           <h3 id="schedule-timeline-title" className="text-xl font-extrabold text-card-foreground">{t('schedule.timeline.title')}</h3>
@@ -108,23 +169,23 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
         <Badge variant="outline" className="h-8 border-2 border-foreground bg-card px-3 text-sm font-bold text-card-foreground">
           {t('schedule.timeline.tasks_count', { count: tasks.length })}
         </Badge>
-      </header>
+      </header>}
 
-      <div className="relative space-y-5 pl-7">
-        <div className="absolute bottom-0 left-3 top-0 w-1 bg-border" aria-hidden="true" />
+      <div className={cn('relative space-y-5', layout === 'basic' && 'pl-7')}>
+        {layout === 'basic' && <div className="absolute bottom-0 left-3 top-0 w-1 bg-border" aria-hidden="true" />}
         {Object.entries(groupedTasks).map(([date, dateTasks], groupIndex) => {
           const d = new Date(date);
           const past = isPast(d) && !isToday(d);
           const days = differenceInDays(d, new Date());
-          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? format(d, 'EEEE') : format(d, 'dd MMM');
+          const label = isToday(d) ? t('schedule.timeline.today') : isTomorrow(d) ? t('schedule.timeline.tomorrow') : days > 0 && days <= 7 ? fmt(d, { weekday: 'long' }) : fmt(d, { day: '2-digit', month: 'short' });
           return (
             <motion.section key={date} initial={reduceMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : groupIndex * 0.03 }} className="relative">
-              <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
+              {layout === 'basic' && <div className={cn('absolute -left-[1.35rem] top-1 z-10 flex size-7 items-center justify-center rounded-full border-4 border-background', isToday(d) ? 'bg-warning text-warning-foreground' : past ? 'bg-success text-success-foreground' : 'bg-card text-card-foreground')}>
                 {past ? <Check className="size-3.5" strokeWidth={3} /> : <Clock className="size-3.5" strokeWidth={3} />}
-              </div>
-              <div className="mb-2 flex items-center gap-2 pl-4">
+              </div>}
+              <div className={cn('mb-2 flex items-center gap-2', layout === 'basic' && 'pl-4')}>
                 <h4 className="text-base font-extrabold text-foreground">{label}</h4>
-                <span className="text-xs font-bold text-foreground">{format(d, 'dd MMM')}</span>
+                {layout === 'basic' && <span className="text-xs font-bold text-foreground">{fmt(d, { day: '2-digit', month: 'short' })}</span>}
               </div>
 
               <div className="space-y-3">
@@ -138,12 +199,12 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const expanded = expandedTaskId === task.id;
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
                   return (
-                    <Collapsible key={task.id} open={expanded} onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}>
-                      <article className={cn('overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
+                    <Collapsible key={task.id} open={expanded} onOpenChange={(open) => { setExpandedTaskId(open ? task.id : null); if (open) fitCard(task.id); }}>
+                      <article id={`task-card-${task.id}`} style={expanded ? { maxHeight: `calc(100dvh - ${fit.top + fit.bottom + 16}px)` } : undefined} className={cn('relative flex flex-col overflow-hidden rounded-lg border-2 bg-card text-card-foreground', completed ? 'border-success' : expired ? 'border-muted' : overdue ? 'border-destructive' : expanded ? 'border-warning' : 'border-border')}>
                         <CollapsibleTrigger asChild>
-                          <Button variant="ghost" className="h-auto min-h-20 w-full justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
+                          <Button variant="ghost" className="h-auto min-h-20 w-full shrink-0 justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
                             <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : expired ? 'bg-muted' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
-                            <span className="flex min-w-0 flex-1 items-start gap-3 px-3 py-3">
+                            <span className={cn('flex min-w-0 flex-1 items-start gap-3 py-3 pl-3', expired ? 'pr-3' : 'pr-14')}>
                               <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
                               <span className="min-w-0 flex-1 whitespace-normal">
                                 <span className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -159,12 +220,26 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                                   {task.climate_adjusted && <Badge variant="outline" className="border-2 font-bold"><Zap className="mr-1 size-3" />{t('schedule.badges.ai_adjusted')}</Badge>}
                                 </span>
                               </span>
-                              <ChevronDown className={cn('mt-2 size-6 shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
+                              <ChevronDown className={cn(!expired ? 'absolute bottom-3 right-4 size-5' : 'mt-2 size-6', 'shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
                             </span>
                           </Button>
                         </CollapsibleTrigger>
+                        {!expired && (
+                          <button
+                            type="button"
+                            aria-pressed={completed}
+                            aria-label={completed ? t('schedule.completion.unmark', 'Mark as not done') : t('schedule.completion.mark_complete', 'Mark complete')}
+                            onClick={(event) => { event.stopPropagation(); void complete(task.id, !completed).catch(() => undefined); }}
+                            className={cn('absolute right-2 top-2 z-10 flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                              completed ? 'border-success bg-success text-success-foreground shadow-md' : 'border-primary/40 bg-background text-primary hover:border-primary hover:bg-primary/10')}
+                          >
+                            <motion.span key={String(completed)} initial={reduceMotion ? false : { scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 18 }}>
+                              <Check className="size-5" strokeWidth={3} />
+                            </motion.span>
+                          </button>
+                        )}
 
-                        <CollapsibleContent>
+                        <CollapsibleContent className="min-h-0 flex-1 overflow-y-auto overscroll-auto">
                           <div className="space-y-4 border-t-2 border-border bg-card p-3" onClick={(event) => event.stopPropagation()}>
                             {p.howMuch.length > 0 && (
                               <section className="grid gap-2 sm:grid-cols-2">
@@ -179,7 +254,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                             {p.needsTranslation && <p className="rounded-md border-2 border-warning bg-warning-soft p-3 text-sm font-bold text-foreground">{t('schedule.farmer_task.translation_pending')}</p>}
                             {p.technicalDetails.length > 0 && <details className="rounded-md border border-border bg-muted p-3"><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-bold text-foreground"><BookOpen className="size-4" />{t('schedule.farmer_task.technical_details')}</summary><ul className="mt-2 space-y-2">{p.technicalDetails.map((line, index) => <li key={index} className="text-sm leading-relaxed text-foreground">{line}</li>)}</ul></details>}
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                              {onTakePhoto && <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => onTakePhoto(task)}><Camera className="size-4" />{t('cropGrowth.takePhoto', 'Photo')}</Button>}
+                              {onTakePhoto && <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => onTakePhoto(task)}><Camera className="size-4" />{t('schedule.task_card.photo', 'Photo')}</Button>}
                               <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => setEditingTask(task)}><Pencil className="size-4" />{t('schedule.dialog.edit')}</Button>
                               <VideoHelpButton category={task.task_type} taskType={p.what} />
                               <Button type="button" variant="outline" className="min-h-11 gap-2 border-2" onClick={() => speakTask(task)} disabled={!isSupported || !isVoicesLoaded} aria-label={t('schedule.listen')}>
@@ -187,6 +262,24 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                               </Button>
                             </div>
                             {((task.product_recommendations?.length ?? 0) > 0 || Number(task.resources?.labor_cost) > 0) && <ProductRecommendationCard products={task.product_recommendations || []} landAreaAcres={1} laborCost={task.resources?.labor_cost || 0} laborDays={task.resources?.labor_days || 0} laborWorkers={task.resources?.labor_workers || 0} laborDaysPerAcre={task.resources?.labor_days_per_acre || 0} laborDailyWage={task.resources?.labor_daily_wage || 350} laborDescription={task.resources?.labor_description || ''} />}
+                            {!expired && task.task_type === 'irrigation' && task.status !== 'completed' && (
+                              <div className="space-y-2 rounded-lg border border-border p-3">
+                                <label className="block text-sm font-medium text-foreground" htmlFor={`irrigation-volume-${task.id}`}>
+                                  {t('schedule.irrigation.actual_litres_label', 'Actual water applied (litres, optional)')}
+                                </label>
+                                <input
+                                  id={`irrigation-volume-${task.id}`}
+                                  type="number" inputMode="decimal" min="0" step="any"
+                                  className="h-11 w-full rounded-md border border-input bg-background px-3 text-foreground"
+                                  value={actualIrrigationLitres[task.id] ?? ''}
+                                  onChange={(event) => setActualIrrigationLitres((prev) => ({ ...prev, [task.id]: event.target.value }))}
+                                  placeholder={t('schedule.irrigation.actual_litres_placeholder', 'Leave blank if not measured')}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  {t('schedule.irrigation.actual_litres_hint', 'Only enter water you measured. Planned amounts are not actual measurements.')}
+                                </p>
+                              </div>
+                            )}
                             {!expired && <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />}
                           </div>
                         </CollapsibleContent>

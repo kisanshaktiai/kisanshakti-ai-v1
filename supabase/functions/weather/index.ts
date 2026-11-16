@@ -1703,10 +1703,27 @@ serve(async (req: Request): Promise<Response> => {
     if (landId || action === "land") {
       if (!landId) throw new Error("landId is required for land-based weather request");
 
-      const { data: land, error } = await supabase.from("lands")
-        .select("id, name, center_lat, center_lon, farmer_id, district, boundary_polygon_old")
-        .eq("id", landId).maybeSingle();
-      if (error || !land) throw new Error(`Land not found: ${landId}`);
+      // Retry transient DB errors (e.g. PostgREST schema-cache reloads) so a
+      // momentary outage is never misreported as a missing land.
+      let land: any = null;
+      let error: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await supabase.from("lands")
+          .select("id, name, center_lat, center_lon, farmer_id, district, boundary_polygon_old")
+          .eq("id", landId).maybeSingle();
+        land = res.data; error = res.error;
+        if (!error) break;
+        log(runId, "warn", "land_lookup_retry", { attempt: attempt + 1, error: error.message });
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+      if (error) {
+        return new Response(JSON.stringify({ error: "Weather temporarily unavailable, please retry", retryable: true, run_id: runId }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json", "Retry-After": "5" } });
+      }
+      if (!land) {
+        return new Response(JSON.stringify({ error: `Land not found: ${landId}`, run_id: runId }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
 
       if (!land.center_lat || !land.center_lon) {
         const ring = (land as any).boundary_polygon_old?.coordinates?.[0];

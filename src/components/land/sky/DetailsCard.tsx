@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Info } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import type { FieldSky } from '@/hooks/useFieldSky';
+import { stageKey, type FieldSky } from '@/hooks/useFieldSky';
 
 /**
  * "The numbers behind the words." A plain read-out of the values the other
@@ -20,7 +20,7 @@ export function DetailsCard({ sky }: { sky: FieldSky }) {
     { label: t('sky.details.date', 'Reading date'), value: sky.latest?.acquisition_time ? String(sky.latest.acquisition_time).slice(0, 10) : na },
     { label: t('sky.details.cloud', 'Cloud cover (%)'), value: fmt(sky.sky.cloudPct, 0) },
     { label: t('sky.details.seen', 'Field seen (%)'), value: fmt(sky.sky.fieldSeenPct, 0) },
-    { label: t('sky.details.stage', 'Crop stage'), value: sky.stage.stageName ?? sky.stage.stageCode ?? na },
+    { label: t('sky.details.stage', 'Crop stage'), value: sky.stage.stageName ? t(stageKey(sky.stage.stageName), sky.stage.stageName) : sky.stage.stageCode ?? na },
     { label: t('sky.details.das', 'Days after sowing'), value: sky.stage.das == null ? na : String(sky.stage.das) },
     { label: t('sky.details.ndmi', 'Moisture signal (NDMI)'), value: fmt(sky.water.ndmi) },
     { label: t('sky.details.ndre', 'Leaf nitrogen signal (NDRE)'), value: fmt(sky.greenness.ndre) },

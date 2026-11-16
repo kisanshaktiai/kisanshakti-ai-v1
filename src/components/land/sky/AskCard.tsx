@@ -4,21 +4,22 @@ import { Camera, Footprints } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { CropPhotoCapture } from '@/components/Photo/CropPhotoCapture';
-import type { FieldSky } from '@/hooks/useFieldSky';
+import { attentionLevel, type FieldSky } from '@/hooks/useFieldSky';
 
 /**
  * The ask-back. The satellite can say "something changed"; only the farmer's
  * eyes and phone camera can say why. This opens the app's existing photo
  * pipeline (chat surface) for this land — the ground truth every model lacks.
+ *
+ * Routine ask only: when the field needs attention, AttentionCard carries the photo request, so the
+ * farmer is never asked twice on one screen.
  */
 export function AskCard({ sky, landId, cropName, farmerId, tenantId }: { sky: FieldSky; landId: string; cropName?: string; farmerId: string; tenantId: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const urgent = sky.state === 'something_wrong' || sky.water.agreeing >= 3;
+  if (attentionLevel(sky)) return null;
 
-  const prompt = urgent
-    ? t('sky.ask.urgent', 'Please walk the field and send a photo of the weakest-looking spot. That tells us more than the satellite can.')
-    : t('sky.ask.routine', 'A photo now and then helps the satellite view stay accurate for your field.');
+  const prompt = t('sky.ask.routine', 'A photo now and then helps the satellite view stay accurate for your field.');
 
   return (
     <Card className="rounded-3xl border-primary/30 bg-primary/5">

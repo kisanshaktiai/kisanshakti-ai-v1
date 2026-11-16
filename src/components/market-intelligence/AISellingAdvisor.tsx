@@ -92,13 +92,14 @@ export function AISellingAdvisor({
   if (!analysis) {
     return (
       <div className="text-center py-8">
-        <div className="p-3 rounded-2xl bg-primary/10 w-fit mx-auto mb-3">
+        <div className="p-3 rounded-lg bg-muted w-fit mx-auto mb-3">
           <Brain className="w-8 h-8 text-primary" />
         </div>
         <p className="text-sm font-semibold mb-2">AI विक्री सल्ला मिळवा</p>
         <Button
+          variant="filter"
           onClick={onGetAdvice}
-          className="rounded-2xl h-11 bg-primary text-primary-foreground"
+          className="rounded-lg h-11 text-primary"
           disabled={isLoading}
         >
           {isLoading ? (
@@ -121,13 +122,13 @@ export function AISellingAdvisor({
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         className={cn(
-          'rounded-2xl p-4 border',
+          'rounded-lg p-3 border',
           rc?.bgClass,
           rc?.borderClass,
         )}
       >
         <div className="flex items-center gap-3 mb-3">
-          <div className={cn('p-2.5 rounded-xl bg-card')}>
+          <div className={cn('p-2 rounded-lg bg-card')}>
             {rc?.icon && <rc.icon className={cn('w-6 h-6', rc.colorClass)} />}
           </div>
           <div className="flex-1 min-w-0">
@@ -145,20 +146,20 @@ export function AISellingAdvisor({
             </p>
           </div>
         </div>
-        <div className="p-3 bg-card/70 rounded-xl">
+        <div className="border-t border-border/60 pt-3">
           <p className="text-sm leading-relaxed">{analysis.reasoning}</p>
         </div>
       </motion.div>
 
       {/* Outlook + best time */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="p-3 rounded-2xl bg-muted/50">
+        <div className="min-w-0 p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-1.5 mb-1.5">
             {getOutlookIcon()}
             <h4 className="text-xs font-semibold">किंमत अंदाज</h4>
           </div>
           {analysis.expectedPriceRange && (
-            <p className="text-sm font-bold tabular-nums">
+            <p className="text-sm font-bold tabular-nums break-words">
               ₹{analysis.expectedPriceRange.min?.toLocaleString('en-IN')} – ₹
               {analysis.expectedPriceRange.max?.toLocaleString('en-IN')}
             </p>
@@ -172,12 +173,12 @@ export function AISellingAdvisor({
           </p>
         </div>
 
-        <div className="p-3 rounded-2xl bg-muted/50">
+        <div className="min-w-0 p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-1.5 mb-1.5">
             <Clock className="w-4 h-4 text-primary" />
             <h4 className="text-xs font-semibold">विक्रीची वेळ</h4>
           </div>
-          <p className="text-sm font-bold">
+          <p className="text-sm font-bold break-words">
             {analysis.bestTimeToSell || 'लवकरात लवकर'}
           </p>
         </div>
@@ -185,7 +186,7 @@ export function AISellingAdvisor({
 
       {/* Best markets */}
       {analysis.bestMarkets && analysis.bestMarkets.length > 0 && (
-        <div className="p-3 rounded-2xl bg-muted/50">
+        <div className="border-t border-border pt-3">
           <div className="flex items-center gap-1.5 mb-2">
             <MapPin className="w-4 h-4 text-primary" />
             <h4 className="text-xs font-semibold">सर्वोत्तम बाजार</h4>
@@ -205,15 +206,15 @@ export function AISellingAdvisor({
 
       {/* Tips */}
       {analysis.tips && analysis.tips.length > 0 && (
-        <div className="p-3 rounded-2xl bg-accent/5 border border-accent/20">
+        <div className="border-t border-border pt-3">
           <div className="flex items-center gap-1.5 mb-2">
-            <Lightbulb className="w-4 h-4 text-accent" />
+            <Lightbulb className="w-4 h-4 text-primary" />
             <h4 className="text-xs font-semibold">टिप्स</h4>
           </div>
           <ul className="space-y-2">
             {analysis.tips.map((tip, i) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-accent/20 text-accent text-[10px] font-bold flex items-center justify-center mt-0.5">
+                <span className="flex-shrink-0 w-5 h-5 rounded-md bg-muted text-foreground text-xs font-bold flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
                 <span className="text-sm leading-snug">{tip}</span>
@@ -225,8 +226,8 @@ export function AISellingAdvisor({
 
       <Button
         onClick={onGetAdvice}
-        variant="outline"
-        className="w-full rounded-2xl h-11"
+        variant="surface"
+        className="w-full rounded-lg h-11"
         disabled={isLoading}
       >
         {isLoading ? (

@@ -1,0 +1,87 @@
+name: Soil report regression tests
+on:
+  pull_request:
+    paths:
+      - 'src/pages/SoilHealthReport.tsx'
+      - 'src/pages/__tests__/SoilHealthReport.test.tsx'
+      - 'src/services/soil/**'
+      - 'src/services/landsApi.ts'
+      - 'src/components/soil/**'
+      - 'src/i18n/locales/*/soil.json'
+      - 'supabase/functions/lands-api/**'
+      - 'supabase/migrations/*soil_fetch_jobs.sql'
+      - 'tests/soil/**'
+      - '.github/workflows/soil-report-tests.yml'
+permissions:
+  contents: read
+jobs:
+  soil-report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run test src/services/soil/soilReport.test.ts src/pages/__tests__/SoilHealthReport.test.tsx tests/soil/soil-route.test.ts
+      - run: bun run build
+      - name: Install isolated browser test runner
+        run: |
+          npm install --prefix /tmp/soil-browser --no-audit --no-fund playwright@1.56.1
+          /tmp/soil-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Check responsive soil UI
+        run: |
+          bun run dev --host 127.0.0.1 --port 8080 > /tmp/soil-vite.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/tests/soil/preview/index.html >/dev/null && break; sleep 1; done
+          NODE_PATH=/tmp/soil-browser/node_modules node tests/soil/preview/check.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soil-ui-synthetic-previews
+          path: soil-*.png
+  soil-database-worker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_PASSWORD: soil_fixture_password
+          POSTGRES_DB: soil_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d soil_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SOIL_TEST_DATABASE_URL: postgresql://postgres:soil_fixture_password@localhost:5432/soil_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: kisanshaktiai/kisanshakti-soil-engine
+          ref: 68db109412d2b90ca67f52c5b18d982c4b0f3f45
+          path: engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r engine/requirements.txt psycopg2-binary==2.9.11
+      - name: Apply migration only in disposable test database
+        run: |
+          psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/soil/bootstrap.sql
+          psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261116085603_soil_fetch_jobs.sql
+      - run: PYTHONPATH=engine python -m pytest -q tests/soil/test_worker_database.py
+  edge-typecheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check soil route and required chat graph
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/lands-api/index.ts
+          cd supabase/functions/ai-agriculture-chat
+          deno check --node-modules-dir=auto index.ts

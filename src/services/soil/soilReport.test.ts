@@ -1,0 +1,16 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const m=vi.hoisted(()=>({token:'token',session:{farmerId:'farmer',tenantId:'tenant'},read:vi.fn(),ready:vi.fn()}));
+vi.mock('@/integrations/supabase/client',()=>({getSessionToken:()=>m.token,waitForHeaders:m.ready}));
+vi.mock('@/services/landsApi',()=>({landsApi:{soil:m.read}}));
+vi.mock('@/stores/authStore',()=>({useAuthStore:{getState:()=>({session:m.session})}}));
+import {loadSoilState,soilNumber} from './soilReport';
+const id='00000000-0000-4000-8000-000000000001';
+beforeEach(()=>{vi.clearAllMocks();m.token='token';m.session={farmerId:'farmer',tenantId:'tenant'};m.ready.mockResolvedValue(undefined);m.read.mockResolvedValue({legacy:null,model:null,job:null});});
+it('reads through the authenticated Edge service',async()=>{await loadSoilState(id,'farmer','tenant');expect(m.read).toHaveBeenCalledWith(id,false);});
+it('starts a job only when explicitly requested',async()=>{await loadSoilState(id,'farmer','tenant',true);expect(m.read).toHaveBeenCalledWith(id,true);expect(m.read).toHaveBeenCalledTimes(1);});
+it('rejects malformed land IDs',async()=>{await expect(loadSoilState('undefined','farmer','tenant')).rejects.toThrow('INVALID_LAND');expect(m.read).not.toHaveBeenCalled();});
+it('rejects missing auth',async()=>{m.token='';await expect(loadSoilState(id,'farmer','tenant')).rejects.toThrow('AUTH_REQUIRED');expect(m.read).not.toHaveBeenCalled();});
+it('rejects an identity change before sending',async()=>{m.session.farmerId='other';await expect(loadSoilState(id,'farmer','tenant',true)).rejects.toThrow('AUTH_REQUIRED');expect(m.read).not.toHaveBeenCalled();});
+it('rejects an identity change during a read',async()=>{m.read.mockImplementation(async()=>{m.token='other';return {};});await expect(loadSoilState(id,'farmer','tenant')).rejects.toThrow('AUTH_REQUIRED');});
+it('preserves engine error codes',async()=>{m.read.mockRejectedValue(new Error('ENGINE_OFFLINE'));await expect(loadSoilState(id,'farmer','tenant',true)).rejects.toThrow('ENGINE_OFFLINE');});
+it.each([[null,null],[undefined,null],['',null],['bad',null],[Infinity,null],['6.8',6.8],[0,0]])('handles %s', (x,y)=>expect(soilNumber(x)).toBe(y));

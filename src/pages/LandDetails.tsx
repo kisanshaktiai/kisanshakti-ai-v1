@@ -9,6 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { LandSoilSummary } from '@/components/soil/LandSoilSummary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
@@ -239,7 +240,7 @@ export default function LandDetails() {
   };
 
   const getSoilHealthScore = () => {
-    if (!land?.soil_ph && !land?.organic_carbon_percent) return 0;
+    if (!land?.soil_ph && !land?.organic_carbon_percent && !land?.nitrogen_kg_per_ha) return null;
     
     let score = 0;
     let factors = 0;
@@ -265,16 +266,11 @@ export default function LandDetails() {
       else score += 40;
     }
     
-    return factors > 0 ? Math.round(score / factors) : 0;
+    return factors > 0 ? Math.round(score / factors) : null;
   };
 
   const soilHealthScore = getSoilHealthScore();
   
-  const soilHealthData = [
-    { name: 'pH', value: land?.soil_ph ? (land.soil_ph / 14) * 100 : 0, fill: 'hsl(var(--success))' },
-    { name: 'Organic Carbon', value: land?.organic_carbon_percent ? land.organic_carbon_percent * 100 : 0, fill: 'hsl(var(--warning))' },
-    { name: 'NPK', value: land?.nitrogen_kg_per_ha ? Math.min((land.nitrogen_kg_per_ha / 400) * 100, 100) : 0, fill: 'hsl(var(--info))' },
-  ];
 
   const activityData = activities.reduce((acc: any[], activity) => {
     const date = new Date(activity.activity_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -410,7 +406,7 @@ export default function LandDetails() {
                   </p>
                   {land.crop_stage && (
                     <Badge variant="secondary" className="mt-1.5 text-xs bg-success/10 text-success border-success/20">
-                      {land.crop_stage}
+                      {t(`schedule.graphical.stages.${String(land.crop_stage).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, { defaultValue: land.crop_stage })}
                     </Badge>
                   )}
                 </div>
@@ -429,13 +425,16 @@ export default function LandDetails() {
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">{t('lands.details.soil_health')}</p>
                 </div>
+                {soilHealthScore === null ? (
+                  <button type="button" onClick={() => navigate(`/app/lands/${id}/soil`)} className="text-left">
+                    <p className="text-lg font-bold text-foreground">{t('lands.details.not_tested')}</p>
+                    <p className="text-xs text-primary font-medium mt-1">{t('lands.details.add_soil_test')} →</p>
+                  </button>
+                ) : (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-warning to-success transition-all duration-500"
-                        style={{ width: `${soilHealthScore}%` }}
-                      />
+                      <div className="h-full bg-gradient-to-r from-warning to-success transition-all duration-500" style={{ width: `${soilHealthScore}%` }} />
                     </div>
                     <span className="text-xl font-bold text-foreground">{soilHealthScore}%</span>
                   </div>
@@ -443,6 +442,7 @@ export default function LandDetails() {
                     {soilHealthScore >= 70 ? t('lands.details.health_good') : soilHealthScore >= 40 ? t('lands.details.health_fair') : t('lands.details.health_needs_care')}
                   </p>
                 </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -460,11 +460,11 @@ export default function LandDetails() {
                 </div>
                 <div>
                   <p className="text-lg md:text-xl font-bold text-foreground line-clamp-1">
-                    {land.irrigation_source || t('lands.details.not_set')}
+                    {land.irrigation_source ? t(`lands.irrigation_sources.${String(land.irrigation_source).toLowerCase()}`, { defaultValue: land.irrigation_source }) : t('lands.details.not_set')}
                   </p>
                   {land.water_source && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                      {land.water_source}
+                      {t(`lands.irrigation_sources.${String(land.water_source).toLowerCase()}`, { defaultValue: land.water_source })}
                     </p>
                   )}
                 </div>
@@ -481,47 +481,47 @@ export default function LandDetails() {
             <TabsList className="w-full h-auto p-1.5 bg-muted/30 rounded-2xl grid grid-cols-5 gap-1">
               <TabsTrigger 
                 value="overview" 
-                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
               >
                 <div className="flex flex-col items-center gap-1">
                   <FileText className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('lands.details.tabs.overview')}</span>
+                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.overview')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
                 value="soil" 
-                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
               >
                 <div className="flex flex-col items-center gap-1">
                   <Mountain className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('lands.details.tabs.soil')}</span>
+                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.soil')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
                 value="activities" 
-                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
               >
                 <div className="flex flex-col items-center gap-1">
                   <Activity className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('lands.details.tabs.activities')}</span>
+                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.activities')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
                 value="history" 
-                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
               >
                 <div className="flex flex-col items-center gap-1">
                   <History className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('lands.details.tabs.history')}</span>
+                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.history')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
                 value="gallery" 
-                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
               >
                 <div className="flex flex-col items-center gap-1">
                   <Camera className="h-4 w-4" />
-                  <span className="hidden sm:inline">{t('lands.details.tabs.gallery')}</span>
+                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.gallery')}</span>
                 </div>
               </TabsTrigger>
             </TabsList>
@@ -659,84 +659,8 @@ export default function LandDetails() {
           </TabsContent>
 
           <TabsContent value="soil" className="space-y-4">
-            <Card className="border-border/50 shadow-lg">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Mountain className="h-5 w-5 text-primary" />
-                  {t('lands.details.soil_overview')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold mb-4">{t('lands.details.soil_composition')}</h3>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <RadialBarChart cx="50%" cy="50%" innerRadius="10%" outerRadius="90%" data={soilHealthData}>
-                      <RadialBar dataKey="value" />
-                      <Tooltip />
-                    </RadialBarChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">{t('lands.details.soil_ph')}</span>
-                      <span className="font-medium">{land.soil_ph || t('lands.details.not_tested')}</span>
-                    </div>
-                    {land.soil_ph && (
-                      <Progress 
-                        value={(land.soil_ph / 14) * 100} 
-                        className="h-2"
-                      />
-                    )}
-                  </div>
-                  
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">{t('lands.details.organic_carbon')}</span>
-                      <span className="font-medium">
-                        {land.organic_carbon_percent ? `${land.organic_carbon_percent}%` : t('lands.details.not_tested')}
-                      </span>
-                    </div>
-                    {land.organic_carbon_percent && (
-                      <Progress 
-                        value={land.organic_carbon_percent * 100} 
-                        className="h-2"
-                      />
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground">{t('lands.details.nitrogen')}</p>
-                      <p className="font-bold">{land.nitrogen_kg_per_ha || 0}</p>
-                      <p className="text-xs">{t('lands.details.kg_ha')}</p>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground">{t('lands.details.phosphorus')}</p>
-                      <p className="font-bold">{land.phosphorus_kg_per_ha || 0}</p>
-                      <p className="text-xs">{t('lands.details.kg_ha')}</p>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground">{t('lands.details.potassium')}</p>
-                      <p className="font-bold">{land.potassium_kg_per_ha || 0}</p>
-                      <p className="text-xs">{t('lands.details.kg_ha')}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {land.last_soil_test_date && (
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    {t('lands.details.last_soil_test', { date: new Date(land.last_soil_test_date).toLocaleDateString() })}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            {id && <LandSoilSummary landId={id} />}
+          </TabsContent>
 
         <TabsContent value="activities" className="space-y-4">
           <Card>

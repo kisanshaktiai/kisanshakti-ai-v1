@@ -1,3 +1,4 @@
+import { localizeDisplayUnits } from './localizeDisplayUnits';
 export interface ScheduleTaskPresentation {
   what: string;
   how: string[];
@@ -117,8 +118,9 @@ export function buildScheduleTaskPresentation(
   pushAmount('schedule.amount.bio_pesticide', resources.bio_pesticide_ml);
   pushAmount('schedule.amount.seed', resources.seed_quantity_kg);
 
+  const loc = (x: string) => localizeDisplayUnits(x, t, effectiveLanguage);
   return {
-    what, how, howMuch, hasVerifiedAmount: howMuch.length > 0,
+    what: loc(what), how: how.map(loc), howMuch: howMuch.map(loc), hasVerifiedAmount: howMuch.length > 0,
     technicalDetails: [...new Set([...technicalDetails, ...legacyTechnical])],
     needsTranslation: resources.needs_translation === true || nameUnsafe || descriptionUnsafe,
   };

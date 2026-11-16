@@ -6,6 +6,7 @@
  * PATH: supabase/functions/ai-agriculture-chat/photo/photo-routes.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-10-29 16:20 UTC — Bind photo land and related schedule/task/session to verified tenant/farmer.
  * 2026-09-23 — 'photo_capture_policy' returns the configured image policy so
  *   the app resizes/encodes with server config, not numbers baked into code.
  * 2026-09-23 — NEW. 'photo_begin_upload' registers the photo as evidence and
@@ -25,6 +26,7 @@ type Db = any;
 export interface PhotoRouteContext {
   supabase: Db;              // service-role client from guardTenantAccess
   farmerId: string;
+  tenantId: string;
   isServiceRole: boolean;
 }
 
@@ -54,8 +56,34 @@ async function loadOwnedLand(ctx: PhotoRouteContext, landId: string) {
     .select('id, tenant_id, farmer_id, center_lat, center_lon')
     .eq('id', landId).maybeSingle();
   if (!land) return null;
-  if (!ctx.isServiceRole && land.farmer_id !== ctx.farmerId) return null;
+  if (!ctx.isServiceRole && (land.farmer_id !== ctx.farmerId || land.tenant_id !== ctx.tenantId)) return null;
   return land;
+}
+
+/** Related identifiers must belong to the already authorized land. */
+async function relatedContextOwned(ctx: PhotoRouteContext, land: { id: string; farmer_id: string; tenant_id: string },
+  ids: { task_id?: string | null; schedule_id?: string | null; session_id?: string | null }): Promise<boolean> {
+  let scheduleId = ids.schedule_id;
+  if (ids.task_id) {
+    const { data: task, error } = await ctx.supabase.from('schedule_tasks')
+      .select('schedule_id').eq('id', ids.task_id).maybeSingle();
+    if (error || !task || (scheduleId && task.schedule_id !== scheduleId)) return false;
+    scheduleId = task.schedule_id;
+    if (!scheduleId) return false;
+  }
+  if (scheduleId) {
+    const { data: schedule, error } = await ctx.supabase.from('crop_schedules')
+      .select('land_id, farmer_id, tenant_id').eq('id', scheduleId).maybeSingle();
+    if (error || !schedule || schedule.land_id !== land.id ||
+        schedule.farmer_id !== land.farmer_id || schedule.tenant_id !== land.tenant_id) return false;
+  }
+  if (ids.session_id) {
+    const { data: session, error } = await ctx.supabase.from('ai_chat_sessions')
+      .select('land_id, farmer_id, tenant_id').eq('id', ids.session_id).maybeSingle();
+    if (error || !session || session.land_id !== land.id ||
+        session.farmer_id !== land.farmer_id || session.tenant_id !== land.tenant_id) return false;
+  }
+  return true;
 }
 
 async function signUpload(sb: Db, path: string) {
@@ -75,6 +103,10 @@ async function beginUpload(body: BeginPhotoUploadRequest, ctx: PhotoRouteContext
   }
   const land = await loadOwnedLand(ctx, body.land_id);
   if (!land) return json({ error: 'Land not found for this farmer', code: 'LAND_NOT_OWNED' }, 403, cors);
+
+  if (!await relatedContextOwned(ctx, land, body)) {
+    return json({ error: 'Photo context does not belong to this land', code: 'PHOTO_CONTEXT_NOT_OWNED' }, 403, cors);
+  }
 
   const sb = ctx.supabase;
   const sha = body.content_sha256.toLowerCase();
@@ -167,6 +199,10 @@ async function diagnose(body: DiagnosePhotoRequest, ctx: PhotoRouteContext, cors
   }
   const land = await loadOwnedLand(ctx, body.land_id);
   if (!land) return json({ error: 'Land not found for this farmer', code: 'LAND_NOT_OWNED' }, 403, cors);
+
+  if (!await relatedContextOwned(ctx, land, body)) {
+    return json({ error: 'Photo context does not belong to this land', code: 'PHOTO_CONTEXT_NOT_OWNED' }, 403, cors);
+  }
 
   const result = await runPhotoDiagnosis(ctx.supabase, {
     farmerId: land.farmer_id,

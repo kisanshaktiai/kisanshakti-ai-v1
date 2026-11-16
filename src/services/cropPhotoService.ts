@@ -6,6 +6,7 @@
  * PATH: src/services/cropPhotoService.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-10-29 — Bind queued photos and policy cache to the active farmer/tenant session.
  * 2026-09-23 — v2 REWRITE (photo evidence store v2). Capture → offline queue →
  *   one resize + ONE JPEG encode with the server's image policy → SHA-256 →
  *   'photo_begin_upload' (evidence row + signed URL, private bucket) → upload →
@@ -24,6 +25,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { calculateQualityMetrics, type ImageQualityMetrics } from '@/utils/imagePreprocessing';
 import { localDB, type PhotoCaptureQueueItem } from '@/services/localDB';
+import { useAuthStore } from '@/stores/authStore';
 
 export type CapturePurpose = PhotoCaptureQueueItem['purpose'];
 export type ShotRole = PhotoCaptureQueueItem['shot_role'];
@@ -81,27 +83,44 @@ function sessionToken(): string {
 }
 
 async function invokeChat<T>(body: Record<string, unknown>, id: PhotoIdentity): Promise<T> {
+  assertPhotoIdentity(id);
+  const token = sessionToken();
   const { data, error } = await supabase.functions.invoke(CHAT_FUNCTION, {
     body,
     headers: {
       'x-tenant-id': id.tenantId,
       'x-farmer-id': id.farmerId,
-      'x-session-token': sessionToken(),
+      'x-session-token': token,
     },
   });
+  assertPhotoIdentity(id);
+  if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
   if (error) throw error;
   return data as T;
 }
 
-let cachedPolicy: { policy: ImagePolicy; maxPhotos: number } | null = null;
+/** Local isolation guard; the server remains the authorization authority. */
+function assertPhotoIdentity(id: PhotoIdentity): void {
+  const { user, session, isAuthenticated } = useAuthStore.getState();
+  if (!isAuthenticated || !user || !session?.isPinVerified ||
+      user.id !== id.farmerId || user.tenantId !== id.tenantId ||
+      session.farmerId !== id.farmerId || session.tenantId !== id.tenantId) {
+    throw new Error('PHOTO_IDENTITY_MISMATCH');
+  }
+}
+
+let cachedPolicy: { key: string; value: { policy: ImagePolicy; maxPhotos: number } } | null = null;
 
 /** The image policy lives in system_config; fetched once per app session. */
 export async function getCapturePolicy(id: PhotoIdentity): Promise<{ policy: ImagePolicy; maxPhotos: number }> {
-  if (cachedPolicy) return cachedPolicy;
+  assertPhotoIdentity(id);
+  const key = `${id.tenantId}:${id.farmerId}:${sessionToken()}`;
+  if (cachedPolicy?.key === key) return cachedPolicy.value;
   const res = await invokeChat<{ image_policy: ImagePolicy; max_photos_per_diagnosis: number }>(
     { action: 'photo_capture_policy' }, id);
-  cachedPolicy = { policy: res.image_policy, maxPhotos: res.max_photos_per_diagnosis };
-  return cachedPolicy;
+  const value = { policy: res.image_policy, maxPhotos: res.max_photos_per_diagnosis };
+  cachedPolicy = { key, value };
+  return value;
 }
 
 // ── Capture ─────────────────────────────────────────────────────────────────
@@ -181,7 +200,8 @@ export async function prepareForUpload(original: Blob, role: ShotRole, policy: I
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { bitmap.close(); throw new Error('CANVAS_UNAVAILABLE'); }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, width, height);
@@ -219,7 +239,9 @@ export async function quickQualityCheck(original: Blob): Promise<RetakeReason | 
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { bitmap.close(); throw new Error('CANVAS_UNAVAILABLE'); }
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   const m = calculateQualityMetrics(canvas);
   if (m.brightness < 25) return 'too_dark';
@@ -255,6 +277,7 @@ export interface QueueArgs {
 
 /** Always queue first, so nothing is lost if the network drops mid-way. */
 export async function queueCapture(photo: CapturedPhoto, a: QueueArgs): Promise<PhotoCaptureQueueItem> {
+  assertPhotoIdentity(a.id);
   const item: Omit<PhotoCaptureQueueItem, 'lastModified'> = {
     id: photo.captureId,
     farmer_id: a.id.farmerId,
@@ -288,8 +311,10 @@ interface BeginUploadResponse {
 
 /** Upload one queued photo; returns the evidence id (crop_growth_uploads.id). */
 export async function uploadQueued(item: PhotoCaptureQueueItem): Promise<string> {
-  if (item.status === 'uploaded' && item.upload_id) return item.upload_id;
   const id: PhotoIdentity = { farmerId: item.farmer_id, tenantId: item.tenant_id };
+  assertPhotoIdentity(id);
+  const token = sessionToken();
+  if (item.status === 'uploaded' && item.upload_id) return item.upload_id;
   try {
     const { policy } = await getCapturePolicy(id);
     const p = await prepareForUpload(item.original, item.shot_role, policy);
@@ -324,11 +349,15 @@ export async function uploadQueued(item: PhotoCaptureQueueItem): Promise<string>
     }, id);
 
     if (begin.upload) {
+      assertPhotoIdentity(id);
+      if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
       const { error } = await supabase.storage
         .from(begin.upload.bucket)
         .uploadToSignedUrl(begin.upload.storage_path, begin.upload.token, p.jpeg, { contentType: 'image/jpeg' });
       if (error) throw error;
     }
+    assertPhotoIdentity(id);
+    if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
     await localDB.updatePhotoCapture(item.id, { status: 'uploaded', upload_id: begin.upload_id, last_error: null });
     return begin.upload_id;
   } catch (e) {
@@ -396,9 +425,14 @@ export async function askDecisionBrain(a: {
  */
 export async function syncPendingPhotoCaptures(id: PhotoIdentity, language: string): Promise<number> {
   if (!navigator.onLine) return 0;
+  assertPhotoIdentity(id);
+  const token = sessionToken();
   const pending = await localDB.getPendingPhotoCaptures(id.farmerId);
   let done = 0;
   for (const item of pending) {
+    if (item.farmer_id !== id.farmerId || item.tenant_id !== id.tenantId) continue;
+    assertPhotoIdentity(id);
+    if (sessionToken() !== token) break;
     try {
       const uploadId = await uploadQueued(item);
       await diagnosePhotos({

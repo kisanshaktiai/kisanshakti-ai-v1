@@ -175,7 +175,7 @@ const systemPrompt = (language: string) => [
   "10. Organise inputs by APPLICATION METHOD, each with its own water basis: give application_method_group and water_volume_basis_l (the litres the mixture is prepared for, e.g. a spray per 100 L, a drench per 200 L). When several inputs go into one tank at one time, list them all in one proposal. Give each fertilizer input its grade as printed on the bag (e.g. an N:P:K grade string) in inputs[].grade.",
   "11. Respect the field's irrigation system (farmer_field.irrigation_system): on drip, nutrition after establishment is fertigation — one proposal per fertigation interval with repeat_every_days and the per-event quantities; on flood/furrow/surface, soil application and drenching. Mark practices valid for one system only with irrigation_system; use 'any' otherwise.",
   "12. When a practice is a prepared mixture or culture (a slurry, a fermented extract, a biofertilizer culture), give mix_recipe as ordered preparation steps including standing/fermentation time and the water it is made up in.",
-  "13. FREE HAND, STRICT HARNESS: you may propose any practice this crop, method and field genuinely need in the requested domains — you are not limited to what the database holds. But every input must be a real registered product or a standard grade, with a real recommended dose per acre; every number you give will be checked and dropped if unverifiable, so give the practice that the state package of practices, ICAR or the product label actually states, and name that source in source_kind.",
+  "13. AGRONOMIC EVIDENCE-ONLY MODE: propose gaps for agronomist review, never farmer-authorized applications. You may NOT invent fertilizers, water quantities, seed rates, pesticide recipes, timings, waiting periods, or maturity numbers. Reference only actual approved records supplied in context. If a required fact or source is missing, describe the gap without guessing. A model's source_kind claim is not source verification.",
   "14. If db_plan_notes says the database fertilizer or irrigation plan was written for a different cultivation method than the farmer's, do NOT rewrite the totals; add ONE advisory practice at the establishment stage (domain NUTRIENT or IRRIGATION, task_type advisory via method 'advisory') that tells the farmer, in one sentence, how the timing differs for his method — the harness keeps the database totals.",
   `15. WRITE THE FARMER-FACING WORDS DIRECTLY IN THE LANGUAGE WITH CODE "${language}": title, purpose, action_steps, precautions, tools_or_labour and harvest_indicator. Write as a village extension officer speaking that language to a farmer with little schooling — short, plain sentences.`,
   `15b. The database and the reference sources you are given are written in English by design; they are never duplicated per language. Saying their meaning to the farmer in "${language}" is part of your job — carry the meaning across, do not transliterate English words and do not leave English sentences in the farmer-facing fields. Where a technical term would not be understood, say the meaning in plain words of that language.`,
@@ -431,7 +431,7 @@ export async function proposeAndVerifyCandidates(
   for (const rec of records) {
     if (rec.reasons.length) { rec.verification = { gate: "failed" }; continue; }
     rec.rag_evidence = await corroborate(supabase, rec.proposal, inputs, ctx);
-    rec.verification = { gate: "passed", rag_corroborated: rec.rag_evidence.length > 0 };
+    rec.verification = { gate: "passed", rag_corroborated: rec.rag_evidence.length > 0, publication_allowed: false };
   }
   // chemicals: corroboration AND independent second opinion are both required
   const restrictedNames = restricted.filter((r) => r.status === "restricted").map((r) => r.name);
@@ -450,10 +450,11 @@ export async function proposeAndVerifyCandidates(
   const candidates: HarnessCandidate[] = [];
   records.forEach((rec, i) => {
     if (rec.reasons.length) return;
-    rec.status = "verified";
-    const stage = stageMap.get(norm(rec.proposal.stage_key))!;
-    const c = candidateFromProposal(rec.proposal, rec, stage, transplantOffset, i, `${res.provider}/${res.model}`, harvestDas);
-    rec.candidate_id = c.id; candidates.push(c);
+    // Even a second LLM opinion or a matching RAG passage is not expert
+    // authorization of an input. Keep proposals for scientific review only.
+    rec.reasons.push("awaiting_approved_governed_rule_and_label");
+    rec.status = "rejected";
+    return; // Never publish an LLM suggestion without a governed approved rule.
   });
   const gaps = targets.filter((d) => !candidates.some((c) => c.domain === d)).map((d) => `LLM_PROPOSAL_UNVERIFIED:${d}`);
   return { candidates, proposals: records, gaps, trace: { version: ENRICHMENT_VERSION, provider: res.provider, model: res.model, targets, proposed: proposals.length, verified: candidates.length, rejected: records.length - candidates.length, elapsed_ms: Date.now() - startedAt } };

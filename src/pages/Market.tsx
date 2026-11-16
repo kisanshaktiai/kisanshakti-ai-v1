@@ -186,10 +186,10 @@ export default function Market() {
             </p>
           </div>
           <Button
-            variant="ghost"
+            variant="quiet"
             size="icon"
             onClick={() => setCartOpen(true)}
-            className="relative h-10 w-10 rounded-xl"
+            className="relative h-10 w-10 rounded-lg"
             aria-label="Open cart"
           >
             <CartIcon className="w-5 h-5" />
@@ -206,7 +206,7 @@ export default function Market() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList
               className={cn(
-                'grid grid-cols-4 w-full h-14 rounded-2xl p-1 gap-1',
+                'grid grid-cols-4 w-full h-14 rounded-lg p-1 gap-1',
                 'bg-muted border border-border/60'
               )}
             >
@@ -215,14 +215,14 @@ export default function Market() {
                   key={tab.id}
                   value={tab.id}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-0.5 rounded-xl h-full',
+                    'flex flex-col items-center justify-center gap-1 rounded-md h-full',
                     'text-xs font-medium transition-colors',
                     'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground',
                     'data-[state=active]:shadow-sm'
                   )}
                 >
                   <tab.icon className="w-4 h-4" />
-                  <span className="text-[11px] leading-none">{tab.label}</span>
+                  <span className="text-xs leading-none">{tab.label}</span>
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -346,7 +346,7 @@ function EmptyStateCard({
       animate={{ opacity: 1, y: 0 }}
       className={cn(
         'text-center py-16 px-6',
-        'bg-card rounded-3xl border border-border/60'
+        'border-t border-border/60'
       )}
     >
       <div className="p-5 rounded-2xl bg-primary/10 w-fit mx-auto mb-4">

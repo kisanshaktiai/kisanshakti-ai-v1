@@ -39,11 +39,12 @@
 //   No language-specific vocabulary, no crop-specific wording, lives in this file.
 
 import { buildTaskRequest, classifyAIFailure, getAPIEndpoint, hasAIProviderKey, mergeAIRouteParams, noteAIKeyResponse, pickAIKey, readAIUsage, recordAITaskCall, resolveAITaskChain, type AICatalogModel, type AIKeyPick, type AIProvider, type AIRouteParams } from "../../_shared/aiConfig.ts";
+import { languageLabel, wrongSameScriptLanguage } from "./language-guard.ts";
 // deno-lint-ignore no-explicit-any
 export interface ComposeAIContext { db: { from(table: string): any }; farmerId?: string | null }
 type ComposeRoute = { chain: AICatalogModel[]; params: AIRouteParams; emergency: boolean };
 
-export const COMPOSER_VERSION = "farmer-language-composer@1.0.0";
+export const COMPOSER_VERSION = "farmer-language-composer@1.1.0";
 
 const CHUNK_SIZE = 4;
 const MAX_CONCURRENCY = 4;
@@ -91,7 +92,14 @@ export interface ComposeResult {
 /* ── Fact boundary ─────────────────────────────────────────────────────────── */
 
 const NUM_RE = /\d+(?:[.,]\d+)?/g;
-const numbersOf = (s: string) => (s.match(NUM_RE) || []).map((n) => n.replace(",", "."));
+/** A chemical formula (K2O, P2O5, ZnSO4, NH4): its digits are subscripts of the name, not quantities. */
+const FORMULA_RE = /\b(?=[A-Za-z]*\d)(?:[A-Z][a-z]?\d*){2,}\b/g;
+/**
+ * Numbers a farmer could act on. Formula tokens are removed on BOTH sides of every comparison
+ * (supplied facts and composed text), so "K2O" / "P2O5" neither invent a "2" or "5" nor make a
+ * correct composition fail, while every real quantity, day and dose is still compared exactly.
+ */
+export const numbersOf = (s: string) => (s.replace(FORMULA_RE, " ").match(NUM_RE) || []).map((n) => n.replace(",", "."));
 
 /** Every number the facts supply, as strings, for exact preservation checks. */
 function factNumbers(f: TaskFacts): string[] {
@@ -129,6 +137,9 @@ export function respectsFactBoundary(composed: ComposedTask, f: TaskFacts, langu
   if (!isTargetLanguage(composed.task_name, language)) return false;
   if (!isTargetLanguage(composed.task_description, language)) return false;
   for (const line of composed.instructions ?? []) if (line.trim() && !isTargetLanguage(line, language)) return false;
+  // 2026-11-15: a card in ANOTHER language of the same script (Hindi for Marathi) passes the script
+  // check above; judged on the whole card by the registered trigram model (language-guard.ts).
+  if (wrongSameScriptLanguage(all, language)) return false;
 
   const supplied = factNumbers(f);
   const suppliedSet = new Set(supplied);
@@ -171,13 +182,14 @@ export function isTargetLanguage(value: string, language: string): boolean {
 
 /* ── Composition ───────────────────────────────────────────────────────────── */
 
-function prompt(chunk: TaskFacts[], language: string): string {
+export type CropContext = Record<string, unknown> | null;
+function prompt(chunk: TaskFacts[], language: string, cropContext: CropContext = null): string {
   return JSON.stringify({
-    write_in_language: language,
+    write_in_language: languageLabel(language),
     audience: "a smallholder farmer who left school early and reads slowly on a small phone",
     voice: "a village agriculture extension officer speaking to him in his own language",
     your_job: [
-      "The agronomy is already decided. The reference material below (source_text, current_english_text) was written by agronomists IN ENGLISH and is stored that way. It is working material for you, never shown to the farmer.",
+      "Only the validated selected agronomic facts are authoritative. Other source text is background, not permission to recommend alternate doses or to overcome missing evidence.",
       "YOUR JOB IS TO SAY THE SAME THING TO THE FARMER IN HIS OWN LANGUAGE. Carry the meaning across — do not transliterate English words into the local script, and do not leave English sentences standing.",
       "Every farmer-facing sentence you return (task_name, task_description, instructions) must be written in the requested language. If a sentence in the reference material is English, translating it is part of your job, not a reason to copy it.",
     ],
@@ -185,15 +197,25 @@ function prompt(chunk: TaskFacts[], language: string): string {
       "task_name is a short label (a few words) naming the job.",
       "task_description is one plain sentence: what to do and why it matters now.",
       "instructions are short steps: what to do, how, how much, in how much water, and the wait before harvest when one is given.",
-      "When water_volume_liters is supplied, tell the farmer the volume in litres as well as the depth — a pump or drip line is set in litres, so the litre figure is the one he can act on.",
+      "A whole-stage water depth or stage_total_liters is NOT an irrigation-event dose. Never instruct a farmer to apply it during one visit. Only state an irrigation-event volume if per_event_liters is explicitly validated and provided.",
       "Use the everyday farming word a farmer in that language actually uses for each operation, input and plant part. Prefer the common spoken word over the textbook term.",
       "When the reference material uses a technical or scientific term the farmer may not know, express the meaning in plain words of his language rather than reproducing the term.",
       "Copy every number, unit, product name and fertilizer grade EXACTLY as supplied. Do not convert, round, add or drop a single number.",
       "Never introduce a number, dose, product, date or threshold that is not in the supplied facts.",
       "Product names and fertilizer grades stay in the script the farmer reads on the bag; the sentence around them is written in his language.",
+      "Translate every ordinary English word, including day, days, week and DAS (days after sowing). Keep only numerals, the unit of a supplied quantity, product names and fertilizer grades exactly as given.",
       "When a condition is supplied, begin the steps with that condition so the farmer knows this is done only if he sees it.",
       "Do not add advice, cautions or agronomy of your own — only what the supplied facts and reference material already say.",
+      "One card is one job at one crop stage. Put the steps in the order the farmer does them in the field. Say each thing once: when two supplied lines state the same dose or the same instruction, write it one time.",
+      "A crop-check card (task_type monitoring) only tells the farmer what to look for and to get it checked. Never name a pesticide, a dose or a spray on it, even if you know one.",
+      "Never output internal codes or English placeholders (words joined by underscores, rule names, 'stage general'). If a supplied line is only such a code, leave it out.",
+      ...(cropContext ? [
+        "selected_crop is the crop and variety this farmer chose. Every task is for that crop and variety at the growth stage given in the task's `stage`. Never describe the crop in general, another crop or another variety.",
+        "task_name says the operation for THIS stage of THIS crop (the stage or the crop name may appear in it when that makes it clearer), not a generic heading.",
+        "selected_crop is background only: never copy a number, product, dose or treatment from it unless that exact value is in the task's own supplied facts. Never say a resistant variety cannot get a problem.",
+      ] : []),
     ],
+    ...(cropContext ? { selected_crop: cropContext } : {}),
     reference_material_is_english_by_design: true,
     tasks: chunk.map((f) => ({
       i: f.index,
@@ -215,7 +237,7 @@ function prompt(chunk: TaskFacts[], language: string): string {
   });
 }
 
-async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortSignal, route: ComposeRoute, ai: ComposeAIContext): Promise<{ items: Array<{ i: number; task_name?: string; task_description?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
+async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortSignal, route: ComposeRoute, ai: ComposeAIContext, cropContext: CropContext = null): Promise<{ items: Array<{ i: number; task_name?: string; task_description?: string; instructions?: string[] }>; provider: AIProvider; model: string }> {
   const providers = route.chain.filter((m) => hasAIProviderKey(m.provider));
   let lastError: Error = new Error("MODEL_UNAVAILABLE");
   const callStarted = Date.now(); const attempts: Array<{ model_key: string; outcome: string; http_status?: number; key_slot?: number }> = []; let lastModel: AICatalogModel | null = null; let lastStatus: number | null = null; let lastKey: AIKeyPick | null = null;
@@ -228,7 +250,7 @@ async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortS
       try {
         const body = buildTaskRequest(m, [
           { role: "system", content: "You are a village agriculture extension officer writing a farmer's crop schedule in his own language. The agronomic reference material you are given is stored in English by design; rendering its meaning into the farmer's language is your job. Return only valid JSON. Preserve the supplied agricultural fact boundary exactly: never change, add or drop a number, dose, product or date." },
-          { role: "user", content: prompt(chunk, language) },
+          { role: "user", content: prompt(chunk, language, cropContext) },
         ], mergeAIRouteParams(route.params, { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0, reasoningEffort: "none", jsonModeProviders: ["gemini", "lovable"] }));
         const res = await fetch(getAPIEndpoint(provider), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${pick.apiKey}` }, body: JSON.stringify(body), signal }); lastStatus = res.status;
         if (res.status === 429 || res.status >= 500) { if (res.status === 429) noteAIKeyResponse(provider, pick.slot, res.status, await res.text().catch(() => ""), res.headers.get("Retry-After")); lastError = new Error(`MODEL_HTTP_${res.status}`); attempts.push({ model_key: m.model_key, outcome: lastError.message, http_status: res.status, key_slot: pick.slot }); break; }
@@ -258,7 +280,7 @@ async function composeChunk(chunk: TaskFacts[], language: string, signal: AbortS
  * Tasks whose composition fails the fact boundary keep their deterministic text and are reported as
  * not composed, so the caller persists them with needs_translation and the sweep finishes them.
  */
-export async function composeFarmerText(facts: TaskFacts[], language: string, budgetMs: number | undefined, ai: ComposeAIContext): Promise<ComposeResult> {
+export async function composeFarmerText(facts: TaskFacts[], language: string, budgetMs: number | undefined, ai: ComposeAIContext, cropContext: CropContext = null): Promise<ComposeResult> {
   const out: ComposedTask[] = facts.map((f) => ({ task_name: f.fallback_name, task_description: f.fallback_description, instructions: [...f.fallback_instructions] }));
   const totalCount = facts.length;
   if (!totalCount) return { tasks: out, composedIndices: [], composed: true, composedCount: 0, totalCount: 0 };
@@ -273,7 +295,10 @@ export async function composeFarmerText(facts: TaskFacts[], language: string, bu
   const timer = setTimeout(() => controller.abort(), budget);
 
   // Identical text is composed once and reused (recurring irrigation / scouting cards).
-  const keyOf = (f: TaskFacts) => JSON.stringify([f.fallback_name, f.fallback_description, f.fallback_instructions, f.quantity, f.inputs, f.phi_days, f.condition]);
+  // The key includes the task type, stage and phase: identical wording at two different growth
+  // stages is two different tasks, and reusing one stage's composition for the other drifts the
+  // wording (and any stage name) to the wrong stage.
+  const keyOf = (f: TaskFacts) => JSON.stringify([f.task_type, f.stage_name, f.phase, f.fallback_name, f.fallback_description, f.fallback_instructions, f.quantity, f.inputs, f.phi_days, f.condition]);
   const byKey = new Map<string, number>(); const unique: TaskFacts[] = []; const members: number[][] = [];
   facts.forEach((f, idx) => { const k = keyOf(f); let u = byKey.get(k); if (u === undefined) { u = unique.length; byKey.set(k, u); unique.push({ ...f, index: u }); members.push([]); } members[u].push(idx); });
 
@@ -287,7 +312,7 @@ export async function composeFarmerText(facts: TaskFacts[], language: string, bu
   try {
     for (let c = 0; c < chunks.length; c += MAX_CONCURRENCY) {
       if (controller.signal.aborted) { timedOut = true; break; }
-      const results = await Promise.allSettled(chunks.slice(c, c + MAX_CONCURRENCY).map((ch) => composeChunk(ch, language, controller.signal, route, ai)));
+      const results = await Promise.allSettled(chunks.slice(c, c + MAX_CONCURRENCY).map((ch) => composeChunk(ch, language, controller.signal, route, ai, cropContext)));
       for (const r of results) {
         if (r.status !== "fulfilled") { const m = (r.reason as Error)?.message || "unknown"; failures.push(m); if (m === "COMPOSE_TIMEOUT") timedOut = true; continue; }
         provider = r.value.provider; model = r.value.model;
@@ -300,7 +325,13 @@ export async function composeFarmerText(facts: TaskFacts[], language: string, bu
             instructions: Array.isArray(item.instructions) ? item.instructions.map(String).map((x) => x.trim()).filter(Boolean) : [...u.fallback_instructions],
           };
           if (!respectsFactBoundary(candidate, u, language)) continue;   // rejected → keeps fallback
-          for (const idx of members[Number(item.i)] ?? []) { out[idx] = candidate; composedIndices.add(idx); }
+          // A reused composition is checked against EACH member's own facts: members share wording
+          // but may differ in day or window, and a day number must never travel to another date.
+          (members[Number(item.i)] ?? []).forEach((idx, position) => {
+            // position 0 is the task the composition was validated against above.
+            if (position > 0 && !respectsFactBoundary(candidate, facts[idx], language)) return;
+            out[idx] = candidate; composedIndices.add(idx);
+          });
         }
       }
     }

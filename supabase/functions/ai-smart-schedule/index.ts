@@ -1,4 +1,14 @@
 // CHANGE LOG
+// 2026-11-10 18:15 UTC — WORKER_RESOURCE_LIMIT (546): one request did enrichment + harness + full farmer-language
+//   composition + in-process narration and was killed after ~80s before persisting. Composition now runs
+//   in-request only while the request is still light (COMPOSE_INLINE_MAX_ELAPSED_MS); otherwise the schedule is
+//   persisted first with tasks marked needs_translation and the app's action=narrate follow-up (a fresh worker)
+//   writes the farmer-language text. The in-process post-persist continuation is removed for the same reason.
+// 2026-11-10 17:40 UTC — VARIETY_METHOD_NOT_SUITABLE now returns HTTP 200 (success:false) like LAND_NOT_AVAILABLE.
+// 2026-11-10 17:30 UTC — VARIETY×METHOD INFORMED CONSENT: action=method_suitability returns the
+//   variety_cultivation_agronomy rows for a variety (verified caller only); generation accepts
+//   body.varietyMethodConsent {accepted, evidenceIds} bound to the exact unsuitable DB rows and persists
+//   the consent + DB evidence in crop_schedules.generation_params/metadata.variety_method_consent.
 // 2026-10-06 — SECURITY: farmer/tenant identity now comes from the DB-verified x-session-token
 //   (_shared/sessionVerify.ts); x-farmer-id / x-tenant-id headers are trusted only for service-role callers.
 // 2026-09-27 — AI model SSOT: composeFarmerText, applyScheduleHarness and narrateScheduleTasks now receive the
@@ -47,6 +57,8 @@
 //   to the base ISO code at the edge boundary.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// 2026-11-15: registers the trigram language model for the same-script language guard (Deno only).
+import "./generator/language-detector.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import {
   resolveInputs,
@@ -57,6 +69,10 @@ import {
 } from "./db/resolve-inputs.ts";
 import { generateBaseline, GENERATOR_VERSION, toDas, computeTransplantOffset } from "./generator/baseline-generator.ts";
 import { composeFarmerText, COMPOSER_VERSION, type TaskFacts } from "./generator/compose-farmer-text.ts";
+import { loadVarietyProfile, composerVarietyView } from "./db/variety-profile.ts";
+import { consolidateByStage } from "./generator/stage-work-plan.ts";
+import { applyRuleStageOffsets, biologicalStageOrder, sequenceTasks } from "./generator/stage-sequence.ts";
+import { alignAfterHarvest, calendarStageAt, detailedStepsOf, labelStageClock, markTimingConfidence, runQualityGates, transplantDateDecision, withholdConflictingSeedRate } from "./generator/timeline-integrity.ts";
 import { narratePendingSchedules, narrateScheduleTasks } from "./generator/narrate-pending.ts";
 import { sanitizeTaskText, hasFarmerText, isTechnicalLine } from "./generator/farmer-text.ts";
 import { loadLandContext } from "./db/land-context.ts";
@@ -65,6 +81,11 @@ import { isFlagEnabled } from "../_shared/featureFlags.ts";
 import { resolveVerifiedCaller } from "../_shared/sessionVerify.ts";
 import { applyScheduleHarness } from "./harness/index.ts";
 import { prepareCurrentFieldTasks } from "./generator/current-field-plan.ts";
+import { agronomyActivationBlockers, agronomyProvisionalReasons, biologicalHarvestStages, isBiologicalHarvestStage, validateScientificTasks } from "./generator/agronomy-scientific-contract.ts";
+import { enforceMonitoringStructure } from "./generator/monitoring-safety.ts";
+import { selectedGraphBlockers, stageGraphSha256, resolveReleaseStatus, type CropReleaseApproval, type ReleaseStatus } from "./generator/scientific-release-gate.ts";
+
+import { reviewDraftPayload, listReviewDrafts } from './review-drafts.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,6 +132,28 @@ serve(async (req) => {
       return json(outcome.body, outcome.status);
     }
 
+    if (body?.action === "review_drafts") {
+      if (!farmerId || !tenantId) return json({ error: "Missing tenant/farmer context" }, 401);
+      const id = typeof body.landId === 'string' ? body.landId : '';
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return json({error:'Valid landId required'},400);
+      const {data: land, error: landError} = await supabase.from('lands').select('id')
+        .eq('id',id).eq('farmer_id',farmerId).eq('tenant_id',tenantId).maybeSingle();
+      if (landError) return json({error:'Land lookup unavailable'},503);
+      if (!land) return json({error:'Land not found'},404);
+      return json({success:true, drafts:await listReviewDrafts(supabase,{farmerId,tenantId},id)});
+    }
+
+    if (body?.action === "method_suitability") {
+      if (!farmerId || !tenantId) return json({ error: "Missing tenant/farmer context" }, 401);
+      const vId = typeof body?.varietyId === "string" ? body.varietyId : "";
+      if (!/^[0-9a-f-]{36}$/i.test(vId)) return json({ error: "varietyId required" }, 400);
+      const { data: rows, error: sErr } = await supabase.from("variety_cultivation_agronomy")
+        .select("id, cultivation_method, is_suitable, suitability_note, source, evidence_tier, suitability_grade, limiting_factor")
+        .eq("variety_id", vId).eq("is_active", true);
+      if (sErr) return json({ error: "Suitability unavailable" }, 503);
+      return json({ success: true, varietyId: vId, rows: rows || [] });
+    }
+
     landId = body?.landId ?? null;
     cropName = body?.cropName ?? null;
     const cropVariety = body?.cropVariety ?? null;
@@ -121,6 +164,12 @@ serve(async (req) => {
     const transplantDate = body?.transplantDate ?? null;
     const farmingType = body?.farmingType ?? null;
     const backdatedConsent = body?.backdatedConsent ?? false;
+    // Farmer's informed consent to use a method the variety record marks unsuitable.
+    // Bound to the exact DB evidence row id; evidence text is re-read server-side.
+    const rawMethodConsent = body?.varietyMethodConsent;
+    const methodConsentRowIds: string[] = rawMethodConsent && rawMethodConsent.accepted === true && Array.isArray(rawMethodConsent.evidenceIds)
+      ? rawMethodConsent.evidenceIds.filter((v: unknown) => typeof v === "string").slice(0, 10) : [];
+    let varietyMethodConsentRecord: Record<string, unknown> | null = null;
     const language = String(body?.language ?? "en").trim().toLowerCase().split("-")[0] || "en";
 
     if (!landId || !cropName) return json({ error: "landId and cropName are required" }, 400);
@@ -137,6 +186,11 @@ serve(async (req) => {
 
     const inputs = await resolveInputs(supabase, { landId, cropName, cropVariety, cultivationMethod, isReadyMadePlant, cropCycle, sowingDate, transplantDate, language, farmingType });
     inputs.language = language;
+    // A requested variety is a contractual farmer selection: do not silently
+    // degrade a variety-specific schedule to generic crop guidance.
+    if (typeof cropVariety === "string" && cropVariety.trim() && !inputs.varietyId) {
+      return json({ success: false, code: "VARIETY_UNRESOLVED", error: "Selected crop variety could not be verified; select a catalogued variety or explicitly select a generic crop schedule.", cropName, cropVariety }, 422);
+    }
     const landContext = await loadLandContext(supabase, landId);
     if (landContext.gaps.length) inputs.gaps.push(...landContext.gaps);
     resolvedCropCode = inputs.cropCode || null;
@@ -155,8 +209,17 @@ serve(async (req) => {
         .eq("variety_id", inputs.varietyId)
         .eq("is_active", true)
         .in("cultivation_method", methodCandidates);
-      const unsuitable = (suitabilityRows || []).find((r: Record<string, unknown>) => r.is_suitable === false);
-      if (unsuitable) {
+      const unsuitableRows = (suitabilityRows || []).filter((r: Record<string, unknown>) => r.is_suitable === false);
+      const unsuitable = unsuitableRows[0];
+      const consentCoversAll = unsuitableRows.length > 0 && unsuitableRows.every((r: Record<string, unknown>) => methodConsentRowIds.includes(String(r.id)));
+      if (unsuitable && consentCoversAll) {
+        varietyMethodConsentRecord = {
+          accepted: true, consented_at: new Date().toISOString(), farmer_id: farmerId, tenant_id: tenantId,
+          variety_id: inputs.varietyId, cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod,
+          evidence: unsuitableRows, client_language: language,
+        };
+        inputs.gaps.push("variety_method_override_consented");
+      } else if (unsuitable) {
         return json({
           success: false,
           error: "The selected variety is not marked suitable for the selected cultivation method in the agronomy SSOT.",
@@ -166,8 +229,10 @@ serve(async (req) => {
           cultivationMethod: inputs.cultivationMethod,
           stageClockMethod: inputs.stageClockMethod,
           evidence: unsuitable,
+          evidenceRows: unsuitableRows,
+          consentAllowed: true,
           gaps: [...inputs.gaps, "variety_method_not_suitable"],
-        }, 422);
+        }, 200); // expected domain result (farmer consent needed), not a runtime failure
       }
       if (!(suitabilityRows || []).length) inputs.gaps.push("variety_method_suitability_unverified");
     }
@@ -186,14 +251,160 @@ serve(async (req) => {
     // 2026-09-06 — a schedule is never persisted without a resolved cultivation method: the
     // method selects the stage graph, and the phenology resolver now refuses to guess it. This
     // closes the path that produced the legacy NULL-method schedule (b9f15e9e, generator 1.0.0).
-    if (!inputs.cultivationMethod) return json({ error: "Cultivation method could not be resolved for this crop", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
+    if (!inputs.cultivationMethod || !inputs.stageClockMethod) return json({ error: "Cultivation method has no approved compatible crop stage clock", code: "CULTIVATION_METHOD_UNRESOLVED", cropCode: inputs.cropCode, requestedMethod: inputs.cultivationMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
     if (inputs.cropCycle === AMBIGUOUS_CROP_CYCLE) return json({ error: "Crop cycle is required for this crop", code: "CROP_CYCLE_REQUIRED", cropCode: inputs.cropCode, options: await getCropCycleOptions(supabase, inputs.cropCode), gaps: inputs.gaps }, 422);
+
+    // Scientific review is deliberately an inert ledger, never a saved/active crop
+    // schedule. All published/rejected paths must share this response contract.
+    // Recheck updates ONLY the original, verified farmer/tenant/land-owned draft.
+    const saveScientificReview = async (
+      blockers: string[],
+      provenance: unknown[] = [],
+      coverage: Record<string, unknown> = {},
+    ) => {
+      const payload = reviewDraftPayload({
+        tenantId: tenantId!, farmerId: farmerId!, landId: landId!, cropName: inputs.cropLabel || cropName!,
+        language, selections: body, blockers, sourceRefs: provenance, coverage,
+      });
+      const requestedDraftId = typeof body?.reviewDraftId === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.reviewDraftId)
+        ? body.reviewDraftId : null;
+      const write = requestedDraftId
+        ? await supabase.from("crop_schedule_review_drafts").update(payload)
+            .eq("id", requestedDraftId).eq("tenant_id", tenantId!)
+            .eq("farmer_id", farmerId!).eq("land_id", landId!).select("*").maybeSingle()
+        : await supabase.from("crop_schedule_review_drafts").insert(payload).select("*").single();
+      if (write.error || !write.data) {
+        console.error("[ai-smart-schedule] failed to save review draft:", write.error?.code ?? "not_found");
+        return json({
+          success: false, code: "REVIEW_DRAFT_SAVE_FAILED",
+          error: "Could not securely save this review. No crop schedule was activated.",
+        }, 503);
+      }
+      return json({
+        success: false, code: "AGRONOMY_REVIEW_REQUIRED", review_required: true,
+        error: "Independent crop evidence is required before activating this schedule.",
+        draft: write.data, blockers: payload.blockers,
+        cropCode: inputs.cropCode, varietyId: inputs.varietyId,
+        cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle,
+      }, 200);
+    };
+
+    // YieldShield scientific release (2026-11-12, deadlock removed).
+    //  * Structural stage-graph faults still stop here and go to the review-draft ledger.
+    //  * The approval registry decides ONLY the label: "approved" vs "provisional". A missing,
+    //    stale or expired approval, or an unreadable / not-yet-deployed registry, yields a
+    //    PROVISIONAL schedule built from the DB stage graph and evidence-linked actions.
+    //  * Unverified high-risk actions stay blocked per action (expert approval, regulatory status,
+    //    banned classes, unverified seed/maturity evidence) regardless of this label.
+    const { getStages: readApprovedStageGraph } = await import("./db/agronomy-repo.ts");
+    const scope = {
+      cropCode: inputs.cropCode,
+      cultivationMethod: inputs.cultivationMethod,
+      stageClockMethod: inputs.stageClockMethod,
+      cropCycle: inputs.cropCycle || "",
+      regionCode: inputs.regionCode,
+      varietyId: inputs.varietyId,
+    };
+    const selectedGraph = await readApprovedStageGraph(supabase, inputs.cropCode, inputs.cropCycle, inputs.stageClockMethod);
+    const graphFindings = selectedGraphBlockers(selectedGraph, scope);
+    // Region is not a property of the stage graph: region-scoped doses and rules are already
+    // withheld by their own region match, so an unresolved region is a provisional reason.
+    const graphErrors = graphFindings.filter((e) => e !== "REGION_NOT_VERIFIED");
+    if (graphErrors.length) return await saveScientificReview(graphErrors);
+    const graphHash = await stageGraphSha256(selectedGraph);
+    let releaseRow: CropReleaseApproval | null = null;
+    let registryError = false;
+    if (inputs.regionCode) {
+      let releaseQuery = supabase
+        .from("yieldshield_crop_release_approvals")
+        .select("id,crop_code,cultivation_method,crop_cycle,region_code,variety_id,status,stage_graph_sha256,evidence_bundle_sha256,reviewed_by,reviewed_at,expires_at")
+        .eq("crop_code", inputs.cropCode)
+        .eq("cultivation_method", inputs.cultivationMethod)
+        .eq("crop_cycle", inputs.cropCycle || "")
+        .eq("region_code", inputs.regionCode);
+      releaseQuery = inputs.varietyId
+        ? releaseQuery.eq("variety_id", inputs.varietyId)
+        : releaseQuery.is("variety_id", null);
+      const { data, error: releaseError } = await releaseQuery.maybeSingle();
+      if (releaseError) {
+        registryError = true;
+        console.error("[ai-smart-schedule] crop release registry unavailable (schedule stays provisional):", releaseError.code ?? "unknown");
+      } else releaseRow = (data as CropReleaseApproval | null) ?? null;
+    }
+    const release: ReleaseStatus = resolveReleaseStatus({
+      approval: releaseRow, registryError, scope, graphSha256: graphHash,
+      extraReasons: graphFindings.filter((e) => e === "REGION_NOT_VERIFIED"),
+    });
+
+    // Service-only: the exact scope + stage-graph fingerprint an agronomist must sign. Read-only;
+    // approvals are written solely by public.yieldshield_record_crop_release (service role).
+    if (body?.action === "release_fingerprint") {
+      const caller = await resolveVerifiedCaller(req);
+      if (caller?.kind !== "service") return json({ error: "Forbidden", code: "SERVICE_ROLE_REQUIRED" }, 403);
+      return json({ success: true, scope, stage_graph_sha256: graphHash, stage_count: selectedGraph.length, release });
+    }
+
+    // 2026-11-13 — CULTIVATION METHOD x CLOCK. A transplant date is meaningful only when the
+    // selected method's stage graph counts days from transplanting (crop_stage_master clock fields).
+    {
+      const decision = transplantDateDecision(selectedGraph, inputs.transplantDate, !!transplantDate);
+      if (decision.reject) return json({ success: false, code: "TRANSPLANT_DATE_NOT_APPLICABLE_TO_METHOD", error: "A transplanting date was given for a cultivation method that has no transplanting. Remove the transplanting date or select a transplanted method.", cultivationMethod: inputs.cultivationMethod, transplantDate: inputs.transplantDate }, 422);
+      if (!decision.keep && inputs.transplantDate) inputs.transplantDate = null;
+      if (decision.gap) inputs.gaps.push(decision.gap);
+    }
 
     const baseline = await generateBaseline(supabase, inputs);
     if (!baseline.tasks.length) return json({ error: "No schedule could be produced from the agronomic database for this crop", cropCode: inputs.cropCode, gaps: baseline.gaps, coverage: baseline.coverage }, 422);
     if (!baseline.coverage.stages) return json({ error: "No growth-stage graph is available for this crop and cultivation method", code: "STAGE_COVERAGE_MISSING", cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, stageClockMethod: inputs.stageClockMethod, options: await getCultivationMethodOptions(supabase, inputs.cropCode), gaps: baseline.gaps, coverage: baseline.coverage }, 422);
+    // Verified against all 25 live crop/cycle graph groups: the sugarcane ratoon
+    // graph has only three establishment/tillering rows and NO maturity/harvest
+    // stage. Do not issue a fabricated season-long plan for an incomplete cycle.
+    // The check is crop-agnostic: the crop's own stage keys supply the milestone.
+    const { getStages: readCycleStages } = await import("./db/agronomy-repo.ts");
+    const cycleStages = await readCycleStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod);
+    const hasTerminalStage = cycleStages.some(stage =>
+      isBiologicalHarvestStage(stage.growth_stage)
+    );
+    if (!hasTerminalStage) {
+      return json({
+        success: false,
+        error: "This crop cycle's agronomy stage graph has no verified maturity/harvest milestone. A complete schedule cannot be generated safely.",
+        code: "INCOMPLETE_CROP_CYCLE_STAGE_GRAPH",
+        cropCode: inputs.cropCode, cropCycle: inputs.cropCycle,
+        stageClockMethod: inputs.stageClockMethod,
+        availableStages: cycleStages.map(stage => stage.stage_code),
+      }, 422);
+    }
     if (baseline.validation && baseline.validation.violations.length) return json({ error: "Generated schedule failed structural validation and was not persisted", code: "SCHEDULE_VALIDATION_FAILED", violations: baseline.validation.violations, warnings: baseline.validation.warnings, gaps: baseline.gaps }, 422);
     if (baseline.validation && baseline.validation.warnings.length) for (const w of baseline.validation.warnings) baseline.gaps.push(`validation_warning: ${w}`);
+
+    // First evaluate crop-specific scientific release eligibility BEFORE any
+    // LLM enrichment, RAG retrieval, language composition or database writes.
+    // The cultivation method master is the single source for seed vs sett/tuber/
+    // vegetative propagation — do not demand seed kilograms for a ratoon.
+    const {data: methodEvidence, error: methodEvidenceError} = await supabase
+      .from("cultivation_method_master")
+      .select("propagation_material")
+      .eq("method_code", inputs.cultivationMethod)
+      .eq("is_active", true)
+      .maybeSingle();
+    const releaseInput = {
+      propagationMaterial: methodEvidenceError ? null : methodEvidence?.propagation_material ?? null,
+      cropCycle:inputs.cropCycle,
+      documentedMaterialRate:baseline.coverage.seed === true,
+      maturityDas:baseline.totals.duration_days,
+      hasHarvestStage:hasTerminalStage,
+      hasHarvestTask:baseline.tasks.some(t => t.task_type === "harvest"),
+      multiHarvestStage:biologicalHarvestStages(cycleStages).length > 1,
+    };
+    const scientificBlockers = agronomyActivationBlockers(releaseInput);
+    if (scientificBlockers.length) {
+      return await saveScientificReview(scientificBlockers, baseline.provenance, baseline.coverage);
+    }
+    for (const reason of agronomyProvisionalReasons(releaseInput)) if (!release.reasons.includes(reason)) release.reasons.push(reason);
+    if (release.reasons.length) { release.status = "provisional"; release.approval_id = null; release.reasons.sort(); }
+    for (const reason of release.reasons) baseline.gaps.push(`provisional_release:${reason}`);
 
     // ── Time plan: one deadline, explicit slices ─────────────────────────────
     const HARD_DEADLINE_MS = 110_000;
@@ -205,6 +416,15 @@ serve(async (req) => {
     const enrichBudgetMs = Math.max(0, Math.min(ENRICH_MAX_MS, remainingMs() - HARNESS_MAX_MS - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
     const timePlan: Record<string, number | null> = { hard_deadline_ms: HARD_DEADLINE_MS, enrich_budget_ms: enrichBudgetMs, harness_budget_ms: null, narration_budget_ms: null };
 
+    // 2026-11-13 — the selected crop + variety dossier (maturity with its evidence flag, resistance,
+    // the crop's own stage timeline). Read once; the planner, the farmer-language composer and the
+    // narration sweeper all work from it. A failed read degrades to a profile that names its gaps.
+    const varietyProfile = await loadVarietyProfile(supabase, inputs, baseline.stage_timeline ?? [], baseline.totals.duration_days);
+
+    let stageWorkTrace: Record<string, unknown> | null = null;
+    let qualityGateTrace: Record<string, unknown> | null = null;
+    // The plan's own biological stage calendar (set by the sequence step; read by the current-stage fallback).
+    let planOrder: ReturnType<typeof biologicalStageOrder> = [];
     let harnessTrace: Record<string, unknown> | null = null;
     let enrichmentTrace: Record<string, unknown> | null = null;
     let enrichmentProposals: import("./harness/llm-candidates.ts").ProposalRecord[] = [];
@@ -214,7 +434,7 @@ serve(async (req) => {
         const evidencePack = await (async () => {
           const { buildAgronomicEvidencePack } = await import("./harness/evidence-pack.ts");
           const { getStages } = await import("./db/agronomy-repo.ts");
-          const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
+          const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
           return buildAgronomicEvidencePack(supabase, inputs, stages, baseline.tasks);
         })();
         // ── LLM enrichment tier: fill only what the DB left empty, verified before it is ever shown ──
@@ -222,7 +442,7 @@ serve(async (req) => {
           try {
             const { proposeAndVerifyCandidates } = await import("./harness/llm-candidates.ts");
             const { getStages } = await import("./db/agronomy-repo.ts");
-            const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
+            const stages = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
             const enrichment = await proposeAndVerifyCandidates(supabase, inputs, stages, baseline.tasks, evidencePack, { tenantId, farmerId, landId, deadlineAt: Date.now() + enrichBudgetMs, landContext });
             for (const c of enrichment.candidates) {
               evidencePack.candidates.push(c);
@@ -230,7 +450,7 @@ serve(async (req) => {
               d.candidates += 1; d.actionable += 1;
             }
             const filled = new Set(enrichment.candidates.map((c) => c.domain));
-            evidencePack.gaps = evidencePack.gaps.filter((g) => !(g.startsWith("NO_AUTHORITATIVE_RULE:") && filled.has(g.split(":")[1])));
+            evidencePack.gaps = evidencePack.gaps.filter((g) => !(g.startsWith("NO_AUTHORITATIVE_RULE:") && filled.has(g.split(":")[1] as typeof enrichment.candidates[number]["domain"])));
             evidencePack.gaps.push(...enrichment.gaps);
             enrichmentTrace = enrichment.trace; enrichmentProposals = enrichment.proposals;
           } catch (enrichErr) { console.warn("[ai-smart-schedule] enrichment failed (non-fatal, DB tiers continue):", enrichErr); enrichmentTrace = { version: "llm-enrichment", skipped: `error:${(enrichErr as Error).message}` }; }
@@ -238,7 +458,7 @@ serve(async (req) => {
         const harnessBudgetMs = Math.max(0, Math.min(HARNESS_MAX_MS, remainingMs() - NARRATION_MIN_MS - PERSIST_RESERVE_MS));
         timePlan.harness_budget_ms = harnessBudgetMs;
         for (const g of evidencePack.gaps) if (!baseline.gaps.includes(g)) baseline.gaps.push(g);
-        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId } });
+        const harnessed = await applyScheduleHarness(baseline.tasks, { cropCode: inputs.cropCode, cultivationMethod: inputs.cultivationMethod, cropCycle: inputs.cropCycle, gaps: baseline.gaps, resolvedInputs: inputs, landContext, evidencePack, budgetMs: harnessBudgetMs, ai: { db: supabase, farmerId }, varietyProfile, symptoms: await (await import("./db/agronomy-repo.ts")).getSymptomCatalog(supabase, evidencePack.candidates.map((c) => String(c.condition_code ?? "")), language) });
         if (!harnessed.result.applied || harnessed.result.status !== "READY") return json({ error: "Schedule harness failed closed before persistence", code: "HARNESS_VALIDATION_FAILED", trace: harnessed.result.trace }, 422);
         baseline.tasks.splice(0, baseline.tasks.length, ...harnessed.tasks);
         harnessTrace = harnessed.result.trace;
@@ -248,15 +468,94 @@ serve(async (req) => {
       return json({ error: "Schedule harness execution failed before persistence", code: "HARNESS_FAILURE" }, 422);
     }
 
+    // 2026-11-13 — STAGE-WISE WORK PLAN. A farmer works by crop stage, so the cards of one stage and
+    // one kind of work (field work, feeding, water, crop check) become ONE card. Regrouping only:
+    // every folded card's text, rule ids, sources and quantities stay on the merged card.
+    //
+    // SEQUENCE (2026-11-13). The order of work is agronomy, so it is decided in one place
+    // (generator/stage-sequence.ts): stages in the crop's biological order, each rule card dated
+    // from the rule's own timing inside its stage, and on one day inputs before the operation,
+    // then water, then the crop check.
+    {
+      const { getStages, getRuleStageOffsets } = await import("./db/agronomy-repo.ts");
+      const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
+      const order = biologicalStageOrder(stageRows, computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate));
+      planOrder = order;
+      const offsets = await getRuleStageOffsets(supabase, baseline.tasks.flatMap((t) => t.rule_ids ?? []));
+      const redated = applyRuleStageOffsets(baseline.tasks, offsets, order);
+      // TIMELINE INTEGRITY (2026-11-13): each window is stated on its stage's own clock; each card
+      // carries how far its date can be trusted; harvest-side cards carry no calendar window while
+      // the variety's maturity is unverified.
+      const transplantOffsetDays = computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate);
+      const relabelled = labelStageClock(baseline.tasks, order, transplantOffsetDays);
+      // Post-harvest follows THIS crop's harvest (date, window and text move together).
+      const postHarvest = alignAfterHarvest(baseline.tasks, order);
+      if (postHarvest.moved) baseline.gaps.push(`post_harvest_aligned_after_harvest:${postHarvest.moved}@${postHarvest.from}`);
+      const firstHarvest = Math.min(...order.filter((p) => isBiologicalHarvestStage(p.stage.growth_stage) && p.from != null).map((p) => p.from as number));
+      const harvestSide = new Set(order.filter((p) => p.from != null && Number.isFinite(firstHarvest) && (p.from as number) >= firstHarvest).map((p) => p.stage.id));
+      const timing = markTimingConfidence(baseline.tasks, order, varietyProfile.maturity.verified, harvestSide);
+      if (timing.indicative) baseline.gaps.push("stage_calendar_indicative_variety_phenology_unverified");
+      if (timing.harvest_review) baseline.gaps.push("harvest_date_requires_review_maturity_unverified");
+      const plan = consolidateByStage(baseline.tasks);
+      baseline.tasks.splice(0, baseline.tasks.length, ...sequenceTasks(plan.tasks, order));
+      // One seed-rate authority per card: a conflicting computed quantity is withheld for review.
+      for (const c of withholdConflictingSeedRate(baseline.tasks, inputs.landAreaAcres)) baseline.gaps.push(`seed_rate_sources_conflict_quantity_withheld:${c}`);
+      // QUALITY GATES (2026-11-13): the finished plan is checked as a whole before anything is saved.
+      // BLOCKING findings stop the save; INCOMPLETE findings save a provisional planning schedule
+      // that is never called complete or approved.
+      const gates = runQualityGates(baseline.tasks, order, { N: baseline.totals.n_kg, P: baseline.totals.p_kg, K: baseline.totals.k_kg }, { releaseStatus: release.status, yieldClaim: null });
+      qualityGateTrace = gates as unknown as Record<string, unknown>;
+      if (gates.blocking.length) return json({ error: "Agricultural quality gates failed; schedule not saved.", code: "AGRONOMY_QUALITY_GATE_FAILED", violations: gates.blocking.slice(0, 20), gaps: [...new Set(baseline.gaps)] }, 422);
+      if (!gates.readiness.executable) baseline.gaps.push(`plan_provisional:${[...new Set(gates.incomplete.map((f) => f.code))].join(",")}`);
+      stageWorkTrace = { before: plan.before, after: plan.after, merged_groups: plan.merged_groups, rule_offsets_applied: redated, clock_relabelled: relabelled, timing, stage_order: order.map((p) => p.stage.stage_code ?? p.stage.growth_stage) };
+    }
+
+    // A scouting card is observation, never a standing prescription. Enforced on STRUCTURE
+    // (typed watch briefs + quantity/nutrient/volume fields), not on words, so it holds in every
+    // farmer language. A treatment is present only when its decision_rules row authorizes it.
+    {
+      let withheld = 0;
+      for (const task of baseline.tasks) {
+        if (task.task_type !== "monitoring") continue;
+        withheld += enforceMonitoringStructure(task);
+        if (task.quantity != null || task.nutrient != null || task.water_volume != null) {
+          task.quantity = null; task.nutrient = null; task.water_volume = null; withheld += 1;
+        }
+        const list = Array.isArray(task.resources?.watch_list) ? task.resources!.watch_list as Array<Record<string, unknown>> : [];
+        const pending = list.filter((b) => b.treatment_authorized !== true && b.carries_input === true).length;
+        if (pending) (task.resources as Record<string, unknown>).scouting_treatments_pending_approval = pending;
+      }
+      if (withheld) baseline.gaps.push(`scouting_unauthorized_treatment_withheld:${withheld}`);
+    }
+
+    // Crop-clock and post-harness task safety is checked AFTER the harness and
+    // before any schedule or farmer task is persisted.
+    {
+      const {getStages}=await import("./db/agronomy-repo.ts");
+      const selected=await getStages(supabase,inputs.cropCode!,inputs.cropCycle,inputs.stageClockMethod??inputs.cultivationMethod,inputs.varietyId);
+      const offset=computeTransplantOffset(selected,inputs.sowingDate,inputs.transplantDate);
+      const errors=validateScientificTasks(baseline.tasks,
+        selected.map(s=>({id:s.id,growth_stage:s.growth_stage,das_min:toDas(s,s.das_min,offset)})));
+      if(errors.length)return json({error:"Agricultural safety checks failed; schedule not saved.",
+        code:"AGRONOMY_SAFETY_VALIDATION_FAILED",violations:errors.slice(0,20),
+        gaps:[...new Set(baseline.gaps)]},422);
+    }
+
     // ── Calendar shape: timing window on every task, then the season-plan header ──────────
     try {
       const { getStages } = await import("./db/agronomy-repo.ts");
-      const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod);
+      const stageRows = await getStages(supabase, inputs.cropCode!, inputs.cropCycle, inputs.stageClockMethod ?? inputs.cultivationMethod, inputs.varietyId);
       const tpOffset = computeTransplantOffset(stageRows, inputs.sowingDate, inputs.transplantDate);
       const byId = new Map(stageRows.map((r) => [r.id, r]));
       for (const t of baseline.tasks) {
         const r = (t.resources ??= {}) as Record<string, unknown>;
-        if (r.window) continue;
+        if(r.window){
+          // from_das/to_das are always on the calendar sowing axis.
+          // Retain the original biological reference as metadata, not as the axis.
+          const prior=r.window as Record<string,unknown>;
+          r.window={...prior,clock:"sowing",origin_clock:prior.clock??null};
+          continue;
+        }
         const st = t.stage_uuid ? byId.get(t.stage_uuid) : undefined;
         const rec = t.recurrence ?? null;
         r.window = rec
@@ -274,7 +573,16 @@ serve(async (req) => {
     let currentFieldPlan: ReturnType<typeof prepareCurrentFieldTasks> | null = null;
     try {
       const { data: phenology } = await supabase.rpc("resolve_crop_phenology", { p_land_id: landId });
-      const row = Array.isArray(phenology) ? phenology[0] : phenology;
+      const rawRow = Array.isArray(phenology) ? phenology[0] : phenology;
+      // 2026-11-13: the land still carries the previous crop until this schedule is committed, so a
+      // resolved stage that is not on THIS plan's stage graph is not this crop's stage. Then today's
+      // position on this plan's own calendar is used, labelled as a calendar estimate.
+      const planStageIds = new Set(planOrder.map((p) => p.stage.id));
+      const row = rawRow && (!rawRow.stage_uuid || planStageIds.has(String(rawRow.stage_uuid))) ? rawRow : null;
+      const todayIso = new Date().toISOString().split("T")[0];
+      const todayDas = inputs.sowingDate ? Math.round((new Date(todayIso).getTime() - new Date(inputs.sowingDate).getTime()) / 86400000) : null;
+      const calendar = !row && todayDas != null ? calendarStageAt(planOrder, todayDas) : null;
+      if (calendar) baseline.gaps.push("current_stage_from_plan_calendar_not_observed");
       currentFieldPlan = prepareCurrentFieldTasks(
         baseline.tasks,
         row ? {
@@ -283,6 +591,12 @@ serve(async (req) => {
           currentDas: row.current_das != null ? Number(row.current_das) : null,
           source: row.source ? String(row.source) : null,
           confidence: row.confidence != null ? Number(row.confidence) : null,
+        } : calendar ? {
+          stageUuid: calendar.stage.id,
+          stageCode: calendar.stage.stage_code ?? calendar.stage.growth_stage ?? null,
+          currentDas: todayDas,
+          source: "plan_calendar_from_sowing_date",
+          confidence: null,
         } : null,
         new Date().toISOString().split("T")[0],
         inputs.sowingDate,
@@ -292,18 +606,36 @@ serve(async (req) => {
       console.warn("[ai-smart-schedule] current biological stage lookup failed:", stageErr);
       baseline.gaps.push("current_biological_stage_unresolved");
     }
-    const preparedTasks = currentFieldPlan?.tasks ?? baseline.tasks.map((task) => {
-      const taskDate = inputs.sowingDate
-        ? new Date(new Date(inputs.sowingDate).getTime() + task.days_from_sowing * 86400000).toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0];
-      return { task, taskDate, projectedDate: taskDate, status: "pending" as const, originalDate: null, autoRescheduled: false, adjustmentReason: null, resources: task.resources ?? {} };
+    // Step 1 is the immutable agronomy blueprint. A backdated current-field
+    // projection may annotate historical tasks, but it MUST NOT mutate baseline
+    // task_date, quantities, original_date, or agronomic time windows.
+    // Step 2 (schedule-reconciler) owns every date/priority adaptation.
+    const preparedTasks = baseline.tasks.map((task, idx) => {
+      const baselineDate = new Date(new Date(inputs.sowingDate!).getTime() + task.days_from_sowing * 86400000).toISOString().split("T")[0];
+      const projection = currentFieldPlan?.tasks[idx] ?? null;
+      return {
+        task,
+        taskDate: baselineDate,
+        projectedDate: projection?.projectedDate ?? baselineDate,
+        status: "pending" as const,
+        originalDate: baselineDate,
+        autoRescheduled: false,
+        adjustmentReason: null,
+        resources: {
+          ...(task.resources ?? {}),
+          ...((projection?.resources?.timeline as {state?:string}|undefined)?.state === "HISTORICAL_UNCONFIRMED"
+             ? { timeline: projection?.resources?.timeline } :
+             baselineDate < new Date().toISOString().split("T")[0]
+             ? { timeline: {state:"HISTORICAL_UNCONFIRMED",
+                  as_of:new Date().toISOString().split("T")[0],
+                  stage_source:"unconfirmed"} } : {}),
+          // No pre-generation timeline state: a land may still hold the previous
+          // crop's provisional stage until the new schedule is committed. Dynamic
+          // reconciliation calculates this only AFTER the new crop becomes active.
+        },
+      };
     });
-    const currentPlanSummary = currentFieldPlan ? { ...currentFieldPlan.summary } : null;
-    baseline.tasks.forEach((task, i) => {
-      const prepared = preparedTasks[i];
-      if (!prepared) return;
-      task.resources = prepared.resources;
-    });
+    const currentPlanSummary = currentFieldPlan ? { ...currentFieldPlan.summary, applied_to_baseline: false } : null;
 
     const planSummary = (() => {
       const byType = (type: string) => baseline.tasks.filter((t) => t.task_type === type);
@@ -382,9 +714,20 @@ serve(async (req) => {
         source_text: [t.task_description, ...(t.instructions ?? [])].map(String).filter((x) => x.trim() && !isTechnicalLine(x)),
       };
     };
-    const composeBudgetMs = Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS);
+    // Split heavy work across workers: compose inline only while this request is still light.
+    const COMPOSE_INLINE_MAX_ELAPSED_MS = 45_000;
+    const COMPOSE_INLINE_MAX_MS = 40_000;
+    // 2026-11-13: decided by the time actually left, not only by the time already spent. A slow
+    // planner used to push the request past the elapsed limit and the schedule was saved with no
+    // farmer-language text at all, although most of the request budget was still unused.
+    const COMPOSE_INLINE_MIN_REMAINING_MS = 25_000;
+    const composeInline = Date.now() - startTime < COMPOSE_INLINE_MAX_ELAPSED_MS || HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS >= COMPOSE_INLINE_MIN_REMAINING_MS;
+    const composeBudgetMs = composeInline ? Math.min(COMPOSE_INLINE_MAX_MS, Math.max(0, HARD_DEADLINE_MS - (Date.now() - startTime) - PERSIST_RESERVE_MS)) : 0;
     timePlan.compose_budget_ms = composeBudgetMs;
-    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId });
+    const composition = await composeFarmerText(baseline.tasks.map(factsOf), language, composeBudgetMs, { db: supabase, farmerId }, composerVarietyView(varietyProfile));
+    // Composition is presentation only. Its fidelity is enforced inside composeFarmerText by the
+    // language-independent fact boundary (every number/unit must exist in the source facts); a
+    // rejected task keeps its deterministic text. No keyword filtering is applied here.
     const narrated = composition.tasks.map((c) => ({ task_name: c.task_name, task_description: c.task_description, instructions: c.instructions }));
     // Kept under the existing field names so persistence, the response contract, the app follow-up
     // and the sweep continue to work unchanged.
@@ -428,37 +771,55 @@ serve(async (req) => {
       stage_key: t.stage_key, stage_uuid: t.stage_uuid ?? null, stage_name: t.stage_name, stage_order: t.stage_order, priority: t.priority,
       weather_dependent: t.weather_dependent, status: preparedTasks[idx]?.status ?? "pending", original_date: preparedTasks[idx]?.originalDate ?? null, reschedule_reason: preparedTasks[idx]?.adjustmentReason ?? null, auto_rescheduled: preparedTasks[idx]?.autoRescheduled ?? false, sequence_order: idx + 1,
       instructions: narrated[idx]?.instructions || t.instructions, precautions: t.precautions ?? [],
+      // Ordered steps of the card in the farmer's language (steps, then precautions). The persistence
+      // routine stores it once migration 20261113130000 is applied; until then the key is ignored.
+      detailed_steps: detailedStepsOf({ task_description: narrated[idx]?.task_description || t.task_description, instructions: narrated[idx]?.instructions || t.instructions, precautions: t.precautions ?? [] }),
       // The UI shows a farmer-usable "how much water" only from water_required_liters; the depth
       // stays on the card as the agronomic figure. Both are persisted.
-      water_required_liters: t.water_volume?.per_event_liters ?? t.water_volume?.stage_total_liters ?? null,
-      resources: { ...(preparedTasks[idx]?.resources ?? t.resources ?? {}), ...(preparedTasks[idx]?.originalDate ? { original_date: preparedTasks[idx].originalDate, auto_rescheduled: preparedTasks[idx].autoRescheduled, adjustment_reason: preparedTasks[idx].adjustmentReason } : {}), ...(t.quantity ? { quantity: t.quantity } : {}), ...(t.water_volume ? { water_volume: t.water_volume } : {}), ...(t.recurrence ? { recurrence: t.recurrence } : {}), ...(sanitized[idx]?.technical_details?.length ? { technical_details: sanitized[idx].technical_details } : {}), ...(narratedIdx.has(idx) ? {} : { needs_translation: true, source_language: null, target_language: language }) },
+      // A stage-total volume is NOT the per-event irrigation dose.
+      water_required_liters: t.water_volume?.per_event_liters ?? null,
+      resources: { ...(preparedTasks[idx]?.resources ?? t.resources ?? {}),
+        baseline_snapshot: {
+          date: preparedTasks[idx]?.originalDate ?? null,
+          days_from_sowing: t.days_from_sowing,
+          stage_uuid: t.stage_uuid,
+          anchor_type: t.anchor_type,
+          anchor_stage: t.anchor_stage,
+          quantity: t.quantity ?? null,
+          recurrence: t.recurrence ?? null,
+          source_refs: t.source_refs,
+          generator_version: GENERATOR_VERSION,
+        }, ...(preparedTasks[idx]?.originalDate ? { original_date: preparedTasks[idx].originalDate, auto_rescheduled: preparedTasks[idx].autoRescheduled, adjustment_reason: preparedTasks[idx].adjustmentReason } : {}), ...(t.quantity ? { quantity: t.quantity } : {}), ...(t.water_volume ? { water_volume: t.water_volume } : {}), ...(t.recurrence ? { recurrence: t.recurrence } : {}), ...(sanitized[idx]?.technical_details?.length ? { technical_details: sanitized[idx].technical_details } : {}), ...(narratedIdx.has(idx) ? {} : { needs_translation: true, source_language: null, target_language: language }) },
       estimated_cost: t.estimated_cost, currency: "INR", rule_ids: t.rule_ids, trigger_rule_id: t.rule_ids[0] || null, confidence: t.confidence,
       source_refs: t.source_refs, language: narratedIdx.has(idx) ? language : null, is_pinned: false,
     }));
     const schedulePayload = {
       land_id: landId, farmer_id: farmerId, tenant_id: tenantId, crop_name: inputs.cropLabel || cropName, crop_variety: inputs.varietyName,
-      variety_id: inputs.varietyId, cultivation_method: inputs.stageClockMethod ?? inputs.cultivationMethod, crop_cycle: inputs.cropCycle,
+      variety_id: inputs.varietyId, cultivation_method: inputs.cultivationMethod, crop_cycle: inputs.cropCycle,
       sowing_date: inputs.sowingDate, transplant_date: inputs.transplantDate, expected_harvest_date: harvestDateStr, is_active: true, status: "active",
+      // 2026-11-13: no yield multiplier is claimed without calibrated field-yield evidence (column default was 3.0).
+      yield_multiplier_target: null,
       generation_language: language, ai_model: narration.narrated ? `${narration.provider ?? "unknown"}/${narration.model ?? "unknown"} (${COMPOSER_VERSION})` : "none",
       input_soil_data: landContext.soil, input_weather_data: landContext.weather, input_land_coordinates: landContext.coordinates, agro_climatic_zone: landContext.agroClimaticZone,
       calculated_for_area_acres: inputs.landAreaAcres, total_duration_days: durationDays, seed_quantity_kg: baseline.totals.seed_kg,
       fertilizer_n_kg: baseline.totals.n_kg, fertilizer_p_kg: baseline.totals.p_kg, fertilizer_k_kg: baseline.totals.k_kg, total_estimated_cost: baseline.totals.estimated_cost,
       state_region: inputs.state, district_name: inputs.district, farming_type: farmingType, tasks_total_count: baseline.tasks.length, tasks_completed_count: 0,
       backdated_consent: !!backdatedConsent, backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
-      generation_params: { generator_version: GENERATOR_VERSION, resolved_inputs: inputs, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
-      metadata: { coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
+      generation_params: { variety_method_consent: varietyMethodConsentRecord, generator_version: GENERATOR_VERSION, scientific_release: release, selected_cultivation_method: inputs.cultivationMethod, stage_clock_method: inputs.stageClockMethod, baseline_immutable: true, resolved_inputs: inputs, variety_profile: varietyProfile, stage_work_plan: stageWorkTrace, quality_gates: qualityGateTrace, release_readiness: (qualityGateTrace as { readiness?: unknown } | null)?.readiness ?? null, harness: harnessTrace, enrichment: enrichmentTrace, current_field_plan: currentPlanSummary, plan_summary: planSummary, narration: { mode: "single_pass_composition", composer: COMPOSER_VERSION, status: narrationComplete ? "COMPLETE" : "PENDING", requested_language: language, persisted_language: language, applied: narrationComplete, narrated_count: narration.narratedCount, total_count: narration.totalCount, pending_count: language === "en" ? 0 : narration.totalCount - narration.narratedCount, reason: narration.reason ?? null, attempts: 1, last_attempt_at: new Date().toISOString() }, farming_policy: farmingType, land_context_gaps: landContext.gaps, ndvi_context: landContext.ndvi, time_plan: { ...timePlan, elapsed_before_persist_ms: Date.now() - startTime } },
+      metadata: { variety_method_consent: varietyMethodConsentRecord, coverage: baseline.coverage, missing_sections: Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([k]) => k), gaps: baseline.gaps, provenance: baseline.provenance, rag_evidence: ragEvidence },
     };
     const landPayload = { current_crop: inputs.cropLabel || cropName, current_crop_variety_id: inputs.varietyId, planting_date: inputs.sowingDate, transplant_date: inputs.transplantDate, gdd_anchor_type: inputs.transplantDate ? "transplant" : "planting", gdd_anchor_date: inputs.transplantDate ?? inputs.sowingDate, current_gdd: null, gdd_last_computed_at: null, expected_harvest_date: harvestDateStr, crop_cycle: inputs.cropCycle };
     const { data: persisted, error: persistError } = await supabase.rpc("persist_ai_crop_schedule_atomic", { p_schedule: schedulePayload, p_tasks: tasksToPersist, p_land: landPayload }).single();
-    if (persistError || !persisted?.schedule_id) throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
-    if (Number(persisted.task_count) !== tasksToPersist.length) throw new Error(`Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${persisted.task_count}`);
-    const savedSchedule = { id: persisted.schedule_id };
+    const savedResult = persisted as {schedule_id:string;task_count:number}|null;
+    if (persistError || !savedResult?.schedule_id) throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
+    if (Number(savedResult.task_count) !== tasksToPersist.length) throw new Error(`Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${savedResult.task_count}`);
+    const savedSchedule = { id: savedResult.schedule_id };
     if (enrichmentProposals.length) { try { const { recordProposals } = await import("./harness/llm-candidates.ts"); await recordProposals(supabase, enrichmentProposals, { tenantId, farmerId, landId, scheduleId: savedSchedule.id, inputs, model: String(enrichmentTrace?.model ?? null) }); } catch (pErr) { console.warn("[ai-smart-schedule] proposal ledger write failed:", pErr); } }
 
     // Continue narration in-process with whatever time is left; the app follow-up and the
     // periodic sweep (action=narrate) finish anything that remains.
     let narrationState: { status: string; narratedCount: number; totalCount: number; pendingCount: number } = { status: narrationComplete ? "COMPLETE" : "PENDING", narratedCount: narration.narratedCount, totalCount: narration.totalCount, pendingCount: language === "en" ? 0 : narration.totalCount - narration.narratedCount };
-    if (narrationState.status === "PENDING" && HARD_DEADLINE_MS - (Date.now() - startTime) > 25_000) {
+    if (false && narrationState.status === "PENDING") { // disabled: follow-up action=narrate runs in a fresh worker
       try {
         const { data: schedRow } = await supabase.from("crop_schedules").select("id, generation_language, generation_params, farmer_id").eq("id", savedSchedule.id).maybeSingle();
         if (schedRow) {
@@ -471,7 +832,7 @@ serve(async (req) => {
     const missingSections = Object.entries(baseline.coverage).filter(([, ok]) => ok === false).map(([key]) => key);
     const missingSectionLabelKeys = missingSections.map((k) => `schedule.section_pending.${k}`);
     try { await supabase.from("edge_invocation_logs").insert({ function_name: "ai-smart-schedule", user_id: farmerId || null, payload: { landId, cropCode: inputs.cropCode, http_status: 200, task_count: baseline.tasks.length, gaps: baseline.gaps, coverage: baseline.coverage, execution_time_ms: Date.now() - startTime } }); } catch (logErr) { console.warn("[ai-smart-schedule] edge_invocation_logs insert failed:", logErr); }
-    return json({ success: true, scheduleId: savedSchedule.id, landId, cropCode: inputs.cropCode, cropName: inputs.cropLabel || cropName, translatedCropName: inputs.cropLabelLocal, varietyId: inputs.varietyId, cultivationMethod: inputs.cultivationMethod, sowingDate: inputs.sowingDate, language, totalTasks: baseline.tasks.length, totals: baseline.totals, coverage: baseline.coverage, missing_sections: missingSections, missing_section_label_keys: missingSectionLabelKeys, gaps: baseline.gaps, generatorVersion: GENERATOR_VERSION, harness: harnessTrace, enrichment: enrichmentTrace, planSummary, narrationApplied: narrationState.status === "COMPLETE", narrationStatus: narrationState.status, narratedCount: narrationState.narratedCount, totalCount: narrationState.totalCount, pendingCount: narrationState.pendingCount, executionTimeMs: Date.now() - startTime, generatedAt: new Date().toISOString() });
+    return json({ success: true, scheduleId: savedSchedule.id, landId, cropCode: inputs.cropCode, cropName: inputs.cropLabel || cropName, translatedCropName: inputs.cropLabelLocal, varietyId: inputs.varietyId, cultivationMethod: inputs.cultivationMethod, sowingDate: inputs.sowingDate, language, totalTasks: baseline.tasks.length, totals: baseline.totals, coverage: baseline.coverage, missing_sections: missingSections, missing_section_label_keys: missingSectionLabelKeys, gaps: baseline.gaps, releaseStatus: release.status, provisional: release.status !== "approved", releaseReasons: release.reasons, generatorVersion: GENERATOR_VERSION, harness: harnessTrace, enrichment: enrichmentTrace, planSummary, narrationApplied: narrationState.status === "COMPLETE", narrationStatus: narrationState.status, narratedCount: narrationState.narratedCount, totalCount: narrationState.totalCount, pendingCount: narrationState.pendingCount, executionTimeMs: Date.now() - startTime, generatedAt: new Date().toISOString() });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const landNotAvailable = errorMessage.includes("LAND_NOT_AVAILABLE");

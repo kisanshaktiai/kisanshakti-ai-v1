@@ -24,10 +24,12 @@
 //       INSUFFICIENT_DATA; a positive value stays evidence-only exactly as before.
 //   (4) Every audited domain with no candidate for this crop/method/region is written to gaps as
 //       NO_AUTHORITATIVE_RULE:<DOMAIN> so the schedule states what it could not evaluate.
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.0";
+import { buildWatchBrief, type WatchBrief } from "../generator/monitoring-safety.ts";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { toDas, computeTransplantOffset, type BaselineTask } from "../generator/baseline-generator.ts";
-import type { StageRow, Provenance } from "../db/agronomy-repo.ts";
+import { getDiagnosticCodes, type StageRow, type Provenance } from "../db/agronomy-repo.ts";
+import { isConditionalNutrientRule, isTransplantClockWording, stagesUseTransplantClock } from "../generator/agronomy-scientific-contract.ts";
 
 export type CandidateDomain =
   | "LAND_PREPARATION" | "SEED_TREATMENT" | "PLANTING" | "NUTRIENT" | "MICRONUTRIENT"
@@ -202,18 +204,7 @@ function farmerInstructions(rule: Record<string, unknown>, status: CandidateStat
 
 /** One-line, farmer-facing "watch for / if seen do" brief for a conditional rule — DB fields only.
  *  Used by the generator to fold conditional rules into the stage's scouting card, not a dated task. */
-function watchBrief(rule: Record<string, unknown>): { rule_id: string; category: string; watch_for: string; if_seen: string } {
-  const etl = String(rule.etl_threshold ?? "").trim();
-  const cond = String(rule.condition_code ?? "").trim();
-  const ai = String(rule.active_ingredient ?? "").trim();
-  const dose = String(rule.dosage_per_acre ?? "").trim();
-  const method = String(rule.application_method ?? "").trim();
-  const phi = rule.phi_days != null && String(rule.phi_days).trim() !== "" ? ` Wait ${rule.phi_days} days before harvest.` : "";
-  const ifSeen = ai || dose || method
-    ? `Apply ${[ai, dose ? `${dose} per acre` : "", method ? `by ${method}` : ""].filter(Boolean).join(", ")}.${phi}`
-    : (String(rule.action_text ?? "").trim() || "Follow the recommended action.");
-  return { rule_id: String(rule.rule_id), category: String(rule.category ?? ""), watch_for: etl || cond || String(rule.category ?? "problem"), if_seen: ifSeen };
-}
+const watchBrief = (rule: Record<string, unknown>): WatchBrief => buildWatchBrief(rule);
 
 /** Offset that mapped this stage's das_min onto the schedule clock (0 for sowing-clock stages). */
 const transplantOffsetOf = (stage: StageRow, das: number) => (stage.das_min != null ? das - Number(stage.das_min) : 0);
@@ -252,7 +243,7 @@ function ruleTask(rule: Record<string, unknown>, stage: StageRow, das: number, d
     estimated_cost: rule.total_cost_estimated != null ? Number(rule.total_cost_estimated) : null,
     rule_ids: [ruleId],
     confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null,
-    source_refs: [{ table: "decision_rules", row_id: ruleId, source: rule.scientific_source ?? null, authority: rule.icar_package ?? rule.university_source ?? null, confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null }],
+    source_refs: [{ table: "decision_rules", row_id: ruleId, source: rule.scientific_source != null ? String(rule.scientific_source) : null, authority: rule.icar_package != null ? String(rule.icar_package) : rule.university_source != null ? String(rule.university_source) : null, confidence: rule.confidence_score != null ? Number(rule.confidence_score) : null }],
     instructions: farmerInstructions(rule, status),
     precautions: Array.isArray(rule.contraindications) ? rule.contraindications.map(String).filter(Boolean) : [],
     technical_details: technical,
@@ -284,7 +275,7 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
   const transplantOffset = computeTransplantOffset(stages, inputs.sowingDate, inputs.transplantDate);
 
   const ruleQuery = await supabase.from("decision_rules")
-    .select("rule_id,category,action_type,treatment_type,trigger_class,stage_applicable,condition_code,etl_threshold,etl_value_min,etl_value_max,etl_unit_type,active_ingredient,chemical_class,dosage_per_acre,application_method,phi_days,action_text,scientific_source,icar_package,university_source,confidence_score,priority,expert_approved,data_authority_rank,regulatory_status,verification_status,variety_applicable,cultivation_method_applicable,region_code,soil_type_applicable,climate_zone_applicable,weather_dependency,total_cost_estimated,organic_alternative,sequence_after,prerequisite_rule_ids,enables_rule_ids,blocks_rule_ids,mutually_exclusive_with,requires_field_action,canonical_status,is_safety_block,is_farmer_servable")
+    .select("rule_id,category,action_type,treatment_type,trigger_class,stage_applicable,condition_code,etl_threshold,etl_value_min,etl_value_max,etl_unit_type,active_ingredient,chemical_class,dosage_per_acre,application_method,phi_days,action_text,scientific_source,icar_package,university_source,confidence_score,priority,expert_approved,data_authority_rank,regulatory_status,verification_status,variety_applicable,cultivation_method_applicable,region_code,soil_type_applicable,climate_zone_applicable,weather_dependency,total_cost_estimated,organic_alternative,sequence_after,prerequisite_rule_ids,enables_rule_ids,blocks_rule_ids,mutually_exclusive_with,requires_field_action,canonical_status,is_safety_block,is_farmer_servable,schedule_role")
     .eq("is_active", true)
     .in("trigger_class", ["CONTEXT_SCHEDULE", "OBSERVATION"])
     .in("category", ["nutrition", "organic", "weed", "pest", "disease", "irrigation", "management", "physiology", "proactive_pest", "proactive_irrigation", "proactive_monitoring"])
@@ -293,6 +284,11 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
   if (ruleQuery.error) gaps.push(`evidence_rule_query_failed:${ruleQuery.error.message}`);
 
   const rows = (ruleQuery.data || []) as Array<Record<string, unknown>>;
+  const transplantClock = stagesUseTransplantClock(stages);
+  // 2026-11-13: a nutrient input that waits on a diagnosis is CONDITIONAL (scouting), never a dated
+  // dose — the same predicate the baseline uses, with the observation catalog's diagnostic flag.
+  const diagnosticCodes = await getDiagnosticCodes(supabase, rows.map((r) => String(r.condition_code ?? "")));
+  const isDiagnosticCode = (code: string) => diagnosticCodes?.has(code) === true;
   const filtered = rows
     .filter((r) => !r.is_safety_block && r.is_farmer_servable !== false)
     .filter((r) => !["invalid", "blocked", "deprecated"].includes(norm(r.canonical_status)))
@@ -305,6 +301,12 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
       return ["recommend", "apply_treatment", "release_biocontrol", "monitor", "urgent_action", "immediate_action"].includes(type);
     })
     .filter((r) => !existingRuleIds.has(String(r.rule_id)))
+    // 2026-11-13: a rule worded on the transplanting clock is not dated in a method without one.
+    .filter((r) => {
+      if (transplantClock || !isTransplantClockWording(r.action_text)) return true;
+      gaps.push(`rule_wording_on_transplant_clock_not_applicable:${String(r.rule_id)}`);
+      return false;
+    })
     .sort((a, b) => Number(b.data_authority_rank ?? 0) - Number(a.data_authority_rank ?? 0) || Number(b.priority ?? 0) - Number(a.priority ?? 0) || String(a.rule_id).localeCompare(String(b.rule_id)));
 
   const byDomain = new Map<CandidateDomain, number>();
@@ -317,7 +319,9 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
     if (count >= MAX_RULES_PER_DOMAIN) { capped = true; continue; }
     const matched = firstStageMatch(stages, rule.stage_applicable, transplantOffset, domain === "HARVEST" || domain === "POST_HARVEST" ? "last" : "first");
     if (!matched) continue;
-    const status = statusForRule(rule.trigger_class, rule.action_type);
+    const conditionalNutrient = isConditionalNutrientRule(rule, isDiagnosticCode);
+    if (conditionalNutrient) gaps.push(`conditional_nutrient_requires_observation:${String(rule.rule_id)}`);
+    const status = conditionalNutrient ? "CONDITIONAL" : statusForRule(rule.trigger_class, rule.action_type);
     const materializable = status !== "MONITOR" && status !== "CONDITIONAL" && rule.requires_field_action !== false;
     const task = ruleTask(rule, matched.stage, matched.das, domain, status);
     const id = `rule_${String(rule.rule_id).replace(/[^a-zA-Z0-9_]+/g, "_")}`;
@@ -343,7 +347,7 @@ export async function buildAgronomicEvidencePack(supabase: SupabaseClient, input
 
   const guidelineQuery = await supabase.from("crop_baseline_guidelines_v2")
     .select("id,crop_code,growth_stage,das_start,das_end,nitrogen_optimal,phosphorus_optimal,potassium_optimal,sulphur_optimal,zinc_optimal,iron_optimal,source_reference,variety_id,stage_master_id,das_authoritative")
-    .ilike("crop_code", inputs.cropCode).eq("is_active", true).limit(MAX_GUIDELINE_ROWS);
+    .ilike("crop_code", inputs.cropCode ?? "").eq("is_active", true).limit(MAX_GUIDELINE_ROWS);
   if (guidelineQuery.error) gaps.push(`guideline_evidence_query_failed:${guidelineQuery.error.message}`);
 
   const stageIds = new Set(stages.map((s) => s.id));

@@ -86,8 +86,10 @@
 
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import { applyFieldDecisions, DECISION_APPLICATION_VERSION } from "./decision-application.ts";
+import { authorizeReconciler, canPersistMonitoring } from "./internal-auth.ts";
+import { thermalStageEvidence } from "./decision-contract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,7 +97,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ENGINE_VERSION = "schedule-reconciler@1.5.0";
+const ENGINE_VERSION = "schedule-reconciler@1.6.0";
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -161,14 +163,17 @@ export function assessSsotConflict(ctx: SsotContext): string | null {
 const numOrNull = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /** One crop-state ledger row per schedule per run. Dry runs are recorded too (run_mode=dry_run) — a trace, not a mutation. */
-async function writeMonitoring(supabase: ReturnType<typeof createClient>, _dryRun: boolean, row: Record<string, unknown>) {
+async function writeMonitoring(supabase: SupabaseClient<any, "public">, dryRun: boolean, row: Record<string, unknown>) {
+  if (!canPersistMonitoring(dryRun)) return;
   const { error } = await supabase.from("schedule_monitoring").insert(row);
   if (error) console.warn("[schedule-reconciler] schedule_monitoring insert failed:", error.message);
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
 
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") || "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
@@ -176,6 +181,14 @@ serve(async (req) => {
 
   const invokedAt = Date.now();
   try {
+    // Check credentials before any schedule, farmer or field-state lookup.
+    // Legacy cron sends the Vault-backed secret in Authorization: Bearer.
+    // Never trust apikey, anon JWT or caller-supplied farmer/tenant headers.
+    const authorized = await authorizeReconciler(req,serviceRoleKey,async ()=>{
+      const { data: secret,error }=await supabase.rpc("get_sweep_key",{p_name:"schedule_reconciler_key"});
+      return !error && typeof secret==="string" ? secret : null;
+    });
+    if (!authorized) return json({ success:false,error:"Internal schedule service authentication required" },401);
     const body = await req.json().catch(() => ({}));
     const scheduleIdFilter: string | null = body?.scheduleId ?? null;
     const landIdFilter: string | null = body?.landId ?? body?.land_id ?? null;
@@ -245,7 +258,7 @@ serve(async (req) => {
       const { data: stageRow } = phenologyResolved
         ? await supabase
           .from("crop_stage_master")
-          .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference")
+          .select("id, stage_code, growth_stage, crop_code, cultivation_method, crop_cycle, das_min, das_max, boundary_grace_days, das_reference, gdd_min, gdd_max")
           .eq("id", stage.stage_uuid)
           .maybeSingle()
         : { data: null };
@@ -345,7 +358,8 @@ serve(async (req) => {
       // move a farmer's tasks (the DB resolver labels them provisional).
       if (PROVISIONAL_SOURCES.has(String(stage.source ?? ""))) {
         if (adjustments.length && !dryRun) await supabase.from("schedule_adjustments").insert(adjustments);
-        await monitor({ stage_drift: { skipped: "provisional_stage_source", stage: stage.stage_code, stage_source: stage.source ?? null } });
+        const thermal = thermalStageEvidence(stage.current_gdd, stageRow?.gdd_min, stageRow?.gdd_max);
+        await monitor({ stage_drift: { skipped: "provisional_stage_source", stage: stage.stage_code, stage_source: stage.source ?? null, thermal_evidence: thermal, current_gdd: stage.current_gdd ?? null, stage_gdd_window: [stageRow?.gdd_min ?? null, stageRow?.gdd_max ?? null] } });
         if (failedTaskIds.length) anyFailure = true;
         results.push({
           schedule_id: sched.id,
@@ -353,6 +367,7 @@ serve(async (req) => {
           skipped: "provisional_stage_source",
           stage: stage.stage_code,
           stage_source: stage.source ?? null,
+          thermal_evidence: thermal,
           tasks_examined: 0,
           tasks_changed: 0,
           ...weatherSummary,
@@ -400,12 +415,17 @@ serve(async (req) => {
 
       const { data: tasks } = await supabase
         .from("schedule_tasks")
-        .select("id, task_name, task_date, projected_date, days_from_sowing, anchor_type, anchor_stage, status, is_pinned, original_date")
+        .select("id, task_name, task_date, projected_date, days_from_sowing, anchor_type, anchor_stage, status, is_pinned, original_date, decision_state, adjustment_reason")
         .eq("schedule_id", sched.id)
         .eq("status", "pending");
 
+      // Weather/soil decisions win over a generic biological-date shift.
+      // A stage-drift update must not undo an application safety deferral.
+      const fieldUpdated = new Set(adjustments.filter(a => ["DEFER","ADVANCE","FLAG"].includes(String(a.change_type))).map(a => String(a.task_id)));
       for (const task of tasks || []) {
         examined += 1;
+        if (fieldUpdated.has(String(task.id)) ||
+            (task.decision_state === "BLOCKED" && String(task.adjustment_reason ?? "").startsWith("decision_"))) { skipped += 1; continue; }
         if (task.is_pinned) { skipped += 1; continue; } // farmer-pinned dates are never moved
         if (task.anchor_type !== "STAGE" || !task.anchor_stage) { skipped += 1; continue; } // DAS-anchored tasks are never stage-shifted
         // Only re-anchor from the observed biological stage onward: tasks whose baseline

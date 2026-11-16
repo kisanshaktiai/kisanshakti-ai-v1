@@ -2,6 +2,8 @@
 // PATH: supabase/functions/ai-smart-schedule/generator/validate-schedule.ts
 //
 // CHANGE LOG
+// 2026-11-10 17:05 UTC — V5 recurrence window_start uses the same graph-declared/pre-season
+//   lower bound as days_from_sowing (sugarcane PRE_PLANTING scouting at DAS −15 was rejected).
 // 2026-09-07 — pre-season admission is DB-driven: a task anchored to a stage the graph declares before
 //   day 0 (sugarcane LAND_PREPARATION −45…−15, PRE_PLANTING −15…0) is valid down to that stage's das_min;
 //   PRE_SEASON/NURSERY phase tasks remain admitted within −60. Callers pass das_min in StageRef.
@@ -101,7 +103,9 @@ export function validateBaseline(
       if (
         !Number.isFinite(r.interval_days) || r.interval_days < 1 ||
         !Number.isFinite(r.window_start) || !Number.isFinite(r.window_end) ||
-        r.window_start < 0 || r.window_end < r.window_start ||
+        // Same DB-driven lower bound as days_from_sowing (graph das_min / pre-season −60).
+        r.window_start < (graphAllowsNegative ? (graphMin as number) : preSeason ? -60 : 0) ||
+        r.window_end < r.window_start ||
         !Number.isFinite(r.expected_events) || r.expected_events < 1
       ) {
         cap(violations, `V5 recurrence_invalid: ${ref}`);

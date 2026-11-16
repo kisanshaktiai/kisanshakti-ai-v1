@@ -69,11 +69,12 @@ serve(async (req) => {
     );
   } catch (error) {
     const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     console.error(`❌ [GoogleMapsConfig] [${requestId}] Error (${duration}ms):`, error);
     
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Internal server error',
+        error: errorMessage || 'Internal server error',
         requestId 
       }),
       { 

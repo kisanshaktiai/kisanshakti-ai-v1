@@ -348,7 +348,7 @@
       "nitrogen": "नाइट्रोजन",
       "phosphorus": "फॉस्फोरस",
       "potassium": "पोटैशियम",
-      "not_tested": "परीक्षण नहीं किया गया",
+      "not_tested": "जाँच नहीं हुई",
       "kg_ha": "किग्रा/हे",
       "last_soil_test": "अंतिम मिट्टी परीक्षण {{date}} को किया गया",
       "activity_log": "गतिविधि लॉग",
@@ -393,7 +393,13 @@
         "success_message": "भूमि सफलतापूर्वक हटाई गई",
         "error_title": "त्रुटि",
         "error_message": "भूमि हटाने में विफल"
-      }
+      },
+      "add_soil_test": "मिट्टी जाँच जोड़ें",
+      "open_soil_report": "मिट्टी रिपोर्ट खोलें",
+      "soil_ai_title": "AI मिट्टी रिपोर्ट",
+      "soil_ai_sub": "लैब जाँच, उपग्रह अनुमान या मिट्टी यंत्र — हर मान का स्रोत दिखता है।",
+      "measured_count": "{{total}} में से {{count}} मान मापे गए",
+      "needs_test": "जाँच ज़रूरी"
     },
     "crop_management": {
       "title": "फसल प्रबंधित करें - {{name}}",
@@ -519,7 +525,18 @@
     },
     "quota_title": "ज़मीन की सीमा पूरी",
     "quota_body": "आपने {{plan}} प्लान में {{used}}/{{limit}} ज़मीन इस्तेमाल की हैं। और जोड़ने के लिए प्लान बढ़ाएँ।",
-    "quota_body_short": "आपने {{used}}/{{limit}} ज़मीन इस्तेमाल की हैं। और जोड़ने के लिए प्लान बढ़ाएँ।"
+    "quota_body_short": "आपने {{used}}/{{limit}} ज़मीन इस्तेमाल की हैं। और जोड़ने के लिए प्लान बढ़ाएँ।",
+    "irrigation_sources": {
+      "river": "नदी",
+      "well": "कुआँ",
+      "borewell": "बोरवेल",
+      "canal": "नहर",
+      "rainfed": "बारिश पर",
+      "drip": "ड्रिप",
+      "sprinkler": "स्प्रिंकलर",
+      "tank": "टंकी",
+      "pond": "तालाब"
+    }
   },
   "__qa": {
     "voice_examples_en": [

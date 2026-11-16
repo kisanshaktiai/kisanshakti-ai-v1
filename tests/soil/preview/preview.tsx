@@ -1,0 +1,10 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import i18n from 'i18next';
+import {I18nextProvider} from 'react-i18next';
+import strings from '../../../src/i18n/locales/en/soil.json';
+import '../../../src/index.css';
+import {SoilFetchPanel} from '../../../src/components/soil/SoilFetchPanel';
+const props={phh2o:[6.8,'pH'],soc:[1.81,'%'],nitrogen:[1.59,'g/kg'],cec:[26.2,'cmol(+)/kg'],sand:[46.1,'%'],silt:[22,'%'],clay:[31.8,'%'],bdod:[1.41,'g/cm³']};
+const model={id:'synthetic',quality:'complete',retrieved_at:'2026-11-16T00:00:00Z',expires_at:'2027-05-16T00:00:00Z',source_version:'SoilGrids 2.0',algorithm_version:'test',area_m2:47465,sampling:{generated_points:10,distinct_sample_pixels:1,points:Array.from({length:10},(_,i)=>({order:i+1,x_m:(Math.floor(i/4)%2?3-i%4:i%4)*50,y_m:Math.floor(i/4)*50}))},properties:Object.fromEntries(Object.entries(props).map(([p,[mean,unit]])=>[p,Object.fromEntries(['0-5cm','5-15cm','15-30cm'].map(d=>[d,{mean,unit,quality:'complete',coverage_fraction:1,distinct_pixels:4}]))])),warnings:[]};
+i18n.init({lng:'en',resources:{en:{soil:strings}},defaultNS:'soil'}).then(()=>createRoot(document.getElementById('root')!).render(<I18nextProvider i18n={i18n}><main className="max-w-4xl mx-auto p-4"><p className="mb-3 text-xs text-muted-foreground">SYNTHETIC UI PREVIEW</p><SoilFetchPanel state={{land:{id:'demo',name:'West field'},legacy:null,profile:null,job:null,model:location.search.includes('empty')?null:model as any,engine_available:true,boundary_changed:false,source_changed:false}} requesting={false} error={null} onFetch={()=>{}}/></main></I18nextProvider>));

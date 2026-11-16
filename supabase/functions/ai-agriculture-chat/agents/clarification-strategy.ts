@@ -396,7 +396,11 @@ export async function fetchRuleDrivenClarificationOptions(
     ndvi_level: input.ndvi_level,
     ndvi_trend: input.ndvi_trend,
     weather: input.weather,
+    // current_symptoms is the farmer-confirmed evidence already accumulated by this turn.
+    // Keep the explicit provenance field populated so the graph runtime cannot
+    // silently reinterpret candidate observations as evidence.
     known_observations: current_symptoms,
+    confirmed_observations: current_symptoms,
     user_query: input.user_query || '',
     trace_id: traceId,
     intent_code: input.detected_intent,

@@ -84,15 +84,19 @@
 //   valid DAS range, max 200 events per guideline row) — a 0-interval DB row looped forever
 //   and exhausted the edge worker memory.
 
+import { establishmentDescription } from "./establishment-text.ts";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { ResolvedInputs } from "../db/resolve-inputs.ts";
 import { validateBaseline } from "./validate-schedule.ts";
+import { isConditionalNutrientRule, isTransplantClockWording, stagesUseTransplantClock, isBiologicalHarvestStage, biologicalHarvestStages } from "./agronomy-scientific-contract.ts";
+import { resolveRuleTiming } from "./rule-timing.ts";
 import {
   getStages,
   getSeedRate,
   getFertilizerPlan,
   getIrrigationGuidelines,
   getFieldActionRules,
+  getDiagnosticCodes,
   getObservationRules,
   getVarietyDuration,
   getBannedChemicals,
@@ -103,7 +107,7 @@ import {
   type StageRow,
 } from "../db/agronomy-repo.ts";
 
-export const GENERATOR_VERSION = "baseline-db-ssot@1.6.0";
+export const GENERATOR_VERSION = "baseline-db-ssot@1.9.0-provisional-release";
 
 /** Canonical task_type vocabulary — mirrors schedule_tasks_task_type_check. */
 const CANONICAL_TASK_TYPES = new Set([
@@ -208,6 +212,10 @@ export interface BaselineResult {
   coverage: Record<string, boolean>;
   totals: {
     seed_kg: number | null;
+    /** Which rung of the seed-rate ladder supplied seed_kg: verified / crop standard / estimate / none. */
+    seed_rate_basis?: string;
+    /** True only when seed_kg is a verified, variety-specific rate. */
+    seed_rate_variety_tuned?: boolean;
     n_kg: number | null;
     p_kg: number | null;
     k_kg: number | null;
@@ -217,6 +225,8 @@ export interface BaselineResult {
   };
   provenance: Provenance[];
   generator_version: string;
+  /** 2026-11-13 — the crop's biological stages on the schedule's days-after-sowing axis (null where a boundary cannot be placed). */
+  stage_timeline?: Array<{ order: number; stage_key: string | null; stage_name: string | null; das_from: number | null; das_to: number | null }>;
 }
 
 const priorityFromRule = (p: number | null): string =>
@@ -327,6 +337,9 @@ function dasFromSplit(
   return { das: null, stage: null };
 }
 
+/** decision_rules.application_method says the input is applied to the seed (seed_treatment, seed_treatment_slurry, …). */
+export const isSeedApplied = (applicationMethod: unknown): boolean => /^seed[_ ]?treatment/i.test(String(applicationMethod ?? "").trim());
+
 export async function generateBaseline(
   supabase: SupabaseClient,
   inputs: ResolvedInputs,
@@ -359,8 +372,10 @@ export async function generateBaseline(
     inputs.cropCode,
     inputs.cropCycle,
     inputs.stageClockMethod ?? inputs.cultivationMethod,
+    inputs.varietyId,
   );
   coverage.stages = stages.length > 0;
+  if (stages.some((s) => s.variety_window_source)) gaps.push("stage_windows_from_variety_phenology_profile");
   if (!stages.length) {
     gaps.push(inputs.cultivationMethod ? "crop_stage_master_no_rows_for_method" : "crop_stage_master_no_rows");
   }
@@ -387,8 +402,10 @@ export async function generateBaseline(
   // 1 mm of depth over 1 m2 is exactly 1 litre, so field volume needs only the land area.
   const fieldAreaM2: number | null = inputs.landAreaAcres != null ? Number(inputs.landAreaAcres) * 4046.856 : (inputs.landAreaHa != null ? Number(inputs.landAreaHa) * 10000 : null);
   if (fieldAreaM2 == null) gaps.push("field_area_unknown_water_volume_unavailable");
-  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods);
-  let durationDays = graphDurationDays;
+  const varietyDuration = await getVarietyDuration(supabase, inputs.varietyId, applicMethods, transplantOffset);
+  // A graph is a provisional phenology window, not a proven variety harvest date.
+  let durationDays: number | null = null;
+  if(varietyDuration?.issue) gaps.push(varietyDuration.issue);
   if (varietyDuration && varietyDuration.maxDays != null) {
     durationDays = varietyDuration.maxDays;
     provenance.push(varietyDuration.provenance);
@@ -401,8 +418,16 @@ export async function generateBaseline(
   // The day-0 anchor operation is always emitted when a phenology spine exists.
   // A missing seed rate degrades the quantity to null (with a named gap) — it never
   // removes the operation itself.
-  const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod);
+  const seed = await getSeedRate(supabase, inputs.varietyId, inputs.cultivationMethod, inputs.stageClockMethod, inputs.cropCode);
   coverage.seed = !!seed;
+  // 2026-11-14 — a seed rate is never left blank. getSeedRate falls back from a verified variety rate
+  // to the authored crop standard to an unverified variety estimate; the basis is carried so the card
+  // and the review flags stay honest about which one the farmer is looking at.
+  const seedBasis = seed?.basis ?? "none";
+  if (!seed) gaps.push("seed_rate_verified_source_required");
+  else if (seed.basis === "crop_standard") gaps.push("seed_rate_from_crop_standard_not_variety_tuned");
+  else if (seed.basis === "variety_unverified") gaps.push("seed_rate_from_unverified_variety_estimate");
+  if (seed?.outsideCropBand) gaps.push("seed_rate_outside_crop_standard_band_review");
   let seedKg: number | null = null;
   if (!seed) {
     gaps.push("seed_rate_unavailable");
@@ -431,10 +456,16 @@ export async function generateBaseline(
       ? `If you broadcast the seed by hand instead, use ${[bc.min != null ? Number((bc.min * areaAcres).toFixed(2)) : null, bc.max != null ? Number((bc.max * areaAcres).toFixed(2)) : null].filter((x) => x != null).join(" to ")} kg for ${areaAcres} acre.`
       : null;
     if (seed && seed.basisCode && !broadcastLine) gaps.push(`seed_rate_broadcast_band_missing:${seed.basisCode}`);
-    const sowDescription = seedKg != null && areaAcres != null
-      ? `Sow the crop. Use ${seedKg} kg of seed for ${areaAcres} acre.`
-      : "";
+    // 2026-11-13: the day-0 card names the crop, the variety the farmer selected and the growth
+    // stage it belongs to (all database labels) instead of saying "the crop".
+    const sowDescription = establishmentDescription({ cropLabel: inputs.cropLabel, cropCode: inputs.cropCode, varietyName: inputs.varietyName, stageLabel: sowStage?.growth_stage ?? null, seedKg, areaAcres });
     const sowInstructions: string[] = [];
+    // Say plainly which seed rate this is, so a standard or an estimate is never shown as if it were
+    // a verified figure for the farmer's own variety. Names are DB labels; the composer translates.
+    const cropWord = inputs.cropLabel || inputs.cropCode || "the crop";
+    const varietyWord = inputs.varietyName || "this variety";
+    if (seedBasis === "crop_standard") sowInstructions.push(`This is the standard seed rate for ${cropWord} (${inputs.cultivationMethod ?? "this method"}); it is a general recommendation, not yet tuned to the ${varietyWord} variety.`);
+    else if (seedBasis === "variety_unverified") sowInstructions.push(`This seed rate for ${varietyWord} is a working estimate and is still being verified.`);
     if (seedBasisLine) sowInstructions.push(seedBasisLine);
     if (broadcastLine) sowInstructions.push(broadcastLine);
     if (!sowDescription) {
@@ -476,7 +507,7 @@ export async function generateBaseline(
 
 
   // ── Fertilizer split tasks ─────────────────────────────────────────────────
-  const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass, [inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean) as string[]);
+  const fert = await getFertilizerPlan(supabase, inputs.cropCode, inputs.regionCode, inputs.soilFertilityClass, [inputs.cultivationMethod, inputs.stageClockMethod].filter(Boolean) as string[], inputs.cropCycle ?? null);
   coverage.fertilizer = !!fert && fert.splits.length > 0;
   // Clock-origin names of this crop (DB) and the establishment stage of THIS graph: the stage at
   // day 0 of the schedule clock. Used only to re-anchor a split written against another method's
@@ -528,6 +559,14 @@ export async function generateBaseline(
       if (das == null) {
         gaps.push("fertilizer_split_without_timing_skipped");
         continue;
+      }
+      // 2026-11-13: a split may state its own timing inside its stage (stage_offset_days, a
+      // database value). Without it the dose is due on the stage's first day, as before.
+      const splitOffset = Number(split.stage_offset_days);
+      if (stage && split.stage_offset_days != null && Number.isFinite(splitOffset) && splitOffset >= 0) {
+        const stageEnd = toDas(stage, stage.das_max, transplantOffset);
+        if (stageEnd == null || das + splitOffset <= stageEnd) das += splitOffset;
+        else gaps.push("fertilizer_split_offset_outside_stage_ignored");
       }
       // Strict split semantics — agronomic quantities never come from a heuristic.
       // percent/pct in (0,100] ⇒ /100; fraction in (0,1] used as-is; anything else
@@ -613,7 +652,7 @@ export async function generateBaseline(
         source_refs: [fert.provenance, ...equivalents.map((e) => ({ table: "master_products", row_id: e.product_id, source: null } as Provenance))],
         instructions: [`Apply ${qty} kg ${nutrientLabel} on this field for this application.`, ...equivalentLines],
         precautions: [],
-        resources: { requirement_semantics: "BASELINE", nutrient_basis: basisKey, product_equivalents: equivalents, fertilizer_context: fert.cultivation_context },
+        resources: { requirement_semantics: "BASELINE", nutrient_basis: basisKey, product_equivalents: equivalents, fertilizer_context: fert.cultivation_context, dose_basis: fert.basis },
       });
     }
   }
@@ -644,11 +683,23 @@ export async function generateBaseline(
     if (step == null) continue;
     provenance.push(g.provenance);
 
-    const stage = stages.find(
+    const namedStage = stages.find(
       (s) => (s.growth_stage || "").toLowerCase() === String(g.growthStage ?? "").toLowerCase(),
-    ) || stageForDas(stages, g.dasStart, transplantOffset);
+    );
+    const stage = namedStage || stageForDas(stages, g.dasStart, transplantOffset);
+    // 2026-11-13: a guideline row names its growth stage; its water belongs to THAT stage's window
+    // on this crop's own calendar (variety-scaled stage graph). The row's generic DAS range is kept
+    // only when the stage cannot be identified by name.
+    const stageFrom = namedStage ? das0(namedStage, namedStage.das_min) : null;
+    const stageTo = namedStage ? das0(namedStage, namedStage.das_max) : null;
+    const anchored = stageFrom != null && stageTo != null && stageTo >= stageFrom;
+    const dasStart = anchored ? stageFrom as number : g.dasStart;
+    const dasEnd = anchored ? stageTo as number : g.dasEnd;
+    if (anchored && (dasStart !== g.dasStart || dasEnd !== g.dasEnd)) gaps.push(`irrigation_window_aligned_to_stage:${g.growthStage}:${g.dasStart}-${g.dasEnd}->${dasStart}-${dasEnd}`);
     const label = stageLabel(stage) || String(g.growthStage ?? "").replace(/_/g, " ");
-    const width = g.dasEnd - g.dasStart;
+    const width = dasEnd - dasStart;
+    const isNurseryWater = /nursery/i.test(String(stage?.growth_stage ?? g.growthStage ?? ""));
+    if(isNurseryWater && g.waterMm != null) gaps.push("nursery_irrigation_volume_requires_nursery_area");
 
     const irrigationInstructions: string[] = [];
     // 2026-09-03: machine/provenance detail no longer sits in the farmer instruction
@@ -664,10 +715,12 @@ export async function generateBaseline(
     if (isWithdrawal) {
       irrigationInstructions.unshift("No irrigation in this window — let the field drain.");
     } else {
+      // 2026-11-13: the guideline gives a cadence and a STAGE total, not a dose per irrigation. The
+      // card is a field-water decision: check at the cadence and irrigate when the field needs it.
       irrigationInstructions.unshift(
-        `Irrigate about every ${step} day${step === 1 ? "" : "s"} from DAS ${g.dasStart} to ${g.dasEnd}.`,
+        `Check the field water about every ${step} day${step === 1 ? "" : "s"} from DAS ${dasStart} to ${dasEnd} and irrigate when the field needs water.`,
       );
-      if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm`);
+      if (g.waterMm != null) irrigationInstructions.push(`Total water for this stage: ${g.waterMm} mm. This is a planning total for the whole stage, not the amount for one irrigation.`);
     }
 
 
@@ -683,7 +736,7 @@ export async function generateBaseline(
       // built above, so the card is never blank.
       task_description: irrigationInstructions[0] ?? "",
 
-      days_from_sowing: g.dasStart,
+      days_from_sowing: dasStart,
       anchor_type: stage ? "STAGE" : "DAS",
       anchor_stage: stage?.stage_code || g.growthStage || null,
       gdd_target: stage?.gdd_min ?? null,
@@ -698,8 +751,9 @@ export async function generateBaseline(
       // never repeated per event.
       // Depth is the agronomic figure; the farmer runs a pump or a drip line, so the field volume
       // is what he can act on. litres = depth(mm) x field area(m2) — exact, no efficiency assumed.
-      // Both the stage total and the per-event volume are given; per-event only when the DB itself
-      // declares the number of events, never divided by a guessed cadence.
+      // Stage totals are NOT per-event irrigation recommendations.
+      // Event depth requires a validated soil-water model or explicit guideline.
+      // Never convert a seasonal target into an actionable dose by equal splitting.
       quantity: !isWithdrawal && g.waterMm != null ? { value: g.waterMm, unit: "mm" } : null,
       estimated_cost: null,
       rule_ids: [],
@@ -708,30 +762,33 @@ export async function generateBaseline(
       instructions: [...irrigationInstructions],
       precautions: [],
       technical_details: irrigationTechnical,
-      water_volume: !isWithdrawal && g.waterMm != null && fieldAreaM2 != null
-        ? (() => {
-            const stageL = Math.round(g.waterMm * fieldAreaM2);
-            const events = isWithdrawal ? null : expectedEvents;
-            const perEventL = events && events > 0 ? Math.round(stageL / events) : null;
-            return { stage_total_liters: stageL, per_event_liters: perEventL, events, basis: "depth_mm_x_field_area_m2", field_area_m2: Math.round(fieldAreaM2) };
-          })()
+      water_volume: !isWithdrawal && !isNurseryWater && g.waterMm != null && fieldAreaM2 != null
+        ? {
+            stage_total_liters: Math.round(g.waterMm * fieldAreaM2),
+            per_event_liters: null,
+            events: expectedEvents,
+            basis: "stage_total_depth_mm_x_field_area_m2_no_event_dose",
+            field_area_m2: Math.round(fieldAreaM2),
+          }
         : null,
 
       recurrence: isWithdrawal
         ? null
-        : { interval_days: step, window_start: g.dasStart, window_end: g.dasEnd, expected_events: expectedEvents },
+        : { interval_days: step, window_start: dasStart, window_end: dasEnd, expected_events: expectedEvents },
       resources: {
         requirement_semantics: isWithdrawal ? "BASELINE_WITHDRAWAL" : "BASELINE",
+        // No verified depth per irrigation exists for this field: the card is a field-water check.
+        ...(isWithdrawal ? {} : { irrigation_decision: { mode: "field_water_check", check_interval_days: step, per_event_depth_mm: null, per_event_basis: "not_verified_stage_total_only" } }),
         ...(g.notes ? { source_note_unprojected: true } : {}),
       },
     };
 
-    const existing = irrigationByStart.get(g.dasStart);
+    const existing = irrigationByStart.get(dasStart);
     if (!existing) {
-      irrigationByStart.set(g.dasStart, { task, width });
+      irrigationByStart.set(dasStart, { task, width });
     } else {
       irrigationOverlap = true;
-      if (width < existing.width) irrigationByStart.set(g.dasStart, { task, width });
+      if (width < existing.width) irrigationByStart.set(dasStart, { task, width });
     }
   }
   if (irrigationOverlap) gaps.push("irrigation_windows_overlapping");
@@ -757,7 +814,30 @@ export async function generateBaseline(
   const policyApplied: string[] = [];
   const policySuppressed: string[] = [];
 
+  // 2026-11-13: diagnostic flags of the rules' conditions (observation catalog), and whether this
+  // method's stage graph has a transplanting clock at all.
+  const diagnosticCodes = await getDiagnosticCodes(supabase, rules.map((r) => String(r.condition_code ?? "")));
+  const isDiagnosticCode = (code: string) => diagnosticCodes?.has(code) === true;
+  const transplantClock = stagesUseTransplantClock(stages);
   for (const rule of rules) {
+    if(isConditionalNutrientRule(rule,isDiagnosticCode)){
+      gaps.push(`conditional_nutrient_requires_observation:${rule.rule_id}`);
+      continue;
+    }
+    // A rule written on the transplanting clock cannot be dated in a method that has no
+    // transplanting (direct-seeded crops): its day numbers would be read against the wrong event.
+    if(!transplantClock&&isTransplantClockWording(rule.action_text)){
+      gaps.push(`rule_wording_on_transplant_clock_not_applicable:${rule.rule_id}`);
+      continue;
+    }
+    // 2026-11-12: ONE dose authority per schedule. With an approved fertilizer programme on the
+    // calendar, a dose-bearing nutrition rule card would be a second application of the same
+    // nutrient. Without a programme the expert-approved rule card is the nutrient guidance
+    // (the old "no soil test => no nutrition rule" skip left such farmers with nothing).
+    if(coverage.fertilizer && String(rule.category??"").toLowerCase()==="nutrition"){
+      gaps.push(`nutrition_rule_not_scheduled_fertilizer_programme_present:${rule.rule_id}`);
+      continue;
+    }
     const chem = String(rule.chemical_class ?? "").toLowerCase();
     if (chem && banned.has(chem)) {
       gaps.push(`rule_skipped_banned_chemical:${rule.rule_id}`);
@@ -767,6 +847,13 @@ export async function generateBaseline(
     const organicAlt = String(rule.organic_alternative ?? "").trim() || null;
     const isProtection = PROTECTION_CATEGORIES.has(String(rule.category ?? "").toLowerCase());
     const isSynthetic = Boolean(chem) || Boolean(rule.dosage_per_acre);
+    // No unreviewed plant-protection or material input recommendation may
+    // become a scheduled farmer action. Lower-risk observation rules remain
+    // available in the separate scouting/OBSERVATION path.
+    if ((isProtection || isSynthetic) && rule.expert_approved !== true) {
+      gaps.push(`rule_blocked_pending_expert_approval:${rule.rule_id}`);
+      continue;
+    }
     let policyActionText: string | null = null;
 
     if (farmingPolicy === "organic_only" && isSynthetic) {
@@ -798,8 +885,20 @@ export async function generateBaseline(
     if (!matched.length) continue;
 
     {
-      const { stage, das } = matched[0];
-      const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, rule.category, rule.action_type);
+      // 2026-11-12: event-relative rules are anchored, not dropped (generator/rule-timing.ts).
+      const timing = resolveRuleTiming({
+        ruleId: rule.rule_id, ageMin: rule.crop_age_days_min, ageMax: rule.crop_age_days_max,
+        actionText: rule.action_text, transplantOffset,
+        stages: matched.map((m) => ({ dasMin: m.das, dasMax: das0(m.stage, m.stage.das_max) })),
+      });
+      if (timing.gap) gaps.push(timing.gap);
+      const stage = matched[timing.stageIndex].stage;
+      const das = timing.das ?? matched[timing.stageIndex].das;
+      // 2026-11-15: an input applied TO THE SEED (decision_rules.application_method seed_treatment…)
+      // is a seed treatment whatever its category (a fungicide dressing filed under disease, a
+      // biofertilizer filed under organic). It is done before sowing, not as field feeding or scouting.
+      const ruleCategory = isSeedApplied(rule.application_method) ? "seed_treatment" : rule.category;
+      const { taskType, unmapped } = canonicaliseTaskType(taskTypeMap, ruleCategory, rule.action_type);
       if (unmapped) gaps.push("task_type_unmapped");
       // 2026-09-03: ETL / dose / PHI / source are AUDIT detail — they used to be the
       // farmer instruction list. They now ride in technical_details.
@@ -820,7 +919,7 @@ export async function generateBaseline(
 
       // v1.5.0: the name is a LABEL. Previously rule.action_text (a full advisory
       // paragraph) became the task_name, so cards showed prose as a title.
-      const ruleLabel = String(rule.category ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
+      const ruleLabel = String(ruleCategory ?? rule.action_type ?? taskType).replace(/_/g, " ").trim();
       const stageTag = stageLabel(stage);
       tasks.push({
         task_name:
@@ -856,6 +955,9 @@ export async function generateBaseline(
         instructions: ruleInstructions,
         precautions: rulePrecautions,
         technical_details: ruleTechnical,
+        resources: { timing_basis: timing.basis, timing_window_das: [das as number, timing.dasEnd ?? das0(stage, stage.das_max)], ...(timing.gap ? { timing_review: timing.gap.split(":")[0] } : {}),
+          // DB order of operations within the day (stage-work-plan.ts orders folded steps by it).
+          ...(Array.isArray(rule.sequence_after) && rule.sequence_after.length ? { sequence_after: rule.sequence_after.map(String) } : {}) },
 
       });
     }
@@ -886,6 +988,7 @@ export async function generateBaseline(
       observationRules.map((r) => String(r.condition_code ?? "").trim()).filter(Boolean),
     )];
     const labelByCode = new Map<string, string>();
+    const notASymptom = new Set<string>();
     if (condCodes.length) {
       const { data: trs } = await supabase
         .from("observation_translations")
@@ -899,6 +1002,12 @@ export async function generateBaseline(
         if (!text) continue;
         if (isLang || !labelByCode.has(code)) labelByCode.set(code, text);
       }
+      // 2026-11-13: only a diagnostic, farmer-visible symptom is something to "inspect for". Generic
+      // buckets (observation_master.is_diagnostic = false) were printed as if they were symptoms.
+      const { data: flags, error: flagsError } = await supabase.from("observation_master").select("observation_code, is_diagnostic, is_farmer_observable").in("observation_code", condCodes);
+      if (!flagsError) for (const row of (flags || []) as Array<Record<string, unknown>>) {
+        if (row.is_diagnostic !== true || row.is_farmer_observable === false) notASymptom.add(String(row.observation_code));
+      }
       const unmapped = condCodes.filter((c) => !labelByCode.has(c));
       if (unmapped.length) gaps.push(`observation_label_missing:${unmapped.length}`);
     }
@@ -910,7 +1019,7 @@ export async function generateBaseline(
         const r = ruleById.get(id);
         if (!r) continue;
         const cc = String(r.condition_code ?? "").trim();
-        if (cc) {
+        if (cc && !notASymptom.has(cc)) {
           const label = labelByCode.get(cc) || cc.replace(/_/g, " ");
           if (!conditions.includes(label)) conditions.push(label);
           const etl = String(r.etl_threshold ?? "").trim();
@@ -1018,7 +1127,7 @@ export async function generateBaseline(
     { match: /land[_ ]?prep/i, taskType: "land_preparation", label: "Land preparation", priority: "high" },
     { match: /seed[_ ]?treat/i, taskType: "seed_treatment", label: "Seed treatment", priority: "high" },
     { match: /^nursery$/i, taskType: "nursery", label: "Nursery management", priority: "high" },
-    { match: /^harvest$/i, taskType: "harvest", label: "Harvest", priority: "critical" },
+    { match: /^(harvest|harvest_maturity|maturation_harvest|first_picking|successive_harvest)$/i, taskType: "harvest", label: "Harvest readiness / picking", priority: "critical" },
     { match: /post[_ ]?harvest/i, taskType: "post_harvest", label: "Post-harvest handling", priority: "medium" },
   ];
   const emittedLifecycle = new Set<string>();
@@ -1062,6 +1171,9 @@ export async function generateBaseline(
           ? [`Window: DAS ${das} to ${end} (${stageLabel(stage)}).`]
           : [],
       precautions: [],
+      // The stage row authorizes the operation and its window only; the practice text comes from
+      // the stage's rule cards, which stage-work-plan.ts folds into this card.
+      resources: { stage_window_card: true },
     });
   }
 
@@ -1087,7 +1199,12 @@ export async function generateBaseline(
   // different labels on the same day remain separate tasks (that is real agronomy).
   const dedup = new Map<string, BaselineTask>();
   for (const t of tasks) {
-    const key = `${t.task_type}|${t.task_name}|${t.days_from_sowing}|${t.nutrient ?? ""}`;
+    // 2026-11-15: the practice text is part of the identity. Rule cards are named "<category> — <stage>",
+    // so five different nursery practices shared one key and only the FIRST description survived:
+    // the fungicide seed dressing, the seed rate, the nursery bed and sowing window were dropped from
+    // every transplanted-rice schedule. Only cards that say the same thing are duplicates now; distinct
+    // practices of one stage are folded later, with all their text, by stage-work-plan.ts.
+    const key = `${t.task_type}|${t.task_name}|${t.days_from_sowing}|${t.nutrient ?? ""}|${String(t.task_description ?? "").trim().toLowerCase()}`;
     const prev = dedup.get(key);
     if (!prev) { dedup.set(key, t); continue; }
     prev.rule_ids = [...new Set([...prev.rule_ids, ...t.rule_ids])];
@@ -1108,7 +1225,12 @@ export async function generateBaseline(
   // it already sets total_duration_days and the harvest date — so the calendar is closed to it:
   // ONE harvest card at maturity carrying the merged harvest guidance, post-harvest immediately
   // after it, and nothing else scheduled beyond maturity. Every change is recorded as a gap.
-  if (varietyDuration?.maxDays != null) {
+  // 2026-11-12: structural, crop-agnostic — a graph that declares more than one biological
+  // harvest stage is a repeated-picking crop (was a hardcoded pair of stage names).
+  const pickingStages = biologicalHarvestStages(stages);
+  const repeatedPicking = pickingStages.length > 1;
+  // First maturity is not the end of a repeated-picking crop's lifecycle.
+  if (varietyDuration?.maxDays != null && !repeatedPicking) {
     const maturityDas = varietyDuration.maxDays;
     const harvestTasks = tasks.filter((t) => t.task_type === "harvest");
     if (harvestTasks.length) {
@@ -1122,9 +1244,17 @@ export async function generateBaseline(
         primary.source_refs = [...primary.source_refs, ...t.source_refs];
       }
       if (harvestTasks.length > 1) gaps.push(`harvest_tasks_merged:${harvestTasks.length}->1`);
-      if (primary.days_from_sowing !== maturityDas) {
-        gaps.push(`harvest_moved_to_variety_maturity:${primary.days_from_sowing}->${maturityDas}`);
-        primary.days_from_sowing = maturityDas;
+      if(primary.days_from_sowing!==maturityDas){
+        const harvestStage=stages.find(s=>s.id===primary.stage_uuid);
+        const start=harvestStage?das0(harvestStage,harvestStage.das_min):null;
+        const end=harvestStage?das0(harvestStage,harvestStage.das_max):null;
+        if(isBiologicalHarvestStage(harvestStage?.growth_stage)
+           && start!=null && end!=null && maturityDas>=start && maturityDas<=end){
+          gaps.push(`harvest_aligned_with_verified_maturity:${primary.days_from_sowing}->${maturityDas}`);
+          primary.days_from_sowing=maturityDas;
+        }else{
+          gaps.push("harvest_maturity_stage_conflict_needs_review");
+        }
       }
       tasks = tasks.filter((t) => t.task_type !== "harvest" || t === primary);
     }
@@ -1149,6 +1279,169 @@ export async function generateBaseline(
     }
   }
 
+  // Re-anchor the transplanting operation to the farmer's actual recorded event,
+  // not to the default nursery-age boundary. When that event falls outside the
+  // selected graph, the seedling age is stated on the stage's card; inputs are not withheld.
+  if(inputs.transplantDate && transplantOffset!=null){
+    let seedlingAge:{age_days:number;expected_from:number;expected_to:number}|null=null;
+    for(const t of tasks){
+      const stage=t.stage_uuid?stages.find(s=>s.id===t.stage_uuid):null;
+      if(String(stage?.growth_stage??"").toLowerCase()!=="transplanting")continue;
+      const graphFrom=stage?das0(stage,stage.das_min):null;
+      const graphTo=stage?das0(stage,stage.das_max):null;
+      if(t.days_from_sowing!==transplantOffset){
+        gaps.push("transplanting_event_reanchored_from_default_stage");
+        t.days_from_sowing=transplantOffset;
+      }
+      t.resources={...(t.resources??{}),window:{from_das:transplantOffset,to_das:transplantOffset,
+        clock:"sowing",anchor_event:"transplanting",date_source:"farmer_record"}};
+      if(t.recurrence){
+        // The stage's irrigation cadence was written for the stage's default day window. On the
+        // farmer's recorded transplanting day it is one irrigation, so the stale window sentence
+        // is replaced; the stage total and every other line are kept.
+        const stale=/^Irrigate about every \d+ days? from DAS \d+ to \d+\.$/;
+        const eventLine="Irrigate the field on the transplanting day.";
+        if(stale.test(String(t.task_description??"").trim())) t.task_description=eventLine;
+        t.instructions=t.instructions.map(l=>stale.test(String(l).trim())?eventLine:l);
+        // The weekly-walk line of the stage quotes the same default window; on the recorded day it is one check.
+        const staleWalk=/^Walk the field once a week from DAS \d+ to \d+\.$/;
+        t.instructions=t.instructions.map(l=>staleWalk.test(String(l).trim())?"Check the seedlings and the field on the transplanting day.":l);
+        t.recurrence=null;
+        gaps.push("transplant_recurrence_requires_event_specific_plan");
+      }
+      if(graphFrom!=null && graphTo!=null &&
+        (transplantOffset<graphFrom || transplantOffset>graphTo)){
+        // 2026-11-13: seedling age outside the stage's nursery window is a FIELD FACT to tell the
+        // farmer, not a reason to withhold the transplanting inputs. The basal dose is set per
+        // area and is due at transplanting whatever the seedling age; blanking it left the plan
+        // with no basal fertilizer at all. The fact is stated once, on one card of the stage.
+        gaps.push("seedling_age_outside_stage_nursery_window");
+        seedlingAge={ age_days:transplantOffset, expected_from:graphFrom, expected_to:graphTo };
+        t.resources.seedling_age=seedlingAge;
+      }
+    }
+    if(seedlingAge){
+      const inStage=tasks.filter(t=>{const st=t.stage_uuid?stages.find(s=>s.id===t.stage_uuid):null;return String(st?.growth_stage??"").toLowerCase()==="transplanting";});
+      const target=inStage.find(t=>!["nutrition","micronutrient","irrigation","monitoring"].includes(t.task_type))??inStage[0];
+      if(target) target.instructions=[...target.instructions,`Seedlings were ${seedlingAge.age_days} days old at transplanting; the expected nursery age for this stage is ${seedlingAge.expected_from} to ${seedlingAge.expected_to} days. All later stage dates are counted from the recorded transplanting date.`];
+    }
+  }
+
+  // Harvest is a distinct biological operation. A grain-filling rule must
+  // never turn into a harvest card on the grain-filling stage.
+  const harvestStage=stages.find(s=>isBiologicalHarvestStage(s.growth_stage));
+  if(harvestStage && !repeatedPicking){
+    const day=das0(harvestStage,harvestStage.das_min);
+    if(day!=null){
+      const harvestTasks=tasks.filter(t=>t.task_type==="harvest");
+      if(harvestTasks.length){
+        const primary=harvestTasks.find(t=>t.stage_uuid===harvestStage.id)??harvestTasks[0];
+        for(const old of harvestTasks){
+          if(old===primary)continue;
+          primary.instructions=[...new Set([...primary.instructions,...old.instructions])];
+          primary.rule_ids=[...new Set([...primary.rule_ids,...old.rule_ids])];
+          primary.source_refs.push(...old.source_refs);
+        }
+        tasks=tasks.filter(t=>t.task_type!=="harvest"||t===primary);
+        if(primary.stage_uuid!==harvestStage.id || primary.days_from_sowing<day){
+          gaps.push("harvest_reanchored_to_biological_harvest_stage");
+          primary.days_from_sowing=day;
+        }
+        primary.stage_uuid=harvestStage.id;
+        primary.stage_key=harvestStage.stage_code;
+        primary.stage_name=harvestStage.growth_stage;
+        primary.anchor_stage=harvestStage.stage_code || harvestStage.growth_stage;
+        primary.stage_order=stageOrderOf(stages,harvestStage.stage_code);
+        primary.resources={...(primary.resources??{}),window:{
+          from_das:day,to_das:das0(harvestStage,harvestStage.das_max)??day,
+          clock:"sowing",anchor_event:"biological_harvest_stage"},
+          requirement_semantics:"HARVEST_READINESS_CONFIRMATION"};
+        if(!durationDays)gaps.push("harvest_window_provisional_variety_maturity_unverified");
+      }
+    }
+  }
+
+  // ── Repeated-picking crops: one harvest card PER DB picking phase ─────────
+  // Each biological harvest stage of the graph keeps its own card with the stage's own window.
+  // Picking frequency and the number of pickings are NOT in the database, so no interval,
+  // count or end date is produced: the card asks for a field readiness check inside the window.
+  // Rule-derived harvest cards are kept and bound to their own phase; phases are never merged
+  // and the calendar is never closed at first maturity.
+  if (repeatedPicking) {
+    pickingStages.forEach((stage, i) => {
+      const from = das0(stage, stage.das_min);
+      if (from == null) { gaps.push(`picking_phase_window_unresolved:${stage.stage_code || stage.growth_stage}`); return; }
+      const to = das0(stage, stage.das_max) ?? from;
+      const window = { from_das: from, to_das: to, clock: "sowing", anchor_event: "biological_harvest_stage" };
+      const own = tasks.filter((t) => t.task_type === "harvest" && t.stage_uuid === stage.id);
+      for (const t of own) t.resources = { ...(t.resources ?? {}), window, picking_phase: i + 1, picking_phases_total: pickingStages.length, picking_interval_verified: false, requirement_semantics: "HARVEST_READINESS_CONFIRMATION" };
+      if (own.length) return;
+      tasks.push({
+        task_name: `Picking — ${stageLabel(stage)}`, task_type: "harvest",
+        task_description: "Check the crop for harvest-ready produce during this picking phase and pick what is ready. Confirm readiness in the field before each picking.",
+        days_from_sowing: from, anchor_type: "STAGE", anchor_stage: stage.stage_code || stage.growth_stage,
+        gdd_target: stage.gdd_min ?? null, stage_key: stage.stage_code, stage_uuid: stage.id,
+        stage_name: stage.growth_stage, stage_order: stageOrderOf(stages, stage.stage_code),
+        priority: "high", weather_dependent: true, nutrient: null, quantity: null, estimated_cost: null,
+        rule_ids: [], confidence: null, source_refs: [{ table: "crop_stage_master", row_id: stage.id }],
+        instructions: ["Inspect the crop for harvest-ready produce and pick only what is ready.", "Record each picking date so the next check can be planned from it."],
+        precautions: [],
+        resources: { window, picking_phase: i + 1, picking_phases_total: pickingStages.length, picking_interval_verified: false, requirement_semantics: "HARVEST_READINESS_CONFIRMATION", stage_based_provisional: true },
+      });
+    });
+    gaps.push("repeated_picking_interval_not_in_database");
+  }
+
+  // Preserve the complete lifecycle without inventing doses. The stage graph
+  // authorizes monitoring windows, not fertilizer or irrigation quantities.
+  const maturityStage=stages.find(s=>String(s.growth_stage??"").toLowerCase()==="maturity");
+  if(maturityStage && !tasks.some(t=>t.stage_uuid===maturityStage.id)){
+    const day=das0(maturityStage,maturityStage.das_min);
+    if(day!=null)tasks.push({
+      task_name:"Assess crop maturity",task_type:"monitoring",
+      task_description:"Observe and record crop maturity. Harvest readiness must be confirmed in the field before cutting.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:maturityStage.stage_code,
+      gdd_target:maturityStage.gdd_min??null,stage_key:maturityStage.stage_code,stage_uuid:maturityStage.id,
+      stage_name:maturityStage.growth_stage,stage_order:stageOrderOf(stages,maturityStage.stage_code),
+      priority:"high",weather_dependent:false,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:maturityStage.id}],
+      instructions:["Inspect crop maturity and confirm harvest-readiness signs before cutting."],precautions:[],
+      resources:{requirement_semantics:"MONITOR",stage_based_provisional:true}
+    });
+  }
+  if(!coverage.fertilizer && stages.length){
+    const stage=stages.find(s=>/land[_ ]?prep/i.test(String(s.growth_stage??"")))??stages[0];
+    const day=das0(stage,stage.das_min);
+    if(day!=null)tasks.push({
+      task_name:"Soil test and fertilizer planning",task_type:"advisory",
+      task_description:"A complete fertilizer programme is unavailable for this field. Check soil fertility before selecting basal and stage-wise nutrient quantities.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:stage.stage_code,
+      gdd_target:stage.gdd_min??null,stage_key:stage.stage_code,stage_uuid:stage.id,
+      stage_name:stage.growth_stage,stage_order:stageOrderOf(stages,stage.stage_code),
+      priority:"high",weather_dependent:false,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:stage.id}],
+      instructions:["Obtain a soil test and confirm the approved nutrient programme for this crop and cultivation method."],
+      precautions:[],resources:{requirement_semantics:"NEEDS_DATA",missing_data:["soil_fertility_class","approved_fertilizer_plan"]}
+    });
+    gaps.push("NUTRIENT_PLAN_INCOMPLETE");
+  }
+  for(const stage of stages){
+    if(stage.is_moisture_critical!==true)continue;
+    if(tasks.some(t=>t.stage_uuid===stage.id && t.task_type==="irrigation"))continue;
+    const day=das0(stage,stage.das_min);
+    if(day==null)continue;
+    tasks.push({
+      task_name:"Check water stress at critical stage",task_type:"monitoring",
+      task_description:"Monitor field water and crop water-stress signs during this sensitive biological stage. Irrigation requires valid field and rainfall evidence.",
+      days_from_sowing:day,anchor_type:"STAGE",anchor_stage:stage.stage_code,
+      gdd_target:stage.gdd_min??null,stage_key:stage.stage_code,stage_uuid:stage.id,
+      stage_name:stage.growth_stage,stage_order:stageOrderOf(stages,stage.stage_code),
+      priority:"critical",weather_dependent:true,nutrient:null,quantity:null,estimated_cost:null,
+      rule_ids:[],confidence:null,source_refs:[{table:"crop_stage_master",row_id:stage.id}],
+      instructions:["Check soil moisture and standing water. Record observations before deciding whether irrigation is needed."],
+      precautions:[],resources:{requirement_semantics:"MONITOR",critical_stage:true}
+    });
+  }
   // Total order — two identical runs must produce byte-identical task lists.
   tasks.sort(
     (a, b) =>
@@ -1191,6 +1484,8 @@ export async function generateBaseline(
     coverage,
     totals: {
       seed_kg: seedKg,
+      seed_rate_basis: seedBasis,
+      seed_rate_variety_tuned: seed?.varietyTuned ?? false,
       n_kg: nKg,
       p_kg: pKg,
       k_kg: kKg,
@@ -1200,5 +1495,9 @@ export async function generateBaseline(
     },
     provenance,
     generator_version: GENERATOR_VERSION,
+    stage_timeline: stages
+      .map((st) => ({ stage_key: st.stage_code || null, stage_name: st.growth_stage || null, das_from: das0(st, st.das_min), das_to: das0(st, st.das_max) }))
+      .sort((a, b) => (a.das_from ?? Number.MAX_SAFE_INTEGER) - (b.das_from ?? Number.MAX_SAFE_INTEGER) || (a.das_to ?? Number.MAX_SAFE_INTEGER) - (b.das_to ?? Number.MAX_SAFE_INTEGER))
+      .map((st, i) => ({ order: i + 1, ...st })),
   };
 }

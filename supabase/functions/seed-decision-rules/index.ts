@@ -59,6 +59,7 @@ interface RuleFromJSON {
   active_ingredient?: string;
   organic_alternative?: string;
   scientific_source: string;
+  reason_text?: string;
   icar_package_ref?: string;
   response_en: string;
   response_hi: string;
@@ -105,12 +106,12 @@ Deno.serve(async (req) => {
     // Import each JSON file
     for (const filePath of RULE_FILES) {
       try {
-        const module = await import(`./rules/${filePath}`, { assert: { type: 'json' } });
+        const module = await import(`./rules/${filePath}`, { with: { type: 'json' } });
         const fileRules = module.default?.rules || [];
         allRules.push(...fileRules);
         console.log(`✅ Loaded ${fileRules.length} rules from ${filePath}`);
       } catch (e) {
-        console.warn(`⚠️ Could not load ${filePath}: ${e.message}`);
+        console.warn(`⚠️ Could not load ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
@@ -306,7 +307,7 @@ Deno.serve(async (req) => {
         icar_package_ref: rule.icar_package_ref || null,
         // WHAT → HOW → WHY columns (these may not exist in DB yet - will be ignored if missing)
         // action_text: rule.action_text || null,
-        reason_text: (rule as any).reason_text || null,
+        reason_text: rule.reason_text || null,
         knowledge_text: (rule as any).knowledge_text || null,
         // Normalized observable_characteristics (always array)
         observable_characteristics: normalizeObservableChars((rule as any).observable_characteristics),

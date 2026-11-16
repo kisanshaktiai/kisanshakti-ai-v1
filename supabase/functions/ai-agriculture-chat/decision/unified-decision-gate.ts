@@ -1,3 +1,5 @@
+// CHANGE LOG (newest first)
+// 2026-10-27 17:56 UTC — Preserve treatment-denial authority in emergency and suppression paths; detection remains audit-only.
 // UNIFIED DECISION GATE - Single Point of Treatment Validation
 
 import {
@@ -78,7 +80,7 @@ export function validateRecommendationSuppression(
   }
   
   return {
-    should_allow: isSilentSuppression ? true : gateResult.treatments_allowed,
+    should_allow: gateResult.treatments_allowed,
     reason: isSilentSuppression 
       ? 'Suppression guard overrode gate - rules fired with valid treatments' 
       : gateResult.reason,
@@ -86,7 +88,7 @@ export function validateRecommendationSuppression(
     has_treatment_actions: hasTreatmentActions || hasProducts,
     authority_blocking: authorityBlocking,
     clarification_pending: clarificationPending,
-    suppression_prevented: isSilentSuppression
+    suppression_prevented: false
   };
 }
 
@@ -102,30 +104,12 @@ export function applySuppressionGuard(
 ): UnifiedGateResult {
   const guardResult = validateRecommendationSuppression(gateResult, symbolicDecision);
   
-  if (guardResult.suppression_prevented) {
-    // Upgrade the gate result to allow treatments
-    const products = (symbolicDecision?.actions_returned ?? [])
-      .filter(a => a.product_name)
-      .map(a => a.product_name!.toLowerCase());
-    
-    return {
-      ...gateResult,
-      gate_status: GateStatus.PASS,
-      gate_action: GateAction.ALLOW_TREATMENT,
-      treatments_allowed: true,
-      allowed_products: products.length > 0 ? products : gateResult.allowed_products,
-      response_mode: ResponseMode.TREATMENT,
-      reason: `Suppression guard: ${guardResult.rules_fired_count} rules fired with valid treatments - gate upgraded`,
-      criteria_results: {
-        ...gateResult.criteria_results,
-        symbolic_decision_valid: { 
-          passed: true, 
-          reason: `Suppression guard: ${guardResult.rules_fired_count} rules with treatments` 
-        }
-      }
-    };
+  // Detection is telemetry; never upgrade a denied or uncertain decision.
+  // Rule presence alone is not evidence of independent safety/authority success.
+  if (!guardResult.should_allow && guardResult.rules_fired_count > 0) {
+    console.warn('[SuppressionGuard] rules fired but treatment denied; original gate authority preserved');
   }
-  
+
   return gateResult;
 }
 
@@ -293,40 +277,13 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   console.log(`   Has Symptoms: ${hasSymptoms}`);
   console.log(`   Has Visual Ambiguity: ${hasVisualAmbiguity}`);
   
-  // GATE 1: EMERGENCY BYPASS CHECK
-  
+  // Emergency is a priority signal, NOT authorization to prescribe.
+  // Continue through all existing authority, clarification, evidence and safety
+  // gates; an urgent response can still safely escalate without treatment.
   if (input.has_emergency_indicators) {
-    console.log(`   🚨 EMERGENCY BYPASS - Fast-tracking`);
-    
-    return {
-      gate_status: GateStatus.EMERGENCY_BYPASS,
-      gate_action: GateAction.ALLOW_TREATMENT,
-      treatments_allowed: true,
-      allowed_actions: ['TREATMENT', 'URGENT_ACTION', 'EXPERT_ESCALATION'],
-      blocked_actions: [],
-      allowed_products: extractProducts(symbolic_decision),
-      allowed_dosages: extractDosages(symbolic_decision),
-      response_mode: ResponseMode.TREATMENT,
-      authority_decision,
-      criteria_results: {
-        authority_resolved: { passed: true, reason: 'Emergency bypass' },
-        crop_identified: { passed: true, reason: 'Emergency bypass' },
-        stage_determined: { passed: true, reason: 'Emergency bypass' },
-        symptom_specific: { passed: true, reason: 'Emergency bypass' },
-        symbolic_decision_valid: { passed: true, reason: 'Emergency bypass' }
-      },
-      missing_criteria: [],
-      reason: 'Emergency severity detected - fast-track enabled',
-      confidence_level: 'MEDIUM',
-      decision_confidence: 80,
-      has_symptoms: hasSymptoms,
-      has_visual_ambiguity: false,
-      clarification_options: [],
-      gate_version: UNIFIED_GATE_VERSION,
-      checked_at: checkedAt
-    };
+    console.warn('[UnifiedGate] urgent signal detected; ordinary treatment authorization remains mandatory');
   }
-  
+
   // GATE 2: AUTHORITY VALIDATION (FROM RESOLVER)
   
   const authorityResolved = authority_decision.authority !== DecisionAuthority.NONE;

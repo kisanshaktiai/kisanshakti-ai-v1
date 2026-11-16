@@ -39,8 +39,9 @@
 //   No threshold, cadence, crop or language word lives here.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
+import { isNoIrrigationDecision, canAdvanceNutrient, irrigationDeferralWithinStage, pickNutrientDecision, evidenceFreshness } from "./decision-contract.ts";
 
-export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.2.0";
+export const DECISION_APPLICATION_VERSION = "schedule-reconciler/decision-application@2.3.0";
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
 const addDays = (dateIso: string, n: number) => iso(new Date(new Date(dateIso).getTime() + n * 86400000));
@@ -49,7 +50,7 @@ const norm = (s: unknown) => String(s ?? "").trim().toUpperCase();
 /** Decision keys emitted by derive_farm_decisions (DB), matched by prefix. */
 const KEY = {
   IRRIGATE: "water:irrigate",
-  NO_IRRIGATION: "water:no_irrigation",
+  NO_IRRIGATION: "water:ok",
   NO_WATER_DATA: "water:no_data",
   NO_SPRAY: "info:ENV_NO_SPRAY_TODAY",
   SPRAY_OK: "info:ENV_SPRAY_WINDOW_GOOD",
@@ -123,6 +124,17 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   const snapshot = fs ? { ...fs } as Record<string, unknown> : null;
   const decisionEngine = (fs?.state_version as Record<string, unknown> | null)?.engine ? String((fs!.state_version as Record<string, unknown>).engine) : null;
 
+  // 1b. 2026-11-12 — verified nutrient producer (DB). The only source of APPLY_NUTRIENT_VERIFIED:
+  //     a farmer/field reading below a typed, expert-approved threshold. Absent function (migration
+  //     not yet applied) or any error is non-fatal and simply produces no verified decision.
+  let nutrientProducer: Record<string, unknown> = { called: false };
+  if (!input.dryRun && fs?.state_date === input.todayIso) {
+    const { data: produced, error: producerError } = await supabase.rpc("derive_verified_nutrient_decisions", { p_land_id: input.landId, p_date: input.todayIso });
+    nutrientProducer = producerError ? { called: true, ok: false, error: producerError.code ?? "error" } : { called: true, ok: true, ...(produced as Record<string, unknown> ?? {}) };
+  }
+  if (snapshot) snapshot.nutrient_producer = nutrientProducer;
+  const freshness = evidenceFreshness(snapshot, input.todayIso);
+
   // 2. Today's decisions (DB engine) — the latest decision day on or before today; only live statuses.
   const { data: dayRow } = await supabase.from("farm_decision").select("decision_date").eq("land_id", input.landId).lte("decision_date", input.todayIso).order("decision_date", { ascending: false }).limit(1).maybeSingle();
   if (!dayRow?.decision_date) {
@@ -186,7 +198,7 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     if (!input.dryRun) await supabase.from("farm_decision").update({ schedule_id: input.scheduleId, task_id: t.id, updated_at: new Date().toISOString() }).eq("id", d.id).is("task_id", null);
     counters.linked += 1;
   };
-  const evidenceOf = (d: DecisionRow) => ({ decision_id: d.id, decision_key: d.decision_key, decision_status: d.status, decision_priority: d.priority, rule_id: d.rule_id, source: d.source, decision_date: d.decision_date, evidence: d.evidence ?? null, state_date: fs?.state_date ?? null, stage: fs?.stage_code ?? null, stage_source: fs?.stage_source ?? null, decision_engine: decisionEngine });
+  const evidenceOf = (d: DecisionRow) => ({ decision_id: d.id, decision_key: d.decision_key, decision_status: d.status, decision_priority: d.priority, rule_id: d.rule_id, source: d.source, decision_date: d.decision_date, evidence: d.evidence ?? null, state_date: fs?.state_date ?? null, stage: fs?.stage_code ?? null, stage_source: fs?.stage_source ?? null, decision_engine: decisionEngine, evidence_freshness: freshness });
   const record = (t: TaskRow, change_type: string, old_value: unknown, new_value: unknown, reason: string, d: DecisionRow) =>
     adjustments.push({ schedule_id: input.scheduleId, task_id: t.id, change_type, old_value, new_value, reason, evidence: evidenceOf(d), engine_version: input.engineVersion });
   const state = async (t: TaskRow, d: DecisionRow | null, decisionState: string, outcome: string, from: unknown, to: unknown, reason: string, extraPatch: Record<string, unknown> = {}) => {
@@ -203,7 +215,8 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
   let stressHandledByIrrigation = false;
   const irrigation = tasks.filter((t) => t.task_type === "irrigation" && !t.is_pinned);
   const irrigate = byKey(KEY.IRRIGATE).find((d) => d.status === "DUE") ?? null;
-  const noIrrigation = byKey(KEY.NO_IRRIGATION)[0] ?? null;
+  // Compatibility with historic decisions recorded before the contract fix.
+  const noIrrigation = decisions.find(d => isNoIrrigationDecision(d.decision_key)) ?? null;
   const noWaterData = byKey(KEY.NO_WATER_DATA)[0] ?? null;
 
   if (noIrrigation) {
@@ -215,7 +228,19 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
         await state(task, noIrrigation, "BLOCKED", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Field-state decision: no irrigation needed; task has no declared cadence so it is not moved");
         continue;
       }
-      const next = addDays(task.task_date, step);
+      // An overdue stage-level recurrence is a standing plan, not a backlog of
+      // missed irrigation events. Schedule from today rather than replaying each
+      // unconfirmed historical interval one day at a time.
+      const next = addDays(task.task_date > input.todayIso ? task.task_date : input.todayIso, step);
+      const end = Number(rec?.window_end);
+      if (Number.isFinite(end) && todayDas != null && todayDas > end) {
+        await state(task, noIrrigation, "INFO", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Irrigation stage window has ended; no new application scheduled");
+        continue;
+      }
+      if (Number.isFinite(end) && !irrigationDeferralWithinStage(next, input.sowingDate, end)) {
+        await state(task, noIrrigation, "BLOCKED", "STATE_ONLY", { task_date: task.task_date }, { task_date: task.task_date }, "Next irrigation cadence would exceed the approved stage window; date not moved");
+        continue;
+      }
       if (await state(task, noIrrigation, "BLOCKED", "DEFER", { task_date: task.task_date }, { task_date: next }, "Field-state decision: no irrigation needed today — deferred by the task's declared cadence", { task_date: next, projected_date: next, original_date: task.original_date ?? task.task_date, auto_rescheduled: true, adjustment_reason: "decision_no_irrigation", resources: { ...(task.resources ?? {}), dynamic: { ...dyn(task), deferred_on: decisionDay, deferred_by: noIrrigation.id } } })) {
         record(task, "DEFER", { task_date: task.task_date }, { task_date: next }, "no irrigation needed per farm_decision " + String(noIrrigation.decision_key), noIrrigation);
         counters.deferred += 1;
@@ -253,10 +278,19 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
     for (const task of dueApplications) {
       if (stampedToday(task, "last_deferred_on")) continue;
       const next = addDays(input.todayIso, 1);
-      const stageEndDas = input.stageRow && task.anchor_stage && input.stageRow.stage_code && norm(task.anchor_stage) === norm(input.stageRow.stage_code) ? input.stageRow.das_max : null;
-      const stageEndIso = stageEndDas != null && input.sowingDate ? addDays(String(input.sowingDate).slice(0, 10), stageEndDas) : null;
+      // The task's own DB-authored window is more authoritative than the
+      // currently resolved stage. Never defer a plant-protection application
+      // beyond an approved window, and never guess that a missing window is
+      // unlimited permission to postpone.
+      const ownWindow = (task.resources?.window ?? null) as Record<string, unknown> | null;
+      const ownEnd = ownWindow?.to_das == null ? null : Number(ownWindow.to_das);
+      const observedStageEnd = input.stageRow && task.anchor_stage && input.stageRow.stage_code &&
+        norm(task.anchor_stage) === norm(input.stageRow.stage_code) ? input.stageRow.das_max : null;
+      const stageEndDas = ownEnd != null && Number.isFinite(ownEnd) ? ownEnd : observedStageEnd;
+      const stageEndIso = stageEndDas != null && input.sowingDate
+        ? addDays(String(input.sowingDate).slice(0, 10), stageEndDas) : null;
       const prior = Number(dyn(task).application_deferrals ?? 0);
-      if (stageEndIso && next > stageEndIso) {
+      if (!stageEndIso || next > stageEndIso) {
         if (await state(task, noSpray, "BLOCKED", "FLAG", { task_date: task.task_date }, { task_date: task.task_date, priority: "high" }, "No usable application window today and the stage window ends before tomorrow — kept today, flagged", { priority: task.priority && PRIORITY_RANK[task.priority] >= PRIORITY_RANK.high ? task.priority : "high", resources: { ...(task.resources ?? {}), dynamic: { ...dyn(task), field_verdict: "application_window_exhausted", as_of: decisionDay } } })) {
           record(task, "FLAG", { task_date: task.task_date }, { field_verdict: "application_window_exhausted" }, "no spray window and stage window exhausted per farm_decision " + String(noSpray.decision_key), noSpray);
           counters.flagged += 1;
@@ -285,8 +319,9 @@ export async function applyFieldDecisions(supabase: SupabaseClient, input: Field
       }
     }
   } else {
-    const deficiency = byKey(KEY.NUTRIENT).find((d) => d.status === "DUE" || d.status === "WATCH") ?? null;
-    if (deficiency) {
+    const deficiency = pickNutrientDecision(byKey(KEY.NUTRIENT));
+    if (deficiency && canAdvanceNutrient(deficiency)) {
+      // WATCH/OBSERVE_BEFORE_INPUT never authorizes a fertilizer application.
       // The next nutrition card whose OWN window has opened comes forward; the quantity is untouched.
       const next = nutrition.find((t) => t.task_date > horizon) ?? null;
       if (next && !stampedToday(next, "advanced_on") && !stampedToday(next, "deferred_on")) {

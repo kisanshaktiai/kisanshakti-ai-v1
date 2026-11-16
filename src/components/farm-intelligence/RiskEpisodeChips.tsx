@@ -132,7 +132,7 @@ function WhySheet({ landId, episode }: { landId: string; episode: RiskEpisode })
             }}
             className="flex w-full items-center justify-between rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-left"
           >
-            <span className="text-sm text-foreground">{p.display_name}</span>
+            <span className="text-sm text-foreground">{t(`farmIntel.properties.${p.property}`, { defaultValue: p.display_name })}</span>
             <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               {p.value != null ? `${p.value.toFixed(1)}${p.unit ? ` ${p.unit}` : ''}` : '—'}
               <ChevronRight className="h-4 w-4" />
@@ -152,10 +152,11 @@ function WhySheet({ landId, episode }: { landId: string; episode: RiskEpisode })
 }
 
 function LineageTree({ node, depth }: { node: LineageNode; depth: number }) {
+  const { t } = useTranslation();
   return (
     <div style={{ paddingLeft: depth * 12 }} className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-foreground">{node.display_name}</span>
+        <span className="text-xs text-foreground">{t(`farmIntel.properties.${node.property}`, { defaultValue: node.display_name })}</span>
         <span className="text-xs text-muted-foreground">
           {node.value != null ? `${node.value.toFixed(2)}${node.unit ? ` ${node.unit}` : ''}` : '—'}
         </span>

@@ -696,10 +696,12 @@ function hypEvalMemoKey(input: HypothesisEvaluationInput): string {
   const gt = (input as any).graph_truth ?? null;
   return [
     String(input.trace_id ?? ''),
+    String(gt?.hash ?? ''),
     String(gt?.crop_code ?? input.crop_code ?? ''),
     String(gt?.biological_stage ?? input.growth_stage ?? ''),
     String(gt?.DAS ?? input.days_since_sowing ?? ''),
-    String((input as any).variety_id ?? ''),
+    String(gt?.GDD ?? ''),
+    String(gt?.variety_id ?? (input as any).variety_id ?? ''),
     [...(gt?.canonical_observations ?? input.known_observations ?? [])].map(String).sort().join(','),
   ].join('::').toLowerCase();
 }

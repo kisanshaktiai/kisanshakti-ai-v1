@@ -11,11 +11,15 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import { landsApi } from '@/services/landsApi';
+import { schedulesApi } from '@/services/schedulesApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/layout/EmptyState';
 import CropDateInput from '@/components/schedule/CropDateInput';
+import { VarietyMethodConsentDialog } from '@/components/schedule/VarietyMethodConsentDialog';
+import type { VarietyMethodConsent, VarietyMethodSuitability } from '@/hooks/useVarietyMethodSuitability';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import { ScheduleReviewDrafts, type ScheduleReviewDraft } from '@/components/schedule/ScheduleReviewDrafts';
 import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -42,7 +46,7 @@ interface Land {
   organic_carbon_percent?: number;
 }
 
-type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
+type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view' | 'review-view';
 
 export default function Schedule() {
   const { t } = useTranslation();
@@ -56,6 +60,23 @@ export default function Schedule() {
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
+  const [summaryTarget, setSummaryTarget] = useState<HTMLDivElement | null>(null);
+  const [reviewDrafts, setReviewDrafts] = useState<ScheduleReviewDraft[]>([]);
+  const [editingReviewDraft, setEditingReviewDraft] = useState<ScheduleReviewDraft | null>(null);
+  const [reviewLoadError, setReviewLoadError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setReviewDrafts([]); setReviewLoadError(false);
+    if (!selectedLand || !user?.id) return;
+    schedulesApi.fetchReviewDrafts(selectedLand.id).then(drafts => {
+      if (cancelled) return;
+      setReviewDrafts(drafts);
+    }).catch(() => {
+      if (!cancelled) setReviewLoadError(true);
+    });
+    return () => {cancelled = true;};
+  }, [selectedLand?.id,user?.id,tenant?.id]);
+  const [methodConsentPrompt, setMethodConsentPrompt] = useState<{ evidence: VarietyMethodSuitability[]; varietyName: string; methodLabel: string; retry: () => void } | null>(null);
   const [scheduleData, setScheduleData] = useState<{
     cropName: string;
     cropVariety: string;
@@ -106,6 +127,7 @@ export default function Schedule() {
   }, [fetchedLands]);
 
   const handleLandSelect = (land: Land) => {
+    setEditingReviewDraft(null);
     setSelectedLand(land);
     setFlowStep('crop-input');
   };
@@ -121,12 +143,13 @@ export default function Schedule() {
   const handleEditSchedule = (landId: string) => {
     const land = lands.find(l => l.id === landId);
     if (land) {
+      setEditingReviewDraft(null);
       setSelectedLand(land);
       setFlowStep('crop-input');
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, transplantDate?: Date | null, cropCycleSelection?: string | null, cultivationMethodSelection?: string | null, varietyMethodConsent?: VarietyMethodConsent | null, reviewDraftId?: string | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -177,14 +200,20 @@ export default function Schedule() {
         userLanguage: user?.language
       });
       
-      // Cultivation lane: transplanted when the farmer starts from ready-made plants
-      // or raises a nursery; otherwise direct-seeded. An explicit farmer/land selection wins.
-      const explicitCultivationMethod =
-        (selectedLand as unknown as { cultivation_method?: string })?.cultivation_method || null;
-      const cultivationMethod =
-        explicitCultivationMethod ||
-        (isReadyMadePlant || (nurseryDays || 0) > 0 ? 'transplanted' : 'direct_seeded');
-      const cropCycle = (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
+      // lands does not carry cultivation_method. This field is chosen by
+      // the farmer from the crop-specific reference catalogue at schedule creation.
+      const cultivationMethod = cultivationMethodSelection || null;
+      if (!cultivationMethod) {
+        resetRetries();
+        toast({
+          title: t('schedule.crop_input.cultivation_method_title', 'Crop establishment method'),
+          description: t('schedule.crop_input.cultivation_method_required',
+            'Choose how this crop was planted before generating a schedule.'),
+          variant: 'destructive',
+        });
+        return;
+      }
+      const cropCycle = cropCycleSelection || (selectedLand as unknown as { crop_cycle?: string })?.crop_cycle || null;
 
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
@@ -192,6 +221,7 @@ export default function Schedule() {
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
+          transplantDate: transplantDate ? format(transplantDate, 'yyyy-MM-dd') : null,
           isReadyMadePlant: isReadyMadePlant || false,
           nurseryDays: nurseryDays || 0,
           localizedCropName: localizedCropName || cropName,
@@ -205,6 +235,8 @@ export default function Schedule() {
           // NEW: Multi-crop and backdated consent support (array of intercrops)
           intercrops: intercrops || [],
           backdatedConsent: backdatedConsent || false,
+          ...(varietyMethodConsent ? { varietyMethodConsent } : {}),
+          ...((reviewDraftId || editingReviewDraft?.id) ? { reviewDraftId: reviewDraftId || editingReviewDraft?.id } : {}),
         },
         headers: {
           'x-tenant-id': tenant?.id || user?.tenantId || '',
@@ -218,7 +250,7 @@ export default function Schedule() {
       // Handle edge function errors
       if (response.error) {
         const context = (response.error as { context?: Response }).context;
-        let errorBody: { code?: string; error?: string } | null = null;
+        let errorBody: { code?: string; error?: string; options?: string[]; evidenceRows?: VarietyMethodSuitability[]; varietyName?: string; cultivationMethod?: string } | null = null;
 
         try {
           errorBody = context ? await context.clone().json() : null;
@@ -236,11 +268,88 @@ export default function Schedule() {
           return;
         }
 
+        // Server-side safety net: the variety record marks this method unsuitable and no
+        // consent was sent. Show the DB evidence and let the farmer decide.
+        if (errorBody?.code === 'VARIETY_METHOD_NOT_SUITABLE' && errorBody.evidenceRows?.length) {
+          resetRetries();
+          const evidence = errorBody.evidenceRows;
+          setMethodConsentPrompt({
+            evidence,
+            varietyName: errorBody.varietyName || cropVariety,
+            methodLabel: errorBody.cultivationMethod || cultivationMethodSelection || '',
+            retry: () => handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, { accepted: true, evidenceIds: evidence.map((r) => r.id) }),
+          });
+          setFlowStep('crop-input');
+          return;
+        }
+
+        if (errorBody?.code && [
+          'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
+          'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
+          'STAGE_COVERAGE_MISSING','VARIETY_METHOD_NOT_SUITABLE',
+          'VARIETY_UNRESOLVED','AGRONOMY_REVIEW_REQUIRED','CROP_SCIENTIFIC_RELEASE_BLOCKED',
+          'CROP_RELEASE_REGISTRY_UNAVAILABLE','REVIEW_DRAFT_SAVE_FAILED',
+          'AGRONOMY_SAFETY_VALIDATION_FAILED','SCHEDULE_VALIDATION_FAILED'
+        ].includes(errorBody.code)) {
+          resetRetries();
+          setFlowStep('crop-input');
+          toast({
+            title: t('schedule.main.agronomy_input_required', 'Crop details need review'),
+            description: errorBody.error || t('schedule.main.generation_failed'),
+            variant: 'destructive',
+          });
+          return;
+        }
         console.error('❌ [Schedule] Edge function error:', response.error);
         throw new Error(errorBody?.error || response.error.message || 'Edge function returned an error');
       }
 
       const { data } = response;
+
+      if (data?.code === 'VARIETY_METHOD_NOT_SUITABLE') {
+        resetRetries();
+        const evidence: VarietyMethodSuitability[] = data.evidenceRows || (data.evidence ? [data.evidence] : []);
+        setFlowStep('crop-input');
+        if (evidence.length) {
+          setMethodConsentPrompt({
+            evidence,
+            varietyName: data.varietyName || cropVariety,
+            methodLabel: data.cultivationMethod || cultivationMethodSelection || '',
+            retry: () => handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, { accepted: true, evidenceIds: evidence.map((r) => r.id) }),
+          });
+        }
+        return;
+      }
+
+      // A scientifically incomplete crop plan is an expected review outcome.
+      // HTTP 200 prevents Supabase FunctionsHttpError from blanking the page.
+      // Never retry automatically: without reviewed crop evidence, the result
+      // will remain the same, and no active crop schedule was persisted.
+      if (data?.code === 'AGRONOMY_REVIEW_REQUIRED') {
+        resetRetries();
+        if (data.draft?.id) {
+          setReviewDrafts(previous => [data.draft, ...previous.filter(d => d.id !== data.draft.id)]);
+          setFlowStep('review-view');
+          return;
+        }
+        setFlowStep('crop-input');
+        const blockers = Array.isArray(data.blockers) ? data.blockers as string[] : [];
+        const reason: Record<string, string> = {
+          SEED_RATE_DOCUMENTED_EVIDENCE_MISSING: 'Verified seed rate is missing for the selected variety and planting method.',
+          PLANTING_MATERIAL_RATE_SOURCE_MISSING: 'Verified planting-material quantity is missing for this establishment method.',
+          PROPAGATION_MATERIAL_UNRESOLVED: 'The crop establishment material needs expert verification.',
+          VARIETY_MATURITY_CLOCK_NOT_VERIFIED: 'The variety maturity period or its sowing/transplanting reference is not verified.',
+          BIOLOGICAL_HARVEST_PROGRAMME_INCOMPLETE: 'The crop-stage calendar has no complete biological harvest programme.',
+          REPEATED_PICKING_PROGRAMME_NOT_VERIFIED: 'This crop needs an expert-verified repeated-picking calendar.',
+        };
+        toast({
+          title: t('schedule.main.agronomy_input_required', 'Crop details need review'),
+          description: blockers.map(b => reason[b] || b.replace(/_/g, ' ').toLowerCase()).join(' ') ||
+            data.error || 'This crop schedule needs scientific review before activation.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       // LAND_NOT_AVAILABLE is an expected domain result returned over HTTP 200 so
       // Supabase does not promote it to a FunctionsHttpError/runtime failure.
@@ -265,7 +374,7 @@ export default function Schedule() {
           // Re-send every field the farmer entered — dropping nurseryDays / intercrops /
           // backdatedConsent / transplantDate would silently build a different schedule.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, varietyMethodConsent);
           }, 3000);
           return;
         }
@@ -279,6 +388,24 @@ export default function Schedule() {
         throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
       }
       
+      // Missing authoritative crop data cannot be repaired by retrying the LLM.
+      if (data?.code && [
+        'CULTIVATION_METHOD_REQUIRED','CULTIVATION_METHOD_UNRESOLVED',
+        'CROP_CYCLE_REQUIRED','INCOMPLETE_CROP_CYCLE_STAGE_GRAPH',
+        'STAGE_COVERAGE_MISSING','VARIETY_UNRESOLVED',
+        'AGRONOMY_REVIEW_REQUIRED','CROP_SCIENTIFIC_RELEASE_BLOCKED',
+        'CROP_RELEASE_REGISTRY_UNAVAILABLE','REVIEW_DRAFT_SAVE_FAILED',
+        'AGRONOMY_SAFETY_VALIDATION_FAILED'
+      ].includes(data.code)) {
+        resetRetries();
+        setFlowStep('crop-input');
+        toast({
+          title: t('schedule.main.agronomy_input_required', 'Crop details need review'),
+          description: data.error || t('schedule.main.generation_failed'),
+          variant: 'destructive',
+        });
+        return;
+      }
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
         if (retryCountRef.current < 2) {
@@ -290,7 +417,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds, with the farmer's full input.
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, varietyMethodConsent);
           }, 2000);
           return;
         }
@@ -298,8 +425,10 @@ export default function Schedule() {
         throw new Error(data?.error || 'Failed to generate schedule after multiple attempts');
       }
 
-      // Reset retry count on success
+      // Reset retry count on success; this specific review draft was resolved
+      // by a fully approved, atomically persisted schedule.
       resetRetries();
+      setEditingReviewDraft(null);
 
       // Farmer-language completion: the schedule is persisted as soon as its agronomy is ready;
       // tasks not yet in the farmer's language are finished by the same function (action=narrate).
@@ -380,7 +509,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               resetRetries();
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName, intercrops, backdatedConsent, transplantDate, cropCycleSelection, cultivationMethodSelection, varietyMethodConsent);
             }}
           >
             {t('common.try_again')}
@@ -397,7 +526,7 @@ export default function Schedule() {
     if (flowStep === 'crop-input') {
       setFlowStep('land-selection');
       setSelectedLand(null);
-    } else if (flowStep === 'schedule-view') {
+    } else if (flowStep === 'schedule-view' || flowStep === 'review-view') {
       setFlowStep('land-selection');
       setSelectedLand(null);
     }
@@ -445,7 +574,7 @@ export default function Schedule() {
           <Button variant="ghost" size="icon" onClick={() => navigate('/app')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-xl font-bold">{t('schedule.main.ai_crop_schedule')}</h1>
+          <h1 className="text-xl font-bold">{t('schedule.title')}</h1>
         </div>
         <EmptyState
           icon={Calendar}
@@ -459,7 +588,7 @@ export default function Schedule() {
   }
 
   const STEPS: FlowStep[] = ['land-selection', 'crop-input', 'schedule-view'];
-  const currentStepIndex = STEPS.indexOf(flowStep);
+  const currentStepIndex = flowStep === 'review-view' ? 2 : STEPS.indexOf(flowStep);
 
   const stickyHeader = (
     <div className="px-3 py-2">
@@ -469,12 +598,12 @@ export default function Schedule() {
             variant="ghost"
             size="icon"
             onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all shrink-0"
+            className="h-8 w-8 rounded-lg shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-base font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent truncate">
-            {t('schedule.main.ai_crop_schedule')}
+          <h1 className="text-sm font-semibold text-foreground truncate">
+            {t('schedule.title')}
           </h1>
         </div>
 
@@ -498,7 +627,7 @@ export default function Schedule() {
           )}
 
           {/* Compact step indicator dots only */}
-          <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
+          {flowStep !== 'schedule-view' && <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
             {STEPS.map((step, index) => (
               <div
                 key={step}
@@ -511,9 +640,10 @@ export default function Schedule() {
                 }`}
               />
             ))}
-          </div>
+          </div>}
         </div>
       </div>
+      {flowStep === 'schedule-view' && <div ref={setSummaryTarget} />}
     </div>
   );
 
@@ -537,15 +667,57 @@ export default function Schedule() {
             <CropDateInput
               land={selectedLand}
               onSubmit={handleCropDateSubmit}
+              initialDraft={editingReviewDraft}
               onBack={handleBack}
               loading={generating}
             />
           </div>
         )}
 
+        {(flowStep === 'crop-input' || flowStep === 'review-view') && selectedLand && <>
+          {reviewLoadError && <p role="alert" className="p-4 text-sm text-destructive">{t('schedule.review.load_error')}</p>}
+          <ScheduleReviewDrafts drafts={reviewDrafts} busy={generating}
+            onEdit={draft => { setEditingReviewDraft(draft); setFlowStep('crop-input'); }}
+            onRecheck={draft => {
+              const i = draft.crop_inputs;
+              const sow = typeof i.sowingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.sowingDate)
+                ? new Date(`${i.sowingDate}T00:00:00`) : null;
+              const policy = typeof i.farmingType === 'string' && ['organic_only','organic_fertilizer','fertilizer_pesticide'].includes(i.farmingType)
+                ? i.farmingType : null;
+              const method = typeof i.cultivationMethod === 'string' ? i.cultivationMethod : '';
+              // Never invent a farming policy, method, or sowing clock on recheck.
+              if (!sow || Number.isNaN(sow.getTime()) || !policy || !method) {
+                setEditingReviewDraft(draft);
+                setFlowStep('crop-input');
+                return;
+              }
+              const transplant = typeof i.transplantDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.transplantDate)
+                ? new Date(`${i.transplantDate}T00:00:00`) : null;
+              const storedIntercrops = Array.isArray(i.intercrops) ? i.intercrops : [];
+              setEditingReviewDraft(draft);
+              handleCropDateSubmit(String(i.cropName || draft.crop_name), String(i.cropVariety || ''), sow,
+                i.isReadyMadePlant === true, policy, Number(i.nurseryDays || 0),
+                typeof i.localizedCropName === 'string' ? i.localizedCropName : '',
+                storedIntercrops, i.backdatedConsent === true, transplant,
+                typeof i.cropCycle === 'string' ? i.cropCycle : null,
+                method, null, draft.id);
+            }} />
+        </>}
+
+        <VarietyMethodConsentDialog
+          open={!!methodConsentPrompt}
+          varietyName={methodConsentPrompt?.varietyName || ''}
+          methodLabel={methodConsentPrompt?.methodLabel || ''}
+          evidence={methodConsentPrompt?.evidence || []}
+          recommendedLabels={[]}
+          onCancel={() => setMethodConsentPrompt(null)}
+          onAccept={() => { const retry = methodConsentPrompt?.retry; setMethodConsentPrompt(null); retry?.(); }}
+        />
+
         {flowStep === 'schedule-view' && selectedLand && (
           <div className="animate-slide-in-right">
             <CropScheduleView
+              summaryTarget={summaryTarget}
               landId={selectedLand.id}
               landName={selectedLand.name}
               currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
