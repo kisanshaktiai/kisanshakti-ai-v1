@@ -22,7 +22,7 @@ async function dispatchSoilJob(): Promise<boolean> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ ref: 'main' }),
-      signal: AbortSignal.timeout(10000),
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(10000) : undefined,
     });
     if (!response.ok) console.warn('Soil GitHub dispatch unavailable', response.status);
     return response.status === 204;
