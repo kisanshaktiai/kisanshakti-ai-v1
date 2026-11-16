@@ -72,3 +72,16 @@ jobs:
           psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/soil/bootstrap.sql
           psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261116085603_soil_fetch_jobs.sql
       - run: PYTHONPATH=engine python -m pytest -q tests/soil/test_worker_database.py
+  edge-typecheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check soil route and required chat graph
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/lands-api/index.ts
+          cd supabase/functions/ai-agriculture-chat
+          deno check --node-modules-dir=auto index.ts
