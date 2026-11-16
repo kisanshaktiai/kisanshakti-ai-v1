@@ -157,6 +157,17 @@ class LandsApiService {
     }
   }
 
+  /** Authenticated saved report and durable SoilGrids job contract. POST is never auto-retried. */
+  async soil(landId: string, start = false): Promise<import('./soil/soilReport').SoilState> {
+    const headers = await this.getHeaders();
+    const response = await fetch(`${LANDS_API_URL}?action=soil&land_id=${encodeURIComponent(landId)}`, {
+      method: start ? 'POST' : 'GET', headers, signal: AbortSignal.timeout(30000),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.code || 'SOIL_READ_FAILED');
+    return body;
+  }
+
   /** Satellite rows for one owned land, read server-side (browser row rules refuse them). */
   async fetchSatellite(landId: string): Promise<any> {
     const headers = await this.getHeaders();

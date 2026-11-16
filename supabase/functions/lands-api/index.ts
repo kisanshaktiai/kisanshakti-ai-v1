@@ -1,6 +1,7 @@
 // CHANGE LOG
 // 2026-11-11 12:50 UTC — Retry transient owned-land reads once with a fresh query; retain all identity filters.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { handleSoil } from './soil.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { retryDatabaseRead } from '../_shared/readResilience.ts';
@@ -23,6 +24,8 @@ serve(async (req) => {
     if (guard instanceof Response) return guard;
 
     const { tenantId, farmerId, sessionToken, supabase } = guard;
+
+    if (new URL(req.url).searchParams.get('action') === 'soil') return await handleSoil(req, guard);
 
     // Postgres statement/lock timeouts (57014 / 55P03) must NOT surface as a
     // generic 400 — the client treats that as a hard failure and blanks the
