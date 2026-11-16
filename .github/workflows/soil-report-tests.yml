@@ -9,7 +9,7 @@ on:
       - 'src/components/soil/**'
       - 'src/i18n/locales/*/soil.json'
       - 'supabase/functions/lands-api/**'
-      - 'supabase/migrations/*soil_fetch_jobs.sql'
+      - 'supabase/migrations/*soil*.sql'
       - 'tests/soil/**'
       - '.github/workflows/soil-report-tests.yml'
 permissions:
@@ -71,6 +71,7 @@ jobs:
         run: |
           psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/soil/bootstrap.sql
           psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261116085603_soil_fetch_jobs.sql
+          psql "$SOIL_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261116230500_soil_github_actions_queue.sql
       - run: PYTHONPATH=engine python -m pytest -q tests/soil/test_worker_database.py
   edge-typecheck:
     runs-on: ubuntu-24.04

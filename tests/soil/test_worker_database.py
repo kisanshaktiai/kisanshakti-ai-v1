@@ -100,3 +100,14 @@ def test_public_roles_cannot_mutate_or_read_queue(db):
         assert not sql(db,"select has_function_privilege(%s,'soil_complete(uuid,uuid,jsonb)','EXECUTE')",(role,))
         assert not sql(db,"select has_table_privilege(%s,'soil_fetch_jobs','SELECT')",(role,))
         assert not sql(db,"select has_table_privilege(%s,'soil_parcel_reports','INSERT')",(role,))
+
+
+def test_enqueue_without_worker_heartbeat(db):
+    """GitHub-hosted runners are ephemeral: queuing must not depend on active workers."""
+    ids=setup(db)
+    sql(db, 'delete from soil_engine_workers')
+    result=enqueue(db, ids)
+    assert result['status']=='queued'
+    job=claim(db, result['job_id'])
+    assert process_job(Adapter(db), job, fixture_fetch)
+    assert sql(db, 'select count(*) from soil_parcel_reports where land_id=%s',(ids[0],))==1
