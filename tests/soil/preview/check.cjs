@@ -15,6 +15,8 @@ const { chromium } = require('playwright');
       if (await page.getByRole('button', {name:'15-30 cm',exact:true}).getAttribute('aria-pressed') !== 'true') throw new Error('Depth selection failed');
     }
     await page.screenshot({ path: 'soil-' + name + '.png', fullPage: true });
+    // Synthetic fixture only: a compact image lets code review inspect the mobile layout.
+    if (name === 'mobile') console.log('SOIL_PREVIEW_JPEG:' + (await page.screenshot({type:'jpeg',quality:40,fullPage:true})).toString('base64'));
   }
   await browser.close();
   if (errors.length) throw new Error(errors.join('\n'));

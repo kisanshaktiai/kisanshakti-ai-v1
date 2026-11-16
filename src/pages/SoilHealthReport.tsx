@@ -44,7 +44,7 @@ export default function SoilHealthReport() {
     gcTime: 0,
   });
   const state = authenticated ? report.data : null;
-  const data = state?.legacy ? {...state.legacy, lands:state.land, user_profiles:state.profile} : null;
+  const data = state?.legacy && (!state.model || state.legacy.source !== 'soilgrid') ? {...state.legacy, lands:state.land, user_profiles:state.profile} : null;
   const fetchSoil = useMutation({
     mutationFn: () => loadSoilState(id!, farmerId!, tenantId!, true),
     onSuccess: () => report.refetch(),
@@ -94,7 +94,7 @@ export default function SoilHealthReport() {
         heightLeft -= pdfHeight;
       }
       
-      pdf.save(`soil-health-report-${data.lands?.name || 'report'}.pdf`);
+      pdf.save(`soil-health-report-${state?.land.name || 'report'}.pdf`);
       toast({ title: 'Success', description: 'PDF downloaded successfully' });
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to generate PDF', variant: 'destructive' });
@@ -120,7 +120,7 @@ export default function SoilHealthReport() {
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `soil-health-report-${data.lands?.name || 'report'}.jpg`;
+          link.download = `soil-health-report-${state?.land.name || 'report'}.jpg`;
           link.click();
           URL.revokeObjectURL(url);
           toast({ title: 'Success', description: 'Image downloaded successfully' });
@@ -146,7 +146,7 @@ export default function SoilHealthReport() {
           const file = new File([blob], 'soil-report.jpg', { type: 'image/jpeg' });
           await navigator.share({
             title: 'Soil Health Report',
-            text: `Soil Health Report for ${data.lands?.name}`,
+            text: `Soil Health Report for ${state?.land.name}`,
             files: [file]
           });
         } else {
@@ -168,7 +168,10 @@ export default function SoilHealthReport() {
   }
 
   if (state && !data) return <main className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
-    <Button variant="outline" onClick={backToLand}>{t('soil.backToLand')}</Button>{panel}
+    {state.model ? <SoilReportHeader landName={state.land.name} exporting={exporting} onBack={backToLand}
+      onDownloadPDF={downloadAsPDF} onDownloadImage={downloadAsImage} onShare={shareReport}/> :
+      <Button variant="outline" onClick={backToLand}>{t('soil.backToLand')}</Button>}
+    <div ref={reportRef}>{panel}</div>
   </main>;
 
   if (!data) {
@@ -196,7 +199,7 @@ export default function SoilHealthReport() {
   return (
     <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20">
       <SoilReportHeader
-        landName={data.lands?.name}
+        landName={state?.land.name}
         exporting={exporting}
         onBack={backToLand}
         onDownloadPDF={downloadAsPDF}
@@ -213,7 +216,7 @@ export default function SoilHealthReport() {
         <SoilReportBanner
           farmerName={data.user_profiles?.full_name || user?.fullName || user?.name}
           farmerCode={data.user_profiles?.farmer_code || user?.farmerCode}
-          landName={data.lands?.name}
+          landName={state?.land.name}
           fertilityClass={data.fertility_class}
           testDate={data.test_date}
           fieldArea={data.field_area_ha}
