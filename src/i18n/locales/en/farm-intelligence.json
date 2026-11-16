@@ -44,7 +44,10 @@
         "peak": "Peak",
         "declining": "Easing"
       },
-      "codes": {}
+      "codes": {
+        "WATER_DEFICIT": "Water shortage",
+        "DISEASE": "Disease risk"
+      }
     },
     "timeline": {
       "title": "Rain and water demand",
@@ -69,6 +72,16 @@
       "qc": "QC",
       "status": "Status",
       "version": "Version"
+    },
+    "properties": {
+      "AIR_TEMP": "Air temperature",
+      "AIR_TEMP_MAX": "Maximum temperature",
+      "AIR_TEMP_MIN": "Minimum temperature",
+      "NDVI": "Crop greenness (NDVI)",
+      "RAIN": "Rainfall",
+      "RAIN_24H": "Rainfall in last 24 hours",
+      "RAIN_PROB": "Chance of rain",
+      "RH": "Air humidity"
     }
   }
 }

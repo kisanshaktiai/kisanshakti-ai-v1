@@ -27,7 +27,7 @@ export default function SoilHealthReport() {
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
   
-  const { t } = useTranslation('soil');
+  const { t } = useTranslation();
   const { session, user, isLoading: authLoading } = useAuthStore();
   const farmerId = session?.farmerId;
   const tenantId = session?.tenantId;

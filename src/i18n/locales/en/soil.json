@@ -86,6 +86,13 @@
     "sketchHelp": "Sampling sequence sketch, not a walking route or boundary map.",
     "nutrientNotice": "Total nitrogen is not plant-available nitrogen. Available phosphorus and potassium require a suitable soil test.",
     "retrieved": "Retrieved",
-    "savedReport": "Your existing soil record"
+    "savedReport": "Your existing soil record",
+    "sources": {
+      "lab_test": "Lab test",
+      "manual": "Entered by you",
+      "soilgrid": "Satellite estimate",
+      "device": "Soil device",
+      "sensor": "Soil device"
+    }
   }
 }

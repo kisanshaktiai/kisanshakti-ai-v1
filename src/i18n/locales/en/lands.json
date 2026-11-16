@@ -348,7 +348,7 @@
       "nitrogen": "Nitrogen",
       "phosphorus": "Phosphorus",
       "potassium": "Potassium",
-      "not_tested": "Not Tested",
+      "not_tested": "Not tested",
       "kg_ha": "kg/ha",
       "last_soil_test": "Last soil test conducted on {{date}}",
       "activity_log": "Activity Log",
@@ -393,7 +393,13 @@
         "success_message": "Land deleted successfully",
         "error_title": "Error",
         "error_message": "Failed to delete land"
-      }
+      },
+      "add_soil_test": "Add soil test",
+      "open_soil_report": "Open soil report",
+      "soil_ai_title": "AI Soil Report",
+      "soil_ai_sub": "Lab test, satellite estimate or soil device — every value shows its source.",
+      "measured_count": "{{count}} of {{total}} values measured",
+      "needs_test": "Needs test"
     },
     "crop_management": {
       "title": "Manage Crops - {{name}}",
@@ -519,7 +525,18 @@
     },
     "quota_title": "Land limit reached",
     "quota_body": "You've used {{used}}/{{limit}} lands on the {{plan}} plan. Upgrade to add more.",
-    "quota_body_short": "You have used {{used}}/{{limit}} lands. Upgrade to add more."
+    "quota_body_short": "You have used {{used}}/{{limit}} lands. Upgrade to add more.",
+    "irrigation_sources": {
+      "river": "River",
+      "well": "Well",
+      "borewell": "Borewell",
+      "canal": "Canal",
+      "rainfed": "Rainfed",
+      "drip": "Drip",
+      "sprinkler": "Sprinkler",
+      "tank": "Tank",
+      "pond": "Pond"
+    }
   },
   "__qa": {
     "voice_examples_en": [

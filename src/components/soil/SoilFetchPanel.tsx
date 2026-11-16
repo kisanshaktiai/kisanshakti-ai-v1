@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { soilNumber, type SoilState } from '@/services/soil/soilReport';
 
 export function SoilFetchPanel({state,requesting,error,onFetch}:{state:SoilState;requesting:boolean;error:string|null;onFetch:()=>void}) {
-  const {t,i18n}=useTranslation('soil');
+  const {t,i18n}=useTranslation();
   const [depth,setDepth]=useState('0-5cm');
   const {model,job}=state;
   const active=job?.status==='queued'||job?.status==='running';
