@@ -1,67 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ token: 'verified-token', ready: vi.fn(), from: vi.fn(), client: vi.fn() }));
-vi.mock('@/integrations/supabase/client', () => ({
-  getSessionToken: () => mocks.token,
-  waitForHeaders: mocks.ready,
-  supabaseWithAuth: mocks.client,
-}));
-import { loadSoilReport, soilNumber } from './soilReport';
-const landId = '00000000-0000-4000-8000-000000000001';
-function query(result: unknown) {
-  const q = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn().mockResolvedValue(result) };
-  for (const key of ['select', 'eq', 'order', 'limit'] as const) q[key].mockReturnValue(q);
-  return q;
-}
-beforeEach(() => { vi.clearAllMocks(); mocks.token = 'verified-token'; mocks.ready.mockResolvedValue(undefined); mocks.client.mockReturnValue({ from: mocks.from }); });
-describe('soil report reads', () => {
-  it('waits for headers, validates ownership, and scopes every report read', async () => {
-    const land = query({ data: { id: landId, name: 'Test land' }, error: null });
-    const soil = query({ data: { id: 'report', ph_level: 6.8 }, error: null });
-    const profile = query({ data: null, error: { code: '42501' } });
-    mocks.from.mockReturnValueOnce(land).mockReturnValueOnce(soil).mockReturnValueOnce(profile);
-    const report = await loadSoilReport(landId, 'farmer', 'tenant');
-    expect(mocks.ready).toHaveBeenCalledOnce();
-    expect(mocks.client).toHaveBeenCalledWith('farmer', 'tenant');
-    for (const q of [land, soil]) {
-      expect(q.eq).toHaveBeenCalledWith('farmer_id', 'farmer');
-      expect(q.eq).toHaveBeenCalledWith('tenant_id', 'tenant');
-    }
-    expect(soil.eq).toHaveBeenCalledWith('land_id', landId);
-    expect(soil.order).toHaveBeenCalledWith('test_date', { ascending: false, nullsFirst: false });
-    expect(report?.lands.name).toBe('Test land');
-    expect(report?.user_profiles).toBeNull();
-  });
-  it('returns an empty result without treating it as an exception', async () => {
-    mocks.from.mockReturnValueOnce(query({ data: { name: 'Test' } })).mockReturnValueOnce(query({ data: null, error: null }));
-    expect(await loadSoilReport(landId, 'farmer', 'tenant')).toBeNull();
-    expect(mocks.from).toHaveBeenCalledTimes(2);
-  });
-  it('does not read reports for inaccessible land', async () => {
-    mocks.from.mockReturnValue(query({ data: null, error: null }));
-    await expect(loadSoilReport(landId, 'farmer', 'tenant')).rejects.toThrow('LAND_UNAVAILABLE');
-    expect(mocks.from).toHaveBeenCalledTimes(1);
-  });
-  it('preserves database failures as errors rather than empty results', async () => {
-    mocks.from.mockReturnValue(query({ data: null, error: { code: '42501' } }));
-    await expect(loadSoilReport(landId, 'farmer', 'tenant')).rejects.toEqual({ code: '42501' });
-  });
-  it('does not query without a verified session', async () => {
-    mocks.token = '';
-    await expect(loadSoilReport(landId, 'farmer', 'tenant')).rejects.toThrow('AUTH_REQUIRED');
-    expect(mocks.from).not.toHaveBeenCalled();
-  });
-  it('rejects an invalid land identifier before querying', async () => {
-    await expect(loadSoilReport('undefined', 'farmer', 'tenant')).rejects.toThrow('INVALID_LAND');
-    expect(mocks.from).not.toHaveBeenCalled();
-  });
-  it('discards results when the session changes during a request', async () => {
-    const land = query({ data: { name: 'Test' } });
-    land.maybeSingle.mockImplementation(async () => { mocks.token = 'other-session'; return { data: { name: 'Test' } }; });
-    mocks.from.mockReturnValue(land);
-    await expect(loadSoilReport(landId, 'farmer', 'tenant')).rejects.toThrow('AUTH_REQUIRED');
-    expect(mocks.from).toHaveBeenCalledTimes(1);
-  });
-  it.each([[null, null], [undefined, null], ['', null], ['bad', null], [Infinity, null], ['6.8', 6.8], [0, 0]])('formats %s safely', (input, expected) => {
-    expect(soilNumber(input)).toBe(expected);
-  });
-});
+import { beforeEach, expect, it, vi } from 'vitest';
+const m=vi.hoisted(()=>({token:'token',session:{farmerId:'farmer',tenantId:'tenant'},read:vi.fn(),ready:vi.fn()}));
+vi.mock('@/integrations/supabase/client',()=>({getSessionToken:()=>m.token,waitForHeaders:m.ready}));
+vi.mock('@/services/landsApi',()=>({landsApi:{soil:m.read}}));
+vi.mock('@/stores/authStore',()=>({useAuthStore:{getState:()=>({session:m.session})}}));
+import {loadSoilState,soilNumber} from './soilReport';
+const id='00000000-0000-4000-8000-000000000001';
+beforeEach(()=>{vi.clearAllMocks();m.token='token';m.session={farmerId:'farmer',tenantId:'tenant'};m.ready.mockResolvedValue(undefined);m.read.mockResolvedValue({legacy:null,model:null,job:null});});
+it('reads through the authenticated Edge service',async()=>{await loadSoilState(id,'farmer','tenant');expect(m.read).toHaveBeenCalledWith(id,false);});
+it('starts a job only when explicitly requested',async()=>{await loadSoilState(id,'farmer','tenant',true);expect(m.read).toHaveBeenCalledWith(id,true);expect(m.read).toHaveBeenCalledTimes(1);});
+it('rejects malformed land IDs',async()=>{await expect(loadSoilState('undefined','farmer','tenant')).rejects.toThrow('INVALID_LAND');expect(m.read).not.toHaveBeenCalled();});
+it('rejects missing auth',async()=>{m.token='';await expect(loadSoilState(id,'farmer','tenant')).rejects.toThrow('AUTH_REQUIRED');expect(m.read).not.toHaveBeenCalled();});
+it('rejects an identity change before sending',async()=>{m.session.farmerId='other';await expect(loadSoilState(id,'farmer','tenant',true)).rejects.toThrow('AUTH_REQUIRED');expect(m.read).not.toHaveBeenCalled();});
+it('rejects an identity change during a read',async()=>{m.read.mockImplementation(async()=>{m.token='other';return {};});await expect(loadSoilState(id,'farmer','tenant')).rejects.toThrow('AUTH_REQUIRED');});
+it('preserves engine error codes',async()=>{m.read.mockRejectedValue(new Error('ENGINE_OFFLINE'));await expect(loadSoilState(id,'farmer','tenant',true)).rejects.toThrow('ENGINE_OFFLINE');});
+it.each([[null,null],[undefined,null],['',null],['bad',null],[Infinity,null],['6.8',6.8],[0,0]])('handles %s', (x,y)=>expect(soilNumber(x)).toBe(y));

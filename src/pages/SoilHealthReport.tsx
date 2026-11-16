@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Droplets, Leaf, TestTube, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,11 +7,12 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { getSessionToken } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { loadSoilReport, soilNumber } from '@/services/soil/soilReport';
+import { loadSoilState, soilNumber } from '@/services/soil/soilReport';
 import { useToast } from '@/hooks/use-toast';
+import { SoilFetchPanel } from '@/components/soil/SoilFetchPanel';
 import { SoilReportHeader } from '@/components/soil/SoilReportHeader';
 import { SoilReportBanner } from '@/components/soil/SoilReportBanner';
 import { NutrientCard } from '@/components/soil/NutrientCard';
@@ -32,15 +33,31 @@ export default function SoilHealthReport() {
   const tenantId = session?.tenantId;
   const authenticated = !!farmerId && !!tenantId && !!getSessionToken();
   const [exporting, setExporting] = useState(false);
+  const queryClient = useQueryClient();
   const report = useQuery({
     queryKey: ['soil-report', id, farmerId, tenantId, session?.createdAt],
     enabled: !authLoading && authenticated && !!id,
-    queryFn: () => loadSoilReport(id!, farmerId!, tenantId!),
+    queryFn: () => loadSoilState(id!, farmerId!, tenantId!),
+    refetchInterval: query => ['queued','running'].includes(query.state.data?.job?.status || '') ? 4000 : false,
     retry: false,
     staleTime: 0,
     gcTime: 0,
   });
-  const data = authenticated ? report.data : null;
+  const state = authenticated ? report.data : null;
+  const data = state?.legacy ? {...state.legacy, lands:state.land, user_profiles:state.profile} : null;
+  const fetchSoil = useMutation({
+    mutationFn: () => loadSoilState(id!, farmerId!, tenantId!, true),
+    onSuccess: () => report.refetch(),
+  });
+  const resetFetchSoil = fetchSoil.reset;
+  useEffect(() => { resetFetchSoil(); }, [id, farmerId, tenantId, resetFetchSoil]);
+  useEffect(() => {
+    if (state?.model?.id) {
+      for (const key of ['lands','analytics-data','land-chat-context','land-details']) queryClient.invalidateQueries({queryKey:[key]});
+    }
+  }, [state?.model?.id, queryClient]);
+  const panel = state ? <SoilFetchPanel state={state} requesting={fetchSoil.isPending}
+    error={fetchSoil.error?.message || null} onFetch={() => fetchSoil.mutate()}/> : null;
   const ph = soilNumber(data?.ph_level);
   const organicCarbon = soilNumber(data?.organic_carbon);
   const backToLand = () => navigate(id ? `/app/lands/${id}` : '/app/lands');
@@ -150,6 +167,10 @@ export default function SoilHealthReport() {
     return <SoilHealthSkeleton />;
   }
 
+  if (state && !data) return <main className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
+    <Button variant="outline" onClick={backToLand}>{t('soil.backToLand')}</Button>{panel}
+  </main>;
+
   if (!data) {
     const failed = report.isError || !authenticated || !id;
     return (
@@ -183,7 +204,9 @@ export default function SoilHealthReport() {
         onShare={shareReport}
       />
 
-      <div className="max-w-4xl mx-auto p-4 pb-8" ref={reportRef}>
+      <div className="max-w-4xl mx-auto space-y-5 p-4 pb-24" ref={reportRef}>
+        {panel}
+        <h2 className="text-lg font-semibold">{t('soil.savedReport')}</h2>
         {data.source === 'soilgrid' && <p className="mb-4 text-sm text-muted-foreground" role="note">
           {t('soil.modelledNotice')}
         </p>}
