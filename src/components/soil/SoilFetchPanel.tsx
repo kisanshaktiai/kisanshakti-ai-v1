@@ -31,7 +31,7 @@ export function SoilFetchPanel({state,requesting,error,onFetch}:{state:SoilState
         <span className="rounded-full bg-background px-3 py-1.5">{t('soil.savedForReuse')}</span>
       </div>
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <Button className="min-h-12 rounded-xl px-6" onClick={onFetch} disabled={requesting||active||!state.engine_available}>
+        <Button className="min-h-12 rounded-xl px-6" onClick={onFetch} disabled={requesting||active}>
           {requesting||active?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:model?<RefreshCw className="mr-2 h-4 w-4"/>:<ScanLine className="mr-2 h-4 w-4"/>}
           {t(active?'soil.processing':requesting?'soil.starting':model?'soil.checkSoil':'soil.getSoil')}
         </Button>
