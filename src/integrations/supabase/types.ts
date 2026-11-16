@@ -34394,6 +34394,7 @@ export type Database = {
           farmer_id: string
           id: string
           notes: string | null
+          operation_id: string | null
           photos: string[] | null
           task_id: string
           weather_conditions: Json | null
@@ -34409,6 +34410,7 @@ export type Database = {
           farmer_id: string
           id?: string
           notes?: string | null
+          operation_id?: string | null
           photos?: string[] | null
           task_id: string
           weather_conditions?: Json | null
@@ -34424,6 +34426,7 @@ export type Database = {
           farmer_id?: string
           id?: string
           notes?: string | null
+          operation_id?: string | null
           photos?: string[] | null
           task_id?: string
           weather_conditions?: Json | null
@@ -43919,6 +43922,23 @@ export type Database = {
         Returns: boolean
       }
       complete_bootstrap_safely: { Args: never; Returns: Json }
+      complete_schedule_task_atomic: {
+        Args: {
+          p_actual_cost?: number
+          p_actual_resources?: Json
+          p_completed?: boolean
+          p_completed_at?: string
+          p_difficulty_rating?: number
+          p_effectiveness_rating?: number
+          p_farmer_id: string
+          p_notes?: string
+          p_operation_id: string
+          p_photos?: string[]
+          p_task_id: string
+          p_weather_conditions?: Json
+        }
+        Returns: Json
+      }
       compute_land_yield_estimate: {
         Args: { p_as_of?: string; p_land_id: string }
         Returns: Json

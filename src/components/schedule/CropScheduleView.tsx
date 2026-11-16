@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner, { type ClimateState } from './ClimateAlertBanner';
+import { TaskStatisticsWidget } from './TaskStatisticsWidget';
 import CropStageTimeline from './CropStageTimeline';
 import type { SavedStage } from '@/lib/scheduleStageTimeline';
 import CurrentStageHeader from './CurrentStageHeader';
@@ -562,6 +563,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
         {/* Climate Alert Banner */}
         <ClimateAlertBanner data={climateData} />
+
+        <TaskStatisticsWidget scheduleId={schedule.id} refreshKey={tasks.filter(t => t.status === 'completed').length} className="mb-2" />
 
         {/* Compact HUD: merged counts + photo/refresh actions (replaces 3 stacked cards) */}
         <div className="flex items-stretch gap-2">
