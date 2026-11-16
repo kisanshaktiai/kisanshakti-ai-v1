@@ -10,7 +10,7 @@ const SOIL_ALGORITHM = 'parcel-native-area-zigzag-v2';
 const GH_DISPATCH_URL = 'https://api.github.com/repos/kisanshaktiai/kisanshakti-soil-engine/actions/workflows/soil-on-demand.yml/dispatches';
 
 async function dispatchSoilJob(): Promise<boolean> {
-  const token = Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN');
+  const token = typeof Deno !== 'undefined' ? Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN') : undefined;
   if (!token) return false;
   try {
     const response = await fetch(GH_DISPATCH_URL, {
@@ -55,10 +55,10 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
   const owned = await supabase.from('lands').select('id,name').eq('id',landId).eq('farmer_id',farmerId).eq('tenant_id',tenantId).maybeSingle();
   if (owned.error) return json({ code: 'SOIL_READ_FAILED' }, 503);
   if (!owned.data) return json({ code: 'LAND_NOT_FOUND' }, 404);
-  const sourceVersion = Deno.env.get('SOILGRIDS_SOURCE_VERSION')?.trim() || '';
+  const sourceVersion = (typeof Deno !== 'undefined' ? Deno.env.get('SOILGRIDS_SOURCE_VERSION') : undefined)?.trim() || '';
   // Readiness means dispatch configuration, not an always-running container heartbeat.
   // The scheduled sweep can process already queued jobs even if immediate dispatch fails.
-  const engineConfigured = !!sourceVersion && !!Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN');
+  const engineConfigured = !!sourceVersion && !!(typeof Deno !== 'undefined' ? Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN') : undefined);
   if (req.method === 'POST') {
     if (!engineConfigured) return json({ code: 'ENGINE_NOT_CONFIGURED' }, 503);
     const queued = await supabase.rpc('soil_enqueue', { p_land:landId,p_tenant:tenantId,p_farmer:farmerId,
