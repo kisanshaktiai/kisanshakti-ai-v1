@@ -1,0 +1,23 @@
+name: Soil report regression tests
+on:
+  pull_request:
+    paths:
+      - 'src/pages/SoilHealthReport.tsx'
+      - 'src/pages/__tests__/SoilHealthReport.test.tsx'
+      - 'src/services/soil/**'
+      - 'src/components/soil/**'
+      - '.github/workflows/soil-report-tests.yml'
+permissions:
+  contents: read
+jobs:
+  soil-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run test src/services/soil/soilReport.test.ts src/pages/__tests__/SoilHealthReport.test.tsx
+      - run: bun run build
