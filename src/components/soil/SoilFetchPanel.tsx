@@ -31,21 +31,23 @@ export function SoilFetchPanel({state,requesting,error,onFetch}:{state:SoilState
         <span className="rounded-full bg-background px-3 py-1.5">{t('soil.savedForReuse')}</span>
       </div>
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <Button className="min-h-12 rounded-xl px-6" onClick={onFetch} disabled={requesting||active||!state.engine_available}>
+        <Button className="min-h-12 rounded-xl px-6" onClick={onFetch} disabled={requesting||active}>
           {requesting||active?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:model?<RefreshCw className="mr-2 h-4 w-4"/>:<ScanLine className="mr-2 h-4 w-4"/>}
           {t(active?'soil.processing':requesting?'soil.starting':model?'soil.checkSoil':'soil.getSoil')}
         </Button>
-        {!state.engine_available&&!active&&<p className="text-sm text-muted-foreground">{t('soil.engineOffline')}</p>}
+        {!state.engine_available&&!active&&<p role="status" className="text-sm text-muted-foreground">{t(state.engine_status==='SOURCE_NOT_CONFIGURED'?'soil.sourceNotConfigured':state.engine_status==='QUEUE_UNAVAILABLE'?'soil.queueUnavailable':'soil.engineOffline')}</p>}
+        {state.engine_available&&state.dispatch_mode==='scheduled'&&!active&&<p role="status" className="text-sm text-muted-foreground">{t('soil.scheduledDispatch')}</p>}
         {model&&!stale&&!active&&<span className="flex items-center gap-1.5 text-xs text-muted-foreground"><CheckCircle2 className="h-4 w-4"/>{t('soil.cachedHelp')}</span>}
       </div>
       {(error||job?.status==='failed')&&<p role="alert" className="mt-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-        {t(error==='INVALID_BOUNDARY'?'soil.invalidBoundary':error==='RETRY_LATER'?'soil.retryLater':error==='ENGINE_OFFLINE'?'soil.engineOffline':'soil.fetchFailed')}
+        {t(error==='INVALID_BOUNDARY'?'soil.invalidBoundary':error==='RETRY_LATER'?'soil.retryLater':error==='ENGINE_NOT_CONFIGURED'?'soil.sourceNotConfigured':error==='ENGINE_OFFLINE'?'soil.engineOffline':'soil.fetchFailed')}
       </p>}
       {stale&&<p className="mt-3 text-sm text-muted-foreground">{t('soil.refreshNeeded')}</p>}
     </div>
     {active&&<div role="status" aria-live="polite" className="space-y-3 border-b p-5">
       <div className="flex justify-between text-sm"><span>{t(job?.status==='queued'?'soil.queued':'soil.fetchingLayers')}</span><span>{job?.progress||0}%</span></div>
       <Progress value={job?.progress||0}/><p className="text-xs text-muted-foreground">{t('soil.canLeave')}</p>
+      {job?.status==='queued'&&state.dispatch_mode==='scheduled'&&<p className="text-xs text-muted-foreground">{t('soil.scheduledQueueHelp')}</p>}
     </div>}
     {!model&&<div className="grid gap-4 p-5 sm:grid-cols-3">
       {[[MapPin,'soil.stepBoundary'],[ScanLine,'soil.stepFetch'],[Database,'soil.stepSave']].map(([Icon,label],i)=>{const Symbol=Icon as typeof MapPin;return <div key={String(label)} className="flex gap-3 rounded-2xl bg-muted/40 p-4"><Symbol className="mt-0.5 h-5 w-5 shrink-0 text-primary"/><div><span className="text-xs text-muted-foreground">0{i+1}</span><p className="mt-1 text-sm font-medium">{t(String(label))}</p></div></div>;})}

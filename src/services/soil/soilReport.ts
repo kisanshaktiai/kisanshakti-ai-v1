@@ -16,6 +16,8 @@ export interface SoilState {
   profile: SoilReport['user_profiles']; model: SoilModel | null;
   job: {id: string;status: 'queued'|'running'|'complete'|'partial'|'failed';progress: number;error_code: string|null;updated_at: string}|null;
   engine_available: boolean; boundary_changed: boolean; source_changed: boolean;
+  engine_status?: 'SOURCE_NOT_CONFIGURED'|'QUEUE_UNAVAILABLE'|'READY';
+  dispatch_mode?: 'immediate'|'scheduled'|null;
 }
 export function soilNumber(value: unknown): number | null {
   if (typeof value !== 'number' && typeof value !== 'string') return null;

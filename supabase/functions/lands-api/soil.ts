@@ -58,7 +58,10 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
   const sourceVersion = (typeof Deno !== 'undefined' ? Deno.env.get('SOILGRIDS_SOURCE_VERSION') : undefined)?.trim() || '';
   // Readiness means dispatch configuration, not an always-running container heartbeat.
   // The scheduled sweep can process already queued jobs even if immediate dispatch fails.
-  const engineConfigured = !!sourceVersion && !!(typeof Deno !== 'undefined' ? Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN') : undefined);
+  // A live GitHub dispatch token is optional: the default-branch cron workflow
+  // recovers durable queued jobs. Do not block farmer requests on dispatch latency.
+  const dispatchConfigured = !!(typeof Deno !== 'undefined' ? Deno.env.get('SOIL_GITHUB_DISPATCH_TOKEN') : undefined);
+  const engineConfigured = !!sourceVersion;
   if (req.method === 'POST') {
     if (!engineConfigured) return json({ code: 'ENGINE_NOT_CONFIGURED' }, 503);
     const queued = await supabase.rpc('soil_enqueue', { p_land:landId,p_tenant:tenantId,p_farmer:farmerId,
@@ -67,8 +70,10 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
       const code = ['INVALID_BOUNDARY','RETRY_LATER','ENGINE_OFFLINE'].find(c=>queued.error!.message.includes(c)) || 'SOIL_REQUEST_FAILED';
       return json({ code }, code==='RETRY_LATER'?429:code==='INVALID_BOUNDARY'?422:503);
     }
-    if (queued.data?.status === 'queued') await dispatchSoilJob();
-    return json(queued.data, queued.data?.status==='cached'?200:202);
+    const dispatched = queued.data?.status === 'queued' && dispatchConfigured ? await dispatchSoilJob() : false;
+    return json({ ...queued.data, dispatch_mode: queued.data?.status === 'queued'
+      ? (dispatched ? 'immediate' : 'scheduled') : null },
+      queued.data?.status==='cached'?200:202);
   }
   const [state, legacy, profile] = await Promise.all([
     supabase.rpc('soil_state',{p_land:landId,p_tenant:tenantId,p_farmer:farmerId}),
@@ -85,5 +90,7 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
     job:state.data?.job || null, model:summarizeModel(state.data?.model),
     boundary_changed:state.data?.boundary_changed || false,
     engine_available:engineConfigured && !state.error,
+    dispatch_mode:dispatchConfigured ? 'immediate' : 'scheduled',
+    engine_status:!sourceVersion ? 'SOURCE_NOT_CONFIGURED' : state.error ? 'QUEUE_UNAVAILABLE' : 'READY',
     source_changed:!!state.data?.model && (sourceVersion!==state.data.model.source_version || SOIL_ALGORITHM!==state.data.model.algorithm_version) });
 }
