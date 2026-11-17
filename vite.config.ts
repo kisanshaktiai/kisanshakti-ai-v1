@@ -74,6 +74,14 @@ export default defineConfig(({ mode }) => ({
         navigateFallbackDenylist: [/^\/api/, /supabase/, /^\/~oauth/],
         runtimeCaching: [
           {
+            // Soil report/job state is per farmer and polled live: never answer it from the
+            // shared URL-keyed cache (stale "queued" state, or another farmer's report on a
+            // shared phone). Must precede the general Supabase rule; cross-origin workbox
+            // regexes must match from the start of the URL.
+            urlPattern: /^https:\/\/[^/]+\.supabase\.co\/functions\/v1\/lands-api\?(?:[^#]*&)?action=soil(?:&|#|$)/i,
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',
             options: {
