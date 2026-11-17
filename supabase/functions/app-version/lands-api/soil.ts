@@ -32,31 +32,6 @@ async function dispatchSoilJob(): Promise<boolean> {
   }
 }
 
-// A lost or failed dispatch must not strand a durable job until GitHub's best-effort cron,
-// because the farmer's button stays disabled while the job is active. The report poll
-// re-dispatches a queued job that has waited, or a running job whose 10-minute lease ran
-// out. Extra dispatches are harmless: the workflow concurrency group keeps one pending run.
-const REDISPATCH_QUEUED_MS = 2 * 60_000;
-const REDISPATCH_RUNNING_MS = 11 * 60_000;
-const REDISPATCH_MIN_GAP_MS = 2 * 60_000;
-const lastRedispatch = new Map<string, number>();
-export function needsRedispatch(job: { status?: string; updated_at?: string } | null | undefined, now = Date.now()): boolean {
-  const age = now - Date.parse(job?.updated_at || '');
-  if (!Number.isFinite(age)) return false;
-  return (job?.status === 'queued' && age >= REDISPATCH_QUEUED_MS) || (job?.status === 'running' && age >= REDISPATCH_RUNNING_MS);
-}
-async function redispatchIfStranded(landId: string, job: any): Promise<void> {
-  const now = Date.now();
-  if (!needsRedispatch(job, now) || now - (lastRedispatch.get(landId) || 0) < REDISPATCH_MIN_GAP_MS) return;
-  if (lastRedispatch.size > 1000) lastRedispatch.clear();
-  lastRedispatch.set(landId, now);
-  await dispatchSoilJob();
-}
-
-// Seeded test/default rows stay in soil_health for audit but are never a saved report.
-const SEEDED_FLAG = 'SEEDED_PLACEHOLDER';
-const isSeeded = (row: any) => Array.isArray(row?.data_quality_flags) && row.data_quality_flags.includes(SEEDED_FLAG);
-
 /** Return summary layers only; raw source pixels stay in the server-side report. */
 export function summarizeModel(model: any) {
   if (!model?.report) return null;
@@ -109,8 +84,7 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
   if (legacy.error) return json({code:'SOIL_READ_FAILED'},503);
   // Missing migration may still serve the existing report, but never claim fetch readiness.
   if (state.error && !['PGRST202','42883'].includes(state.error.code)) return json({code:'SOIL_READ_FAILED'},503);
-  if (engineConfigured && dispatchConfigured && !state.error) await redispatchIfStranded(landId, state.data?.job);
-  const rows=(legacy.data || []).filter(r=>!isSeeded(r));
+  const rows=legacy.data || [];
   const saved=rows.find(r=>r.source==='lab_test') || rows.find(r=>r.source==='manual') || rows[0] || null;
   return json({ land:owned.data, legacy:saved, profile:profile.data || null,
     job:state.data?.job || null, model:summarizeModel(state.data?.model),
