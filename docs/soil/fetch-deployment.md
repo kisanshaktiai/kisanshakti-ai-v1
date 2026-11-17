@@ -66,6 +66,24 @@ No inbound worker HTTP port is needed. Worker crashes recover through lease expi
 (up to three attempts). Stale leases cannot commit. Changed land ownership or
 boundaries are rejected at completion. Source-version changes invalidate cache.
 
+## Provenance fix and backfill (2026-11-17)
+
+- Migration `20261117150000_soil_projection_provenance.sql` changes `soil_complete` only:
+  rows flagged `SEEDED_PLACEHOLDER` no longer block the projection, a seeded soilgrid
+  row is never overwritten in place (a clean projection row is inserted), `sample_count`
+  is the number of distinct source pixels, and `lands` soil columns follow the projection
+  (the legacy trigger skips lands whenever an older seeded test date is present).
+- `docs/soil/sql/2026-11-17_01_flag_seeded_soil_health_rows.sql` marks the 36 seeded
+  rows. Nothing is deleted. Both soil_health triggers are held off inside one atomic block
+  so the flag does not re-insert seeded values into env_observations or lands.
+- `lands-api?action=soil` hides seeded rows and re-dispatches a job queued for more than
+  two minutes, or running past its lease, while the page polls.
+- `docs/soil/sql/2026-11-17_02_backfill_soil_jobs_active_lands.sql` queues every active
+  land through `soil_enqueue`; then run the engine workflow with `max_jobs` 25.
+
+Release order, one step at a time: migration → flag SQL → `SOIL_GITHUB_DISPATCH_TOKEN`
+secret → deploy lands-api → farmer UI build (PWA cache rule) → engine workflow → backfill.
+
 ## Rollback
 
 Stop the worker and roll back the UI/Edge deployments; retain additive queue and

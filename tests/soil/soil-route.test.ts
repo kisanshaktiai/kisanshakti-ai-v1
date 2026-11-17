@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {handleSoil,summarizeModel} from '../../supabase/functions/lands-api/soil';
+import {handleSoil,summarizeModel,needsRedispatch} from '../../supabase/functions/lands-api/soil';
 const id='00000000-0000-4000-8000-000000000001';
 function q(data:unknown,error:unknown=null){const query:any={data,error};for(const k of ['select','eq','gte','order','limit','maybeSingle'])query[k]=vi.fn(()=>query);return query;}
 let owned:any, workers:any, legacy:any, rpc:any,guard:any;
@@ -69,4 +69,43 @@ it('still refuses to enqueue when source version is unconfigured',async()=>{
  expect(r.status).toBe(503);
  expect(await r.json()).toMatchObject({code:'ENGINE_NOT_CONFIGURED'});
  expect(rpc).not.toHaveBeenCalled();
+});
+it('never shows a seeded placeholder row as the saved report',async()=>{
+ legacy.data=[{source:'manual',id:'seed',data_quality_flags:['SEEDED_PLACEHOLDER']},{source:'soilgrid',id:'model',data_quality_flags:{soil_parcel_report_id:'r'}}];
+ const r=await handleSoil(new Request(`https://x/?land_id=${id}`),guard);
+ expect((await r.json()).legacy.id).toBe('model');
+});
+it('returns no saved report when only seeded rows exist',async()=>{
+ legacy.data=[{source:'soilgrid',id:'seed',data_quality_flags:['SEEDED_PLACEHOLDER']}];
+ const r=await handleSoil(new Request(`https://x/?land_id=${id}`),guard);
+ expect((await r.json()).legacy).toBeNull();
+});
+it('detects stranded queued and lease-expired running jobs only',()=>{
+ const now=Date.parse('2026-11-17T10:00:00Z');
+ const at=(m:number)=>new Date(now-m*60_000).toISOString();
+ expect(needsRedispatch({status:'queued',updated_at:at(1)},now)).toBe(false);
+ expect(needsRedispatch({status:'queued',updated_at:at(3)},now)).toBe(true);
+ expect(needsRedispatch({status:'running',updated_at:at(5)},now)).toBe(false);
+ expect(needsRedispatch({status:'running',updated_at:at(12)},now)).toBe(true);
+ expect(needsRedispatch({status:'complete',updated_at:at(60)},now)).toBe(false);
+ expect(needsRedispatch(null,now)).toBe(false);
+ expect(needsRedispatch({status:'queued',updated_at:'bad'},now)).toBe(false);
+});
+it('re-dispatches a stranded job on the report poll, at most once per gap',async()=>{
+ const stale=new Date(Date.now()-5*60_000).toISOString();
+ rpc.mockResolvedValue({data:{job:{id:'j',status:'queued',updated_at:stale},model:null},error:null});
+ const land='00000000-0000-4000-8000-0000000000aa';
+ const first=await handleSoil(new Request(`https://x/?land_id=${land}`),guard);
+ expect(first.status).toBe(200);
+ await handleSoil(new Request(`https://x/?land_id=${land}`),guard);
+ expect(fetch).toHaveBeenCalledTimes(1);
+});
+it('does not re-dispatch a fresh job or without a dispatch token',async()=>{
+ rpc.mockResolvedValue({data:{job:{id:'j',status:'queued',updated_at:new Date().toISOString()},model:null},error:null});
+ await handleSoil(new Request(`https://x/?land_id=00000000-0000-4000-8000-0000000000bb`),guard);
+ expect(fetch).not.toHaveBeenCalled();
+ vi.stubGlobal('Deno',{env:{get:(key:string)=>key==='SOILGRIDS_SOURCE_VERSION'?'v1':undefined}});
+ rpc.mockResolvedValue({data:{job:{id:'j',status:'queued',updated_at:new Date(Date.now()-9e5).toISOString()},model:null},error:null});
+ await handleSoil(new Request(`https://x/?land_id=00000000-0000-4000-8000-0000000000cc`),guard);
+ expect(fetch).not.toHaveBeenCalled();
 });
