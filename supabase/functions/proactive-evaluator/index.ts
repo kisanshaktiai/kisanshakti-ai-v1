@@ -10,6 +10,7 @@ import {
   emptyDerived,
   satelliteWaterVerdict,
   type DerivedState,
+  type NdmiPass,
   type SatelliteWaterEvidence,
   type SurfaceWaterReading,
 } from './env-derived.ts';
@@ -26,6 +27,20 @@ import { enrichAndUpdateAlerts } from './enrichment.ts';
 import { buildGerminationQuestionAlerts } from './germination-question.ts';
 import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
 import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
+
+// =====================================================
+// v131 — CANOPY MOISTURE HELD (2026-11-18). Audit: 1,050 IRRIGATION alerts in
+// 45 days, 0 pushed, 0 acted on; 29 of 31 lands sat at an "empty" bucket
+// because no watering had ever been recorded. The satellite verdict gains a
+// test (env-derived.ts canopyMoistureHeldNumbers): an UNVERIFIED bucket whose
+// land still shows its own 90-day best canopy moisture (NDMI) gets -1, so the
+// rule rows route it to IRRIGATION_CHECK_FIELD ("check the soil before
+// watering") instead of IRRIGATION_TRIGGER_FAO56. Limits: approved
+// SAT_WATER_CORROBORATION 1.1. Nothing is silenced; verified states and lands
+// whose canopy moisture fell (Kodoli Mala, Shinghan Mal) are unchanged.
+// trigger_data.satellite_water now also carries ndmi_recent,
+// ndmi_baseline_max, ndmi_baseline_passes and ndmi_shortfall.
+// =====================================================
 
 // =====================================================
 // v130 — WATER TRUTH + HARVEST-AWARE ADVICE (2026-10-04). Audit of the
@@ -505,6 +520,8 @@ async function processOneTenant(
   const alertMap = buildAlertMap(recentAlertsRes.data);
   const soilMap = buildSoilMap(soilRes.data);
   const ndviMap = buildNdviMap((ndviRes.data || []).map((r: any) => ({ ...r, date: r.acquisition_date })));
+  // v131: every optical pass per land (newest first) for the canopy-moisture-held test.
+  const ndmiHistoryMap = buildNdmiHistoryMap(ndviRes.data || []);
   const ndviIntelMap = buildNdviIntelMap(ndviIntelRes.data);
   const surfaceWaterMap = new Map<string, SurfaceWaterReading>();
   for (const r of (surfaceWaterRes.data || [])) {
@@ -611,7 +628,16 @@ async function processOneTenant(
     const derivedAge = derivedRow.as_of ? daysBetween(todayStr, derivedRow.as_of) : null;
     const derivedFresh = derivedAge != null && derivedAge <= cfg.derived_max_age_days ? derivedRow : emptyDerived();
     // v130 W1: the satellite verdict joins the derived namespace for rule rows.
-    const satelliteWater = satelliteWaterVerdict(ndvi_evidence, surfaceWaterMap.get(land.id) ?? null, methods.satWater, todayStr);
+    // v131: the land's optical passes and the bucket's verified flag feed the
+    // canopy-moisture-held test (SAT_WATER_CORROBORATION 1.1).
+    const ndmiHistory: NdmiPass[] = (ndmiHistoryMap.get(land.id) || []).map((r: any) => ({
+      acquisition_date: r.acquisition_date ?? null,
+      ndmi: r.ndmi_value === null || r.ndmi_value === undefined || r.ndmi_value === '' ? null
+        : (Number.isFinite(Number(r.ndmi_value)) ? Number(r.ndmi_value) : null),
+      evidence_rank: EVIDENCE_RANK[String(r.evidence_confidence || '').toLowerCase()] ?? 0,
+    }));
+    const satelliteWater = satelliteWaterVerdict(ndvi_evidence, surfaceWaterMap.get(land.id) ?? null, methods.satWater, todayStr,
+      ndmiHistory, derivedFresh.water_state_verified);
     const derived: DerivedState = { ...derivedFresh, water_sat_agree: satelliteWater.verdict };
     if (derivedRow.as_of && derivedFresh !== derivedRow) {
       console.warn(`[DERIVED_STALE] land=${land.id.slice(0, 8)} as_of=${derivedRow.as_of} (${derivedAge} d) > ${cfg.derived_max_age_days} d — derived predicates unavailable`);
@@ -1147,6 +1173,16 @@ function buildNdviEvidence(ndviArr: any[], intel: { observed: any | null; predic
     forecast_high: n(fcst?.estimated_ndvi_high),
     forecast_days_ahead: fcst ? daysBetween(fcst.acquisition_date, new Date().toISOString().slice(0, 10)) : null,
   };
+}
+
+/** v131: all optical passes per land, in the query's order (newest first). */
+function buildNdmiHistoryMap(data: any[]): Map<string, any[]> {
+  const map = new Map<string, any[]>();
+  for (const r of data) {
+    if (!map.has(r.land_id)) map.set(r.land_id, []);
+    map.get(r.land_id)!.push(r);
+  }
+  return map;
 }
 
 function buildNdviMap(data: any[] | null): Map<string, any[]> {
