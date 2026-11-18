@@ -27,6 +27,17 @@ import { enrichAndUpdateAlerts } from './enrichment.ts';
 import { buildGerminationQuestionAlerts } from './germination-question.ts';
 import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
 import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
+import { authorizeEvaluator } from './internal-auth.ts';
+
+// =====================================================
+// v132 — INTERNAL AUTH GATE (2026-11-18). The function previously ran the
+// full service-role batch for ANY caller: an unauthenticated probe evaluated
+// 31 lands and fired 28 rules. Every request must now present the service
+// role key or the Vault-backed proactive_evaluator_cron_key sweep secret
+// (same zero-trust pattern as schedule-reconciler); anything else gets 401
+// before a single land or rule query runs. The pg_cron jobs already send the
+// Vault key in Authorization: Bearer, so the schedule is unaffected.
+// =====================================================
 
 // =====================================================
 // v131 — CANOPY MOISTURE HELD (2026-11-18). Audit: 1,050 IRRIGATION alerts in
@@ -315,6 +326,20 @@ Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   try {
+    // Check credentials before any land, tenant or rule lookup.
+    // The pg_cron jobs send the Vault-backed secret in Authorization: Bearer.
+    // Never trust apikey, anon JWT or caller-supplied farmer/tenant headers.
+    const authorized = await authorizeEvaluator(req, SUPABASE_SERVICE_KEY, async () => {
+      const { data: secret, error } = await supabase.rpc('get_sweep_key', { p_name: 'proactive_evaluator_cron_key' });
+      return !error && typeof secret === 'string' ? secret : null;
+    });
+    if (!authorized) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Internal proactive service authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'scheduled';
     const targetLandId = body.land_id || null;
