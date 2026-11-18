@@ -567,6 +567,9 @@
     },
     "completion": {
       "mark_when_finished": "काम झाल्यावर पूर्ण म्हणून नोंदवा",
+      "unconfirmed": "अजून नोंद नाही",
+      "confirm_past": "हे काम झाले का? ज्या दिवशी केले ती तारीख निवडा आणि पूर्ण म्हणून नोंदवा.",
+      "work_date_label": "काम केलेली तारीख",
       "completed_on": "{{date}} रोजी पूर्ण झाले",
       "just_now": "आत्ताच",
       "status": "स्थिती: {{status}}",

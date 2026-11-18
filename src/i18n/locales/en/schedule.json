@@ -564,6 +564,9 @@
     },
     "completion": {
       "mark_when_finished": "Mark this task done after finishing it",
+      "unconfirmed": "Not confirmed yet",
+      "confirm_past": "Was this work done? Choose the day you did it and mark it done.",
+      "work_date_label": "Day you did this work",
       "completed_on": "Completed on {{date}}",
       "just_now": "just now",
       "status": "Status: {{status}}",

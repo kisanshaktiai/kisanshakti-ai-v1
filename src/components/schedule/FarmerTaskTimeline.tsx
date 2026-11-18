@@ -131,7 +131,17 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
     });
   }, [voiceUnavailable, canInstallVoice, openVoiceInstall, t]);
 
-  const complete = async (taskId: string, completed: boolean) => {
+  // A past card the farmer has not confirmed: tapping the tick opens the card at the
+  // "date you did this work" question instead of recording today's date for old work.
+  const openForConfirmation = (taskId: string) => {
+    setExpandedTaskId(taskId);
+    fitCard(taskId);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(`task-completion-${taskId}`)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+    }));
+  };
+
+  const complete = async (taskId: string, completed: boolean, workDate?: string) => {
     const irrigationTask = tasks.find((task) => task.id === taskId && task.task_type === 'irrigation');
     const rawLitres = actualIrrigationLitres[taskId]?.trim() ?? '';
     const parsedLitres = rawLitres ? Number(rawLitres) : null;
@@ -141,7 +151,12 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
     }
     const actualResources = completed && irrigationTask && parsedLitres != null
       ? { volume_litres: parsedLitres } : null;
-    const completedAt = completed ? new Date().toISOString() : undefined;
+    // workDate (yyyy-MM-dd) is the day the farmer says he did past work. Only the day is known,
+    // so it is sent as that local day at noon; today (or no workDate) is sent as now, because the
+    // server refuses a completion time in the future.
+    const completedAt = !completed ? undefined
+      : workDate && workDate < format(new Date(), 'yyyy-MM-dd') ? new Date(`${workDate}T12:00:00`).toISOString()
+      : new Date().toISOString();
     onTaskUpdate?.(taskId, { status: completed ? 'completed' : 'pending', completed_at: completedAt });
     try {
       const { schedulesApi } = await import('@/services/schedulesApi');
@@ -194,7 +209,9 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                   const Icon = config.icon;
                   const p = buildScheduleTaskPresentation(task as any, t, currentLanguage);
                   const completed = task.status === 'completed';
-                  const expired = task.resources?.timeline?.state === 'HISTORICAL_UNCONFIRMED';
+                  // Dated before the schedule was made and not yet confirmed by the farmer. It is still his
+                  // work to confirm: only he knows whether and when it was done.
+                  const expired = task.resources?.timeline?.state === 'HISTORICAL_UNCONFIRMED' && !completed;
                   const overdue = past && task.status === 'pending';
                   const expanded = expandedTaskId === task.id;
                   const precautions = (Array.isArray(task.precautions) ? task.precautions : Array.isArray(task.resources?.precautions) ? task.resources.precautions : []).filter(Boolean);
@@ -204,7 +221,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                         <CollapsibleTrigger asChild>
                           <Button variant="ghost" className="h-auto min-h-20 w-full shrink-0 justify-start rounded-none p-0 text-left hover:bg-muted" aria-label={`${p.what}. ${expanded ? t('schedule.timeline.collapse') : t('schedule.timeline.expand')}`}>
                             <span className={cn('self-stretch w-2 shrink-0', completed ? 'bg-success' : expired ? 'bg-muted' : overdue ? 'bg-destructive' : expanded ? 'bg-warning' : 'bg-primary')} aria-hidden="true" />
-                            <span className={cn('flex min-w-0 flex-1 items-start gap-3 py-3 pl-3', expired ? 'pr-3' : 'pr-14')}>
+                            <span className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-3 pr-14">
                               <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground text-background"><Icon className="size-5" /></span>
                               <span className="min-w-0 flex-1 whitespace-normal">
                                 <span className="mb-1 flex flex-wrap items-center gap-1.5">
@@ -214,30 +231,28 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                                 {!expanded && p.how[0] && <span className="line-clamp-2 block text-sm font-medium leading-relaxed text-card-foreground">{p.how[0]}</span>}
                                 <span className="mt-2 flex flex-wrap gap-1.5">
                                   <Badge variant={overdue ? 'destructive' : completed ? 'default' : task.priority === 'high' ? 'destructive' : 'secondary'} className="font-bold">
-                                    {completed ? t('schedule.timeline.done') : expired ? t('schedule.completion.status', { status: task.status }) : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
+                                    {completed ? t('schedule.timeline.done') : expired ? t('schedule.completion.unconfirmed') : overdue ? t('schedule.task_card.overdue') : t(`schedule.task.${task.priority}`, task.priority)}
                                   </Badge>
                                   {task.weather_dependent && <Badge variant="outline" className="border-2 font-bold"><Droplets className="mr-1 size-3" />{t('schedule.badges.weather')}</Badge>}
                                   {task.climate_adjusted && <Badge variant="outline" className="border-2 font-bold"><Zap className="mr-1 size-3" />{t('schedule.badges.ai_adjusted')}</Badge>}
                                 </span>
                               </span>
-                              <ChevronDown className={cn(!expired ? 'absolute bottom-3 right-4 size-5' : 'mt-2 size-6', 'shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
+                              <ChevronDown className={cn('absolute bottom-3 right-4 size-5 shrink-0 text-card-foreground transition-transform', expanded && 'rotate-180')} />
                             </span>
                           </Button>
                         </CollapsibleTrigger>
-                        {!expired && (
-                          <button
-                            type="button"
-                            aria-pressed={completed}
-                            aria-label={completed ? t('schedule.completion.unmark', 'Mark as not done') : t('schedule.completion.mark_complete', 'Mark complete')}
-                            onClick={(event) => { event.stopPropagation(); void complete(task.id, !completed).catch(() => undefined); }}
-                            className={cn('absolute right-2 top-2 z-10 flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                              completed ? 'border-success bg-success text-success-foreground shadow-md' : 'border-primary/40 bg-background text-primary hover:border-primary hover:bg-primary/10')}
-                          >
-                            <motion.span key={String(completed)} initial={reduceMotion ? false : { scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 18 }}>
-                              <Check className="size-5" strokeWidth={3} />
-                            </motion.span>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          aria-pressed={completed}
+                          aria-label={completed ? t('schedule.completion.unmark', 'Mark as not done') : t('schedule.completion.mark_complete', 'Mark complete')}
+                          onClick={(event) => { event.stopPropagation(); if (expired) { openForConfirmation(task.id); return; } void complete(task.id, !completed).catch(() => undefined); }}
+                          className={cn('absolute right-2 top-2 z-10 flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            completed ? 'border-success bg-success text-success-foreground shadow-md' : 'border-primary/40 bg-background text-primary hover:border-primary hover:bg-primary/10')}
+                        >
+                          <motion.span key={String(completed)} initial={reduceMotion ? false : { scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 18 }}>
+                            <Check className="size-5" strokeWidth={3} />
+                          </motion.span>
+                        </button>
 
                         <CollapsibleContent className="min-h-0 flex-1 overflow-y-auto overscroll-auto">
                           <div className="space-y-4 border-t-2 border-border bg-card p-3" onClick={(event) => event.stopPropagation()}>
@@ -280,7 +295,7 @@ export default function FarmerTaskTimeline({ tasks, onTaskComplete, onTaskUpdate
                                 </p>
                               </div>
                             )}
-                            {!expired && <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} onComplete={(id) => complete(id, true)} onUnmark={(id) => complete(id, false)} />}
+                            <TaskCompletionSection taskId={task.id} status={task.status} completedAt={task.completed_at} askWorkDate={expired} plannedDate={task.task_date} onComplete={(id, workDate) => complete(id, true, workDate)} onUnmark={(id) => complete(id, false)} />
                           </div>
                         </CollapsibleContent>
                       </article>
