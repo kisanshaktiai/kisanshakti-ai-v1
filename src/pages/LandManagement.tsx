@@ -42,6 +42,7 @@ interface Land {
   irrigation_source?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
+  soil_data_source?: string | null;
   survey_number?: string;
   ownership_type?: string;
   last_soil_test_date?: string;
@@ -75,7 +76,9 @@ export default function LandManagement() {
   }, [fetchedLands]);
 
   // PERFORMANCE: Memoize helper functions
-  const getSoilHealthColor = useCallback((ph?: number, organic?: number) => {
+  const getSoilHealthColor = useCallback((ph?: number, organic?: number, source?: string | null) => {
+    // A satellite soil-map estimate is not a soil test, so it gets no health colour.
+    if (source === 'soilgrid') return 'bg-muted';
     if (!ph && !organic) return 'bg-muted';
     
     const phScore = ph ? (ph >= 6.0 && ph <= 7.5 ? 3 : ph >= 5.5 && ph <= 8.0 ? 2 : 1) : 0;
@@ -183,8 +186,8 @@ export default function LandManagement() {
               )}
               
               <div className="flex items-center">
-                <div className={`h-8 w-8 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent)} opacity-20`} />
-                <div className={`h-4 w-4 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent)} -ml-6`} />
+                <div className={`h-8 w-8 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent, land.soil_data_source)} opacity-20`} />
+                <div className={`h-4 w-4 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent, land.soil_data_source)} -ml-6`} />
               </div>
             </div>
           </div>

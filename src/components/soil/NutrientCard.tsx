@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface NutrientCardProps {
   icon: LucideIcon;
@@ -11,6 +12,8 @@ interface NutrientCardProps {
   letter: string;
   letterColor: string;
   level?: string;
+  /** stored level code (low / medium / high) — colour comes from this, never from translated text */
+  levelKey?: string;
   kgPerHa?: number;
   totalKg?: number;
   text?: string;
@@ -24,11 +27,13 @@ export function NutrientCard({
   letter,
   letterColor,
   level,
+  levelKey,
   kgPerHa,
   totalKg,
   text,
   maxValue = 500,
 }: NutrientCardProps) {
+  const { t } = useTranslation();
   const getNutrientColor = (lvl: string | undefined) => {
     if (!lvl) return 'bg-muted';
     const normalized = lvl.toLowerCase();
@@ -54,14 +59,14 @@ export function NutrientCard({
             <p className="text-xs text-muted-foreground">{description}</p>
           </div>
         </div>
-        <Badge className={getNutrientColor(level)}>
-          {level || 'N/A'}
+        <Badge className={getNutrientColor(levelKey ?? level)}>
+          {level || t('soil.notMeasured')}
         </Badge>
       </div>
       <div className="grid grid-cols-2 gap-4 pl-13">
         <div>
           <p className={`text-2xl font-bold ${letterColor.replace('bg-', 'text-').replace('/10', '')}`}>
-            {kgPerHa ?? 'N/A'}
+            {kgPerHa ?? t('soil.notMeasured')}
           </p>
           <p className="text-xs text-muted-foreground">kg/ha</p>
         </div>
@@ -70,7 +75,7 @@ export function NutrientCard({
             <p className={`text-2xl font-bold ${letterColor.replace('bg-', 'text-').replace('/10', '')}`}>
               {totalKg}
             </p>
-            <p className="text-xs text-muted-foreground">Total kg</p>
+            <p className="text-xs text-muted-foreground">{t('soil.totalKg')}</p>
           </div>
         )}
       </div>

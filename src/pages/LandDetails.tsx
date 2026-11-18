@@ -57,6 +57,7 @@ interface Land {
   survey_number?: string;
   ownership_type?: string;
   last_soil_test_date?: string;
+  soil_data_source?: string;
   last_sowing_date?: string;
   expected_harvest_date?: string;
   created_at: string;
@@ -239,7 +240,11 @@ export default function LandDetails() {
     }
   };
 
+  // A health score is only shown for measured soil (lab or device). A soil-map
+  // estimate has no plant-available N, P, K, so it is labelled, not scored.
+  const soilIsEstimate = land?.soil_data_source === 'soilgrid';
   const getSoilHealthScore = () => {
+    if (soilIsEstimate) return null;
     if (!land?.soil_ph && !land?.organic_carbon_percent && !land?.nitrogen_kg_per_ha) return null;
     
     let score = 0;
@@ -427,8 +432,8 @@ export default function LandDetails() {
                 </div>
                 {soilHealthScore === null ? (
                   <button type="button" onClick={() => navigate(`/app/lands/${id}/soil`)} className="text-left">
-                    <p className="text-lg font-bold text-foreground">{t('lands.details.not_tested')}</p>
-                    <p className="text-xs text-primary font-medium mt-1">{t('lands.details.add_soil_test')} →</p>
+                    <p className="text-lg font-bold text-foreground">{t(soilIsEstimate ? 'soil.sourceTypes.satellite' : 'lands.details.not_tested')}</p>
+                    <p className="text-xs text-primary font-medium mt-1">{t(soilIsEstimate ? 'soil.needsLab' : 'lands.details.add_soil_test')} →</p>
                   </button>
                 ) : (
                 <div className="space-y-2">

@@ -1,5 +1,7 @@
-import { ArrowLeft, Download, Share2, FileText, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Share2, FileText, Image as ImageIcon, MoreVertical, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useTranslation } from 'react-i18next';
 
 interface SoilReportHeaderProps {
   landName?: string;
@@ -10,78 +12,32 @@ interface SoilReportHeaderProps {
   onShare: () => void;
 }
 
-export function SoilReportHeader({
-  landName,
-  exporting,
-  onBack,
-  onDownloadPDF,
-  onDownloadImage,
-  onShare,
-}: SoilReportHeaderProps) {
+/** Slim sticky bar: back, what this is, and one menu for saving or sharing — the report itself owns the screen. */
+export function SoilReportHeader({ landName, exporting, onBack, onDownloadPDF, onDownloadImage, onShare }: SoilReportHeaderProps) {
+  const { t } = useTranslation();
   return (
-    <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-lg border-b shadow-sm">
-      <div className="max-w-4xl mx-auto px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <Button variant="ghost" size="icon" onClick={onBack}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex-1 min-w-0">
-              <h1 className="font-bold text-lg truncate">Soil Health Report</h1>
-              <p className="text-xs text-muted-foreground truncate">{landName}</p>
-            </div>
-          </div>
-          
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="icon" 
-              onClick={onDownloadPDF}
-              disabled={exporting}
-              className="hidden sm:flex"
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="icon" 
-              onClick={onDownloadImage}
-              disabled={exporting}
-              className="hidden sm:flex"
-            >
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="default" 
-              size="icon" 
-              onClick={onShare}
-              disabled={exporting}
-            >
-              <Share2 className="h-4 w-4" />
-            </Button>
-          </div>
+    <div className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-4xl items-center gap-2 px-2 py-2">
+        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl" onClick={onBack}>
+          <ArrowLeft className="h-5 w-5" />
+          <span className="sr-only">{t('soil.backToLand')}</span>
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-bold leading-tight text-foreground">{t('soil.report')}</p>
+          {landName && <p className="truncate text-xs text-muted-foreground">{landName}</p>}
         </div>
-        
-        <div className="flex gap-2 mt-3 sm:hidden">
-          <Button 
-            variant="outline" 
-            onClick={onDownloadPDF}
-            disabled={exporting}
-            className="flex-1"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            PDF
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={onDownloadImage}
-            disabled={exporting}
-            className="flex-1"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Image
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl" aria-label={t('soil.saveOrShare')} disabled={exporting}>
+              {exporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <MoreVertical className="h-5 w-5" />}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52 rounded-2xl p-1.5">
+            <DropdownMenuItem className="min-h-11 gap-3 rounded-xl" onSelect={onShare}><Share2 className="h-4 w-4" />{t('soil.share')}</DropdownMenuItem>
+            <DropdownMenuItem className="min-h-11 gap-3 rounded-xl" onSelect={onDownloadPDF}><FileText className="h-4 w-4" />{t('soil.exportPdf')}</DropdownMenuItem>
+            <DropdownMenuItem className="min-h-11 gap-3 rounded-xl" onSelect={onDownloadImage}><ImageIcon className="h-4 w-4" />{t('soil.exportImage')}</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

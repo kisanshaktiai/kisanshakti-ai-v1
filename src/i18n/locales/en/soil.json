@@ -97,6 +97,98 @@
     "sourceNotConfigured": "Soil fetching is not set up yet. Your saved reports remain available.",
     "queueUnavailable": "The soil request queue is unavailable. Saved reports remain accessible.",
     "scheduledDispatch": "Soil requests are queued for GitHub Actions processing. The next scheduled run may be delayed.",
-    "scheduledQueueHelp": "Waiting for the next scheduled worker run. GitHub Actions schedules are not guaranteed to start immediately."
+    "scheduledQueueHelp": "Waiting for the next scheduled worker run. GitHub Actions schedules are not guaranteed to start immediately.",
+    "reportTypes": "Soil report types",
+    "sourceTypes": {
+      "lab": "Lab test",
+      "satellite": "Satellite estimate",
+      "device": "Soil device"
+    },
+    "available": "saved",
+    "notAvailable": "not added",
+    "notAdded": "Not added",
+    "comingSoon": "Coming soon",
+    "needsLab": "Needs lab test",
+    "needsDevice": "Needs soil device",
+    "labTestedOn": "Lab test: {{date}}",
+    "noLabTitle": "No lab report yet",
+    "noLabHelp": "Get your soil tested at a soil-testing lab (Soil Health Card). Lab values for N, P, K and pH are the most accurate, and the app uses them before the satellite estimate.",
+    "deviceSoonTitle": "Soil device — coming soon",
+    "deviceSoonHelp": "Readings from the KisanShakti soil testing device will be saved here, next to your lab and satellite reports.",
+    "notMeasured": "Not measured",
+    "totalKg": "Total kg",
+    "farmerCode": "Farmer code",
+    "hectares": "{{value}} ha",
+    "primaryNutrients": "Primary nutrients (N, P, K)",
+    "nitrogenHelp": "Leaf growth",
+    "phosphorusHelp": "Root growth",
+    "potassiumHelp": "Overall plant strength",
+    "composition": "Soil composition",
+    "additionalInfo": "More details",
+    "notes": "Notes",
+    "confidence": "Confidence",
+    "completeness": "Data completeness",
+    "exportPdf": "Save as PDF",
+    "exportImage": "Save as image",
+    "share": "Share",
+    "pdfDone": "PDF downloaded",
+    "imageDone": "Image downloaded",
+    "exportFailed": "Could not create the file. Please try again.",
+    "shareUnsupported": "Sharing is not supported here. Use download instead.",
+    "shareFailed": "Could not share. Please try again.",
+    "saveOrShare": "Save or share",
+    "readAloud": "Read aloud",
+    "allValues": "All measured values",
+    "howEstimated": "How this estimate was made",
+    "coverageLine": "{{count}} points read across {{area}} ha of your land.",
+    "depthRange": "{{range}} cm",
+    "fromSource": "From: {{source}}",
+    "summaryEmpty": "No soil values saved for this land yet.",
+    "npkSatelliteHelp": "Soil maps cannot measure the N, P and K your crop can use. A lab test gives these.",
+    "npkHelp": "Nutrients your crop can take up (kg per hectare).",
+    "notInReport": "Not in this report",
+    "nutrientName": {
+      "n": "Nitrogen",
+      "p": "Phosphorus",
+      "k": "Potassium"
+    },
+    "side": {
+      "below": "acidic side",
+      "at": "neutral",
+      "above": "alkaline side"
+    },
+    "phSay": {
+      "below": "Below {{neutral}} — on the acidic side",
+      "at": "Close to {{neutral}} — neutral",
+      "above": "Above {{neutral}} — on the alkaline side"
+    },
+    "scale": {
+      "phAria": "pH {{value}}, {{side}}",
+      "bandAria": "Value {{value}}, {{band}}"
+    },
+    "why": {
+      "method_differs": "Satellite estimate — measured differently from a lab test, so no low/high rating is given.",
+      "rating_under_review": "Rating range is still under expert review, so no low/high rating is shown yet.",
+      "short_review": "Rating under review"
+    },
+    "say": {
+      "ph_below": "Soil pH is {{value}}, on the acidic side.",
+      "ph_at": "Soil pH is {{value}}, close to neutral.",
+      "ph_above": "Soil pH is {{value}}, on the alkaline side.",
+      "oc_low": "Organic carbon is low ({{value}}%).",
+      "oc_medium": "Organic carbon is medium ({{value}}%).",
+      "oc_high": "Organic carbon is high ({{value}}%).",
+      "oc_estimate": "Organic carbon is estimated at {{value}}% from soil maps.",
+      "oc_value": "Organic carbon is {{value}}%.",
+      "need_lab": "For nitrogen, phosphorus and potassium, get a lab soil test.",
+      "npk_low": "Low in this soil: {{list}}.",
+      "npk_ok": "No nutrient is rated low in this report.",
+      "npk_unrated": "Some nutrient values have no confirmed rating yet."
+    },
+    "labStep": {
+      "sample": "Take a soil sample from your field",
+      "lab": "Give it to a soil-testing lab",
+      "card": "Add the report or Soil Health Card here"
+    }
   }
 }

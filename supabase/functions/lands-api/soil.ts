@@ -57,6 +57,22 @@ async function redispatchIfStranded(landId: string, job: any): Promise<void> {
 const SEEDED_FLAG = 'SEEDED_PLACEHOLDER';
 const isSeeded = (row: any) => Array.isArray(row?.data_quality_flags) && row.data_quality_flags.includes(SEEDED_FLAG);
 
+// The three soil report types the farmer sees, each its own newest saved row:
+//   lab       — a physical lab test ('lab_test') or values the farmer typed from his card ('manual')
+//   satellite — the soil-map estimate projected by soil_complete ('soilgrid')
+//   device    — a reading from a soil testing device ('device' / 'sensor'; none until the device ships)
+// Rows arrive ordered newest test first within each source; seeded rows are already removed.
+const DEVICE_SOURCES = ['device', 'sensor'];
+// Parameters whose rating bands the soil screen shows; a missing row means "no verdict", never a guessed one.
+const SOIL_RATING_PARAMETERS = ['ph', 'organic_carbon', 'available_nitrogen', 'available_phosphorus', 'available_potassium', 'electrical_conductivity'];
+export function soilSources<T extends { source?: string | null }>(rows: T[]) {
+  return {
+    lab: rows.find(r => r.source === 'lab_test') || rows.find(r => r.source === 'manual') || null,
+    satellite: rows.find(r => r.source === 'soilgrid') || null,
+    device: rows.find(r => DEVICE_SOURCES.includes(String(r.source))) || null,
+  };
+}
+
 /** Return summary layers only; raw source pixels stay in the server-side report. */
 export function summarizeModel(model: any) {
   if (!model?.report) return null;
@@ -100,11 +116,15 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
       ? (dispatched ? 'immediate' : 'scheduled') : null },
       queued.data?.status==='cached'?200:202);
   }
-  const [state, legacy, profile] = await Promise.all([
+  const [state, legacy, profile, ratings] = await Promise.all([
     supabase.rpc('soil_state',{p_land:landId,p_tenant:tenantId,p_farmer:farmerId}),
     supabase.from('soil_health').select('*').eq('land_id',landId).eq('tenant_id',tenantId).eq('farmer_id',farmerId)
       .order('source',{ascending:true,nullsFirst:false}).order('test_date',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).limit(50),
     supabase.from('user_profiles').select('full_name,farmer_code').eq('farmer_id',farmerId).eq('tenant_id',tenantId).limit(1).maybeSingle(),
+    // Governed soil-test rating bands (low / medium / high) the farmer screen reads verdicts from.
+    supabase.from('soil_test_interpretation')
+      .select('parameter,extraction_method,unit,low_below,medium_low,medium_high,high_above,review_status,source,authority')
+      .eq('region_scope','IN').eq('crop_scope','general').in('parameter',SOIL_RATING_PARAMETERS),
   ]);
   if (legacy.error) return json({code:'SOIL_READ_FAILED'},503);
   // Missing migration may still serve the existing report, but never claim fetch readiness.
@@ -112,7 +132,8 @@ export async function handleSoil(req: Request, guard: GuardedContext): Promise<R
   if (engineConfigured && dispatchConfigured && !state.error) await redispatchIfStranded(landId, state.data?.job);
   const rows=(legacy.data || []).filter(r=>!isSeeded(r));
   const saved=rows.find(r=>r.source==='lab_test') || rows.find(r=>r.source==='manual') || rows[0] || null;
-  return json({ land:owned.data, legacy:saved, profile:profile.data || null,
+  return json({ land:owned.data, legacy:saved, sources:soilSources(rows), profile:profile.data || null,
+    ratings:ratings.error ? [] : (ratings.data || []),
     job:state.data?.job || null, model:summarizeModel(state.data?.model),
     boundary_changed:state.data?.boundary_changed || false,
     engine_available:engineConfigured && !state.error,
