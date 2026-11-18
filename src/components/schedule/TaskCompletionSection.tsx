@@ -11,22 +11,36 @@ interface TaskCompletionSectionProps {
   taskId: string;
   status: string;
   completedAt?: string;
-  onComplete: (taskId: string) => void;
+  onComplete: (taskId: string, workDate?: string) => void;
   onUnmark?: (taskId: string) => void;
   isCompacting?: boolean;
+  /** Past card the farmer has not confirmed yet: ask the day he did the work (yyyy-MM-dd). */
+  askWorkDate?: boolean;
+  /** Planned day of the task (yyyy-MM-dd); default answer for askWorkDate. */
+  plannedDate?: string;
 }
 
-export function TaskCompletionSection({ 
-  taskId, 
-  status, 
-  completedAt, 
+export function TaskCompletionSection({
+  taskId,
+  status,
+  completedAt,
   onComplete,
   onUnmark,
-  isCompacting = false 
+  isCompacting = false,
+  askWorkDate = false,
+  plannedDate,
 }: TaskCompletionSectionProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [isCompleting, setIsCompleting] = React.useState(false);
   const [optimisticStatus, setOptimisticStatus] = React.useState(status);
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const [workDate, setWorkDate] = React.useState(() => plannedDate && plannedDate.slice(0, 10) < today ? plannedDate.slice(0, 10) : today);
+  // Only the day is known for confirmed past work, so show the day in the farmer's language, never a time.
+  const completedDay = (() => {
+    if (!completedAt) return t('schedule.completion.just_now');
+    try { return new Intl.DateTimeFormat(`${i18n.language || 'en'}-IN`, { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(completedAt)); }
+    catch { return format(new Date(completedAt), 'dd MMM yyyy'); }
+  })();
   const isCompleted = optimisticStatus === 'completed';
   const isPending = optimisticStatus === 'pending';
   const isExpired = optimisticStatus === 'expired';
@@ -48,7 +62,7 @@ export function TaskCompletionSection({
     setIsCompleting(true);
     
     try {
-      await onComplete(taskId);
+      await onComplete(taskId, askWorkDate ? workDate : undefined);
     } catch (error) {
       // Rollback on error
       setOptimisticStatus(status);
@@ -82,6 +96,7 @@ export function TaskCompletionSection({
 
   return (
     <motion.div
+      id={`task-completion-${taskId}`}
       initial={{ opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
@@ -99,7 +114,7 @@ export function TaskCompletionSection({
             <>
               <Clock className="h-4 w-4 text-foreground" />
               <span className="text-sm font-bold text-foreground">
-                {t('schedule.completion.mark_when_finished')}
+                {askWorkDate ? t('schedule.completion.confirm_past') : t('schedule.completion.mark_when_finished')}
               </span>
             </>
           ) : isCompleted ? (
@@ -112,7 +127,7 @@ export function TaskCompletionSection({
                 <Check className="h-4 w-4 text-success" />
               </motion.div>
               <span className="text-sm font-medium text-success">
-                {t('schedule.completion.completed_on', { date: completedAt ? format(new Date(completedAt), 'dd MMM, h:mm a') : t('schedule.completion.just_now') })}
+                {t('schedule.completion.completed_on', { date: completedDay })}
               </span>
             </>
           ) : (
@@ -155,6 +170,22 @@ export function TaskCompletionSection({
           </div>
         ) : isExpired ? null : (
           /* Mark Done Button */
+          <div className="space-y-2">
+          {askWorkDate && (
+            <div className="space-y-1">
+              <label className="block text-sm font-bold text-foreground" htmlFor={`work-date-${taskId}`}>
+                {t('schedule.completion.work_date_label')}
+              </label>
+              <input
+                id={`work-date-${taskId}`}
+                type="date"
+                max={today}
+                value={workDate}
+                onChange={(event) => setWorkDate(event.target.value && event.target.value <= today ? event.target.value : today)}
+                className="h-12 w-full rounded-md border-2 border-input bg-background px-3 text-base font-semibold text-foreground"
+              />
+            </div>
+          )}
           <motion.div
             whileTap={{ scale: 0.95 }}
             transition={{ duration: 0.4 }}
@@ -184,6 +215,7 @@ export function TaskCompletionSection({
               )}
             </Button>
           </motion.div>
+          </div>
         )}
       </div>
 
