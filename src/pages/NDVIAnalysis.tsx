@@ -87,17 +87,17 @@ export default function NDVIAnalysis() {
         </div>
         <Button variant="ghost" size="icon" aria-label={t('ndvi.refresh.button', 'Refresh')} onClick={onRefresh} disabled={isRefreshing} className="h-10 w-10 rounded-full shrink-0"><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /></Button>
       </div>
-      <div className="flex gap-1.5 px-2 pb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x">
+      <div className="flex gap-2 px-3 py-1.5 mb-1 scroll-px-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x">
         {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-24 rounded-full shrink-0" />) : lands.map(land => {
           const active = land.id === selectedLandId;
-          return <button key={land.id} onClick={() => setSelectedLandId(land.id)} aria-pressed={active} className={cn('snap-start shrink-0 flex items-center gap-1.5 pl-1 pr-3 h-8 rounded-full border text-xs font-semibold transition active:scale-95', active ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-card border-border/50 text-muted-foreground')}>
+          return <button key={land.id} onClick={() => setSelectedLandId(land.id)} aria-pressed={active} className={cn('snap-start shrink-0 flex items-center gap-1.5 pl-1 pr-3 h-9 rounded-full border text-xs font-semibold transition active:scale-95', active ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-card border-border/50 text-muted-foreground')}>
             <span className={cn('h-6 w-6 rounded-full grid place-items-center text-sm', active ? 'bg-primary-foreground/20' : 'bg-muted')}>{cropIcons[land.id] ?? <Sprout className="h-3.5 w-3.5" aria-hidden />}</span>
             <span className="truncate max-w-[110px]">{land.name}</span>
             {hasSatellite(land) && <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-primary-foreground' : 'bg-success')} aria-hidden />}
           </button>;
         })}
       </div>
-      <div className="px-2 pb-2"><TabsList className="w-full grid grid-cols-3 h-10 rounded-full bg-muted/60 p-1">
+      <div className="px-3 pb-2.5"><TabsList className="w-full grid grid-cols-3 h-10 rounded-full bg-muted/60 p-1">
         <TabsTrigger value="today" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><Sun className="h-3.5 w-3.5" />{t('sky.tab.today', 'Today')}</TabsTrigger>
         <TabsTrigger value="map" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><MapIcon className="h-3.5 w-3.5" />{t('sky.tab.map', 'Map')}</TabsTrigger>
         <TabsTrigger value="season" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
