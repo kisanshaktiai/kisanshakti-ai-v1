@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-10-04",
+    "last_updated": "2026-11-19",
     "translation_status": "SOURCE",
     "note": "Source language."
   },
@@ -107,6 +107,33 @@
     },
     "rel": {
       "now": "just now"
+    },
+    "harvest": {
+      "title": "Is the harvest of {{land}} done?",
+      "days_left_one": "{{count}} day left before this land is freed automatically",
+      "days_left_other": "{{count}} days left before this land is freed automatically",
+      "body": "The harvest was due around {{date}}. Please enter the actual harvest date. If it is not updated, this land will be freed from its crop schedule on {{release}}.",
+      "done": "Harvest done — enter the date",
+      "standing": "Crop is still in the field",
+      "later": "Remind me tomorrow",
+      "when_harvested": "When did you harvest?",
+      "when_expected": "When do you expect to harvest?",
+      "expected_upto": "You can choose a date up to {{date}}.",
+      "back": "Back",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved_done": "Harvest saved. This land is now free for your next crop.",
+      "saved_standing": "Noted. We will ask again after {{date}}.",
+      "update_button": "Enter the harvest date",
+      "errors": {
+        "HARVEST_DATE_IN_FUTURE": "The harvest date cannot be after today.",
+        "HARVEST_DATE_BEFORE_SOWING": "The harvest date must be after the sowing date.",
+        "EXPECTED_DATE_NOT_IN_FUTURE": "Choose a date after today.",
+        "EXPECTED_DATE_BEYOND_CROP_WINDOW": "This date is later than this crop can stand in the field.",
+        "NO_ACTIVE_CROP": "This land has no crop now.",
+        "SESSION_REQUIRED": "Please log in again and try.",
+        "generic": "Could not save. Please try again."
+      }
     }
   }
 }

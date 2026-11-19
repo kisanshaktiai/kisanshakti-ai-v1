@@ -22,6 +22,8 @@ import { useTenant } from '@/hooks/useTenant';
 import { toast } from '@/hooks/use-toast';
 import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
+import { HarvestConfirmDialog } from '@/components/proactive/HarvestConfirmDialog';
+import { harvestQuestionOf, localDayIso, type HarvestCard } from '@/lib/harvestCard';
 import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
 import { formatNdviValue, ndviRatio, ndviTone, type NdviTone } from '@/lib/ndviColor';
 import { alertSourceText, useTranslatedTexts, FARM_ADVICE_TEXT, type AlertTextField } from '@/hooks/useAlertText';
@@ -107,6 +109,8 @@ export default function ProactiveAlerts() {
   const { user } = useAuthStore();
   const { tenant } = useTenant();
   const [answeringAlertId, setAnsweringAlertId] = useState<string | null>(null);
+  // Harvest card opened from the list (the same card the app shows on open)
+  const [harvestCard, setHarvestCard] = useState<HarvestCard | null>(null);
   const { clarifications, submitSowingDate } = useAnchorClarification();
   const ambiguousLandIds = useMemo(
     () => new Set(clarifications.map(c => c.land_id)),
@@ -535,6 +539,25 @@ export default function ProactiveAlerts() {
                           </div>
                         )}
 
+                      {/* Harvest card: after the harvest date, before the land is freed */}
+                      {(() => {
+                        const hq = harvestQuestionOf(alert);
+                        if (!hq || isHistorical || alert.status === 'ACTED' || !(localDayIso() > hq.harvest_date.slice(0, 10))) return null;
+                        return (
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHarvestCard({ alertId: alert.id, landId: hq.land_id, landName: alert.land?.name || alert.trigger_data?.land_name || null, question: hq });
+                            }}
+                            className="mt-3 h-10 w-full rounded-full gap-1.5 text-sm"
+                          >
+                            <Sprout className="h-4 w-4" />
+                            {t('alerts.harvest.update_button', 'Enter the harvest date')}
+                          </Button>
+                        );
+                      })()}
+
                       {/* One-tap "I watered this field" on a live irrigation alert */}
                       {alert.alert_category === 'IRRIGATION' && !isHistorical && alert.land_id && (
                         <Button
@@ -584,6 +607,13 @@ export default function ProactiveAlerts() {
           </AnimatePresence>
         </LayoutGroup>
       </div>
+
+      <HarvestConfirmDialog
+        card={harvestCard}
+        open={!!harvestCard}
+        onClose={() => setHarvestCard(null)}
+        onAnswered={(c) => { markActed(c.alertId); setHarvestCard(null); }}
+      />
     </div>
   );
 }

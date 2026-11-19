@@ -21,6 +21,14 @@
  * The words it produces ("behind", "with", "ahead") are statistical descriptors
  * of a robust z-score, and the stage position is the row's own expected band.
  * Everything else the screen shows is a picture of the data, not a judgement.
+ *
+ * 2026-11-19 crop-cycle gate (same rule as proactive-evaluator/crop-cycle.ts): the satellite measures
+ * plant cover, not a crop. A crop verdict is given only while a crop is in the field — an ACTIVE crop
+ * schedule with a sowing date, on a land in a crop-on-field lifecycle state (CROP_ACTIVE /
+ * READY_FOR_HARVEST / WAITING_HARVEST_CONFIRMATION). Otherwise the page says monitoring is on hold, and the land row's leftovers of
+ * the finished crop (stage cache, DAS, old sowing dates) are not read. "As expected" is said only after
+ * a real comparison with the stage's expected band on a reading the pipeline did not grade too weak;
+ * anything less is "stage_unverified", never a green verdict.
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -31,16 +39,22 @@ import { landsApi } from '@/services/landsApi';
 import { useNDVIAnalysis, type NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
 import { useLandWeatherState, type LandWeatherState } from '@/hooks/useLandWeatherState';
 
-export type FieldState = 'as_expected' | 'above_band' | 'slower' | 'something_wrong' | 'unclear' | 'no_data';
+export type FieldState = 'as_expected' | 'above_band' | 'slower' | 'something_wrong' | 'unclear' | 'no_data'
+  /** no crop in the field now (no active sown schedule, or the land is released): no crop verdict */
+  | 'crop_on_hold'
+  /** a crop is registered and the satellite saw it, but no valid stage comparison could be made */
+  | 'stage_unverified';
 export type CohortState = 'well_behind' | 'behind' | 'with' | 'ahead' | 'unknown';
-export type StageState = 'below' | 'within' | 'above' | 'no_sowing_date' | 'not_resolved' | 'no_band';
+export type StageState = 'below' | 'within' | 'above' | 'no_sowing_date' | 'not_resolved' | 'no_band' | 'no_crop';
 export type SkyState = 'clear' | 'hazy' | 'cloudy' | 'radar_only' | 'none';
 
 interface IntelRow { acquisition_date: string; observed_or_predicted: string | null; observed_ndvi: number | null; context_ndvi_median: number | null; parcel_context_robust_z: number | null; parcel_context_delta: number | null; evidence_json: Record<string, unknown> | null; estimated_ndvi_low: number | null; estimated_ndvi_high: number | null; intelligence_status: string | null; }
 interface RadarRow { acquisition_date: string; rvi_value: number | null; cross_ratio_db: number | null; }
 interface StageRow { id: string; crop_code: string; next_stage_id: string | null; is_moisture_critical: boolean | null; is_heat_critical: boolean | null; das_reference: string | null; stage_code: string; growth_stage: string | null; das_min: number | null; das_max: number | null; expected_ndvi_min: number | null; expected_ndvi_max: number | null; cultivation_method: string | null; phenology_index: number | null; expected_height_cm_min: number | null; expected_height_cm_max: number | null; expected_leaf_count_min: number | null; expected_leaf_count_max: number | null; stage_node_type: string | null; }
 interface ScheduleRow { sowing_date: string | null; transplant_date: string | null; cultivation_method: string | null; crop_name: string | null; }
-interface LandCtxRow { id: string; current_crop: string | null; current_crop_id: string | null; last_sowing_date: string | null; planting_date: string | null; transplant_date: string | null; das: number | null; crop_cycle: string | null;
+interface LandCtxRow { id: string; current_crop: string | null; current_crop_id: string | null; das: number | null; crop_cycle: string | null;
+  /** land_lifecycle_status, kept by the database triggers when a crop is harvested or its schedule ends */
+  lifecycle_status: string | null;
   /** phenology engine's stage cache on the land row (FK to crop_stage_master), with its DAS and source */
   stage_uuid: string | null; crop_stage: string | null; stage_source: string | null; stage_resolved_at: string | null; }
 /** one stage of the crop's own lane, as the crop figure and the season card read it */
@@ -62,6 +76,8 @@ export interface FieldSky {
   landId: string | null;
   loading: boolean;
   error: unknown;
+  /** a crop is in the field now (active sown schedule on a land that is not released) — crop verdicts only when true */
+  cropActive: boolean;
   /** newest decision-grade optical pass (all v3 columns) */
   latest: NDVIDataComplete | null;
   previous: NDVIDataComplete | null;
@@ -78,7 +94,7 @@ export interface FieldSky {
   layerFrames: { vigour: LayerFrame[]; moisture: LayerFrame[]; standing: LayerFrame[] };
   stage: { state: StageState; das: number | null; stageCode: string | null; stageName: string | null; expectedMin: number | null; expectedMax: number | null; sowingDate: string | null; cropCode: string | null;
            /** ordered lane of this crop's stages (crop_stage_master) and where the engine says the field sits on it — drives the crop figure */
-           ladder: StageStep[]; index: number | null; heightCm: number | null; leaves: number | null; sowingSource: 'schedule' | 'land' | null;
+           ladder: StageStep[]; index: number | null; heightCm: number | null; leaves: number | null; sowingSource: 'schedule' | null;
            /** the stage after this one (crop_stage_master.next_stage_id, else the next row of the lane) */
            next: StageStep | null;
            /** who set the stage (lands.stage_source, e.g. phenology_ssot) and when */
@@ -117,11 +133,17 @@ export function stageKey(name: string): string {
  * means both agree — it is not a tuning number.
  */
 export function attentionLevel(sky: FieldSky): 'severe' | 'watch' | null {
+  // no crop in the field: nothing to protect, so no "walk the field" / "needs water" call
+  if (!sky.cropActive) return null;
   if (sky.state === 'something_wrong' || sky.water.agreeing >= 2) return 'severe';
   if (sky.state === 'slower' || sky.neighbours.state === 'well_behind' || sky.water.agreeing >= 1) return 'watch';
   return null;
 }
 const VISITS_SHOWN = 8;
+/** land_lifecycle_status values that mean "a crop is on this land now" — same set as proactive-evaluator/crop-cycle.ts and SQL land_has_active_crop_cycle */
+const CROP_ON_FIELD_LIFECYCLES = new Set(['CROP_ACTIVE', 'READY_FOR_HARVEST', 'WAITING_HARVEST_CONFIRMATION']);
+/** the pipeline's own evidence tiers that cannot carry a crop verdict (SkyCard: "too small to measure well"; pre-v3 rows without a grade) */
+const NO_VERDICT_EVIDENCE = new Set(['insufficient', 'unrated']);
 const daysBetween = (a?: string | null, b?: string | null): number | null => {
   if (!a || !b) return null; const ms = new Date(a).getTime() - new Date(b).getTime();
   return Number.isFinite(ms) ? Math.round(ms / 86400000) : null;
@@ -157,15 +179,22 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
   // The proactive evaluator takes the sowing date from the ACTIVE crop schedule
   // first and only then from the land row; the Season card must agree with it.
   const scheduleQ = { data: (bundle?.schedule ?? null) as ScheduleRow | null, isLoading: false };
-  const scheduleSowing: string | null = scheduleQ.data?.sowing_date ?? scheduleQ.data?.transplant_date ?? null;
-  const landSowing: string | null = landRow?.last_sowing_date ?? landRow?.planting_date ?? landRow?.transplant_date ?? null;
-  const sowingDate: string | null = scheduleSowing ?? landSowing;
-  const sowingSource: 'schedule' | 'land' | null = scheduleSowing ? 'schedule' : landSowing ? 'land' : null;
+  // Crop-cycle gate — the evaluator's rule (crop-cycle.ts): an active schedule WITH a sowing date
+  // (lands-api returns the active schedule only) on a land in a crop-on-field lifecycle state.
+  // A crop the farmer never marked harvested is closed by the database (run_daily_crop_cycle_close)
+  // once its harvest window has passed; saving the next crop makes the land active again.
+  const lifecycle = landRow?.lifecycle_status ? String(landRow.lifecycle_status).trim().toUpperCase() : '';
+  const cropActive = !!scheduleQ.data?.sowing_date && CROP_ON_FIELD_LIFECYCLES.has(lifecycle);
+  // Sowing date from the active schedule only. The land row's last_sowing_date / planting_date belong
+  // to whatever crop was there before (e.g. last year's date on a land growing a new crop).
+  const sowingDate: string | null = cropActive ? (scheduleQ.data?.sowing_date ?? scheduleQ.data?.transplant_date ?? null) : null;
+  const sowingSource: 'schedule' | null = sowingDate ? 'schedule' : null;
   // The stage, its DAS and its crop come from the phenology engine's cache on the land row — never from
   // today minus a sowing date (overlapping stage windows, e.g. maturity 130-150 and harvest 140-160,
   // made a calendar lookup name a different stage than the schedule and the Decision Brain).
-  const stageUuid: string | null = landRow?.stage_uuid ?? null;
-  const das = n(landRow?.das);
+  // With no crop in the field that cache is the finished crop's last stage, so it is not read.
+  const stageUuid: string | null = cropActive ? (landRow?.stage_uuid ?? null) : null;
+  const das = cropActive ? n(landRow?.das) : null;
 
   const stageQ = useQuery({
     queryKey: ['field-sky-stage-lane', stageUuid],
@@ -228,7 +257,8 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
     const reading = latest?.ndvi_value != null ? { value: Number(latest.ndvi_value), low: n(passIntel?.evidence_json?.ndvi_lower_95), high: n(passIntel?.evidence_json?.ndvi_upper_95), date: passDate(latest) } : null;
 
     let stageState: StageState = 'no_sowing_date';
-    if (stageUuid && stageQ.isLoading) stageState = 'no_band'; // the stage row is on its way: say nothing yet
+    if (!cropActive) stageState = 'no_crop';
+    else if (stageUuid && stageQ.isLoading) stageState = 'no_band'; // the stage row is on its way: say nothing yet
     else if (!band) stageState = sowingDate || das != null || stageUuid ? 'not_resolved' : 'no_sowing_date';
     else if (band.expected_ndvi_min == null || band.expected_ndvi_max == null || !reading) stageState = 'no_band';
     else {
@@ -269,18 +299,26 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
 
     const ndre = n(latest?.ndre_value), ndrePrev = n(prevRow?.ndre_value);
 
+    // a reading the pipeline graded too weak (or never graded) shows as it is but carries no crop verdict
+    const weakEvidence = latest ? NO_VERDICT_EVIDENCE.has(String(latest.evidence_confidence ?? '').toLowerCase()) : false;
+
     let state: FieldState = 'no_data';
-    if (!latest) state = radar ? 'unclear' : 'no_data';
+    if (!cropActive) state = 'crop_on_hold';
+    else if (!latest) state = radar ? 'unclear' : 'no_data';
     else if (!fresh) state = 'unclear';
+    else if (weakEvidence) state = 'stage_unverified';
     else if (stageState === 'below' || cohort === 'well_behind') state = 'something_wrong';
     else if (cohort === 'behind') state = 'slower';
     // greener than the stage's band is said as it is — at maturity/harvest it means the crop is not ripening yet,
     // so it is never folded into "as expected"; it raises no attention on its own
     else if (stageState === 'above') state = 'above_band';
-    else state = 'as_expected';
+    // "as expected" only after a real comparison with this stage's expected band
+    else if (stageState === 'within') state = 'as_expected';
+    // no sowing date, stage not worked out, or no band for this stage: what was seen, without a verdict
+    else state = 'stage_unverified';
 
     return {
-      landId, loading: ndviLoading || landsQ.isLoading || intelQ.isLoading || scheduleQ.isLoading || (!!stageUuid && stageQ.isLoading), error: ndviError ?? landsQ.error ?? intelQ.error ?? stageQ.error ?? null,
+      landId, cropActive, loading: ndviLoading || landsQ.isLoading || intelQ.isLoading || scheduleQ.isLoading || (!!stageUuid && stageQ.isLoading), error: ndviError ?? landsQ.error ?? intelQ.error ?? stageQ.error ?? null,
       latest, previous: prevRow,
       history: (history || []).filter((h) => h.ndvi_value != null).map((h) => ({ date: h.date, ndvi: Number(h.ndvi_value), quality: h.quality_score ?? null })),
       radar,
@@ -323,5 +361,5 @@ export function useFieldSky(landId: string | null, reloadKey = 0): FieldSky {
       greenness: { ndre, ndrePrev, ndreDrop: ndre != null && ndrePrev != null ? ndrePrev - ndre : null },
       state,
     };
-  }, [landId, latestRaw, current, history, ndviLoading, ndviError, landsQ.isLoading, landsQ.error, landRow, scheduleQ.isLoading, sowingSource, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, stageQ.isLoading, stageQ.error, stageUuid, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
+  }, [landId, cropActive, latestRaw, current, history, ndviLoading, ndviError, landsQ.isLoading, landsQ.error, landRow, scheduleQ.isLoading, sowingSource, intelQ.data, intelQ.isLoading, intelQ.error, radarQ.data, stageQ.data, stageQ.isLoading, stageQ.error, stageUuid, weather.state, canopy.layers, surface.layers, sowingDate, das, cropCode]);
 }

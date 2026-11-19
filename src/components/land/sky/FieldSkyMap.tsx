@@ -49,14 +49,17 @@ export function FieldSkyMap(props: {
   const [fullscreen, setFullscreen] = useState(false);
   const ramps = useSatelliteLayerConfig().data;
 
+  // 2026-11-19: with no crop in the field the pictures are plant cover, not a crop, and there is no
+  // "where to check" quarter to walk to — names and the quarter follow sky.cropActive.
   const layers = useMemo(() => {
+    const crop = sky.cropActive;
     const out: Array<{ code: LayerCode; label: string; icon: typeof Leaf; frames: LayerFrame[]; quarter: Quarter | null }> = [
-      { code: 'vigour', label: t('sky.layer.vigour', 'Crop growth'), icon: Leaf, frames: sky.layerFrames.vigour, quarter: sky.zone.level === 'none' ? null : sky.zone.quarter },
+      { code: 'vigour', label: crop ? t('sky.layer.vigour', 'Crop growth') : t('sky.layer.vigour_cover', 'Plant cover'), icon: Leaf, frames: sky.layerFrames.vigour, quarter: !crop || sky.zone.level === 'none' ? null : sky.zone.quarter },
     ];
-    if (sky.layerFrames.moisture.length) out.push({ code: 'moisture', label: t('sky.layer.moisture', 'Crop moisture'), icon: Droplets, frames: sky.layerFrames.moisture, quarter: sky.zone.water.level === 'none' ? null : sky.zone.water.quarter });
+    if (sky.layerFrames.moisture.length) out.push({ code: 'moisture', label: crop ? t('sky.layer.moisture', 'Crop moisture') : t('sky.layer.moisture_cover', 'Plant moisture'), icon: Droplets, frames: sky.layerFrames.moisture, quarter: !crop || sky.zone.water.level === 'none' ? null : sky.zone.water.quarter });
     if (sky.layerFrames.standing.length) out.push({ code: 'standing', label: t('sky.layer.standing', 'Standing water'), icon: Waves, frames: sky.layerFrames.standing, quarter: null });
     return out;
-  }, [sky.layerFrames, sky.zone, t]);
+  }, [sky.cropActive, sky.layerFrames, sky.zone, t]);
 
   const active = layers.find((l) => l.code === layer) ?? layers[0];
   useEffect(() => { setDateIdx(0); setPlaying(false); }, [layer, props.landId]);
@@ -90,11 +93,12 @@ export function FieldSkyMap(props: {
   };
 
   const legend: MapLegend = useMemo(() => {
+    // zone classes compare greenness inside this field only — "greener", not "better": green can be weeds
     if (active.code === 'vigour' && frame?.kind === 'zones') {
       return { kind: 'classes', items: [
-        { color: ZONE_CLASS_COLOURS.lower, label: t('sky.legend.lower', 'weaker than the rest'), sharePct: sharePct(frame.shares?.lower) },
+        { color: ZONE_CLASS_COLOURS.lower, label: t('sky.legend.lower', 'less green than the rest'), sharePct: sharePct(frame.shares?.lower) },
         { color: ZONE_CLASS_COLOURS.normal, label: t('sky.legend.normal', 'like the rest'), sharePct: sharePct(frame.shares?.normal) },
-        { color: ZONE_CLASS_COLOURS.higher, label: t('sky.legend.higher', 'better than the rest'), sharePct: sharePct(frame.shares?.higher) },
+        { color: ZONE_CLASS_COLOURS.higher, label: t('sky.legend.higher', 'greener than the rest'), sharePct: sharePct(frame.shares?.higher) },
       ] };
     }
     if (active.code === 'vigour') return { kind: 'ramp', css: colourRampCss(NDVI_COLOR_STOPS), low: t('sky.legend.weak', 'weak'), high: t('sky.legend.strong', 'strong') };

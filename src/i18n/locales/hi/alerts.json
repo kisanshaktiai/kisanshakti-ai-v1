@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-10-04",
+    "last_updated": "2026-11-19",
     "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
     "note": "Written for rural farmers in everyday spoken language. A native speaker should read it once before release."
   },
@@ -107,6 +107,33 @@
     },
     "rel": {
       "now": "अभी"
+    },
+    "harvest": {
+      "title": "क्या {{land}} की कटाई हो गई?",
+      "days_left_one": "यह खेत अपने आप मुक्त होने में {{count}} दिन बचा है",
+      "days_left_other": "यह खेत अपने आप मुक्त होने में {{count}} दिन बचे हैं",
+      "body": "कटाई लगभग {{date}} को होनी थी। कृपया असली कटाई की तारीख डालें। अगर तारीख नहीं डाली गई, तो {{release}} को यह खेत फसल कार्यक्रम से अपने आप मुक्त हो जाएगा।",
+      "done": "कटाई हो गई — तारीख डालें",
+      "standing": "फसल अभी खेत में खड़ी है",
+      "later": "कल याद दिलाना",
+      "when_harvested": "कटाई कब की?",
+      "when_expected": "कटाई कब करने वाले हैं?",
+      "expected_upto": "आप {{date}} तक की तारीख चुन सकते हैं।",
+      "back": "पीछे",
+      "save": "सेव करें",
+      "saving": "सेव हो रहा है…",
+      "saved_done": "कटाई दर्ज हो गई। यह खेत अब अगली फसल के लिए खाली है।",
+      "saved_standing": "ठीक है। {{date}} के बाद फिर पूछेंगे।",
+      "update_button": "कटाई की तारीख डालें",
+      "errors": {
+        "HARVEST_DATE_IN_FUTURE": "कटाई की तारीख आज के बाद की नहीं हो सकती।",
+        "HARVEST_DATE_BEFORE_SOWING": "कटाई की तारीख बुवाई के बाद की होनी चाहिए।",
+        "EXPECTED_DATE_NOT_IN_FUTURE": "आज के बाद की तारीख चुनें।",
+        "EXPECTED_DATE_BEYOND_CROP_WINDOW": "यह फसल इतने दिन खेत में खड़ी नहीं रह सकती।",
+        "NO_ACTIVE_CROP": "इस खेत में अभी कोई फसल नहीं है।",
+        "SESSION_REQUIRED": "कृपया फिर से लॉग इन करके कोशिश करें।",
+        "generic": "सेव नहीं हो सका। कृपया फिर से कोशिश करें।"
+      }
     }
   }
 }

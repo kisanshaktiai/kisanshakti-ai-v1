@@ -10,6 +10,8 @@ import { formatSkyDay, type FieldSky } from '@/hooks/useFieldSky';
  * pipeline measured around it on the same pass (ndvi_intelligence.observed_ndvi
  * and context_ndvi_median of the newest row that has surroundings). Neighbours
  * had the same weather, so the difference is the field itself.
+ * 2026-11-19: with no crop in the field the bars stay (they are what the satellite measured) but no
+ * "behind / keeping pace" judgement is made — there is no crop of this field to compare.
  */
 export function NeighbourCard({ sky }: { sky: FieldSky }) {
   const { t, i18n } = useTranslation();
@@ -18,6 +20,7 @@ export function NeighbourCard({ sky }: { sky: FieldSky }) {
   const around = nb.around;
 
   const sentence = (() => {
+    if (!sky.cropActive) return t('sky.nb.on_hold', 'No crop is registered on this field, so it is not compared with the crop around it.');
     switch (nb.state) {
       case 'well_behind': return t('sky.nb.well_behind', 'Your field is clearly behind the crop around it.');
       case 'behind': return t('sky.nb.behind', 'Your field is a little behind the crop around it.');
@@ -27,7 +30,7 @@ export function NeighbourCard({ sky }: { sky: FieldSky }) {
     }
   })();
 
-  const tone = nb.state === 'well_behind' ? 'text-destructive' : nb.state === 'behind' ? 'text-warning' : nb.state === 'ahead' ? 'text-success' : 'text-foreground';
+  const tone = !sky.cropActive ? 'text-foreground' : nb.state === 'well_behind' ? 'text-destructive' : nb.state === 'behind' ? 'text-warning' : nb.state === 'ahead' ? 'text-success' : 'text-foreground';
 
   return (
     <Card className="rounded-3xl border-border/40">

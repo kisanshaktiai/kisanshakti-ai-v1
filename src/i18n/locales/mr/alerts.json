@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-10-04",
+    "last_updated": "2026-11-19",
     "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
     "note": "Written for rural farmers in everyday spoken language. A native speaker should read it once before release."
   },
@@ -107,6 +107,33 @@
     },
     "rel": {
       "now": "आत्ताच"
+    },
+    "harvest": {
+      "title": "{{land}} ची काढणी झाली का?",
+      "days_left_one": "हे शेत आपोआप मोकळे होण्यास {{count}} दिवस बाकी आहे",
+      "days_left_other": "हे शेत आपोआप मोकळे होण्यास {{count}} दिवस बाकी आहेत",
+      "body": "काढणी साधारण {{date}} ला होणार होती. कृपया काढणीची खरी तारीख टाका. तारीख टाकली नाही, तर {{release}} ला हे शेत पीक वेळापत्रकातून आपोआप मोकळे होईल.",
+      "done": "काढणी झाली — तारीख टाका",
+      "standing": "पीक अजून शेतात उभे आहे",
+      "later": "उद्या आठवण करा",
+      "when_harvested": "काढणी कधी केली?",
+      "when_expected": "काढणी कधी करणार आहात?",
+      "expected_upto": "{{date}} पर्यंतची तारीख निवडता येईल.",
+      "back": "मागे",
+      "save": "जतन करा",
+      "saving": "जतन होत आहे…",
+      "saved_done": "काढणीची नोंद झाली. हे शेत आता पुढच्या पिकासाठी मोकळे आहे.",
+      "saved_standing": "ठीक आहे. {{date}} नंतर पुन्हा विचारू.",
+      "update_button": "काढणीची तारीख टाका",
+      "errors": {
+        "HARVEST_DATE_IN_FUTURE": "काढणीची तारीख आजनंतरची असू शकत नाही.",
+        "HARVEST_DATE_BEFORE_SOWING": "काढणीची तारीख पेरणीनंतरची असली पाहिजे.",
+        "EXPECTED_DATE_NOT_IN_FUTURE": "आजनंतरची तारीख निवडा.",
+        "EXPECTED_DATE_BEYOND_CROP_WINDOW": "हे पीक इतके दिवस शेतात उभे राहू शकत नाही.",
+        "NO_ACTIVE_CROP": "या शेतात सध्या पीक नाही.",
+        "SESSION_REQUIRED": "कृपया पुन्हा लॉग इन करून प्रयत्न करा.",
+        "generic": "जतन झाले नाही. कृपया पुन्हा प्रयत्न करा."
+      }
     }
   }
 }
