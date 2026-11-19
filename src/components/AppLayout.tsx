@@ -19,6 +19,7 @@ import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
 import { FeatureWalkthrough } from '@/components/onboarding/FeatureWalkthrough';
+import { HarvestConfirmPopup } from '@/components/proactive/HarvestConfirmPopup';
 
 export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -120,6 +121,10 @@ export function AppLayout() {
 
             {/* First-run voice-narrated walkthrough — shows once per install */}
             <FeatureWalkthrough />
+
+            {/* Harvest card — on app open, after a crop's harvest date until its land is freed
+                (not over the land-boundary drawing screens) */}
+            <HarvestConfirmPopup hidden={isLandMapRoute} />
           </div>
         </ScrollContext.Provider>
       </SubscriptionProvider>
