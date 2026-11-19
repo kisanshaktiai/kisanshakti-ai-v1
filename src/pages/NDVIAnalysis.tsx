@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { landsApi } from '@/services/landsApi';
 import { useFieldSky } from '@/hooks/useFieldSky';
 import { FieldStateCard } from '@/components/land/sky/FieldStateCard';
@@ -69,35 +68,43 @@ export default function NDVIAnalysis() {
 
   const boundary = useMemo(() => { const coords = selectedLand?.boundary_polygon_old?.coordinates?.[0]; return coords ? coords.map((c: number[]) => ({ lat: c[1], lng: c[0] })) : []; }, [selectedLand]);
   const centerPoint = useMemo(() => { const c = selectedLand?.center_point_old?.coordinates; return c ? { lat: c[1], lng: c[0] } : { lat: 20.5937, lng: 78.9629 }; }, [selectedLand]);
+  // Back: return to the previous screen; when opened directly (no in-app history) go to Home instead of leaving the app.
+  const goBack = () => { const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0; if (idx > 0) navigate(-1); else navigate('/app', { replace: true }); };
   const landName = selectedLand?.name || t('sky.your_field', 'your field');
 
   return <div className="min-h-full bg-background flex flex-col">
-    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border/40">
-      <div className="flex items-center justify-between px-2 h-11">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-9 w-9 rounded-xl shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
-          <h1 className="text-sm font-bold truncate">{t('sky.title', 'My field from the sky')}</h1><Satellite className="h-3.5 w-3.5 text-primary shrink-0" />
+    <Tabs value={tab} onValueChange={v => setTab(v as SkyTab)} className="flex-1 flex flex-col">
+    <header className="sticky top-0 z-30 bg-background border-b border-border/40 shadow-sm">
+      <div className="flex items-center gap-1 px-2 h-12">
+        <Button variant="ghost" size="icon" aria-label={t('common.back', 'Back')} onClick={goBack} className="h-10 w-10 rounded-full shrink-0 active:scale-95"><ArrowLeft className="h-5 w-5" /></Button>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="relative h-8 w-8 rounded-full bg-primary/15 grid place-items-center shrink-0">
+            <Satellite className="h-4 w-4 text-primary" />
+            {!reduceMotion && <span className="absolute inset-0 rounded-full border border-primary/40 animate-ping" />}
+          </span>
+          <div className="min-w-0"><h1 className="text-sm font-bold truncate leading-tight">{t('sky.title', 'My field from the sky')}</h1>
+            {selectedLand && <p className="text-[11px] text-muted-foreground truncate leading-tight">{selectedLand.name} · {selectedLand.area_acres} ac</p>}</div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onRefresh} disabled={isRefreshing} className="h-9 w-9 rounded-xl"><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /></Button>
+        <Button variant="ghost" size="icon" aria-label={t('ndvi.refresh.button', 'Refresh')} onClick={onRefresh} disabled={isRefreshing} className="h-10 w-10 rounded-full shrink-0"><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /></Button>
       </div>
+      <div className="flex gap-2 px-3 py-1.5 mb-1 scroll-px-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x">
+        {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-24 rounded-full shrink-0" />) : lands.map(land => {
+          const active = land.id === selectedLandId;
+          return <button key={land.id} onClick={() => setSelectedLandId(land.id)} aria-pressed={active} className={cn('snap-start shrink-0 flex items-center gap-1.5 pl-1 pr-3 h-9 rounded-full border text-xs font-semibold transition active:scale-95', active ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-card border-border/50 text-muted-foreground')}>
+            <span className={cn('h-6 w-6 rounded-full grid place-items-center text-sm', active ? 'bg-primary-foreground/20' : 'bg-muted')}>{cropIcons[land.id] ?? <Sprout className="h-3.5 w-3.5" aria-hidden />}</span>
+            <span className="truncate max-w-[110px]">{land.name}</span>
+            {hasSatellite(land) && <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-primary-foreground' : 'bg-success')} aria-hidden />}
+          </button>;
+        })}
+      </div>
+      <div className="px-3 pb-2.5"><TabsList className="w-full grid grid-cols-3 h-10 rounded-full bg-muted/60 p-1">
+        <TabsTrigger value="today" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><Sun className="h-3.5 w-3.5" />{t('sky.tab.today', 'Today')}</TabsTrigger>
+        <TabsTrigger value="map" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><MapIcon className="h-3.5 w-3.5" />{t('sky.tab.map', 'Map')}</TabsTrigger>
+        <TabsTrigger value="season" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
+      </TabsList></div>
     </header>
 
-    <ScrollArea className="w-full shrink-0 border-b border-border/40 bg-card/40"><div className="flex gap-1.5 px-2 py-2">
-      {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-11 w-[110px] rounded-xl shrink-0" />) : lands.map(land => (
-        <button key={land.id} onClick={() => setSelectedLandId(land.id)} className={cn('shrink-0 flex items-center gap-2 px-3 h-11 rounded-xl border text-left transition', land.id === selectedLandId ? 'bg-primary/10 border-primary text-foreground' : 'bg-card border-border/40 text-muted-foreground')}>
-          {cropIcons[land.id] ? <span className="text-base" aria-hidden>{cropIcons[land.id]}</span> : <Sprout className="h-4 w-4 text-primary shrink-0" aria-hidden />}
-          <span className="min-w-0"><span className="block text-xs font-semibold truncate max-w-[96px]">{land.name}</span><span className="block text-[10px] opacity-70">{land.area_acres} ac</span></span>
-        </button>))}
-    </div><ScrollBar orientation="horizontal" /></ScrollArea>
-
-    <Tabs value={tab} onValueChange={v => setTab(v as SkyTab)} className="flex-1 flex flex-col">
-      <div className="px-3 pt-2"><TabsList className="w-full grid grid-cols-3 h-11 rounded-2xl bg-muted/40">
-        <TabsTrigger value="today" className="rounded-xl text-xs gap-1"><Sun className="h-3.5 w-3.5" />{t('sky.tab.today', 'Today')}</TabsTrigger>
-        <TabsTrigger value="map" className="rounded-xl text-xs gap-1"><MapIcon className="h-3.5 w-3.5" />{t('sky.tab.map', 'Map')}</TabsTrigger>
-        <TabsTrigger value="season" className="rounded-xl text-xs gap-1"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
-      </TabsList></div>
-
-      <TabsContent value="today" className="flex-1 px-3 pt-3 pb-24 flex flex-col gap-3 mt-0 data-[state=inactive]:hidden">
+      <TabsContent value="today" className="flex-1 px-3 pt-3 pb-28 flex flex-col gap-3 mt-0 data-[state=inactive]:hidden">
         {sky.loading ? <><Skeleton className="h-24 rounded-3xl" /><Skeleton className="h-32 rounded-3xl" /><Skeleton className="h-24 rounded-3xl" /></>
         : sky.error ? <Card className="rounded-3xl border-destructive/40"><CardContent className="py-8 text-center space-y-2"><CloudOff className="h-5 w-5 mx-auto text-destructive" /><p className="text-sm text-destructive">{t('ndvi.error.load_failed', 'Could not load satellite data. Please try again.')}</p><Button variant="outline" size="sm" onClick={onRefresh} className="rounded-lg">{t('ndvi.error.retry', 'Retry')}</Button></CardContent></Card>
         : <motion.div key={selectedLandId ?? 'none'} variants={CARD_SEQUENCE} initial={reduceMotion ? false : 'hidden'} animate="shown" className="flex flex-col gap-3">
