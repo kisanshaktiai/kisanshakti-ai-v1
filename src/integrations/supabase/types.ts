@@ -44255,6 +44255,33 @@ export type Database = {
         }
         Returns: Json
       }
+      crop_cycle_close_plan: {
+        Args: { p_as_of?: string }
+        Returns: {
+          card_due: boolean
+          crop_code: string
+          crop_name: string
+          cultivation_method: string
+          days_left: number
+          due: boolean
+          farmer_id: string
+          grace_days: number
+          harvest_basis: string
+          harvest_date: string
+          harvest_window_end: string
+          land_id: string
+          land_lifecycle: string
+          land_name: string
+          max_expected_date: string
+          notice_from: string
+          release_on: string
+          schedule_id: string
+          sowing_date: string
+          tenant_id: string
+          transplant_date: string
+          variety_id: string
+        }[]
+      }
       debug_auth_state: {
         Args: never
         Returns: {
@@ -45268,6 +45295,10 @@ export type Database = {
       }
       jsonb_normalize_upper_tokens: { Args: { data: Json }; Returns: Json }
       land_cell_key: { Args: { p_lat: number; p_lon: number }; Returns: string }
+      land_has_active_crop_cycle: {
+        Args: { p_land_id: string }
+        Returns: boolean
+      }
       leave_community: {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json
@@ -45526,6 +45557,15 @@ export type Database = {
         Args: { p_land_id: string }
         Returns: Json
       }
+      record_crop_harvest: {
+        Args: {
+          p_date: string
+          p_farmer_id: string
+          p_harvested: boolean
+          p_land_id: string
+        }
+        Returns: Json
+      }
       record_failed_login: {
         Args: { p_email: string; p_ip_address?: unknown }
         Returns: Json
@@ -45730,6 +45770,10 @@ export type Database = {
       }
       resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
+      run_daily_crop_cycle_close: {
+        Args: { p_date?: string; p_dry_run?: boolean }
+        Returns: Json
+      }
       run_daily_farm_decisions: { Args: { p_date?: string }; Returns: Json }
       run_daily_farm_state: { Args: { p_date?: string }; Returns: Json }
       run_daily_phenology: { Args: never; Returns: Json }
