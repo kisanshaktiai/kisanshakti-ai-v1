@@ -1,4 +1,12 @@
 // AGENT 1B: VISUAL INTELLIGENCE AGENT - CORE LOGIC
+// CHANGE LOG (newest first)
+// 2026-11-20 17:53 UTC — Type-contract fix for `deno check`: annotate pestSeverity /
+//   diseaseSeverity / primaryIssue with their interface types so DB/JSON-derived string
+//   literals (economic_threshold.urgency, spread_pattern, action_urgency) are checked
+//   against the literal unions instead of widening to `string`; drop the unreachable
+//   'MILD_STRESS' arms in visible_vigor / estimated_yield_impact_percent (that value is
+//   never assigned by this ladder); add the required diagnosis_summary_mr/hi to the
+//   poor-quality retake branch. No produced agronomic value or escalation step changed.
 
 import {
   VisualAgentInput,
@@ -9,6 +17,9 @@ import {
   SeverityQuantification,
   ConfidenceAssessment,
   IntegratedDiagnosis,
+  PestSeverityAssessment,
+  DiseaseSeverityAssessment,
+  PrimaryIssue,
   ImageUsability,
   QualityStatus,
   SeverityLevel,
@@ -509,7 +520,7 @@ function quantifySeverity(
   }
   
   // Calculate pest severity
-  let pestSeverity = undefined;
+  let pestSeverity: PestSeverityAssessment | undefined = undefined;
   if (detections.pests.length > 0) {
     const primaryPest = detections.pests[0];
     const threshold = PEST_ECONOMIC_THRESHOLDS[primaryPest.pest_code] || PEST_ECONOMIC_THRESHOLDS.DEFAULT;
@@ -537,7 +548,7 @@ function quantifySeverity(
   }
   
   // Calculate disease severity
-  let diseaseSeverity = undefined;
+  let diseaseSeverity: DiseaseSeverityAssessment | undefined = undefined;
   if (detections.diseases.length > 0) {
     const primaryDisease = detections.diseases[0];
     
@@ -568,11 +579,9 @@ function quantifySeverity(
     symptom_severity: symptomSeverity,
     overall_crop_health: {
       assessment: healthAssessment,
-      visible_vigor: healthAssessment === 'HEALTHY' ? 'GOOD' : 
-                     healthAssessment === 'MILD_STRESS' ? 'GOOD' : 'REDUCED',
+      visible_vigor: healthAssessment === 'HEALTHY' ? 'GOOD' : 'REDUCED',
       color_assessment: healthAssessment === 'HEALTHY' ? 'Normal green' : 'Slightly pale',
       estimated_yield_impact_percent: healthAssessment === 'HEALTHY' ? 0 :
-                                       healthAssessment === 'MILD_STRESS' ? 5 :
                                        healthAssessment === 'STRESSED' ? 15 :
                                        healthAssessment === 'SEVERE_STRESS' ? 30 : 50
     }
@@ -678,7 +687,7 @@ function createIntegratedDiagnosis(
   cropContext: VisualAgentInput['crop_context']
 ): IntegratedDiagnosis {
   // Determine primary issue
-  let primaryIssue = null;
+  let primaryIssue: PrimaryIssue | null = null;
   
   if (detections.pests.length > 0 && severity.pest_severity?.economic_threshold.threshold_exceeded) {
     const pest = detections.pests[0];
@@ -838,6 +847,8 @@ function createRetakeResponse(
       secondary_issues: [],
       contributing_factors: [],
       positive_indicators: [],
+      diagnosis_summary_mr: 'Photo is not clear. Please retake photo.',
+      diagnosis_summary_hi: 'Photo is not clear. Please retake photo.',
       diagnosis_summary_en: 'Photo is not clear. Please retake photo.'
     },
     recommendation_to_next_agent: {
