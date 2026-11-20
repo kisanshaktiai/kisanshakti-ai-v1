@@ -1,6 +1,8 @@
 /**
  * 2026-11-19 — the harvest card opens on app open, counts down, and saves the answer
  * through proactive-question-seed with the verified session token.
+ * 2026-11-20 — the auto-release warning is on the card in its own line; with no network
+ * the card comes from the phone's offline alert copy (localDB).
  * Dates mirror crop_cycle_close_plan on 2026-11-19 for a sugarcane field that the
  * farmer can still report as standing (harvest 5 Jan 2027, window to 9 Jan 2027).
  */
@@ -11,6 +13,7 @@ const h = vi.hoisted(() => ({
   rows: [] as unknown[],
   invoke: vi.fn(),
   toast: vi.fn(),
+  cached: vi.fn(),
 }));
 
 vi.mock('@/stores/authStore', () => ({ useAuthStore: () => ({ user: { id: 'farmer-1', tenantId: 'tenant-1' } }) }));
@@ -36,6 +39,8 @@ vi.mock('@/integrations/supabase/client', () => {
   };
 });
 
+vi.mock('@/services/localDB', () => ({ localDB: { getProactiveAlerts: h.cached } }));
+
 import { HarvestConfirmPopup } from '@/components/proactive/HarvestConfirmPopup';
 
 const caneCard = {
@@ -54,8 +59,12 @@ beforeEach(() => {
   h.rows = [caneCard];
   h.invoke.mockReset().mockResolvedValue({ data: { ok: true }, error: null });
   h.toast.mockReset();
+  h.cached.mockReset().mockResolvedValue([]);
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+});
 
 /** The day cell of the month on show (the calendar also shows the neighbours' spill-over days). */
 const dayOfShownMonth = (day: string) =>
@@ -69,6 +78,25 @@ describe('HarvestConfirmPopup', () => {
     expect(screen.getByText('Harvest done — enter the date')).toBeTruthy();
     expect(screen.getByText('Crop is still in the field')).toBeTruthy();
     expect(screen.getByText('Remind me tomorrow')).toBeTruthy();
+    // the auto-release warning is its own line on the card, with the release day
+    expect(screen.getByText(/this land will be freed from its crop schedule automatically on/)).toBeTruthy();
+  });
+
+  it('offline: the card comes from the phone\'s alert copy (only live harvest cards of this tenant)', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    h.rows = [];
+    h.cached.mockResolvedValue([
+      { ...caneCard, tenant_id: 'tenant-1' },
+      { ...caneCard, id: 'other-tenant', land_id: 'land-9', tenant_id: 'tenant-2',
+        trigger_data: { ...caneCard.trigger_data, question: { ...caneCard.trigger_data.question, land_id: 'land-9' } } },
+      { ...caneCard, id: 'water', rule_id: 'IRRIGATION_TRIGGER_FAO56', tenant_id: 'tenant-1' },
+    ]);
+    render(<HarvestConfirmPopup />);
+    expect(await screen.findByText('Is the harvest of Mala done?')).toBeTruthy();
+    expect(h.cached).toHaveBeenCalledWith('farmer-1');
+    // one card at a time: after "remind me tomorrow" nothing else is queued (other tenant / other rule dropped)
+    fireEvent.click(screen.getByText('Remind me tomorrow'));
+    await waitFor(() => expect(screen.queryByText('Is the harvest of Mala done?')).toBeNull());
   });
 
   it('"remind me tomorrow" closes it and keeps it closed for today', async () => {

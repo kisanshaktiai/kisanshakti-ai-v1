@@ -139,19 +139,32 @@ export function HarvestConfirmDialog({ card, open, onClose, onAnswered, onPutOff
             </span>
             {t('alerts.harvest.title', 'Is the harvest of {{land}} done?', { land })}
           </DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-3 text-sm text-foreground">
-              {/* the countdown */}
-              <div className="flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3">
-                <span className="text-4xl font-bold tabular-nums text-warning-foreground">{left}</span>
-                <span className="text-sm font-medium leading-snug">
-                  {t('alerts.harvest.days_left', { count: left, defaultValue: '{{count}} days left before this land is freed automatically' })}
-                </span>
+          {/* 2026-11-20: the colour is set on DialogDescription itself so it merges with the
+              component's default text-muted-foreground (on the child it lost and the text read grey). */}
+          <DialogDescription asChild className="space-y-3 text-sm text-foreground">
+            <div>
+              {/* the countdown and the auto-release warning, the most important lines on the card */}
+              <div className="space-y-3 rounded-2xl border border-warning/40 bg-warning/10 p-3">
+                <div className="flex items-center gap-3">
+                  {/* solid warning badge: bg-warning + text-warning-foreground is the pair the
+                      tenant theme defines together, so the number stays readable in every theme */}
+                  <span className="flex h-16 min-w-16 shrink-0 items-center justify-center rounded-2xl bg-warning px-3 text-4xl font-bold tabular-nums text-warning-foreground">
+                    {left}
+                  </span>
+                  <span className="text-base font-semibold leading-snug text-foreground">
+                    {t('alerts.harvest.days_left', { count: left, defaultValue: '{{count}} days left before this land is freed automatically' })}
+                  </span>
+                </div>
+                <p className="text-base font-bold leading-snug text-foreground">
+                  {t('alerts.harvest.warning',
+                    'If you do not enter the date, this land will be freed from its crop schedule automatically on {{release}}.',
+                    { release: formatFarmerDate(parseDay(q.release_on), lang) })}
+                </p>
               </div>
               <p className="leading-relaxed">
                 {t('alerts.harvest.body',
-                  'The harvest was due around {{date}}. Please enter the actual harvest date. If it is not updated, this land will be freed from its crop schedule on {{release}}.',
-                  { date: formatFarmerDate(parseDay(q.harvest_date), lang), release: formatFarmerDate(parseDay(q.release_on), lang) })}
+                  'The harvest was due around {{date}}. Please enter the actual harvest date, or tell us if the crop is still in the field.',
+                  { date: formatFarmerDate(parseDay(q.harvest_date), lang) })}
               </p>
             </div>
           </DialogDescription>

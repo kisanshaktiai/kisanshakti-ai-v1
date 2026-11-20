@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-11-19",
+    "last_updated": "2026-11-20",
     "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
     "note": "Written for rural farmers in everyday spoken language. A native speaker should read it once before release."
   },
@@ -112,7 +112,8 @@
       "title": "{{land}} ची काढणी झाली का?",
       "days_left_one": "हे शेत आपोआप मोकळे होण्यास {{count}} दिवस बाकी आहे",
       "days_left_other": "हे शेत आपोआप मोकळे होण्यास {{count}} दिवस बाकी आहेत",
-      "body": "काढणी साधारण {{date}} ला होणार होती. कृपया काढणीची खरी तारीख टाका. तारीख टाकली नाही, तर {{release}} ला हे शेत पीक वेळापत्रकातून आपोआप मोकळे होईल.",
+      "body": "काढणी साधारण {{date}} ला होणार होती. कृपया काढणीची खरी तारीख टाका, किंवा पीक अजून शेतात उभे असल्यास तसे सांगा.",
+      "warning": "तारीख टाकली नाही, तर {{release}} ला हे शेत पीक वेळापत्रकातून आपोआप मोकळे होईल.",
       "done": "काढणी झाली — तारीख टाका",
       "standing": "पीक अजून शेतात उभे आहे",
       "later": "उद्या आठवण करा",

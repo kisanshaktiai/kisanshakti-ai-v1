@@ -3,7 +3,7 @@
     "page": "alerts",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-11-19",
+    "last_updated": "2026-11-20",
     "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
     "note": "Written for rural farmers in everyday spoken language. A native speaker should read it once before release."
   },
@@ -112,7 +112,8 @@
       "title": "क्या {{land}} की कटाई हो गई?",
       "days_left_one": "यह खेत अपने आप मुक्त होने में {{count}} दिन बचा है",
       "days_left_other": "यह खेत अपने आप मुक्त होने में {{count}} दिन बचे हैं",
-      "body": "कटाई लगभग {{date}} को होनी थी। कृपया असली कटाई की तारीख डालें। अगर तारीख नहीं डाली गई, तो {{release}} को यह खेत फसल कार्यक्रम से अपने आप मुक्त हो जाएगा।",
+      "body": "कटाई लगभग {{date}} को होनी थी। कृपया कटाई की असली तारीख डालें, या फसल अभी खेत में खड़ी हो तो बताएं।",
+      "warning": "अगर तारीख नहीं डाली गई, तो {{release}} को यह खेत फसल कार्यक्रम से अपने आप मुक्त हो जाएगा।",
       "done": "कटाई हो गई — तारीख डालें",
       "standing": "फसल अभी खेत में खड़ी है",
       "later": "कल याद दिलाना",

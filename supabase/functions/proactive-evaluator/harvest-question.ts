@@ -23,6 +23,17 @@
 // Not limited by the farmer's daily alert cap and no rule cooldown: this card
 // is the farmer's only warning before his land is released, so it must be
 // there every day of the countdown (one per land per day via dedup_key).
+//
+// 2026-11-20 (audit of the first live day):
+//  H1  The card is seeded ONE DAY AHEAD (due today, or due tomorrow by the
+//      plan), so it is already waiting when the farmer opens the app in the
+//      morning — the evaluator's first run is 05:00 UTC (10:30 IST). The phone
+//      still shows it only after the harvest date (src/lib/harvestCard.ts).
+//      The row's dates always come from TODAY's plan.
+//  H2  harvestWindowLandIds(): lands whose card is due today. The evaluator
+//      raises no other advice on them (a crop past its harvest date is not
+//      irrigated, sprayed or fed) and expires their other live alerts.
+//  The plan is read once per run for today and tomorrow (loadHarvestPlan).
 // =====================================================
 
 export const HARVEST_QUESTION_RULE_CODE = 'HARVEST_CONFIRM_QUESTION';
@@ -87,14 +98,57 @@ export function formatDayMonthYear(iso: string | null): string {
   return y && m && d ? `${d}-${m}-${y}` : String(iso);
 }
 
-/** The card row for one land, or null when the plan says no card today. */
+/** public.crop_cycle_close_plan read for today and for tomorrow, keyed by land. */
+export interface HarvestPlan {
+  today: Map<string, ClosePlanRow>;
+  tomorrow: Map<string, ClosePlanRow>;
+}
+
+/** YYYY-MM-DD -> the next calendar day (UTC arithmetic on a date-only value). */
+export function nextDay(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
+
+/** Reads the plan once per run (today + tomorrow). null when the read fails: no cards, no hold. */
+export async function loadHarvestPlan(supabase: any, todayStr: string): Promise<HarvestPlan | null> {
+  const [today, tomorrow] = await Promise.all([
+    supabase.rpc('crop_cycle_close_plan', { p_as_of: todayStr }),
+    supabase.rpc('crop_cycle_close_plan', { p_as_of: nextDay(todayStr) }),
+  ]);
+  if (today.error || tomorrow.error) {
+    console.warn(`[HARVEST_QUESTION] crop_cycle_close_plan failed: ${(today.error ?? tomorrow.error).message}`);
+    return null;
+  }
+  const byLand = (rows: ClosePlanRow[] | null) => {
+    const m = new Map<string, ClosePlanRow>();
+    for (const p of rows || []) m.set(p.land_id, p);
+    return m;
+  };
+  return { today: byLand(today.data), tomorrow: byLand(tomorrow.data) };
+}
+
+/** H2: lands in their harvest countdown today (after the harvest date, before release). */
+export function harvestWindowLandIds(plan: HarvestPlan | null): Set<string> {
+  const ids = new Set<string>();
+  if (!plan) return ids;
+  for (const [landId, p] of plan.today) if (p.card_due === true) ids.add(landId);
+  return ids;
+}
+
+/**
+ * The card row for one land, or null when no card is due today or tomorrow (H1).
+ * Dates on the row come from today's plan row.
+ */
 export function buildHarvestQuestionRow(
   ctx: HarvestSeedCtx,
   plan: ClosePlanRow | undefined,
   ui: UiText,
   deps: HarvestSeedDeps,
+  planTomorrow?: ClosePlanRow,
 ): any | null {
-  if (!plan || plan.card_due !== true || !plan.harvest_date || !plan.release_on) return null;
+  const due = plan?.card_due === true || planTomorrow?.card_due === true;
+  if (!plan || !due || !plan.harvest_date || !plan.release_on) return null;
 
   const dedupKey = `HARVEST_Q:${plan.schedule_id}:${deps.todayStr}`;
   if (deps.isDuplicate(dedupKey, HARVEST_QUESTION_RULE_CODE, ctx.land_id, 0)) return null;
@@ -152,26 +206,20 @@ export function buildHarvestQuestionRow(
 
 /**
  * Returns proactive_alerts rows for the lands in `contexts` whose harvest card is
- * due today (never inserts). The plan is read once per run.
+ * due today or tomorrow (never inserts). `plan` is the run's loadHarvestPlan().
  */
 export async function buildHarvestQuestionAlerts(
   supabase: any,
   contexts: HarvestSeedCtx[],
   deps: HarvestSeedDeps,
+  plan: HarvestPlan | null,
 ): Promise<any[]> {
-  if (contexts.length === 0) return [];
-  const { data, error } = await supabase.rpc('crop_cycle_close_plan', { p_as_of: deps.todayStr });
-  if (error) {
-    console.warn(`[HARVEST_QUESTION] crop_cycle_close_plan failed: ${error.message}`);
-    return [];
-  }
-  const planByLand = new Map<string, ClosePlanRow>();
-  for (const p of (data || []) as ClosePlanRow[]) planByLand.set(p.land_id, p);
+  if (contexts.length === 0 || !plan) return [];
 
   const ui = await loadHarvestUiText(supabase);
   const rows: any[] = [];
   for (const ctx of contexts) {
-    const row = buildHarvestQuestionRow(ctx, planByLand.get(ctx.land_id), ui, deps);
+    const row = buildHarvestQuestionRow(ctx, plan.today.get(ctx.land_id), ui, deps, plan.tomorrow.get(ctx.land_id));
     if (row) rows.push(row);
   }
   if (rows.length > 0) console.log(`[HARVEST_QUESTION] ${rows.length} harvest card(s) seeded`);

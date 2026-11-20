@@ -10,7 +10,11 @@ import {
   buildHarvestQuestionRow,
   formatDayMonthYear,
   HARVEST_QUESTION_RULE_CODE,
+  harvestWindowLandIds,
+  loadHarvestPlan,
+  nextDay,
   type ClosePlanRow,
+  type HarvestPlan,
 } from "./harvest-question.ts";
 
 const ui = {
@@ -69,30 +73,66 @@ Deno.test("dates in the stored text are numeric day-month-year", () => {
   assertEquals(formatDayMonthYear(null), "");
 });
 
-Deno.test("seeder reads the plan once and seeds only lands whose card is due", async () => {
-  let rpcCalls = 0;
-  const caneNotYet: ClosePlanRow = { ...riceDue, schedule_id: "607ff3cc", land_id: "3307fac1", crop_code: "sugarcane",
-    harvest_date: "2027-01-09", harvest_basis: "crop_harvest_window", release_on: "2027-01-19", days_left: 61, card_due: false };
-  const fake = {
-    rpc: (name: string, args: Record<string, unknown>) => {
-      rpcCalls++;
-      assertEquals(name, "crop_cycle_close_plan");
-      assertEquals(args.p_as_of, "2026-11-19");
-      return Promise.resolve({ data: [riceDue, caneNotYet], error: null });
-    },
-    from: () => ({ select: () => ({ like: () => Promise.resolve({ data: [
-      { ui_key: "harvest.question.title", language_code: "en", display_text: "Is the harvest of {{land}} done?" },
-    ] }) }) }),
-  };
-  const rows = await buildHarvestQuestionAlerts(fake, [ctx, { ...ctx, land_id: "3307fac1", land_name: "Mala" }], deps);
-  assertEquals(rpcCalls, 1);
+const caneNotYet: ClosePlanRow = { ...riceDue, schedule_id: "607ff3cc", land_id: "3307fac1", crop_code: "sugarcane",
+  harvest_date: "2027-01-09", harvest_basis: "crop_harvest_window", release_on: "2027-01-19", days_left: 61, card_due: false };
+const uiTable = { from: () => ({ select: () => ({ like: () => Promise.resolve({ data: [
+  { ui_key: "harvest.question.title", language_code: "en", display_text: "Is the harvest of {{land}} done?" },
+] }) }) }) };
+const planOf = (today: ClosePlanRow[], tomorrow: ClosePlanRow[] = today): HarvestPlan => ({
+  today: new Map(today.map((p) => [p.land_id, p])),
+  tomorrow: new Map(tomorrow.map((p) => [p.land_id, p])),
+});
+
+Deno.test("nextDay crosses month and year ends", () => {
+  assertEquals(nextDay("2026-11-19"), "2026-11-20");
+  assertEquals(nextDay("2026-11-30"), "2026-12-01");
+  assertEquals(nextDay("2026-12-31"), "2027-01-01");
+});
+
+Deno.test("H1: due tomorrow (today is the harvest date) → the card is seeded today with today's dates", () => {
+  const todayRow = { ...riceDue, harvest_date: "2026-11-19", card_due: false, max_expected_date: "2026-11-29" };
+  const tomorrowRow = { ...riceDue, harvest_date: "2026-11-19", card_due: true, max_expected_date: "2026-11-30" };
+  const row = buildHarvestQuestionRow(ctx, todayRow, ui, deps, tomorrowRow);
+  assert(row);
+  assertEquals(row.dedup_key, "HARVEST_Q:2bb0f84c:2026-11-19");
+  // never more permissive than what the database accepts today
+  assertEquals(row.trigger_data.question.max_expected_date, "2026-11-29");
+  // not due today and not due tomorrow → nothing
+  assertEquals(buildHarvestQuestionRow(ctx, todayRow, ui, deps, { ...tomorrowRow, card_due: false }), null);
+});
+
+Deno.test("H2: only lands whose card is due today are in the harvest window", () => {
+  const dueTomorrowOnly = { ...riceDue, land_id: "dcd8f946", card_due: false };
+  const plan = planOf([riceDue, caneNotYet, dueTomorrowOnly], [riceDue, caneNotYet, { ...dueTomorrowOnly, card_due: true }]);
+  assertEquals([...harvestWindowLandIds(plan)], ["8897e53d"]);
+  assertEquals(harvestWindowLandIds(null).size, 0);
+});
+
+Deno.test("plan is read once per run for today and tomorrow; a failed read gives null", async () => {
+  const asOf: unknown[] = [];
+  const fake = { rpc: (name: string, args: Record<string, unknown>) => {
+    assertEquals(name, "crop_cycle_close_plan");
+    asOf.push(args.p_as_of);
+    return Promise.resolve({ data: [riceDue, caneNotYet], error: null });
+  } };
+  const plan = await loadHarvestPlan(fake, "2026-11-19");
+  assert(plan);
+  assertEquals(asOf, ["2026-11-19", "2026-11-20"]);
+  assertEquals(plan.today.get("8897e53d")?.release_on, "2026-11-29");
+  const failing = { rpc: () => Promise.resolve({ data: null, error: { message: "boom" } }) };
+  assertEquals(await loadHarvestPlan(failing, "2026-11-19"), null);
+});
+
+Deno.test("seeder seeds only lands whose card is due, from the run's plan", async () => {
+  const rows = await buildHarvestQuestionAlerts(uiTable, [ctx, { ...ctx, land_id: "3307fac1", land_name: "Mala" }], deps,
+    planOf([riceDue, caneNotYet]));
   assertEquals(rows.length, 1);
   assertEquals(rows[0].land_id, "8897e53d");
   // a language without its own row falls back to English
   assertEquals(rows[0].title_hi, "Is the harvest of Kodoli Mala done?");
 });
 
-Deno.test("plan read failure → no cards, no throw", async () => {
-  const fake = { rpc: () => Promise.resolve({ data: null, error: { message: "boom" } }), from: () => { throw new Error("not reached"); } };
-  assertEquals(await buildHarvestQuestionAlerts(fake, [ctx], deps), []);
+Deno.test("no plan (read failed) → no cards, no throw", async () => {
+  const fake = { from: () => { throw new Error("not reached"); } };
+  assertEquals(await buildHarvestQuestionAlerts(fake, [ctx], deps, null), []);
 });

@@ -25,11 +25,24 @@ import {
 import { calculateIrrigationForLand } from './irrigation.ts';
 import { enrichAndUpdateAlerts } from './enrichment.ts';
 import { buildGerminationQuestionAlerts, GERMINATION_QUESTION_RULE_CODE } from './germination-question.ts';
-import { buildHarvestQuestionAlerts, HARVEST_QUESTION_RULE_CODE } from './harvest-question.ts';
+import { buildHarvestQuestionAlerts, harvestWindowLandIds, HARVEST_QUESTION_RULE_CODE, loadHarvestPlan } from './harvest-question.ts';
 import { carriesDose, loadGraph, loadLandRegions, readGraphLink, selectGraphAdvice, type GraphAdvice, type GraphData } from './graph-advice.ts';
 import { resolveCropCanonical } from '../_shared/crop-resolver.ts';
 import { authorizeEvaluator } from './internal-auth.ts';
 import { cropCycleGate, type CropCycleHoldReason } from './crop-cycle.ts';
+
+// =====================================================
+// v134 — HARVEST WINDOW (2026-11-20). First live day: the same run that raised
+// the harvest cards also told all four fields "Time to water" — rice 24-26 days
+// and groundnut 29 days past their harvest date. Now (harvest-question.ts):
+//  H1  The harvest card is seeded one day ahead, so it is waiting at the
+//      farmer's first app open of the day (the first run is 10:30 IST).
+//  H2  A land in its harvest countdown (after the harvest date, before the
+//      release day) gets the harvest card only: no rule, no decision-rule
+//      bridge, no germination question; its other live alerts move to EXPIRED.
+//      The plan is read once per run. If the read fails nothing is held and no
+//      card is seeded (logged), as before.
+// =====================================================
 
 // =====================================================
 // v133 — CROP-CYCLE GATE (2026-11-19). Audit of live rows: 21 of 28 pending
@@ -397,6 +410,7 @@ Deno.serve(async (req) => {
     let totalStageGaps = 0;
     let totalExpired = 0;
     let totalHeld = 0;
+    let totalHarvestWindow = 0;
 
     for (const tenantId of tenantIds) {
       const t = await processOneTenant(supabase, tenantId, targetLandId, action);
@@ -409,6 +423,7 @@ Deno.serve(async (req) => {
       totalStageGaps += t.stageGaps;
       totalExpired += t.expired ?? 0;
       totalHeld += t.held ?? 0;
+      totalHarvestWindow += t.harvestWindow ?? 0;
     }
 
     const elapsed = Date.now() - startTime;
@@ -429,7 +444,8 @@ Deno.serve(async (req) => {
         stage_coverage_gaps: totalStageGaps,
         alerts_expired: totalExpired,
         lands_held_no_crop_cycle: totalHeld,
-        engine_version: 'v133-crop-cycle-gate',
+        lands_in_harvest_window: totalHarvestWindow,
+        engine_version: 'v134-harvest-window',
       },
     }).then(() => {});
 
@@ -459,7 +475,7 @@ async function processOneTenant(
   tenantId: string,
   targetLandId: string | null,
   action: string,
-): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number; suppressed: number; uncompilable: number; stageGaps: number; expired?: number; held?: number }> {
+): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number; suppressed: number; uncompilable: number; stageGaps: number; expired?: number; held?: number; harvestWindow?: number }> {
   const runStartIso = new Date().toISOString();
   // F5: config + governed params + suppression loaded up front — DB decides.
   const [cfg, methods, suppression] = await Promise.all([
@@ -759,6 +775,14 @@ async function processOneTenant(
     console.log(`[CROP_CYCLE_HOLD][${tenantId.slice(0, 8)}] ${heldLandIds.length} land(s) held — no crop in the field now (no_active_sown_schedule=${heldByReason.no_active_sown_schedule} land_released=${heldByReason.land_released})`);
   }
 
+  // v134 H2: lands in their harvest countdown get the harvest card only.
+  const harvestPlan = landContexts.length > 0 ? await loadHarvestPlan(supabase, todayStr) : null;
+  const harvestWindow = harvestWindowLandIds(harvestPlan);
+  const harvestWindowIds = landContexts.map((c) => c.land_id).filter((id) => harvestWindow.has(id));
+  if (harvestWindowIds.length > 0) {
+    console.log(`[HARVEST_WINDOW][${tenantId.slice(0, 8)}] ${harvestWindowIds.length} land(s) past their harvest date — harvest card only`);
+  }
+
   // =========================================================
   // Evaluate rules
   // =========================================================
@@ -770,6 +794,8 @@ async function processOneTenant(
   const eventsToInsert: any[] = [];
 
   for (const ctx of landContexts) {
+    // v134 H2: past the harvest date — no crop advice, only the harvest card (below).
+    if (harvestWindow.has(ctx.land_id)) continue;
     // A4: no resolvable crop → no crop alerts (rule applicability is crop-relative).
     const applicableRules = !ctx.crop_code ? [] : rules.filter((r: ProactiveRule) => {
       // Contract normalization: case-insensitive crop compare; NULL/'ALL' = crop-agnostic.
@@ -976,7 +1002,7 @@ async function processOneTenant(
   try {
     const germRows = await buildGerminationQuestionAlerts(
       supabase,
-      landContexts.map(c => ({
+      landContexts.filter(c => !harvestWindow.has(c.land_id)).map(c => ({
         land_id: c.land_id,
         farmer_id: c.farmer_id,
         tenant_id: c.tenant_id,
@@ -1004,6 +1030,7 @@ async function processOneTenant(
   // =========================================================
   // v133 HARVEST CARD — after the harvest date, until release (harvest-question.ts)
   // Only lands with a crop in the field reach here (crop-cycle gate above).
+  // v134 H1: seeded one day ahead from the plan read above.
   // =========================================================
   try {
     const harvestRows = await buildHarvestQuestionAlerts(
@@ -1019,6 +1046,7 @@ async function processOneTenant(
         isDuplicate: (dedupKey, ruleCode, landId, cooldownHours) =>
           isDuplicate(dedupKey, ruleCode, landId, cooldownHours, alertMap),
       },
+      harvestPlan,
     );
     if (harvestRows.length > 0) {
       alertsToInsert.push(...harvestRows);
@@ -1064,10 +1092,14 @@ async function processOneTenant(
     GERMINATION_QUESTION_RULE_CODE,
     HARVEST_QUESTION_RULE_CODE,
   ].filter(Boolean));
-  const expired = await expireAlerts(supabase, landIds, runStartIso, supersededPairs, { landIds: heldLandIds, ruleIds: ownRuleIds });
-  console.log(`[ALERT_LIFECYCLE][${tenantId.slice(0, 8)}] expired=${expired.total} (past_expiry=${expired.pastExpiry} superseded=${expired.superseded} crop_cycle_held=${expired.cropCycleHeld})`);
+  // v134 H2: on a land in its harvest countdown every one of this engine's codes except the harvest card.
+  const harvestWindowRuleIds = new Set([...ownRuleIds].filter((r) => r !== HARVEST_QUESTION_RULE_CODE));
+  const expired = await expireAlerts(supabase, landIds, runStartIso, supersededPairs,
+    { landIds: heldLandIds, ruleIds: ownRuleIds },
+    { landIds: harvestWindowIds, ruleIds: harvestWindowRuleIds });
+  console.log(`[ALERT_LIFECYCLE][${tenantId.slice(0, 8)}] expired=${expired.total} (past_expiry=${expired.pastExpiry} superseded=${expired.superseded} crop_cycle_held=${expired.cropCycleHeld} harvest_window=${expired.harvestWindow})`);
 
-  return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated, suppressed: suppressedCount, uncompilable: uncompilableSkipped, stageGaps, expired: expired.total, held: heldLandIds.length };
+  return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated, suppressed: suppressedCount, uncompilable: uncompilableSkipped, stageGaps, expired: expired.total, held: heldLandIds.length, harvestWindow: harvestWindowIds.length };
 }
 
 const LIVE_STATUSES = ['PENDING', 'DELIVERED', 'SEEN'];
@@ -1088,15 +1120,18 @@ function ruleExpiresAt(horizonDays: number | null | undefined, fallbackDays: num
 /** Set live alerts to EXPIRED: past expires_at, or superseded by a row inserted
  *  this run (same rule, same land). A quiet rule does not clear its alert.
  *  v133: also this engine's live alerts on a held land — the crop they spoke
- *  about has left the field, so the alert's premise is gone (not merely quiet). */
+ *  about has left the field, so the alert's premise is gone (not merely quiet).
+ *  v134: and, on a land in its harvest countdown, this engine's live alerts
+ *  other than the harvest card. */
 async function expireAlerts(
   supabase: any,
   landIds: string[],
   runStartIso: string,
   superseded: Array<{ land_id: string; rule_id: string }>,
   held: { landIds: string[]; ruleIds: Set<string> },
-): Promise<{ total: number; pastExpiry: number; superseded: number; cropCycleHeld: number }> {
-  const out = { total: 0, pastExpiry: 0, superseded: 0, cropCycleHeld: 0 };
+  harvestWindow: { landIds: string[]; ruleIds: Set<string> } = { landIds: [], ruleIds: new Set() },
+): Promise<{ total: number; pastExpiry: number; superseded: number; cropCycleHeld: number; harvestWindow: number }> {
+  const out = { total: 0, pastExpiry: 0, superseded: 0, cropCycleHeld: 0, harvestWindow: 0 };
   const now = new Date().toISOString();
   const run = async (q: any): Promise<number> => {
     const { data, error } = await q.select('id');
@@ -1127,19 +1162,25 @@ async function expireAlerts(
     }
   }
   // v133 C3: read the live rows first and filter by rule code here, so a long code list never goes in a URL.
-  for (let i = 0; i < held.landIds.length; i += 200) {
-    const { data: live, error } = await supabase.from('proactive_alerts')
-      .select('id, rule_id')
-      .in('land_id', held.landIds.slice(i, i + 200)).in('status', LIVE_STATUSES);
-    if (error) { console.warn(`[ALERT_LIFECYCLE] held-land read failed: ${error.message}`); continue; }
-    const ids = (live || []).filter((a: any) => held.ruleIds.has(a.rule_id)).map((a: any) => a.id);
-    for (let j = 0; j < ids.length; j += 200) {
-      out.cropCycleHeld += await run(supabase.from('proactive_alerts')
-        .update({ status: 'EXPIRED', updated_at: now })
-        .in('id', ids.slice(j, j + 200)).in('status', LIVE_STATUSES));
+  const expireOwn = async (group: { landIds: string[]; ruleIds: Set<string> }, label: string): Promise<number> => {
+    let n = 0;
+    for (let i = 0; i < group.landIds.length; i += 200) {
+      const { data: live, error } = await supabase.from('proactive_alerts')
+        .select('id, rule_id')
+        .in('land_id', group.landIds.slice(i, i + 200)).in('status', LIVE_STATUSES);
+      if (error) { console.warn(`[ALERT_LIFECYCLE] ${label} read failed: ${error.message}`); continue; }
+      const ids = (live || []).filter((a: any) => group.ruleIds.has(a.rule_id)).map((a: any) => a.id);
+      for (let j = 0; j < ids.length; j += 200) {
+        n += await run(supabase.from('proactive_alerts')
+          .update({ status: 'EXPIRED', updated_at: now })
+          .in('id', ids.slice(j, j + 200)).in('status', LIVE_STATUSES));
+      }
     }
-  }
-  out.total = out.pastExpiry + out.superseded + out.cropCycleHeld;
+    return n;
+  };
+  out.cropCycleHeld = await expireOwn(held, 'held-land');
+  out.harvestWindow = await expireOwn(harvestWindow, 'harvest-window');
+  out.total = out.pastExpiry + out.superseded + out.cropCycleHeld + out.harvestWindow;
   return out;
 }
 

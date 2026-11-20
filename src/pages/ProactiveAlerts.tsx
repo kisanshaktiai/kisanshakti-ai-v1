@@ -16,7 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'framer-motion';
 import { useEnhancedTTS } from '@/hooks/useEnhancedTTS';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from '@/hooks/use-toast';
@@ -151,7 +151,8 @@ export default function ProactiveAlerts() {
           confirmed,
           language: lang,
         },
-        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '' },
+        // 2026-11-20: answers need the verified session (proactive-question-seed)
+        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '', 'x-session-token': getSessionToken() || '' },
       });
       if (error) throw error;
       const msg = (data as any)?.message;
@@ -173,7 +174,7 @@ export default function ProactiveAlerts() {
     try {
       const { error } = await supabase.functions.invoke('proactive-question-seed', {
         body: { action: 'irrigation_answer', alertId: alert.id, landId: alert.land_id },
-        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '' },
+        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '', 'x-session-token': getSessionToken() || '' },
       });
       if (error) throw error;
       toast({ description: t('alerts.water.answered', 'Noted. Your watering will be counted in the next soil-water update.') });

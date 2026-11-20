@@ -1,6 +1,12 @@
 // Proactive Alert → AI-Generated, Multilingual, Farmer-Friendly Question
 // ----------------------------------------------------------------------
 // CHANGE LOG (newest first)
+// 2026-11-20 — "germination_answer" and "irrigation_answer" now need the same verified
+//   session as "harvest_answer" (x-session-token, _shared/sessionVerify.ts, farmer must equal
+//   x-farmer-id). Both write lifecycle events (record_germination / record_irrigation) that
+//   move the stage clock and the soil-water bucket; the header pair alone let anyone holding
+//   the public key answer for another farmer by UUID. The farmer app sends the token
+//   (src/pages/ProactiveAlerts.tsx). Question generation (no action) is unchanged.
 // 2026-11-19 — action "harvest_answer": the farmer's answer on the daily harvest card
 //   (seeded by proactive-evaluator/harvest-question.ts) — "harvest done" with the actual
 //   date, or "crop still in the field" with an expected date. Written by the DB RPC
@@ -242,10 +248,21 @@ Deno.serve(async (req: Request) => {
 
     if (!farmer) return json({ error: "Farmer profile not found" }, 403);
 
+    // Answers that write the farmer's own record need a DB-verified session whose farmer is
+    // this farmer; the header pair alone is not identity. Returns the refusal, or null.
+    const refuseUnverified = async (): Promise<Response | null> => {
+      const caller = await resolveVerifiedCaller(req);
+      if (!caller || caller.kind !== "farmer") return sessionRequiredResponse(corsHeaders);
+      if (caller.farmerId !== farmer.id) return json({ error: "Forbidden" }, 403);
+      return null;
+    };
+
     // ── One-tap germination answer (GERMINATION template) ────────────────
     // The tap is written by the DB RPC `record_germination`, the only writer
     // of GERMINATION_CONFIRMED / GERMINATION_NOT_OBSERVED lifecycle events.
     if (action === "germination_answer") {
+      const refused = await refuseUnverified();
+      if (refused) return refused;
       const answerLang: Lang = pickLang(body.language || farmer.language_preference, "en");
       return await handleGerminationAnswer(admin, {
         farmerId: farmer.id,
@@ -261,11 +278,10 @@ Deno.serve(async (req: Request) => {
     // Written by the DB RPC `record_crop_harvest`. Frees a land, so identity
     // comes from the verified session, never from the headers alone.
     if (action === "harvest_answer") {
-      const caller = await resolveVerifiedCaller(req);
-      if (!caller || caller.kind !== "farmer") return sessionRequiredResponse(corsHeaders);
-      if (caller.farmerId !== farmer.id) return json({ error: "Forbidden" }, 403);
+      const refused = await refuseUnverified();
+      if (refused) return refused;
       return await handleHarvestAnswer(admin, {
-        farmerId: caller.farmerId,
+        farmerId: farmer.id,
         landId: String(body.landId || "").trim(),
         alertId: String(body.alertId || "").trim() || null,
         harvested: body.harvested === true,
@@ -277,6 +293,8 @@ Deno.serve(async (req: Request) => {
     // The tap is written by the DB RPC `record_irrigation`, the only writer of
     // IRRIGATION_APPLIED lifecycle events.
     if (action === "irrigation_answer") {
+      const refused = await refuseUnverified();
+      if (refused) return refused;
       return await handleIrrigationAnswer(admin, {
         farmerId: farmer.id,
         landId: String(body.landId || "").trim(),
