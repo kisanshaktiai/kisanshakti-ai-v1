@@ -931,21 +931,32 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       
       if (!analysisResult) {
         console.error('JSON repair failed, returning fallback response');
+        // SURGICAL FIX (vision pipeline unification — make the old path honest):
+        // When the model response cannot be parsed or repaired, NEVER fabricate a
+        // crop identity, a health score or a treatment product. A confident wrong
+        // answer destroys farmer trust, and advice/doses must only ever come from
+        // the governed Decision Brain. Return an honest "incomplete — retake photo"
+        // result with the same shape, all diagnostic values neutral and empty.
         analysisResult = {
+          incomplete: true,
           cropDetected: {
-            name: "Crop detected",
-            scientificName: "Unknown",
-            confidence: 60,
-            category: "crop",
-            matchesLandCrop: true
+            name: "",
+            scientificName: "",
+            confidence: 0,
+            category: "unknown",
+            matchesLandCrop: null
           },
           healthStatus: {
-            condition: "warning",
-            score: 50,
-            issues: ["Analysis was incomplete - please try again with a clearer image"]
+            condition: "unknown",
+            score: null,
+            issues: [language === 'hi'
+              ? "विश्लेषण पूरा नहीं हो सका। कृपया एक स्पष्ट फ़ोटो के साथ पुनः प्रयास करें।"
+              : language === 'mr'
+              ? "विश्लेषण पूर्ण होऊ शकले नाही. कृपया स्पष्ट फोटोसह पुन्हा प्रयत्न करा."
+              : "Analysis could not be completed. Please retake a clear photo and try again."]
           },
           diagnosis: {
-            summary: language === 'hi' 
+            summary: language === 'hi'
               ? "विश्लेषण अधूरा है। कृपया एक स्पष्ट छवि के साथ पुनः प्रयास करें।"
               : language === 'mr'
               ? "विश्लेषण अपूर्ण आहे. कृपया स्पष्ट प्रतिमेसह पुन्हा प्रयत्न करा."
@@ -958,13 +969,8 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
             organic: {
               type: "organic",
               title: labels.organic,
-              products: [{
-                name: "General organic treatment",
-                dosage: "As recommended",
-                applicationMethod: "Foliar spray",
-                timing: "Morning hours"
-              }],
-              instructions: ["Retry analysis for specific recommendations"],
+              products: [],
+              instructions: [],
               benefits: [],
               precautions: []
             },
@@ -972,7 +978,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
               type: "fertilizer",
               title: labels.fertilizer,
               products: [],
-              instructions: ["Retry analysis for specific recommendations"],
+              instructions: [],
               benefits: [],
               precautions: []
             },
@@ -980,13 +986,13 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
               type: "pesticide",
               title: labels.pesticide,
               products: [],
-              instructions: ["Retry analysis for specific recommendations"],
+              instructions: [],
               benefits: [],
               precautions: []
             }
           },
           metadata: {
-            confidenceScore: 40,
+            confidenceScore: 0,
             needsMoreImages: true,
             labTestRecommended: false,
             weatherSensitive: false
