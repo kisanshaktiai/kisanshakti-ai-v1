@@ -6,6 +6,12 @@
  * PATH: supabase/functions/ai-agriculture-chat/photo/photo-routes.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-22 — General Scan (land-less identification). body.scan_scope =
+ *   'general' on 'photo_begin_upload' / 'diagnose_photo' routes to
+ *   beginGeneralUpload / diagnoseGeneral: identity from the guarded
+ *   farmer/tenant (no land), storage path <tenant>/<farmer>/_general/...,
+ *   upload_type 'general', engine general-scan.ts. Requests without
+ *   scan_scope (or 'land') take the unchanged land handlers below.
  * 2026-10-29 16:20 UTC — Bind photo land and related schedule/task/session to verified tenant/farmer.
  * 2026-09-23 — 'photo_capture_policy' returns the configured image policy so
  *   the app resizes/encodes with server config, not numbers baked into code.
@@ -18,6 +24,7 @@
  */
 
 import { runPhotoDiagnosis } from './perception-engine.ts';
+import { runGeneralScan, type GeneralScanRequest } from './general-scan.ts';
 import type { BeginPhotoUploadRequest, BeginPhotoUploadResponse, DiagnosePhotoRequest } from './diagnosis-contract.ts';
 
 // deno-lint-ignore no-explicit-any
@@ -36,6 +43,8 @@ const SHOT_ROLES = ['symptom_closeup', 'whole_plant', 'field_view', 'other'];
 const SUBJECTS = ['crop', 'soil', 'land_preparation', 'irrigation', 'pest', 'fertilizer', 'harvest', 'general'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA_RE = /^[0-9a-f]{64}$/i;
+/** Storage folder for land-less photos; mirrored by crop_growth_uploads_path_owner_chk. */
+const GENERAL_PATH_SEGMENT = '_general';
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -217,6 +226,115 @@ async function diagnose(body: DiagnosePhotoRequest, ctx: PhotoRouteContext, cors
   return json(result, result.status === 'failed' && !result.diagnosis_id ? 400 : 200, cors);
 }
 
+// ── General Scan (land-less) ────────────────────────────────────────────────
+// Identity is the guarded farmer/tenant itself; there is no land, schedule,
+// task or chat session to bind. The photo evidence triggers re-check that the
+// farmer belongs to the tenant (migration 20261122140000).
+
+function generalIdentityOk(ctx: PhotoRouteContext): boolean {
+  return UUID_RE.test(ctx.farmerId ?? '') && UUID_RE.test(ctx.tenantId ?? '');
+}
+
+async function beginGeneralUpload(body: any, ctx: PhotoRouteContext, cors: Record<string, string>) {
+  if (body.land_id || body.schedule_id || body.task_id
+      || !UUID_RE.test(body.client_capture_id ?? '')
+      || !PURPOSES.includes(body.purpose) || !SHOT_ROLES.includes(body.shot_role)
+      || !SHA_RE.test(body.content_sha256 ?? '') || body.mime_type !== 'image/jpeg'
+      || !(body.bytes > 0) || !(body.width_px > 0) || !(body.height_px > 0) || !body.captured_at) {
+    return json({ error: 'Invalid photo upload request', code: 'PHOTO_REQUEST_INVALID' }, 400, cors);
+  }
+  if (!generalIdentityOk(ctx)) return json({ error: 'Farmer not resolved', code: 'FARMER_NOT_RESOLVED' }, 403, cors);
+
+  const sb = ctx.supabase;
+  const sha = body.content_sha256.toLowerCase();
+
+  // Idempotent retry, or the same bytes already stored as this farmer's general photo.
+  const { data: existing } = await sb.from('crop_growth_uploads')
+    .select('id, storage_path, object_confirmed, client_capture_id')
+    .eq('farmer_id', ctx.farmerId).eq('tenant_id', ctx.tenantId).is('land_id', null)
+    .or(`client_capture_id.eq.${body.client_capture_id},content_sha256.eq.${sha}`)
+    .limit(1).maybeSingle();
+  if (existing) {
+    const response: BeginPhotoUploadResponse = {
+      upload_id: existing.id,
+      deduplicated: existing.client_capture_id !== body.client_capture_id,
+    };
+    if (!existing.object_confirmed && existing.storage_path) {
+      const up = await signUpload(sb, existing.storage_path);
+      if (up) response.upload = up;
+    }
+    return json(response, 200, cors);
+  }
+
+  const id = crypto.randomUUID();
+  const captured = new Date(body.captured_at);
+  if (Number.isNaN(captured.getTime())) return json({ error: 'Invalid captured_at', code: 'PHOTO_REQUEST_INVALID' }, 400, cors);
+  const yyyy = String(captured.getUTCFullYear());
+  const mm = String(captured.getUTCMonth() + 1).padStart(2, '0');
+  const storagePath = `${ctx.tenantId}/${ctx.farmerId}/${GENERAL_PATH_SEGMENT}/${yyyy}/${mm}/${id}/raw.jpg`;
+  const loc = body.location;
+
+  const { error: insErr } = await sb.from('crop_growth_uploads').insert({
+    id,
+    land_id: null,
+    farmer_id: ctx.farmerId,
+    tenant_id: ctx.tenantId,
+    file_type: 'image',
+    upload_type: 'general',
+    schedule_id: null,
+    task_id: null,
+    storage_bucket: BUCKET,
+    storage_path: storagePath,
+    content_sha256: sha,
+    mime_type: 'image/jpeg',
+    width_px: Math.round(body.width_px),
+    height_px: Math.round(body.height_px),
+    bytes: Math.round(body.bytes),
+    original_width_px: Math.round(body.original_width_px || body.width_px),
+    original_height_px: Math.round(body.original_height_px || body.height_px),
+    processing: body.processing,
+    client_quality: body.client_quality ?? null,
+    captured_at: captured.toISOString(),
+    client_capture_id: body.client_capture_id,
+    created_offline: !!body.created_offline,
+    device: body.device ?? null,
+    capture_purpose: body.purpose,
+    capture_location: loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon)
+      ? { lat: loc.lat, lon: loc.lon, accuracy_m: loc.accuracy_m ?? null } : null,
+    distance_from_land_meters: null,
+    location_level: 'unknown',
+    location_validated: false,
+  });
+  if (insErr) {
+    console.error('[PHOTO_ROUTES] general evidence insert failed:', insErr.message);
+    return json({ error: 'Could not register photo', code: 'PHOTO_REGISTER_FAILED' }, 500, cors);
+  }
+
+  const up = await signUpload(sb, storagePath);
+  if (!up) return json({ error: 'Could not create upload URL', code: 'PHOTO_SIGN_FAILED' }, 500, cors);
+  const response: BeginPhotoUploadResponse = { upload_id: id, upload: up, deduplicated: false };
+  return json(response, 200, cors);
+}
+
+async function diagnoseGeneral(body: GeneralScanRequest & Record<string, any>, ctx: PhotoRouteContext, cors: Record<string, string>) {
+  if (body.land_id || body.task_id || body.schedule_id
+      || !PURPOSES.includes(body.purpose) || !Array.isArray(body.photos)
+      || body.photos.some((p) => !UUID_RE.test(p?.upload_id ?? '') || !SHOT_ROLES.includes(p?.shot_role))) {
+    return json({ error: 'Invalid diagnosis request', code: 'PHOTO_REQUEST_INVALID' }, 400, cors);
+  }
+  if (!generalIdentityOk(ctx)) return json({ error: 'Farmer not resolved', code: 'FARMER_NOT_RESOLVED' }, 403, cors);
+
+  const result = await runGeneralScan(ctx.supabase, {
+    farmerId: ctx.farmerId,
+    tenantId: ctx.tenantId,
+    purpose: body.purpose,
+    photos: body.photos,
+    language: body.language || 'und',
+    farmerText: body.farmer_text ?? null,
+  });
+  return json(result, result.status === 'failed' && !result.diagnosis_id ? 400 : 200, cors);
+}
+
 async function capturePolicy(ctx: PhotoRouteContext, cors: Record<string, string>) {
   const { data } = await ctx.supabase.from('system_config').select('config_value')
     .eq('config_key', 'photo_diagnosis_policy').maybeSingle();
@@ -238,7 +356,15 @@ export async function handlePhotoAction(
   cors: Record<string, string>,
 ): Promise<Response> {
   if (action === 'photo_capture_policy') return capturePolicy(ctx, cors);
-  if (action === 'photo_begin_upload') return beginUpload(body as BeginPhotoUploadRequest, ctx, cors);
-  if (action === 'diagnose_photo') return diagnose(body as DiagnosePhotoRequest, ctx, cors);
+  const scope = body?.scan_scope ?? 'land';
+  if (scope !== 'land' && scope !== 'general') {
+    return json({ error: 'Invalid scan scope', code: 'PHOTO_REQUEST_INVALID' }, 400, cors);
+  }
+  if (action === 'photo_begin_upload') {
+    return scope === 'general' ? beginGeneralUpload(body, ctx, cors) : beginUpload(body as BeginPhotoUploadRequest, ctx, cors);
+  }
+  if (action === 'diagnose_photo') {
+    return scope === 'general' ? diagnoseGeneral(body, ctx, cors) : diagnose(body as DiagnosePhotoRequest, ctx, cors);
+  }
   return json({ error: 'Unknown photo action', code: 'PHOTO_ACTION_UNKNOWN' }, 400, cors);
 }

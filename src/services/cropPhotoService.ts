@@ -6,6 +6,13 @@
  * PATH: src/services/cropPhotoService.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 — GeneralIdentification gains `management` (prevention, biological
+ *   agents, chemical active ingredients with MoA group — no brands, no doses)
+ *   and the server's `language_check`.
+ * 2026-11-22 — General Scan (land-less identification): uploadGeneralPhoto()
+ *   and identifyGeneral() send scan_scope 'general' on the same photo routes.
+ *   Online only (no offline queue, so localDB is unchanged); the land queue,
+ *   upload, diagnosis and brain functions are untouched.
  * 2026-10-29 — Bind queued photos and policy cache to the active farmer/tenant session.
  * 2026-09-23 — v2 REWRITE (photo evidence store v2). Capture → offline queue →
  *   one resize + ONE JPEG encode with the server's image policy → SHA-256 →
@@ -416,6 +423,138 @@ export async function askDecisionBrain(a: {
     language: a.language,
     photoDiagnosisId: a.diagnosisId,
     metadata: { tenantId: a.id.tenantId, farmerId: a.id.farmerId, mediaType: 'photo' },
+  }, a.id);
+}
+
+// ── General Scan — land-less identification (online only) ─────────────────
+
+export type GeneralScanCategory =
+  | 'crop_plant' | 'weed' | 'insect_pest' | 'mite_pest' | 'pest_damage'
+  | 'fungal_disease' | 'bacterial_disease' | 'viral_disease' | 'nematode_damage'
+  | 'nutrient_deficiency' | 'abiotic_stress' | 'animal_damage' | 'beneficial_organism'
+  | 'not_agricultural' | 'unknown';
+
+export interface GeneralScanName {
+  common_name_en: string | null;
+  scientific_name: string | null;
+  local_name: string | null;
+  confidence: number;
+}
+
+/** Mirrors GeneralIdentification in supabase/functions/ai-agriculture-chat/photo/general-scan.ts. */
+/** Control measures from General Scan. Chemicals are active ingredients (ISO common names) only. */
+export interface GeneralManagement {
+  applicable: boolean;
+  prevention_local: string[];
+  biological: Array<{ agent: string; how_local: string | null }>;
+  chemical: Array<{ active_ingredient: string; moa_group: string | null; how_local: string | null; watch_list?: boolean }>;
+  action_threshold_local: string | null;
+  safety_local: string | null;
+  /** Server held products back: identification not sure, or the regulatory list could not be read. */
+  products_withheld?: 'not_sure' | 'regulatory_unavailable' | null;
+}
+
+export interface GeneralIdentification {
+  scan_scope: 'general';
+  language: string;
+  image_usable: boolean;
+  retake_reason_code: RetakeReason | null;
+  retake_photo_index: number | null;
+  observed_features_en: string[];
+  category: GeneralScanCategory;
+  primary: GeneralScanName & { taxon_rank: string };
+  host_crop: GeneralScanName | null;
+  alternatives: Array<GeneralScanName & { category: GeneralScanCategory; how_to_tell_apart_local: string | null }>;
+  farmer_card: {
+    summary_local: string | null;
+    identification_marks_local: string[];
+    life_cycle_local: string | null;
+    damage_or_role_local: string | null;
+    spread_conditions_local: string | null;
+    field_checks_local: string[];
+  };
+  another_photo: { needed: boolean; shot_role: ShotRole | null; reason_local: string | null };
+  management: GeneralManagement;
+  abstained: boolean;
+  language_check?: 'ok' | 'repaired' | 'mismatch' | 'not_checked';
+}
+
+export interface GeneralScanResult {
+  diagnosis_id: string | null;
+  status: Extract<DiagnosisStatus, 'completed' | 'needs_follow_up' | 'retake_requested' | 'failed'>;
+  retake?: { reason_code: RetakeReason | null; photo_index: number | null };
+  identification?: GeneralIdentification;
+  error_code?: string;
+}
+
+/**
+ * Register and upload one General Scan photo (no land). Same single encode,
+ * same private bucket and signed upload as land photos; returns the evidence id.
+ */
+export async function uploadGeneralPhoto(photo: CapturedPhoto, a: {
+  id: PhotoIdentity;
+  purpose: CapturePurpose;
+  shotRole: ShotRole;
+  location: PhotoCaptureQueueItem['location'];
+}): Promise<string> {
+  assertPhotoIdentity(a.id);
+  const token = sessionToken();
+  const { policy } = await getCapturePolicy(a.id);
+  const p = await prepareForUpload(photo.blob, a.shotRole, policy);
+  const begin = await invokeChat<BeginUploadResponse>({
+    action: 'photo_begin_upload',
+    scan_scope: 'general',
+    purpose: a.purpose,
+    shot_role: a.shotRole,
+    client_capture_id: photo.captureId,
+    content_sha256: p.sha256,
+    mime_type: 'image/jpeg',
+    bytes: p.jpeg.size,
+    width_px: p.width,
+    height_px: p.height,
+    original_width_px: p.originalWidth,
+    original_height_px: p.originalHeight,
+    captured_at: photo.capturedAt,
+    created_offline: false,
+    location: a.location,
+    client_quality: { sharpness: p.metrics.sharpness, brightness: p.metrics.brightness, contrast: p.metrics.contrast },
+    processing: {
+      pipeline_version: PHOTO_PIPELINE_VERSION,
+      source: photo.source,
+      resize: p.resize,
+      jpeg_quality: p.quality,
+      encoded_once: true,
+    },
+    device: { platform: Capacitor.getPlatform(), user_agent: navigator.userAgent },
+  }, a.id);
+  if (begin.upload) {
+    assertPhotoIdentity(a.id);
+    if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
+    const { error } = await supabase.storage
+      .from(begin.upload.bucket)
+      .uploadToSignedUrl(begin.upload.storage_path, begin.upload.token, p.jpeg, { contentType: 'image/jpeg' });
+    if (error) throw error;
+  }
+  assertPhotoIdentity(a.id);
+  if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
+  return begin.upload_id;
+}
+
+/** Identification only — the result is shown as is; no Decision Brain turn follows. */
+export async function identifyGeneral(a: {
+  id: PhotoIdentity;
+  purpose: CapturePurpose;
+  photos: Array<{ upload_id: string; shot_role: ShotRole }>;
+  language: string;
+  farmerText?: string | null;
+}): Promise<GeneralScanResult> {
+  return await invokeChat<GeneralScanResult>({
+    action: 'diagnose_photo',
+    scan_scope: 'general',
+    purpose: a.purpose,
+    photos: a.photos,
+    language: a.language,
+    farmer_text: a.farmerText ?? null,
   }, a.id);
 }
 

@@ -6,6 +6,11 @@
  * PATH: supabase/functions/ai-agriculture-chat/photo/perception-engine.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-22 — General Scan support (no behaviour change for land scans):
+ *   loadPolicies / visionPolicyUsable / policy types exported for
+ *   general-scan.ts; optional vision_diagnosis_policy.general_scan overrides
+ *   typed (2026-11-23: + timeout_ms, local_script_min_ratio); loadPhotoEvidenceForTurn refuses a land-less (general) diagnosis
+ *   so identification-only results never reach the Decision Brain.
  * 2026-09-27 — AI model SSOT: the vision model chain now comes from the AI model
  *   registry task vision.diagnose (ai_task_route / ai_task_route_step, via
  *   callAITask) instead of vision_diagnosis_policy.primary_model/fallback_model,
@@ -57,15 +62,22 @@ type Db = any;
 
 // primary_model / fallback_model / price_usd_per_1m may still be present in the stored JSON;
 // since 2026-09-27 they are ignored (model chain + prices come from the AI model registry).
-interface VisionPolicy {
+export interface VisionPolicy {
   enabled: boolean;
   image_detail: 'low' | 'high' | 'auto' | null;
   max_output_tokens: number | null;
   timeout_ms: number | null;
   prompt_version: string | null;
+  /** Optional overrides read only by general-scan.ts (land-less identification). */
+  general_scan?: {
+    max_output_tokens?: number | null;
+    min_confidence?: number | null;
+    timeout_ms?: number | null;
+    local_script_min_ratio?: number | null;
+  } | null;
 }
 
-interface PhotoPolicy {
+export interface PhotoPolicy {
   max_photos_per_diagnosis: number;
   observation_min_confidence: number;
   vocabulary: { universal_observation_types: string[]; require_farmer_observable: boolean };
@@ -74,7 +86,7 @@ interface PhotoPolicy {
 const SIGNED_URL_TTL_SECONDS = 600;
 const OBS_DESCRIPTION_MAX = 90;
 
-async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; photo: PhotoPolicy | null }> {
+export async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; photo: PhotoPolicy | null }> {
   const { data, error } = await sb
     .from('system_config')
     .select('config_key, config_value')
@@ -87,7 +99,7 @@ async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; phot
   };
 }
 
-function visionPolicyUsable(p: VisionPolicy | null): p is VisionPolicy & { max_output_tokens: number; timeout_ms: number } {
+export function visionPolicyUsable(p: VisionPolicy | null): p is VisionPolicy & { max_output_tokens: number; timeout_ms: number } {
   return !!p && p.enabled === true && typeof p.max_output_tokens === 'number' && typeof p.timeout_ms === 'number';
 }
 
@@ -471,6 +483,8 @@ export async function loadPhotoEvidenceForTurn(
     .select('id, farmer_id, land_id, status, perception')
     .eq('id', args.diagnosisId).maybeSingle();
   if (!d || d.farmer_id !== args.farmerId || (args.landId && d.land_id !== args.landId)) return null;
+  // 2026-11-22 — a General Scan (land_id NULL) is identification only; it never feeds the governed brain.
+  if (d.land_id === null) return null;
   if (d.status !== 'completed' || !d.perception) return null;
   const { data: links } = await sb.from('crop_photo_diagnosis_photo').select('upload_id, photo_index')
     .eq('diagnosis_id', d.id).order('photo_index', { ascending: true });
