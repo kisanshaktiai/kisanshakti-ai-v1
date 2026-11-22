@@ -81,6 +81,11 @@
       "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
       "title": "अपनी फसल दिखाएं",
       "chooseLand": "यह फोटो किस जमीन का है?",
+      "generalScan": "सामान्य स्कैन",
+      "generalScanHint": "कोई भी फसल, खरपतवार, कीट या रोग पहचानें — जमीन चुनने की जरूरत नहीं",
+      "generalScanSoon": "सामान्य स्कैन अभी तैयार हो रहा है। फिलहाल नीचे से एक जमीन चुनें।",
+      "orChooseLand": "या एक जमीन चुनें",
+      "thisLand": "यह जमीन",
       "shot": {
         "symptom_closeup": {
           "title": "समस्या की पास से फोटो",

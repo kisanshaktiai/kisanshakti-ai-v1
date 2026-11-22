@@ -6,6 +6,12 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-22 — Modern redesign. Camera as the primary action with a file-upload
+ *   button directly below; redesigned land picker with a General Scan option
+ *   (land-less identification). General mode is threaded via `scanMode` but
+ *   stays gated (generalScanSoon note) until the backend general-mode + naming
+ *   resolver ship — land scans are unaffected. New i18n keys: generalScan,
+ *   generalScanHint, generalScanSoon, orChooseLand, thisLand.
  * 2026-10-29 — Fix shared translations, mobile overflow and preview lifecycle.
  * 2026-09-23 — v2 REWRITE. Opens with a purpose (chat_question, instascan,
  *   schedule_task, growth_tracking, land_card) and a land (or asks which land).
@@ -23,7 +29,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react';
+import { Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin, ScanLine, Sparkles, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -105,6 +111,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   const previewUrls = useRef(new Set<string>());
   const captureGeneration = useRef(0);
   const [picking, setPicking] = useState(false);
+  // Scan scope: 'land' = compared against the chosen land's registered crop
+  // (full governed diagnosis); 'general' = land-less identification of any
+  // crop/weed/pest/disease. General mode is threaded here but stays gated
+  // until the backend general-mode + naming resolver ship.
+  const [scanMode, setScanMode] = useState<'land' | 'general'>('land');
+  const [showGeneralNote, setShowGeneralNote] = useState(false);
   const identity = { farmerId, tenantId };
 
   // Reset on open; release preview URLs on close.
@@ -115,6 +127,8 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
     if (!isOpen) return;
     setLandId(props.landId);
     setPhase(props.landId ? 'capture' : 'land');
+    setScanMode('land');
+    setShowGeneralNote(false);
     setShots([]);
     setText(initialText ?? '');
     setProblem(null);
@@ -278,23 +292,72 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
         <div className="min-h-0 min-w-0 p-4 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain break-words">
           {phase === 'land' && (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-foreground">{t(`${K}.chooseLand`)}</p>
+            <div className="space-y-4">
+              {/* General Scan — land-less identification of any crop / weed / pest / disease. */}
+              <button
+                type="button"
+                onClick={() => { setScanMode('general'); setShowGeneralNote(true); }}
+                className={cn(
+                  'group relative w-full overflow-hidden rounded-2xl border p-4 text-left transition-all',
+                  'bg-gradient-to-br from-primary/10 via-primary/5 to-transparent',
+                  showGeneralNote ? 'border-primary ring-1 ring-primary/40' : 'border-primary/30 hover:border-primary/60',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <Sparkles className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">{t(`${K}.generalScan`)}</p>
+                    <p className="text-xs text-muted-foreground">{t(`${K}.generalScanHint`)}</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </button>
+              {showGeneralNote && (
+                <div className="flex gap-2 rounded-xl bg-muted p-3 text-xs text-muted-foreground">
+                  <ScanLine className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                  <span>{t(`${K}.generalScanSoon`)}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-1">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(`${K}.orChooseLand`)}</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
               {(lands ?? []).length === 0 && <>
                 <p className="text-sm text-muted-foreground">{t('cropGrowth.addLandFirst')}</p>
                 <Button variant="outline" className="w-full" onClick={onClose}>{t(`${K}.done`)}</Button>
               </>}
-              {(lands ?? []).map((l) => (
-                <Button key={l.id} variant="outline" className="w-full justify-start h-12"
-                  onClick={() => { setLandId(l.id); setPhase('capture'); }}>
-                  <MapPin className="h-4 w-4 mr-2 text-primary" />{l.name}
-                </Button>
-              ))}
+              <div className="space-y-2">
+                {(lands ?? []).map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => { setScanMode('land'); setLandId(l.id); setPhase('capture'); }}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-accent"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <MapPin className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground">{l.name}</span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {phase === 'capture' && (
             <>
+              {/* Context chip: which land this scan belongs to, or General Scan. */}
+              <div className="flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground w-fit max-w-full">
+                {scanMode === 'general'
+                  ? <><Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="truncate">{t(`${K}.generalScan`)}</span></>
+                  : <><MapPin className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="truncate">{(lands ?? []).find((l) => l.id === landId)?.name ?? t(`${K}.thisLand`)}</span></>}
+              </div>
               {problem && (
                 <div className="flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /><span>{problem}</span>
@@ -318,17 +381,24 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
               ))}
 
               {nextRole && (
-                <div className={cn('rounded-xl border-2 border-dashed p-4 space-y-3',
-                  shots.length === 0 ? 'border-primary bg-primary/5' : 'border-border')}>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{t(`${K}.shot.${nextRole}.title`)}</p>
-                    <p className="text-sm text-muted-foreground">{t(`${K}.shot.${nextRole}.hint`)}</p>
+                <div className={cn('rounded-2xl border-2 border-dashed p-4 space-y-4 transition-colors',
+                  shots.length === 0 ? 'border-primary/60 bg-primary/5' : 'border-border')}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <ScanLine className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{t(`${K}.shot.${nextRole}.title`)}</p>
+                      <p className="text-sm text-muted-foreground">{t(`${K}.shot.${nextRole}.hint`)}</p>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button className="min-h-12 h-auto min-w-0 whitespace-normal py-3 sm:flex-1" disabled={picking} onClick={() => openCamera()}>
-                      <Camera className="h-5 w-5 mr-2 shrink-0" /><span className="min-w-0">{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}</span>
+                  {/* Two clear options: camera on top, file upload directly below. */}
+                  <div className="flex flex-col gap-2.5">
+                    <Button className="h-14 w-full min-w-0 whitespace-normal rounded-xl text-base font-semibold shadow-sm" disabled={picking} onClick={() => openCamera()}>
+                      {picking ? <Loader2 className="h-5 w-5 mr-2 shrink-0 animate-spin" /> : <Camera className="h-5 w-5 mr-2 shrink-0" />}
+                      <span className="min-w-0">{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}</span>
                     </Button>
-                    <Button className="min-h-12 h-auto min-w-0 whitespace-normal py-3 sm:flex-1" disabled={picking} variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
+                    <Button className="h-12 w-full min-w-0 whitespace-normal rounded-xl" disabled={picking} variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
                       <Images className="h-5 w-5 mr-2 shrink-0" /><span className="min-w-0">{t(`${K}.addFromGallery`)}</span>
                     </Button>
                   </div>

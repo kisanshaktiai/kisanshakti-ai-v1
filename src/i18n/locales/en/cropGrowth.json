@@ -81,6 +81,11 @@
       "translation_status": "SOURCE",
       "title": "Show your crop",
       "chooseLand": "Which land is this photo from?",
+      "generalScan": "General Scan",
+      "generalScanHint": "Identify any crop, weed, pest or disease — no land needed",
+      "generalScanSoon": "General Scan is being set up. For now, please choose a land below.",
+      "orChooseLand": "or choose a land",
+      "thisLand": "This land",
       "shot": {
         "symptom_closeup": {
           "title": "Close photo of the problem",

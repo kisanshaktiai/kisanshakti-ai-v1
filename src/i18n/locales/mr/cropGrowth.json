@@ -81,6 +81,11 @@
       "translation_status": "AI_DRAFT_NEEDS_NATIVE_REVIEW",
       "title": "तुमचं पीक दाखवा",
       "chooseLand": "हा फोटो कोणत्या जमिनीचा आहे?",
+      "generalScan": "सामान्य स्कॅन",
+      "generalScanHint": "कोणतेही पीक, तण, कीड किंवा रोग ओळखा — जमीन निवडायची गरज नाही",
+      "generalScanSoon": "सामान्य स्कॅन सध्या तयार होत आहे. आत्ता खालून एक जमीन निवडा.",
+      "orChooseLand": "किंवा एक जमीन निवडा",
+      "thisLand": "ही जमीन",
       "shot": {
         "symptom_closeup": {
           "title": "समस्येचा जवळून फोटो",
