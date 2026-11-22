@@ -1,4 +1,6 @@
 // CHANGE LOG
+// 2026-11-22 13:15 UTC — Review drafts: a blocked attempt without reviewDraftId reuses the newest draft for the
+//   same farmer/land/crop instead of inserting a duplicate; a persisted schedule deletes that land's drafts.
 // 2026-11-10 18:15 UTC — WORKER_RESOURCE_LIMIT (546): one request did enrichment + harness + full farmer-language
 //   composition + in-process narration and was killed after ~80s before persisting. Composition now runs
 //   in-request only while the request is still light (COMPOSE_INLINE_MAX_ELAPSED_MS); otherwise the schedule is
@@ -269,9 +271,16 @@ serve(async (req) => {
       const requestedDraftId = typeof body?.reviewDraftId === "string" &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.reviewDraftId)
         ? body.reviewDraftId : null;
-      const write = requestedDraftId
+      let targetDraftId = requestedDraftId;
+      if (!targetDraftId) {
+        const { data: existing } = await supabase.from("crop_schedule_review_drafts").select("id")
+          .eq("tenant_id", tenantId!).eq("farmer_id", farmerId!).eq("land_id", landId!)
+          .eq("crop_name", payload.crop_name).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+        targetDraftId = existing?.id ?? null;
+      }
+      const write = targetDraftId
         ? await supabase.from("crop_schedule_review_drafts").update(payload)
-            .eq("id", requestedDraftId).eq("tenant_id", tenantId!)
+            .eq("id", targetDraftId).eq("tenant_id", tenantId!)
             .eq("farmer_id", farmerId!).eq("land_id", landId!).select("*").maybeSingle()
         : await supabase.from("crop_schedule_review_drafts").insert(payload).select("*").single();
       if (write.error || !write.data) {
@@ -814,6 +823,7 @@ serve(async (req) => {
     if (persistError || !savedResult?.schedule_id) throw new Error(`Failed to persist schedule atomically: ${persistError?.message ?? "missing schedule result"}`);
     if (Number(savedResult.task_count) !== tasksToPersist.length) throw new Error(`Atomic persistence task count mismatch: expected ${tasksToPersist.length}, got ${savedResult.task_count}`);
     const savedSchedule = { id: savedResult.schedule_id };
+    { const { error: draftCleanupError } = await supabase.from("crop_schedule_review_drafts").delete().eq("tenant_id", tenantId!).eq("farmer_id", farmerId!).eq("land_id", landId!); if (draftCleanupError) console.warn("[ai-smart-schedule] review draft cleanup failed:", draftCleanupError.code); }
     if (enrichmentProposals.length) { try { const { recordProposals } = await import("./harness/llm-candidates.ts"); await recordProposals(supabase, enrichmentProposals, { tenantId, farmerId, landId, scheduleId: savedSchedule.id, inputs, model: String(enrichmentTrace?.model ?? null) }); } catch (pErr) { console.warn("[ai-smart-schedule] proposal ledger write failed:", pErr); } }
 
     // Continue narration in-process with whatever time is left; the app follow-up and the
