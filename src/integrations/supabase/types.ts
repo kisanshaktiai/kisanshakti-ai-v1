@@ -6471,7 +6471,7 @@ export type Database = {
           height_px: number | null
           id: string
           is_processed: boolean | null
-          land_id: string
+          land_id: string | null
           location_level: string
           location_validated: boolean | null
           mime_type: string
@@ -6524,7 +6524,7 @@ export type Database = {
           height_px?: number | null
           id?: string
           is_processed?: boolean | null
-          land_id: string
+          land_id?: string | null
           location_level?: string
           location_validated?: boolean | null
           mime_type?: string
@@ -6577,7 +6577,7 @@ export type Database = {
           height_px?: number | null
           id?: string
           is_processed?: boolean | null
-          land_id?: string
+          land_id?: string | null
           location_level?: string
           location_validated?: boolean | null
           mime_type?: string
@@ -7245,7 +7245,7 @@ export type Database = {
           follow_up: Json | null
           id: string
           input_tokens: number | null
-          land_id: string
+          land_id: string | null
           language: string
           latency_ms: number | null
           model_requested: string | null
@@ -7278,7 +7278,7 @@ export type Database = {
           follow_up?: Json | null
           id?: string
           input_tokens?: number | null
-          land_id: string
+          land_id?: string | null
           language?: string
           latency_ms?: number | null
           model_requested?: string | null
@@ -7311,7 +7311,7 @@ export type Database = {
           follow_up?: Json | null
           id?: string
           input_tokens?: number | null
-          land_id?: string
+          land_id?: string | null
           language?: string
           latency_ms?: number | null
           model_requested?: string | null
