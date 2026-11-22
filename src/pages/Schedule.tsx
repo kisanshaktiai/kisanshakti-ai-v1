@@ -429,6 +429,7 @@ export default function Schedule() {
       // by a fully approved, atomically persisted schedule.
       resetRetries();
       setEditingReviewDraft(null);
+      setReviewDrafts([]);
 
       // Farmer-language completion: the schedule is persisted as soon as its agronomy is ready;
       // tasks not yet in the farmer's language are finished by the same function (action=narrate).
