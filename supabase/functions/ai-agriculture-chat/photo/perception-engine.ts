@@ -9,7 +9,7 @@
  * 2026-11-22 — General Scan support (no behaviour change for land scans):
  *   loadPolicies / visionPolicyUsable / policy types exported for
  *   general-scan.ts; optional vision_diagnosis_policy.general_scan overrides
- *   typed (2026-11-23: + timeout_ms, local_script_min_ratio); loadPhotoEvidenceForTurn refuses a land-less (general) diagnosis
+ *   typed (2026-11-23: + timeout_ms, local_script_min_ratio, spray_plan); loadPhotoEvidenceForTurn refuses a land-less (general) diagnosis
  *   so identification-only results never reach the Decision Brain.
  * 2026-09-27 — AI model SSOT: the vision model chain now comes from the AI model
  *   registry task vision.diagnose (ai_task_route / ai_task_route_step, via
@@ -74,6 +74,8 @@ export interface VisionPolicy {
     min_confidence?: number | null;
     timeout_ms?: number | null;
     local_script_min_ratio?: number | null;
+    /** App-side spray calculator defaults (pump sizes, stock solution). */
+    spray_plan?: Record<string, unknown> | null;
   } | null;
 }
 

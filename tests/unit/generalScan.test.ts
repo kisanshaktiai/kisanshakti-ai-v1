@@ -19,8 +19,9 @@ vi.mock('../../supabase/functions/ai-agriculture-chat/photo/general-scan.ts', as
 }));
 
 import {
-  applyRegulatoryGate, checkLocalLanguage, decideGeneralStatus, dropForeignLocalNames, languageInfo,
-  localTextSlots, scriptShare, validateGeneralScan, withholdProductsUnlessSure,
+  applyRegulatoryGate, applyRegulatoryGateToSpray, buildGeneralMessages, checkLocalLanguage, cleanSprayPlan,
+  decideGeneralStatus, dropForeignLocalNames, farmerLanguageLine, gateSprayPlan, GENERAL_SCAN_SYSTEM_PROMPT,
+  languageInfo, localTextSlots, scriptShare, sprayDefaultsFrom, validateGeneralScan, withholdProductsUnlessSure,
 } from '../../supabase/functions/ai-agriculture-chat/photo/general-scan';
 import { handlePhotoAction } from '../../supabase/functions/ai-agriculture-chat/photo/photo-routes';
 
@@ -42,8 +43,16 @@ function modelOutput(over: Record<string, unknown> = {}) {
       { common_name_en: null, scientific_name: null, local_name: null, confidence: 0.1, category: 'unknown', how_to_tell_apart_local: null },
     ],
     farmer_card: {
-      summary_local: 'summary', identification_marks_local: ['mark'], life_cycle_local: null,
-      damage_or_role_local: 'damage', spread_conditions_local: null, field_checks_local: ['check'],
+      summary_local: 'summary', identification_marks_local: ['mark'],
+      damage_or_role_local: 'damage', field_checks_local: ['check'],
+    },
+    root_cause: { primary_en: 'Pyricularia oryzae', contributing_factors_local: ['dew'], life_cycle_local: 'cycle' },
+    spray_plan: {
+      needed: true, water_volume: 200, water_unit: 'l_per_acre', clash_note_local: 'clash',
+      components: [
+        { role: 'fungicide', active_ingredient: 'tricyclazole', formulation: '75 WP', dose_value: 120, dose_unit: 'g_per_acre', phi_days: 21, moa_group: 'FRAC 16.1' },
+        { role: 'adjuvant', active_ingredient: 'non-ionic surfactant', formulation: null, dose_value: 0.5, dose_unit: 'ml_per_litre', phi_days: null, moa_group: null },
+      ],
     },
     another_photo: { needed: false, shot_role: null, reason_local: null },
     management: {
@@ -181,10 +190,100 @@ describe('farmer-language check (script from ICU, ratio from config)', () => {
     expect(texts).toContain('summary');
     expect(texts).toContain('remove infected leaves');
     expect(texts).toContain('at first spots');
+    expect(texts).toContain('dew');
+    expect(texts).toContain('cycle');
+    expect(texts).toContain('clash');
     expect(texts).not.toContain('tricyclazole');
     slots.forEach((s, i) => s.set(`R${i}`));
     expect(id.farmer_card.summary_local).toBe('R0');
     expect(id.management.chemical[0].active_ingredient).toBe('tricyclazole');
+  });
+});
+
+describe('v1.2 prompt — static, cache-friendly; language only in the user message', () => {
+  it('system prompt is identical for every language and carries the agri gate and spray rules', () => {
+    const mr = buildGeneralMessages(['data:x'], ['symptom_closeup'], 'high', 'mr', null);
+    const ta = buildGeneralMessages(['data:x'], ['symptom_closeup'], 'high', 'ta', 'words');
+    expect(mr[0].content).toBe(GENERAL_SCAN_SYSTEM_PROMPT);
+    expect(ta[0].content).toBe(GENERAL_SCAN_SYSTEM_PROMPT);
+    expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('STEP 0');
+    expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('Do no arithmetic');
+    expect((mr[1].content as Array<{ type: string; text?: string }>)[0].text).toBe(farmerLanguageLine('mr'));
+    expect(farmerLanguageLine('mr')).toBe('Farmer language: Marathi (मराठी), code mr, script Deva.');
+  });
+});
+
+describe('agri gate', () => {
+  it('a non-farm photo keeps only the category and counts as a complete answer', () => {
+    const v = validateGeneralScan(modelOutput({ category: 'not_agricultural', abstained: true }), 1).identification!;
+    expect(v.farmer_card.summary_local).toBeNull();
+    expect(v.alternatives).toEqual([]);
+    expect(v.root_cause.contributing_factors_local).toEqual([]);
+    expect(v.spray_plan.needed).toBe(false);
+    expect(v.management.applicable).toBe(false);
+    expect(decideGeneralStatus(v, 0.75)).toBe('completed');
+  });
+});
+
+describe('spray plan (model copies the label; server keeps the tank sane)', () => {
+  const comp = (o: Record<string, unknown>) => ({ role: 'fungicide', active_ingredient: 'x', formulation: null, dose_value: null,
+    dose_unit: null, phi_days: null, moa_group: null, ...o });
+  it('keeps label dose and unit as given, products before the adjuvant', () => {
+    const p = validateGeneralScan(modelOutput(), 1).identification!.spray_plan;
+    expect(p).toMatchObject({ needed: true, water_volume: 200, water_unit: 'l_per_acre', clash_note_local: 'clash' });
+    expect(p.components.map((c) => [c.active_ingredient, c.dose_value, c.dose_unit, c.phi_days])).toEqual([
+      ['tricyclazole', 120, 'g_per_acre', 21], ['non-ionic surfactant', 0.5, 'ml_per_litre', null]]);
+  });
+  it('drops granules, duplicate MoA groups, extra products and extra adjuvants; a dose needs a unit', () => {
+    const p = cleanSprayPlan({ needed: true, water_volume: 150, water_unit: 'l_per_acre', clash_note_local: null, components: [
+      comp({ active_ingredient: 'g1', formulation: '3 GR' }),
+      comp({ active_ingredient: 'a', moa_group: 'FRAC 3', dose_value: 5, dose_unit: null }),
+      comp({ active_ingredient: 'b', moa_group: 'frac-3' }),
+      comp({ active_ingredient: 'c', role: 'insecticide', moa_group: 'IRAC 4A' }),
+      comp({ active_ingredient: 'd', role: 'nutrient' }),
+      comp({ active_ingredient: 'e', role: 'acaricide', moa_group: 'IRAC 6' }),
+      comp({ active_ingredient: 's1', role: 'adjuvant' }), comp({ active_ingredient: 's2', role: 'adjuvant' }),
+    ] }, 'fungal_disease', true);
+    expect(p.components.map((c) => c.active_ingredient)).toEqual(['a', 'c', 'd', 's1']);
+    expect(p.components[0]).toMatchObject({ dose_value: null, dose_unit: null });
+  });
+  it('a herbicide is sprayed alone, and only for a weed', () => {
+    const tank = { needed: true, water_volume: 150, water_unit: 'l_per_acre', clash_note_local: null, components: [
+      comp({ active_ingredient: 'h', role: 'herbicide', moa_group: 'HRAC 9' }), comp({ active_ingredient: 'i', role: 'insecticide' }),
+      comp({ active_ingredient: 's', role: 'adjuvant' })] };
+    expect(cleanSprayPlan(tank, 'weed', true).components.map((c) => c.active_ingredient)).toEqual(['h', 's']);
+    expect(cleanSprayPlan(tank, 'insect_pest', true).components.map((c) => c.active_ingredient)).toEqual(['i', 's']);
+  });
+  it('no plan for a non-actionable result, or when water has no unit the volume is dropped', () => {
+    expect(cleanSprayPlan({ needed: true, components: [comp({})] }, 'crop_plant', false).needed).toBe(false);
+    const p = cleanSprayPlan({ needed: true, water_volume: 150, water_unit: null, clash_note_local: null, components: [comp({})] }, 'fungal_disease', true);
+    expect(p).toMatchObject({ needed: true, water_volume: null, water_unit: null });
+  });
+  it('withheld unless completed; doses removed when the crop is not named', () => {
+    const p = validateGeneralScan(modelOutput(), 1).identification!.spray_plan;
+    expect(gateSprayPlan(p, 'needs_follow_up', true)).toMatchObject({ needed: false, components: [], withheld: 'not_sure' });
+    const noCrop = gateSprayPlan(p, 'completed', false);
+    expect(noCrop.dose_withheld).toBe('crop_unknown');
+    expect(noCrop.components.every((c) => c.dose_value === null)).toBe(true);
+    expect(gateSprayPlan(p, 'completed', true)).toBe(p);
+  });
+  it('banned / restricted ingredients leave the tank; adjuvants pass; fails closed', () => {
+    const p = cleanSprayPlan({ needed: true, water_volume: 150, water_unit: 'l_per_acre', clash_note_local: null, components: [
+      comp({ active_ingredient: 'streptomycin + tetracycline', role: 'bactericide' }), comp({ active_ingredient: 'copper oxychloride' }),
+      comp({ active_ingredient: 'sticker', role: 'adjuvant' })] }, 'bacterial_disease', true);
+    const reg = [{ chemical_name: 'streptomycin', status: 'banned' }];
+    const rot = [{ chemical_name: 'copper oxychloride', moa_code: 'M01', moa_system: 'FRAC' }];
+    const out = applyRegulatoryGateToSpray(p, reg, rot);
+    expect(out.components.map((c) => [c.active_ingredient, c.moa_group])).toEqual([['copper oxychloride', 'FRAC M01'], ['sticker', null]]);
+    expect(applyRegulatoryGateToSpray(p, null, rot)).toMatchObject({ needed: false, withheld: 'regulatory_unavailable' });
+    const onlyBanned = cleanSprayPlan({ needed: true, components: [comp({ active_ingredient: 'streptomycin' }), comp({ role: 'adjuvant' })] }, 'bacterial_disease', true);
+    expect(applyRegulatoryGateToSpray(onlyBanned, reg, rot).needed).toBe(false);
+  });
+  it('spray defaults come from config and are all-or-nothing', () => {
+    expect(sprayDefaultsFrom({ pump_sizes_l: [16, 18, 20], default_pump_l: 18, stock_l_per_pump: 1, stock_min_dilution: 10 }))
+      .toEqual({ pump_sizes_l: [16, 18, 20], default_pump_l: 18, stock_l_per_pump: 1, stock_min_dilution: 10 });
+    expect(sprayDefaultsFrom({ pump_sizes_l: [16], default_pump_l: 16 })).toBeNull();
+    expect(sprayDefaultsFrom(null)).toBeNull();
   });
 });
 

@@ -6,6 +6,10 @@
  * PATH: src/services/cropPhotoService.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23b — General Scan v1.2 types: root_cause, spray_plan (label doses in
+ *   the label's own unit; the app's src/lib/sprayPlan.ts does the arithmetic),
+ *   spray_defaults from config; farmer_card loses life_cycle/spread (moved to
+ *   root_cause).
  * 2026-11-23 — GeneralIdentification gains `management` (prevention, biological
  *   agents, chemical active ingredients with MoA group — no brands, no doses)
  *   and the server's `language_check`.
@@ -454,6 +458,41 @@ export interface GeneralManagement {
   products_withheld?: 'not_sure' | 'regulatory_unavailable' | null;
 }
 
+export type SprayRole = 'fungicide' | 'bactericide' | 'insecticide' | 'acaricide' | 'nematicide' | 'herbicide'
+  | 'nutrient' | 'growth_regulator' | 'adjuvant';
+export type DoseUnit = 'g_per_acre' | 'ml_per_acre' | 'g_per_ha' | 'ml_per_ha' | 'g_per_litre' | 'ml_per_litre';
+export type WaterUnit = 'l_per_acre' | 'l_per_ha';
+
+/** One product in the spray plan, dose exactly as the label states it. */
+export interface SprayComponent {
+  role: SprayRole;
+  active_ingredient: string;
+  formulation: string | null;
+  dose_value: number | null;
+  dose_unit: DoseUnit | null;
+  phi_days: number | null;
+  moa_group: string | null;
+  watch_list?: boolean;
+}
+
+export interface GeneralSprayPlan {
+  needed: boolean;
+  water_volume: number | null;
+  water_unit: WaterUnit | null;
+  components: SprayComponent[];
+  clash_note_local: string | null;
+  withheld?: 'not_sure' | 'regulatory_unavailable' | null;
+  dose_withheld?: 'crop_unknown' | null;
+}
+
+/** Config defaults for the pump / stock-solution calculator (system_config). */
+export interface SprayDefaults {
+  pump_sizes_l: number[];
+  default_pump_l: number;
+  stock_l_per_pump: number;
+  stock_min_dilution: number;
+}
+
 export interface GeneralIdentification {
   scan_scope: 'general';
   language: string;
@@ -468,13 +507,13 @@ export interface GeneralIdentification {
   farmer_card: {
     summary_local: string | null;
     identification_marks_local: string[];
-    life_cycle_local: string | null;
     damage_or_role_local: string | null;
-    spread_conditions_local: string | null;
     field_checks_local: string[];
   };
+  root_cause: { primary_en: string | null; contributing_factors_local: string[]; life_cycle_local: string | null };
   another_photo: { needed: boolean; shot_role: ShotRole | null; reason_local: string | null };
   management: GeneralManagement;
+  spray_plan: GeneralSprayPlan;
   abstained: boolean;
   language_check?: 'ok' | 'repaired' | 'mismatch' | 'not_checked';
 }
@@ -484,6 +523,7 @@ export interface GeneralScanResult {
   status: Extract<DiagnosisStatus, 'completed' | 'needs_follow_up' | 'retake_requested' | 'failed'>;
   retake?: { reason_code: RetakeReason | null; photo_index: number | null };
   identification?: GeneralIdentification;
+  spray_defaults?: SprayDefaults | null;
   error_code?: string;
 }
 

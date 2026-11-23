@@ -26,8 +26,10 @@
 --    max_output_tokens 4000 (farmer-language text + management in Indic scripts),
 --    timeout_ms 45000 per model attempt (longer output than land perception),
 --    local_script_min_ratio 0.6 (share of letters in the farmer's script below
---    which the *_local text is rewritten once). Confidence floor stays
---    photo_diagnosis_policy.observation_min_confidence.
+--    which the *_local text is rewritten once), spray_plan (app-side spray
+--    calculator: pump sizes offered, default pump, litres of stock solution per
+--    pump, minimum dilution of the stock = stock volume ÷ product volume).
+--    Confidence floor stays photo_diagnosis_policy.observation_min_confidence.
 --
 -- Additive and reversible. No data is changed or deleted. No session state,
 -- no TEMP tables (SQL runner rule). Run PRECHECK_20261122140000_photo_general_scan.sql first.
@@ -302,7 +304,7 @@ ALTER TABLE public.crop_growth_uploads ADD CONSTRAINT crop_growth_uploads_path_o
 -- longer attempt window than land perception (Indic scripts use more tokens per
 -- word). Merge, not replace: every existing key is kept.
 UPDATE public.system_config
-   SET config_value = config_value || '{"general_scan": {"max_output_tokens": 4000, "timeout_ms": 45000, "local_script_min_ratio": 0.6}}'::jsonb,
+   SET config_value = config_value || '{"general_scan": {"max_output_tokens": 4000, "timeout_ms": 45000, "local_script_min_ratio": 0.6, "spray_plan": {"pump_sizes_l": [16, 18, 20], "default_pump_l": 18, "stock_l_per_pump": 1, "stock_min_dilution": 10}}}'::jsonb,
        updated_at = now()
  WHERE config_key = 'vision_diagnosis_policy';
 
@@ -311,7 +313,7 @@ UPDATE public.system_config
 -- select pg_get_functiondef('public.crop_photo_diagnosis_fill_identity'::regproc) ilike '%general diagnosis%'; -- true
 -- select pg_get_functiondef('public.crop_photo_diagnosis_photo_same_land'::regproc) ilike '%land_id IS NULL%'; -- true
 -- select pg_get_constraintdef(oid) from pg_constraint where conname = 'crop_growth_uploads_path_owner_chk';   -- contains _general
--- select config_value->'general_scan' from system_config where config_key = 'vision_diagnosis_policy';         -- {"timeout_ms": 45000, "max_output_tokens": 4000, "local_script_min_ratio": 0.6}
+-- select config_value->'general_scan' from system_config where config_key = 'vision_diagnosis_policy';         -- {"spray_plan": {"pump_sizes_l": [16, 18, 20], "default_pump_l": 18, "stock_l_per_pump": 1, "stock_min_dilution": 10}, "timeout_ms": 45000, "max_output_tokens": 4000, "local_script_min_ratio": 0.6}
 --
 -- ROLLBACK (only if needed): re-run the three function definitions as they were
 -- before this file (git history of this migration's predecessors / pg_get_functiondef

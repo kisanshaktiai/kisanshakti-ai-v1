@@ -6,6 +6,19 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23c — General Scan result in tabs so nothing is buried under a long
+ *   scroll: hero (photo, names, crop, one-line summary, certainty) stays on
+ *   top; a sticky tab bar below it — Identify (signs, damage, field checks,
+ *   look-alikes) · Cause (why it happened, life cycle) · Control (when to act,
+ *   prevention, biological, chemical options, safety) · Spray (pump / stock
+ *   plan). Tabs without content are not shown. Panel headings moved to the tabs.
+ * 2026-11-23b — General Scan v1.2 result: non-farm photo gets a one-line card
+ *   ("scan again"); "Why it happened" (root cause + life cycle) replaces the
+ *   spread / life-cycle sections; Spray plan panel — area (acres) and pump size
+ *   in, stock solution out (computeSprayPlan in src/lib/sprayPlan.ts, defaults
+ *   from config via the scan response): jar test, stock litres with products in
+ *   mixing order, stock + water per pump, number of pumps, waiting days before
+ *   harvest, clash note, label note. Doses hidden when the crop is not named.
  * 2026-11-23 — General Scan result: "How to control" panel (prevention,
  *   biological agents, chemical active ingredients with mode-of-action group,
  *   when to act, safety, label note; no brands, no doses). Shows why medicine
@@ -48,14 +61,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin, ScanLine, Sparkles, ChevronRight,
   Sprout, Leaf, Bug, Microscope, Worm, FlaskConical, ThermometerSun, PawPrint, ShieldCheck, ImageOff, CircleHelp,
-  WifiOff, ArrowLeftRight, type LucideIcon,
+  WifiOff, ArrowLeftRight, Droplets, Timer, type LucideIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { computeSprayPlan, measure } from '@/lib/sprayPlan';
 import {
   askDecisionBrain,
   capturedFromFile,
@@ -75,6 +91,8 @@ import {
   type DiagnoseResult,
   type GeneralIdentification,
   type GeneralManagement,
+  type GeneralSprayPlan,
+  type SprayDefaults,
   type GeneralScanCategory,
   type GeneralScanResult,
   type RetakeReason,
@@ -588,7 +606,9 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
               photoUrl={shots[0]?.photo.previewUrl}
               canAddPhoto={shots.length < ROLES.length}
               canScanLand={!landBound && (lands ?? []).length > 0}
+              sprayDefaults={general.spray_defaults ?? null}
               onAddPhoto={() => { setGeneral(null); setPhase('capture'); }}
+              onScanAgain={() => { setGeneral(null); setShots([]); setText(''); setPhase('capture'); }}
               onScanLand={() => { setGeneral(null); setScanMode('land'); setPhase('land'); }}
               onDone={onClose}
             />
@@ -611,14 +631,39 @@ interface GeneralResultCardProps {
   photoUrl?: string;
   canAddPhoto: boolean;
   canScanLand: boolean;
+  sprayDefaults: SprayDefaults | null;
   onAddPhoto: () => void;
+  onScanAgain: () => void;
   onScanLand: () => void;
   onDone: () => void;
 }
 
-export function GeneralResultCard({ id, status, photoUrl, canAddPhoto, canScanLand, onAddPhoto, onScanLand, onDone }: GeneralResultCardProps) {
+export function GeneralResultCard({
+  id, status, photoUrl, canAddPhoto, canScanLand, sprayDefaults, onAddPhoto, onScanAgain, onScanLand, onDone,
+}: GeneralResultCardProps) {
   const { t } = useTranslation();
   const Icon = CATEGORY_ICON[id.category] ?? CircleHelp;
+
+  // Agri gate: not a farm subject — one line and a way back, nothing else.
+  if (id.category === 'not_agricultural') {
+    return (
+      <article className="space-y-4" aria-live="polite">
+        {photoUrl && <img src={photoUrl} alt="" className="h-40 w-full rounded-2xl border border-border object-cover opacity-80" />}
+        <div className="flex gap-3 rounded-2xl bg-muted p-4">
+          <ImageOff className="h-6 w-6 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold text-foreground">{t(`${K}.category.not_agricultural`)}</p>
+            <p className="text-sm text-muted-foreground">{t(`${K}.resultNotFarm`)}</p>
+          </div>
+        </div>
+        <Button className="h-12 w-full rounded-xl" onClick={onScanAgain}>
+          <Camera className="h-5 w-5 mr-2" />{t(`${K}.scanAgain`)}
+        </Button>
+        <Button variant="ghost" className="h-11 w-full rounded-xl" onClick={onDone}>{t(`${K}.done`)}</Button>
+      </article>
+    );
+  }
+
   const sure = status === 'completed' && !id.abstained;
   const p = id.primary;
   const headline = p.local_name || p.common_name_en || t(`${K}.category.${id.category}`);
@@ -626,6 +671,16 @@ export function GeneralResultCard({ id, status, photoUrl, canAddPhoto, canScanLa
   const pct = Math.round(Math.max(0, Math.min(1, p.confidence)) * 100);
   const c = id.farmer_card;
   const hostName = id.host_crop ? (id.host_crop.local_name || id.host_crop.common_name_en) : null;
+  const rc = id.root_cause ?? { primary_en: null, contributing_factors_local: [], life_cycle_local: null };
+  const hasCause = rc.contributing_factors_local.length > 0 || !!rc.life_cycle_local;
+  const hasControl = !!id.management?.applicable;
+  const hasSpray = !!id.spray_plan?.needed;
+  const tabs: Array<{ key: 'identify' | 'cause' | 'control' | 'spray'; icon: LucideIcon }> = [
+    { key: 'identify', icon: ScanLine },
+    ...(hasCause ? [{ key: 'cause' as const, icon: CircleHelp }] : []),
+    ...(hasControl ? [{ key: 'control' as const, icon: ShieldCheck }] : []),
+    ...(hasSpray ? [{ key: 'spray' as const, icon: Droplets }] : []),
+  ];
 
   return (
     <article className="space-y-5" aria-live="polite">
@@ -655,6 +710,7 @@ export function GeneralResultCard({ id, status, photoUrl, canAddPhoto, canScanLa
               </p>
             )}
           </div>
+          {c.summary_local && <p className="text-sm leading-relaxed text-foreground">{c.summary_local}</p>}
 
           {/* Certainty — the server decides completed vs needs_follow_up; the UI only colours it. */}
           <div className="space-y-1.5">
@@ -689,40 +745,72 @@ export function GeneralResultCard({ id, status, photoUrl, canAddPhoto, canScanLa
         </div>
       )}
 
-      {c.summary_local && <Section title={t(`${K}.resultWhatItIs`)}><p>{c.summary_local}</p></Section>}
-      {c.identification_marks_local.length > 0 && (
-        <Section title={t(`${K}.resultHowToRecognise`)}><Bullets items={c.identification_marks_local} /></Section>
-      )}
-      {c.damage_or_role_local && <Section title={t(`${K}.resultDamage`)}><p>{c.damage_or_role_local}</p></Section>}
-      {id.management?.applicable && <ControlPanel m={id.management} />}
-      {c.spread_conditions_local && <Section title={t(`${K}.resultSpread`)}><p>{c.spread_conditions_local}</p></Section>}
-      {c.life_cycle_local && <Section title={t(`${K}.resultLifeCycle`)}><p>{c.life_cycle_local}</p></Section>}
-      {c.field_checks_local.length > 0 && (
-        <Section title={t(`${K}.resultFieldChecks`)}><Bullets items={c.field_checks_local} /></Section>
-      )}
+      {/* Everything else sits in tabs, so the farmer reaches the spray plan in one tap. */}
+      <Tabs defaultValue="identify" className="space-y-4">
+        <TabsList className="sticky top-0 z-10 grid h-auto w-full gap-1 rounded-2xl bg-muted p-1"
+          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+          {tabs.map(({ key, icon: TabIcon }) => (
+            <TabsTrigger key={key} value={key}
+              className="flex h-auto min-w-0 flex-col gap-1 whitespace-normal rounded-xl px-1 py-2 text-sm font-medium leading-tight text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
+              <TabIcon className="h-5 w-5 shrink-0" />
+              <span className="break-words text-center">{t(`${K}.tab.${key}`)}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {id.alternatives.length > 0 && (
-        <Section title={t(`${K}.resultCouldAlsoBe`)}>
-          <ul className="divide-y divide-border rounded-xl border border-border">
-            {id.alternatives.map((a, i) => {
-              const AltIcon = CATEGORY_ICON[a.category] ?? CircleHelp;
-              const name = a.local_name || a.common_name_en || t(`${K}.category.${a.category}`);
-              return (
-                <li key={`${name}-${i}`} className="flex gap-3 p-3">
-                  <AltIcon className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="font-medium text-foreground">
-                      {name}
-                      {a.scientific_name && <i className="ml-1.5 font-serif text-xs font-normal text-muted-foreground">{a.scientific_name}</i>}
-                    </p>
-                    {a.how_to_tell_apart_local && <p className="text-muted-foreground">{a.how_to_tell_apart_local}</p>}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </Section>
-      )}
+        <TabsContent value="identify" className="mt-0 space-y-5">
+          {c.identification_marks_local.length > 0 && (
+            <Section title={t(`${K}.resultHowToRecognise`)}><Bullets items={c.identification_marks_local} /></Section>
+          )}
+          {c.damage_or_role_local && <Section title={t(`${K}.resultDamage`)}><p>{c.damage_or_role_local}</p></Section>}
+          {c.field_checks_local.length > 0 && (
+            <Section title={t(`${K}.resultFieldChecks`)}><Bullets items={c.field_checks_local} /></Section>
+          )}
+          {id.alternatives.length > 0 && (
+            <Section title={t(`${K}.resultCouldAlsoBe`)}>
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {id.alternatives.map((a, i) => {
+                  const AltIcon = CATEGORY_ICON[a.category] ?? CircleHelp;
+                  const name = a.local_name || a.common_name_en || t(`${K}.category.${a.category}`);
+                  return (
+                    <li key={`${name}-${i}`} className="flex gap-3 p-3">
+                      <AltIcon className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="font-medium text-foreground">
+                          {name}
+                          {a.scientific_name && <i className="ml-1.5 font-serif text-xs font-normal text-muted-foreground">{a.scientific_name}</i>}
+                        </p>
+                        {a.how_to_tell_apart_local && <p className="text-muted-foreground">{a.how_to_tell_apart_local}</p>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Section>
+          )}
+        </TabsContent>
+
+        {hasCause && (
+          <TabsContent value="cause" className="mt-0 space-y-5">
+            {rc.contributing_factors_local.length > 0 && (
+              <Section title={t(`${K}.resultRootCause`)}><Bullets items={rc.contributing_factors_local} /></Section>
+            )}
+            {rc.life_cycle_local && <Section title={t(`${K}.resultLifeCycle`)}><p>{rc.life_cycle_local}</p></Section>}
+          </TabsContent>
+        )}
+
+        {hasControl && (
+          <TabsContent value="control" className="mt-0">
+            <ControlPanel m={id.management} />
+          </TabsContent>
+        )}
+
+        {hasSpray && (
+          <TabsContent value="spray" className="mt-0">
+            <SprayPlanPanel plan={id.spray_plan} defaults={sprayDefaults} />
+          </TabsContent>
+        )}
+      </Tabs>
 
       {/* General Scan identifies; treatment comes only from the governed land diagnosis. */}
       <div className="space-y-2.5 border-t border-border pt-4">
@@ -746,9 +834,6 @@ function ControlPanel({ m }: { m: GeneralManagement }) {
   const hasProducts = m.biological.length > 0 || m.chemical.length > 0;
   return (
     <section className="space-y-4 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed text-foreground">
-      <h4 className="flex items-center gap-2 text-base font-semibold text-foreground">
-        <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />{t(`${K}.resultControl`)}
-      </h4>
 
       {m.action_threshold_local && (
         <div className="space-y-1">
@@ -816,6 +901,155 @@ function ControlPanel({ m }: { m: GeneralManagement }) {
         </div>
       )}
     </section>
+  );
+}
+
+// ── Spray plan — label dose → stock solution and pumps (all arithmetic in src/lib/sprayPlan.ts) ──
+function SprayPlanPanel({ plan, defaults }: { plan: GeneralSprayPlan; defaults: SprayDefaults | null }) {
+  const { t } = useTranslation();
+  const [area, setArea] = useState('');
+  const [pumpL, setPumpL] = useState<number | null>(defaults?.default_pump_l ?? null);
+  const areaAcres = Number.parseFloat(area.replace(',', '.'));
+  const r = computeSprayPlan({
+    components: plan.components,
+    waterVolume: defaults ? plan.water_volume : null,
+    waterUnit: defaults ? plan.water_unit : null,
+    areaAcres: Number.isFinite(areaAcres) && areaAcres > 0 ? areaAcres : null,
+    pumpL: pumpL ?? 0,
+    stockLPerPump: defaults?.stock_l_per_pump ?? 0,
+    stockMinDilution: defaults?.stock_min_dilution ?? 0,
+  });
+  const unit = (u: 'g' | 'ml' | null) => (u ? t(`${K}.unit.${u}`) : '');
+  const amount = (n: number | null, u: 'g' | 'ml' | null) => (n === null || !u ? t(`${K}.sprayDoseOnLabel`) : `${measure(n)} ${unit(u)}`);
+  const phis = plan.components.filter((c) => c.phi_days !== null);
+
+  return (
+    <section className="space-y-4 rounded-2xl border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
+
+      {defaults && r.mode !== 'label_only' && (
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">{t(`${K}.sprayArea`)}</span>
+            <Input inputMode="decimal" type="number" min="0" step="0.1" value={area} onChange={(e) => setArea(e.target.value)}
+              placeholder={t(`${K}.sprayAreaPlaceholder`)} className="h-11" />
+          </label>
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">{t(`${K}.sprayPump`)}</span>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t(`${K}.sprayPump`)}>
+              {defaults.pump_sizes_l.map((size) => (
+                <button key={size} type="button" role="radio" aria-checked={pumpL === size} onClick={() => setPumpL(size)}
+                  className={cn('h-11 min-w-[3.25rem] rounded-xl border px-3 font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    pumpL === size ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground')}>
+                  {size} {t(`${K}.unit.l`)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {plan.dose_withheld === 'crop_unknown' && (
+        <p className="flex gap-2 rounded-xl bg-warning/10 p-3"><AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />{t(`${K}.sprayCropUnknown`)}</p>
+      )}
+
+      {r.mode === 'area' && (
+        <ol className="space-y-3">
+          <Step n={1}>{t(`${K}.sprayJarTest`)}</Step>
+          {r.stockL !== null ? (
+            <Step n={2}>
+              <p className="font-semibold">{t(`${K}.sprayMakeStock`, { litres: measure(r.stockL) })}</p>
+              <MixList lines={r.lines} amount={(l) => amount(l.total, l.unit)} />
+              <p className="pt-1 text-muted-foreground">{t(`${K}.sprayStockStir`)}</p>
+            </Step>
+          ) : (
+            <Step n={2}>
+              <p className="font-semibold">{t(`${K}.sprayEachPumpDirect`, { litres: measure(r.waterPerPumpL ?? 0) })}</p>
+              <MixList lines={r.lines} amount={(l) => amount(l.perPump, l.unit)} />
+            </Step>
+          )}
+          {r.stockL !== null && (
+            <Step n={3}>{t(`${K}.sprayEachPump`, { stock: measure(r.stockPerPumpL ?? 0), water: measure(r.waterPerPumpL ?? 0) })}</Step>
+          )}
+          <Step n={r.stockL !== null ? 4 : 3}>
+            <span className="font-semibold">{t(`${K}.sprayPumps`, { pumps: r.pumps ?? 0, litres: measure(r.sprayedL ?? 0) })}</span>
+          </Step>
+        </ol>
+      )}
+
+      {r.mode === 'one_pump' && (
+        <div className="space-y-1.5">
+          <p className="font-semibold">{t(`${K}.sprayOnePump`, { litres: measure(pumpL ?? 0) })}</p>
+          <MixList lines={r.lines} amount={(l) => amount(l.perPump, l.unit)} />
+          <p className="text-xs text-muted-foreground">{t(`${K}.sprayEnterArea`)}</p>
+        </div>
+      )}
+
+      {r.mode === 'label_only' && (
+        <ul className="space-y-2">
+          {r.lines.map((l, i) => (
+            <li key={`${l.component.active_ingredient}-${i}`} className="rounded-xl bg-muted/60 p-3">
+              <ProductName c={l.component} />
+              <p className="text-muted-foreground">
+                {l.component.dose_value !== null && l.component.dose_unit
+                  ? `${measure(l.component.dose_value)} ${t(`${K}.doseUnit.${l.component.dose_unit}`)}`
+                  : t(`${K}.sprayDoseOnLabel`)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {phis.length > 0 && (
+        <div className="space-y-1">
+          {phis.map((c, i) => (
+            <p key={`${c.active_ingredient}-phi-${i}`} className="flex gap-2 text-foreground">
+              <Timer className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+              {t(`${K}.sprayPhi`, { name: c.active_ingredient, days: c.phi_days })}
+            </p>
+          ))}
+        </div>
+      )}
+      {plan.components.some((c) => c.watch_list) && <p className="text-xs text-warning">{t(`${K}.resultWatchList`)}</p>}
+      {plan.clash_note_local && (
+        <p className="flex gap-2 rounded-xl bg-warning/10 p-3"><AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />{plan.clash_note_local}</p>
+      )}
+      <p className="border-t border-border pt-3 text-xs text-muted-foreground">{t(`${K}.resultLabelNote`)}</p>
+    </section>
+  );
+}
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary tabular-nums">{n}</span>
+      <div className="min-w-0 flex-1 space-y-1">{children}</div>
+    </li>
+  );
+}
+
+function ProductName({ c }: { c: GeneralSprayPlan['components'][number] }) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span className="font-semibold text-foreground">{c.active_ingredient}</span>
+      {c.formulation && <span className="text-muted-foreground">{c.formulation}</span>}
+      {c.moa_group && <span className="rounded-md border border-border px-1.5 py-0.5 text-xs text-muted-foreground">{c.moa_group}</span>}
+    </p>
+  );
+}
+
+function MixList({ lines, amount }: {
+  lines: ReturnType<typeof computeSprayPlan>['lines'];
+  amount: (l: ReturnType<typeof computeSprayPlan>['lines'][number]) => string;
+}) {
+  return (
+    <ul className="space-y-1.5">
+      {lines.map((l, i) => (
+        <li key={`${l.component.active_ingredient}-${i}`} className="flex items-start justify-between gap-3 rounded-xl bg-muted/60 px-3 py-2">
+          <ProductName c={l.component} />
+          <span className="shrink-0 font-semibold tabular-nums text-foreground">{amount(l)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
