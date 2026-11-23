@@ -6,6 +6,7 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 18:10 UTC — Browser/PWA "Take photo" opens an in-app live camera (falls back to file input).
  * 2026-11-23 09:30 UTC — Offer land-scan recovery after General Scan failure, including cameras opened on a bound land.
  * 2026-11-23 09:27 UTC — Explain unavailable General Scan setup while retaining photos and land selection.
  * 2026-11-23c — General Scan result in tabs so nothing is buried under a long
@@ -59,6 +60,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import LiveCameraViewfinder, { canUseLiveCamera } from './LiveCameraViewfinder';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin, ScanLine, Sparkles, ChevronRight,
@@ -242,6 +244,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   }, [isOpen, initialFiles, addPhoto, props.landId, farmerId, tenantId]);
 
   const replaceRef = useRef<number | undefined>(undefined);
+  const [liveCam, setLiveCam] = useState(false);
   const openCamera = async (replaceIndex?: number) => {
     if (picking) return;
     replaceRef.current = replaceIndex;
@@ -257,7 +260,14 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       }
       return;
     }
+    if (canUseLiveCamera()) { setLiveCam(true); return; }
     cameraInput.current?.click();
+  };
+  const onLiveCapture = async (blob: Blob) => {
+    setLiveCam(false);
+    const file = new File([blob], `crop-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    await addPhoto(capturedFromFile(file, true), replaceRef.current);
+    replaceRef.current = undefined;
   };
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>, fromCamera: boolean) => {
     const file = e.target.files?.[0];
@@ -446,6 +456,13 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
         <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onFile(e, true)} />
         <input ref={galleryInput} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e, false)} />
+        {liveCam && (
+          <LiveCameraViewfinder
+            onCapture={(b) => { void onLiveCapture(b); }}
+            onCancel={() => { setLiveCam(false); replaceRef.current = undefined; }}
+            onUnavailable={() => { setLiveCam(false); cameraInput.current?.click(); }}
+          />
+        )}
 
         <div className="min-h-0 min-w-0 p-4 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain break-words">
           {phase === 'land' && (

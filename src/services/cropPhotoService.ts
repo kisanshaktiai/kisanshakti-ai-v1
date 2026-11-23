@@ -163,6 +163,13 @@ function newCaptured(blob: Blob, source: CaptureSource): CapturedPhoto {
  */
 export async function takeStillPhoto(): Promise<CapturedPhoto | null> {
   try {
+    try {
+      const perm = await Camera.checkPermissions();
+      if (perm.camera !== 'granted') {
+        const req = await Camera.requestPermissions({ permissions: ['camera'] });
+        if (req.camera === 'denied') return null;
+      }
+    } catch { /* permission API unavailable — let getPhoto ask */ }
     const photo = await Camera.getPhoto({
       source: CameraSource.Camera,
       resultType: CameraResultType.Uri,
