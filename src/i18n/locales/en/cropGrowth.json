@@ -83,6 +83,7 @@
       "chooseLand": "Which land is this photo from?",
       "generalScan": "General Scan",
       "generalScanHint": "Identify any crop, weed, pest or disease — no land needed",
+      "generalUnavailable": "General Scan is not available yet. Your photo is still here. Choose a land to scan it.",
       "orChooseLand": "or choose a land",
       "thisLand": "This land",
       "generalNeedsInternet": "General Scan needs internet. Connect and try again, or choose a land — land photos are saved offline.",

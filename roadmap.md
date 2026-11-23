@@ -1,3 +1,8 @@
+# General Scan registration failure
+- [x] Confirm live photo triggers still require a land and reject General Scan with NULL land_id.
+- [x] Preserve identity checks and report a specific setup error with localized recovery instead of generic photo failure.
+- [ ] Enable General Scan persistence: awaiting permission to update only photo ownership triggers and the storage-path constraint; no database changes performed.
+
 # Compact schedule top bar
 - [x] Move saved crop, land, variety and sowing/harvest summaries into the top bar; remove duplicate content below.
 - [x] Verify isolated compact layout at 394×732 and 1280×1800 with no horizontal overflow; 11 schedule regressions pass and preview build OK. Signed-in full-page verification remains unavailable with external unmanaged authentication.

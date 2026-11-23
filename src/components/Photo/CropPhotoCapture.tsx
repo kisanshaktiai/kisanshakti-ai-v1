@@ -6,6 +6,7 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 09:27 UTC — Explain unavailable General Scan setup while retaining photos and land selection.
  * 2026-11-23c — General Scan result in tabs so nothing is buried under a long
  *   scroll: hero (photo, names, crop, one-line summary, certainty) stays on
  *   top; a sticky tab bar below it — Identify (signs, damage, field checks,
@@ -342,7 +343,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
     } catch (e) {
       if (generation !== captureGeneration.current) return;
       console.error('[CropPhotoCapture] general scan failed', e);
-      setProblem(t(`${K}.failed`));
+      setProblem(t(`${K}.${e instanceof Error && e.message === 'GENERAL_SCAN_NOT_CONFIGURED' ? 'generalUnavailable' : 'failed'}`));
       setPhase('capture');
     }
   };

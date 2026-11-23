@@ -6,6 +6,7 @@
  * PATH: src/services/cropPhotoService.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 09:27 UTC — Preserve General Scan setup errors for localized capture recovery.
  * 2026-11-23b — General Scan v1.2 types: root_cause, spray_plan (label doses in
  *   the label's own unit; the app's src/lib/sprayPlan.ts does the arithmetic),
  *   spray_defaults from config; farmer_card loses life_cycle/spread (moved to
@@ -106,7 +107,17 @@ async function invokeChat<T>(body: Record<string, unknown>, id: PhotoIdentity): 
   });
   assertPhotoIdentity(id);
   if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
-  if (error) throw error;
+  if (error) {
+    // FunctionsHttpError keeps the JSON error code in its Response context.
+    // Read a clone so diagnostics and other consumers retain the original body.
+    if (error.context instanceof Response) {
+      const payload = await error.context.clone().json().catch(() => null);
+      if (payload?.code === 'GENERAL_SCAN_NOT_CONFIGURED') {
+        throw new Error('GENERAL_SCAN_NOT_CONFIGURED');
+      }
+    }
+    throw error;
+  }
   return data as T;
 }
 

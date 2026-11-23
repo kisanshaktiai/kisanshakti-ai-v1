@@ -321,6 +321,26 @@ describe('general scan routes', () => {
     expect((await r.json()).code).toBe('FARMER_NOT_RESOLVED');
   });
 
+  it.each([
+    ['23503', 'land <NULL> not found or has no owner', 503, 'GENERAL_SCAN_NOT_CONFIGURED'],
+    ['23503', 'general photo requires a farmer that belongs to the tenant', 500, 'PHOTO_REGISTER_FAILED'],
+    ['57014', 'canceling statement due to statement timeout', 500, 'PHOTO_REGISTER_FAILED'],
+  ])('classifies registration failure %s / %s without bypassing isolation', async (code, message, status, responseCode) => {
+    const insert = vi.fn(async () => ({ error: { code, message } }));
+    const query = {
+      select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(), or: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn(async () => ({ data: null })), insert,
+    };
+    const createSignedUploadUrl = vi.fn();
+    const sb = { from: vi.fn(() => query), storage: { from: vi.fn(() => ({ createSignedUploadUrl })) } };
+    const r = await handlePhotoAction('photo_begin_upload', begin, { ...ctx, supabase: sb }, {});
+    expect(r.status).toBe(status);
+    expect((await r.json()).code).toBe(responseCode);
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ land_id: null, farmer_id: FARMER, tenant_id: TENANT, upload_type: 'general' }));
+    expect(createSignedUploadUrl).not.toHaveBeenCalled();
+  });
+
   it('routes a valid general diagnosis to the general engine with the guarded identity', async () => {
     const r = await handlePhotoAction('diagnose_photo', {
       scan_scope: 'general', purpose: 'instascan', language: 'mr', farmer_text: null,

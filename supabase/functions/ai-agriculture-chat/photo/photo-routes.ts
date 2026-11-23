@@ -6,6 +6,7 @@
  * PATH: supabase/functions/ai-agriculture-chat/photo/photo-routes.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 09:27 UTC — Report the legacy land-required General Scan database contract as unavailable, not a generic registration crash.
  * 2026-11-22 — General Scan (land-less identification). body.scan_scope =
  *   'general' on 'photo_begin_upload' / 'diagnose_photo' routes to
  *   beginGeneralUpload / diagnoseGeneral: identity from the guarded
@@ -307,6 +308,11 @@ async function beginGeneralUpload(body: any, ctx: PhotoRouteContext, cors: Recor
   });
   if (insErr) {
     console.error('[PHOTO_ROUTES] general evidence insert failed:', insErr.message);
+    // Do not bind a general photo to an arbitrary land or bypass its ownership trigger.
+    // The live legacy trigger rejects NULL land_id until the General Scan DB contract is applied.
+    if (insErr.code === '23503' && insErr.message === 'land <NULL> not found or has no owner') {
+      return json({ error: 'General Scan is not available yet. Choose a land to scan this photo.', code: 'GENERAL_SCAN_NOT_CONFIGURED' }, 503, cors);
+    }
     return json({ error: 'Could not register photo', code: 'PHOTO_REGISTER_FAILED' }, 500, cors);
   }
 
