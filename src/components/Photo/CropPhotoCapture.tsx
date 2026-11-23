@@ -6,6 +6,7 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 09:30 UTC — Offer land-scan recovery after General Scan failure, including cameras opened on a bound land.
  * 2026-11-23 09:27 UTC — Explain unavailable General Scan setup while retaining photos and land selection.
  * 2026-11-23c — General Scan result in tabs so nothing is buried under a long
  *   scroll: hero (photo, names, crop, one-line summary, certainty) stays on
@@ -520,6 +521,14 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
                 <div role="alert" className="flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /><span>{problem}</span>
                 </div>
+              )}
+              {problem && scanMode === 'general' && (props.landId || (lands ?? []).length > 0) && (
+                <Button type="button" variant="outline" className="h-11 w-full" onClick={() => {
+                  if (props.landId) chooseLand(props.landId);
+                  else backToPicker();
+                }}>
+                  <MapPin className="h-4 w-4 mr-2" />{t(`${K}.scanOnMyLand`)}
+                </Button>
               )}
               {offerGeneral && scanMode === 'land' && (
                 <Button type="button" variant="outline" className="h-11 w-full rounded-xl border-primary/40" onClick={chooseGeneral}>

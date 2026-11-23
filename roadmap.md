@@ -1,6 +1,7 @@
 # General Scan registration failure
 - [x] Confirm live photo triggers still require a land and reject General Scan with NULL land_id.
 - [x] Preserve identity checks and report a specific setup error with localized recovery instead of generic photo failure.
+- [x] Read chat, InstaScan, schedule photos, growth tracking, satellite prompts, offline retries, legacy processing and all three live photo triggers; add land recovery for bound-camera General Scan failures and test error propagation.
 - [ ] Enable General Scan persistence: awaiting permission to update only photo ownership triggers and the storage-path constraint; no database changes performed.
 
 # Compact schedule top bar
