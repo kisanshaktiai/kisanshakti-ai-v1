@@ -444,7 +444,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent aria-describedby={undefined} className="flex flex-col gap-0 max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 overflow-hidden rounded-lg [&>button]:hidden">
+      <DialogContent aria-describedby={undefined} onPointerDownOutside={(e) => { if (liveCam) e.preventDefault(); }} onInteractOutside={(e) => { if (liveCam) e.preventDefault(); }} onEscapeKeyDown={(e) => { if (liveCam) { e.preventDefault(); setLiveCam(false); } }} className="flex flex-col gap-0 max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 overflow-hidden rounded-lg [&>button]:hidden">
         <div className="flex shrink-0 min-w-0 items-center justify-between gap-2 px-4 py-3 border-b border-border">
           <DialogTitle className="min-w-0 break-words text-base font-semibold text-foreground tracking-normal">
             {scanMode === 'general' && phase !== 'land' ? t(`${K}.generalScan`) : t(`${K}.title`)}
