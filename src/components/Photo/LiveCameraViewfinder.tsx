@@ -1,9 +1,11 @@
 /**
  * LIVE CAMERA VIEWFINDER — in-app camera for browser / PWA.
  * CHANGE LOG
+ * 2026-11-23 18:16 UTC — Portal to body for true full screen (dialog transform trapped it); max sensor resolution; overlay controls.
  * 2026-11-23 18:10 UTC — Created: getUserMedia back-camera stream, switch camera, shutter → JPEG Blob.
  */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Camera as CameraIcon, RefreshCw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,7 +34,7 @@ export default function LiveCameraViewfinder({ onCapture, onCancel, onUnavailabl
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { facingMode: { ideal: facing }, width: { ideal: 4096 }, height: { ideal: 4096 } },
           audio: false,
         });
         if (cancelled) { stream.getTracks().forEach((tr) => tr.stop()); return; }
@@ -64,19 +66,19 @@ export default function LiveCameraViewfinder({ onCapture, onCancel, onUnavailabl
     c.toBlob((b) => { if (b) onCapture(b); }, 'image/jpeg', 0.95);
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-background" onClick={(e) => e.stopPropagation()}>
-      <div className="relative flex-1 overflow-hidden bg-muted">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] h-[100dvh] w-screen bg-foreground pointer-events-auto" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="absolute inset-0 overflow-hidden">
         <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
-        <div className="pointer-events-none absolute inset-8 rounded-2xl border-2 border-primary/60" />
+        <div className="pointer-events-none absolute inset-x-6 top-[15%] bottom-[25%] rounded-3xl border-2 border-primary-foreground/50" />
         {!ready && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-primary-foreground/80">
             {t('cropGrowth.capture.cameraStarting', 'Starting camera…')}
           </div>
         )}
       </div>
-      <div className="flex shrink-0 items-center justify-between px-6 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-        <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-full" onClick={onCancel} aria-label={t('common.cancel', 'Cancel')}>
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-foreground/70 to-transparent px-6 pt-10 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-full border-primary-foreground/40 bg-foreground/40 text-primary-foreground hover:bg-foreground/60" onClick={onCancel} aria-label={t('common.cancel', 'Cancel')}>
           <X className="h-5 w-5" />
         </Button>
         <button
@@ -84,16 +86,17 @@ export default function LiveCameraViewfinder({ onCapture, onCancel, onUnavailabl
           onClick={shoot}
           disabled={!ready}
           aria-label={t('cropGrowth.capture.takePhoto', 'Take photo')}
-          className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-primary bg-primary/10 disabled:opacity-50"
+          className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-primary-foreground bg-primary-foreground/20 disabled:opacity-50"
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary-foreground text-foreground">
             <CameraIcon className="h-6 w-6" />
           </span>
         </button>
-        <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-full" onClick={() => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))} aria-label={t('cropGrowth.capture.switchCamera', 'Switch camera')}>
+        <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-full border-primary-foreground/40 bg-foreground/40 text-primary-foreground hover:bg-foreground/60" onClick={() => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))} aria-label={t('cropGrowth.capture.switchCamera', 'Switch camera')}>
           <RefreshCw className="h-5 w-5" />
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
