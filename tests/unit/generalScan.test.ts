@@ -60,8 +60,8 @@ function modelOutput(over: Record<string, unknown> = {}) {
       prevention_local: ['remove infected leaves'],
       biological: [{ agent: 'Pseudomonas fluorescens', how_local: 'seed treatment' }],
       chemical: [
-        { active_ingredient: 'tricyclazole', moa_group: 'FRAC 16.1', how_local: 'at first spots' },
-        { active_ingredient: '  ', moa_group: null, how_local: null },
+        { active_ingredient: 'tricyclazole', type: 'fungicide', application: 'foliar_spray', moa_group: 'FRAC 16.1', how_local: 'at first spots' },
+        { active_ingredient: '  ', type: 'fungicide', application: 'foliar_spray', moa_group: null, how_local: null },
       ],
       action_threshold_local: 'when spots appear',
       safety_local: 'wear gloves',
@@ -127,10 +127,48 @@ describe('management from the model', () => {
   });
 });
 
+describe('v1.3 — product classes and spelling-proof banned list', () => {
+  const comp = (o: Record<string, unknown>) => ({ role: 'fungicide', active_ingredient: 'x', formulation: null, dose_value: null,
+    dose_unit: null, phi_days: null, moa_group: null, ...o });
+  it('keeps the product class and application of each chemical; unknown values become null', () => {
+    const m = validateGeneralScan(modelOutput(), 1).identification!.management;
+    expect(m.chemical[0]).toMatchObject({ type: 'fungicide', application: 'foliar_spray' });
+    const odd = validateGeneralScan(modelOutput({ category: 'animal_damage', management: {
+      applicable: true, prevention_local: [], biological: [], action_threshold_local: null, safety_local: null,
+      chemical: [{ active_ingredient: 'zinc phosphide', type: 'rodenticide', application: 'bait', moa_group: null, how_local: null },
+        { active_ingredient: 'y', type: 'magic', application: 'air', moa_group: null, how_local: null }] } }), 1).identification!.management;
+    expect(odd.chemical.map((c) => [c.type, c.application])).toEqual([['rodenticide', 'bait'], [null, null]]);
+  });
+  it('a rodenticide or molluscicide can never be a spray component', () => {
+    const p = cleanSprayPlan({ needed: true, water_volume: 100, water_unit: 'l_per_acre', clash_note_local: null, components: [
+      comp({ role: 'rodenticide', active_ingredient: 'zinc phosphide' }), comp({ role: 'molluscicide', active_ingredient: 'metaldehyde' }),
+      comp({ role: 'micronutrient', active_ingredient: 'zinc sulphate' })] }, 'animal_damage', true);
+    expect(p.components.map((c) => c.active_ingredient)).toEqual(['zinc sulphate']);
+  });
+  it('drops a live biopesticide from a tank that holds a fungicide', () => {
+    const tank = (roles: string[]) => cleanSprayPlan({ needed: true, water_volume: 100, water_unit: 'l_per_acre', clash_note_local: null,
+      components: roles.map((r) => comp({ role: r, active_ingredient: r })) }, 'fungal_disease', true).components.map((c) => c.role);
+    expect(tank(['fungicide', 'biopesticide', 'biostimulant'])).toEqual(['fungicide', 'biostimulant']);
+    expect(tank(['insecticide', 'biopesticide'])).toEqual(['insecticide', 'biopesticide']);
+  });
+  it('blocks a banned or restricted ingredient whatever the spelling', () => {
+    const m = { applicable: true, prevention_local: [], biological: [], action_threshold_local: null, safety_local: null,
+      chemical: ['Chlorpyriphos 20 EC', 'triazofos', 'paraquat dimethyl sulfate', 'profenofos + cypermethrin', 'azoxystrobin']
+        .map((n) => ({ active_ingredient: n, type: null, application: null, moa_group: null, how_local: null })) };
+    const reg = [{ chemical_name: 'chlorpyrifos', status: 'restricted' }, { chemical_name: 'triazophos', status: 'banned' },
+      { chemical_name: 'paraquat dimethyl sulphate', status: 'banned' }, { chemical_name: 'profenophos', status: 'restricted' }];
+    expect(applyRegulatoryGate(m, reg, []).chemical.map((c) => c.active_ingredient)).toEqual(['azoxystrobin']);
+  });
+  it('prompt @5 names every product class and bars baits and seed treatments from the tank', () => {
+    for (const w of ['rodenticide', 'molluscicide', 'biopesticide', 'micronutrient', 'biostimulant', 'never in the spray plan', 'streptomycin or tetracycline'])
+      expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain(w);
+  });
+});
+
 describe('regulatory gate (chemical_regulatory_status)', () => {
   const base = (names: string[]) => ({
     applicable: true, prevention_local: [], biological: [], action_threshold_local: null, safety_local: null,
-    chemical: names.map((n) => ({ active_ingredient: n, moa_group: 'model-guess', how_local: null })),
+    chemical: names.map((n) => ({ active_ingredient: n, type: null, application: null, moa_group: 'model-guess', how_local: null })),
   });
   const reg = [
     { chemical_name: 'Monocrotophos', status: 'banned' },
@@ -208,6 +246,10 @@ describe('v1.2 prompt — static, cache-friendly; language only in the user mess
     expect(ta[0].content).toBe(GENERAL_SCAN_SYSTEM_PROMPT);
     expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('STEP 0');
     expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('Do no arithmetic');
+    // prompt @4 — live-audit fixes: paired dose/water, crop local name, full MoA codes.
+    expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('same end of any range');
+    expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('everyday crop name');
+    expect(GENERAL_SCAN_SYSTEM_PROMPT).toContain('FRAC M03');
     expect((mr[1].content as Array<{ type: string; text?: string }>)[0].text).toBe(farmerLanguageLine('mr'));
     expect(farmerLanguageLine('mr')).toBe('Farmer language: Marathi (मराठी), code mr, script Deva.');
   });
@@ -240,7 +282,7 @@ describe('spray plan (model copies the label; server keeps the tank sane)', () =
       comp({ active_ingredient: 'a', moa_group: 'FRAC 3', dose_value: 5, dose_unit: null }),
       comp({ active_ingredient: 'b', moa_group: 'frac-3' }),
       comp({ active_ingredient: 'c', role: 'insecticide', moa_group: 'IRAC 4A' }),
-      comp({ active_ingredient: 'd', role: 'nutrient' }),
+      comp({ active_ingredient: 'd', role: 'micronutrient' }),
       comp({ active_ingredient: 'e', role: 'acaricide', moa_group: 'IRAC 6' }),
       comp({ active_ingredient: 's1', role: 'adjuvant' }), comp({ active_ingredient: 's2', role: 'adjuvant' }),
     ] }, 'fungal_disease', true);
