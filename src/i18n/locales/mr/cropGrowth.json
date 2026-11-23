@@ -104,6 +104,28 @@
       "resultChemical": "रासायनिक नियंत्रण — सक्रिय घटक",
       "resultMoaGroup": "कार्यपद्धती गट. प्रत्येक फवारणीत गट बदला.",
       "resultWatchList": "शासकीय पुनरावलोकनात आहे. शक्य असल्यास दुसरा पर्याय निवडा.",
+      "productType": {
+        "insecticide": "कीटकनाशक",
+        "fungicide": "बुरशीनाशक",
+        "herbicide": "तणनाशक",
+        "bactericide": "जिवाणूनाशक",
+        "acaricide": "कोळीनाशक",
+        "nematicide": "सूत्रकृमीनाशक",
+        "rodenticide": "उंदीरनाशक",
+        "molluscicide": "गोगलगायनाशक",
+        "biopesticide": "जैविक कीडनाशक",
+        "growth_regulator": "पीक वाढ नियंत्रक",
+        "fertilizer": "खत",
+        "micronutrient": "सूक्ष्म अन्नद्रव्य",
+        "biostimulant": "बायोस्टिम्युलंट",
+        "adjuvant": "स्टिकर किंवा स्प्रेडर"
+      },
+      "application": {
+        "foliar_spray": "पिकावर फवारणी",
+        "soil_application": "जमिनीत द्या",
+        "seed_treatment": "बीजप्रक्रिया",
+        "bait": "आमिष"
+      },
       "resultProductsNeedSure": "ओळख पक्की झाल्यावरच औषधांची नावे दिसतात. आणखी एक फोटो जोडा.",
       "resultProductsUnavailable": "आत्ता औषधांच्या नावांची सुरक्षा तपासणी होऊ शकली नाही. थोड्या वेळाने पुन्हा प्रयत्न करा.",
       "resultLabelNote": "हे सक्रिय घटक आहेत, ब्रँड नाहीत. ज्या औषधाच्या लेबलवर हाच घटक, हीच ताकद आणि तुमचे पीक लिहिले आहे तेच घ्या. लेबलवरील प्रमाण वेगळे असेल तर लेबल पाळा.",

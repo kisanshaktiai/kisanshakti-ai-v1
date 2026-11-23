@@ -6,6 +6,7 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23d — Control tab: each chemical shows its product class and how it is applied (General Scan v1.3).
  * 2026-11-23 18:10 UTC — Browser/PWA "Take photo" opens an in-app live camera (falls back to file input).
  * 2026-11-23 09:30 UTC — Offer land-scan recovery after General Scan failure, including cameras opened on a bound land.
  * 2026-11-23 09:27 UTC — Explain unavailable General Scan setup while retaining photos and land selection.
@@ -444,7 +445,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent aria-describedby={undefined} onPointerDownOutside={(e) => { if (liveCam) e.preventDefault(); }} onInteractOutside={(e) => { if (liveCam) e.preventDefault(); }} onEscapeKeyDown={(e) => { if (liveCam) { e.preventDefault(); setLiveCam(false); } }} className="flex flex-col gap-0 max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 overflow-hidden rounded-lg [&>button]:hidden">
+      <DialogContent aria-describedby={undefined} className="flex flex-col gap-0 max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 overflow-hidden rounded-lg [&>button]:hidden">
         <div className="flex shrink-0 min-w-0 items-center justify-between gap-2 px-4 py-3 border-b border-border">
           <DialogTitle className="min-w-0 break-words text-base font-semibold text-foreground tracking-normal">
             {scanMode === 'general' && phase !== 'land' ? t(`${K}.generalScan`) : t(`${K}.title`)}
@@ -904,6 +905,12 @@ function ControlPanel({ m }: { m: GeneralManagement }) {
                     </span>
                   )}
                 </div>
+                {(x.type || x.application) && (
+                  <p className="text-xs font-medium text-primary">
+                    {[x.type ? t(`${K}.productType.${x.type}`) : null, x.application ? t(`${K}.application.${x.application}`) : null]
+                      .filter(Boolean).join(', ')}
+                  </p>
+                )}
                 {x.how_local && <p className="text-muted-foreground">{x.how_local}</p>}
                 {x.watch_list && <p className="pt-1 text-xs text-warning">{t(`${K}.resultWatchList`)}</p>}
               </li>

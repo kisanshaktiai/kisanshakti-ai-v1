@@ -104,6 +104,28 @@
       "resultChemical": "रासायनिक नियंत्रण — सक्रिय घटक",
       "resultMoaGroup": "कार्य-पद्धति समूह। हर छिड़काव में समूह बदलें।",
       "resultWatchList": "सरकारी समीक्षा में है। हो सके तो दूसरा विकल्प चुनें।",
+      "productType": {
+        "insecticide": "कीटनाशक",
+        "fungicide": "फफूंदनाशक",
+        "herbicide": "खरपतवारनाशक",
+        "bactericide": "जीवाणुनाशक",
+        "acaricide": "माइटनाशक",
+        "nematicide": "सूत्रकृमिनाशक",
+        "rodenticide": "चूहानाशक",
+        "molluscicide": "घोंघानाशक",
+        "biopesticide": "जैविक कीटनाशक",
+        "growth_regulator": "पौध वृद्धि नियामक",
+        "fertilizer": "उर्वरक",
+        "micronutrient": "सूक्ष्म पोषक तत्व",
+        "biostimulant": "बायोस्टिमुलेंट",
+        "adjuvant": "स्टिकर या स्प्रेडर"
+      },
+      "application": {
+        "foliar_spray": "फसल पर छिड़काव",
+        "soil_application": "मिट्टी में डालें",
+        "seed_treatment": "बीज उपचार",
+        "bait": "चारा (बेट)"
+      },
       "resultProductsNeedSure": "दवा के नाम तभी दिखते हैं जब पहचान पक्की हो। एक और फोटो जोड़ें।",
       "resultProductsUnavailable": "अभी दवा के नामों की सुरक्षा जांच नहीं हो सकी। थोड़ी देर बाद फिर कोशिश करें।",
       "resultLabelNote": "ये सक्रिय घटक हैं, ब्रांड नहीं। ऐसी दवा लें जिसके लेबल पर यही घटक, यही ताकत और आपकी फसल लिखी हो। लेबल की मात्रा अलग हो तो लेबल मानें।",

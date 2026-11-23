@@ -104,6 +104,28 @@
       "resultChemical": "Chemical control — active ingredient",
       "resultMoaGroup": "Mode-of-action group. Change groups between sprays.",
       "resultWatchList": "Under regulatory review. Prefer another option if you can.",
+      "productType": {
+        "insecticide": "Insecticide",
+        "fungicide": "Fungicide",
+        "herbicide": "Herbicide",
+        "bactericide": "Bactericide",
+        "acaricide": "Miticide",
+        "nematicide": "Nematicide",
+        "rodenticide": "Rodenticide",
+        "molluscicide": "Snail and slug killer",
+        "biopesticide": "Bio-pesticide",
+        "growth_regulator": "Plant growth regulator",
+        "fertilizer": "Fertilizer",
+        "micronutrient": "Micronutrient",
+        "biostimulant": "Biostimulant",
+        "adjuvant": "Sticker or spreader"
+      },
+      "application": {
+        "foliar_spray": "spray on the crop",
+        "soil_application": "apply to soil",
+        "seed_treatment": "seed treatment",
+        "bait": "bait"
+      },
       "resultProductsNeedSure": "Medicine names are shown only when the identification is sure. Add another photo.",
       "resultProductsUnavailable": "Medicine names could not be safety-checked right now. Try again in a while.",
       "resultLabelNote": "These are active ingredients, not brands. Buy a product whose label shows this ingredient, this strength and your crop. If the label dose is different, follow the label.",

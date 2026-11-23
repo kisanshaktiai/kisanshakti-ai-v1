@@ -6,6 +6,9 @@
  * PATH: src/services/cropPhotoService.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23d — General Scan v1.3 types: chemical options carry product class
+ *   (type) and application method; spray roles nutrient → fertilizer /
+ *   micronutrient, + biopesticide, biostimulant.
  * 2026-11-23 09:27 UTC — Preserve General Scan setup errors for localized capture recovery.
  * 2026-11-23b — General Scan v1.2 types: root_cause, spray_plan (label doses in
  *   the label's own unit; the app's src/lib/sprayPlan.ts does the arithmetic),
@@ -469,7 +472,15 @@ export interface GeneralManagement {
   applicable: boolean;
   prevention_local: string[];
   biological: Array<{ agent: string; how_local: string | null }>;
-  chemical: Array<{ active_ingredient: string; moa_group: string | null; how_local: string | null; watch_list?: boolean }>;
+  chemical: Array<{
+    active_ingredient: string;
+    /** Product class and how it is applied (v1.3+; absent on older stored results). */
+    type?: ProductType | null;
+    application?: ApplicationMethod | null;
+    moa_group: string | null;
+    how_local: string | null;
+    watch_list?: boolean;
+  }>;
   action_threshold_local: string | null;
   safety_local: string | null;
   /** Server held products back: identification not sure, or the regulatory list could not be read. */
@@ -477,7 +488,9 @@ export interface GeneralManagement {
 }
 
 export type SprayRole = 'fungicide' | 'bactericide' | 'insecticide' | 'acaricide' | 'nematicide' | 'herbicide'
-  | 'nutrient' | 'growth_regulator' | 'adjuvant';
+  | 'biopesticide' | 'fertilizer' | 'micronutrient' | 'growth_regulator' | 'biostimulant' | 'adjuvant';
+export type ProductType = SprayRole | 'rodenticide' | 'molluscicide';
+export type ApplicationMethod = 'foliar_spray' | 'soil_application' | 'seed_treatment' | 'bait';
 export type DoseUnit = 'g_per_acre' | 'ml_per_acre' | 'g_per_ha' | 'ml_per_ha' | 'g_per_litre' | 'ml_per_litre';
 export type WaterUnit = 'l_per_acre' | 'l_per_ha';
 

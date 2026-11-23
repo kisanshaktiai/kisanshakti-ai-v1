@@ -69,7 +69,7 @@ describe('mixing order and display', () => {
     expect(mixStage({ role: 'fungicide', formulation: '75 WP' })).toBe('dry');
     expect(mixStage({ role: 'fungicide', formulation: '18.5 SC' })).toBe('flowable');
     expect(mixStage({ role: 'insecticide', formulation: '5 EC' })).toBe('emulsion');
-    expect(mixStage({ role: 'nutrient', formulation: '12% EDTA' })).toBe('solution');
+    expect(mixStage({ role: 'micronutrient', formulation: '12% EDTA' })).toBe('solution');
     expect(mixStage({ role: 'adjuvant', formulation: 'SL' })).toBe('adjuvant');
   });
 
