@@ -10,5 +10,5 @@ CREATE TABLE IF NOT EXISTS public.schedule_tasks (
 CREATE TABLE IF NOT EXISTS public.feature_flags (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), flag_name text NOT NULL UNIQUE, description text,
   is_enabled boolean NOT NULL DEFAULT false, rollout_percentage integer NOT NULL DEFAULT 0,
-  target_tenants uuid[] DEFAULT '{}'::uuid[], flag_type text DEFAULT 'release', flag_status text DEFAULT 'active',
+  target_tenants uuid[] DEFAULT '{}'::uuid[], target_users uuid[] DEFAULT '{}'::uuid[], expires_at timestamptz, flag_type text DEFAULT 'release', flag_status text DEFAULT 'active',
   default_value jsonb DEFAULT 'false'::jsonb);

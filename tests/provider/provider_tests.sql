@@ -2,7 +2,7 @@
 -- tests/provider/provider_tests.sql
 -- REPO: kisanshaktiai/kisanshakti-ai-v1  (farmer app)
 --
--- Tests for the Provider Workspace migrations (20261124140000 … 140300) on a
+-- Tests for the Provider Workspace migrations (20261124140000 … 140400) on a
 -- fresh local replica that already has the identity migrations and the cutover
 -- (run.sh builds it). Local replica only.
 -- Every line is: PASS|FAIL | test | actual | expected. run.sh fails on any FAIL.
@@ -320,6 +320,25 @@ SELECT chk('C03 every mapped code has a map row, no unmapped code has one, and e
   || ' ' || (SELECT count(*)::text FROM task_type_service_map m JOIN service_categories c ON c.code = m.category_code WHERE NOT c.is_active)
   || ' ' || (SELECT count(*) FILTER (WHERE is_mapped) || '/' || count(*) FILTER (WHERE NOT is_mapped) FROM service_map_activities), '0 0 16/3');
 SELECT chk('C04 the new flag exists and is off', (SELECT is_enabled::text || ' ' || rollout_percentage FROM feature_flags WHERE flag_name = 'provider_workspace'), 'false 0');
+
+\echo '=== the flag check the app uses (provider_workspace_enabled) ==='
+SELECT chk('F01 flag off: false for a provider, a customer and no session',
+  call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()') || ' ' || call_as('anon', 'tok-c1', 'SELECT provider_workspace_enabled()') || ' ' || call_as('anon', NULL, 'SELECT provider_workspace_enabled()'),
+  'false false false');
+UPDATE feature_flags SET is_enabled = true, target_tenants = ARRAY['22222222-2222-2222-2222-222222222222']::uuid[] WHERE flag_name = 'provider_workspace';
+SELECT chk('F02 flag on for another tenant only: still false', q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()')$$), 'false');
+UPDATE feature_flags SET target_tenants = ARRAY['11111111-1111-1111-1111-111111111111']::uuid[] WHERE flag_name = 'provider_workspace';
+SELECT chk('F03 flag on for this tenant: true with a session, false without one',
+  q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()') || ' ' || call_as('anon', NULL, 'SELECT provider_workspace_enabled()') || ' ' || call_as('anon', 'tok-nobody', 'SELECT provider_workspace_enabled()')$$),
+  'true false false');
+UPDATE feature_flags SET flag_status = 'archived' WHERE flag_name = 'provider_workspace';
+SELECT chk('F04 a flag that is not active is off', q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()')$$), 'false');
+UPDATE feature_flags SET flag_status = 'active', expires_at = now() - interval '1 minute' WHERE flag_name = 'provider_workspace';
+SELECT chk('F05 an expired flag is off', q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()')$$), 'false');
+UPDATE feature_flags SET expires_at = NULL, target_tenants = '{}'::uuid[], rollout_percentage = 100 WHERE flag_name = 'provider_workspace';
+SELECT chk('F06 rollout 100 turns it on for every tenant', q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()')$$), 'true');
+UPDATE feature_flags SET is_enabled = false, rollout_percentage = 0 WHERE flag_name = 'provider_workspace';
+SELECT chk('F07 switched off again: false', q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()')$$), 'false');
 
 \echo '=== suspension and account adoption ==='
 UPDATE account_roles SET status = 'SUSPENDED' WHERE account_id = '9a000000-0000-0000-0000-000000000003' AND role = 'SERVICE_PROVIDER';

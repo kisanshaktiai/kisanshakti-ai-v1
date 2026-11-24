@@ -18,6 +18,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { FarmerRoleGate } from "@/components/identity/FarmerRoleGate";
 import { WorkspaceRoute } from "@/components/identity/WorkspaceRoute";
 import { AccountResume } from "@/components/identity/AccountResume";
+import { ProviderFlagGate } from "@/components/provider/ProviderFlagGate";
 // FirstRunOnboardingController removed — replaced by PermissionOnboarding + FeatureWalkthrough
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
@@ -74,6 +75,16 @@ const AccountOnboarding = lazy(() => import("./pages/identity/AccountOnboarding"
 const RolesPage = lazy(() => import("./pages/identity/RolesPage"));
 const WorkspaceHome = lazy(() => import("./pages/identity/WorkspaceHome"));
 const WorkspaceProfile = lazy(() => import("./pages/identity/WorkspaceProfile"));
+// Provider Workspace (services, hours, equipment, nursery) — behind the provider_workspace flag
+const ProviderHome = lazy(() => import("./pages/provider/ProviderHome"));
+const ProviderBusiness = lazy(() => import("./pages/provider/ProviderBusiness"));
+const ProviderProfileForm = lazy(() => import("./pages/provider/ProviderProfileForm"));
+const ProviderServices = lazy(() => import("./pages/provider/ProviderServices"));
+const ProviderServiceForm = lazy(() => import("./pages/provider/ProviderServiceForm"));
+const ProviderHours = lazy(() => import("./pages/provider/ProviderHours"));
+const ProviderDaysOff = lazy(() => import("./pages/provider/ProviderDaysOff"));
+const ProviderEquipment = lazy(() => import("./pages/provider/ProviderEquipment"));
+const ProviderNursery = lazy(() => import("./pages/provider/ProviderNursery"));
 const WorkspaceLayout = lazy(() =>
   import("./components/identity/WorkspaceLayout").then((m) => ({ default: m.WorkspaceLayout }))
 );
@@ -451,8 +462,24 @@ const router = createBrowserRouter([
     ),
     errorElement: <RouteErrorBoundary />,
     children: [
-      { index: true, element: <Suspense fallback={<PageLoader />}><WorkspaceHome role="SERVICE_PROVIDER" /></Suspense> },
+      {
+        index: true,
+        element: (
+          <Suspense fallback={<PageLoader />}>
+            <ProviderFlagGate fallback={<WorkspaceHome role="SERVICE_PROVIDER" />}><ProviderHome /></ProviderFlagGate>
+          </Suspense>
+        ),
+      },
       { path: "profile", element: <Suspense fallback={<PageLoader />}><WorkspaceProfile /></Suspense> },
+      { path: "business", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderBusiness /></ProviderFlagGate></Suspense> },
+      { path: "business/profile", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderProfileForm /></ProviderFlagGate></Suspense> },
+      { path: "business/services", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServices /></ProviderFlagGate></Suspense> },
+      { path: "business/services/new", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServiceForm /></ProviderFlagGate></Suspense> },
+      { path: "business/services/:serviceId", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServiceForm /></ProviderFlagGate></Suspense> },
+      { path: "business/hours", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderHours /></ProviderFlagGate></Suspense> },
+      { path: "business/days-off", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderDaysOff /></ProviderFlagGate></Suspense> },
+      { path: "business/equipment", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderEquipment /></ProviderFlagGate></Suspense> },
+      { path: "business/nursery", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderNursery /></ProviderFlagGate></Suspense> },
     ],
   },
   {
