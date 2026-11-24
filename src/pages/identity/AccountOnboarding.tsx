@@ -11,14 +11,15 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useLanguageStore } from '@/stores/languageStore';
 import { accountSessionService } from '@/services/accountSessionService';
 import { accountErrorMessage } from '@/lib/accountErrors';
-import { WORKSPACE_HOME, activeRolesOf, workspaceRoleOf, type AccountRole } from '@/lib/accountRoles';
+import { WORKSPACE_HOME, workspaceRoleOf } from '@/lib/accountRoles';
 
 const NAME_MAX = 80; // same bound as the server (updateAccount)
 
 /**
  * Short onboarding for a person who registered without the Farmer role:
- * display name and language, then Reach (base village + radius), then the
- * workspace home. Reach can be left for later — the home shows it as not set.
+ * display name and language, then Reach (base village + radius) of the
+ * workspace being opened, then the workspace home. A second workspace sets its
+ * own Reach from its Reach card. Reach can be left for later — the home shows it as not set.
  */
 export default function AccountOnboarding() {
   const { t } = useTranslation();
@@ -35,8 +36,6 @@ export default function AccountOnboarding() {
 
   if (!account || !role || role === 'FARMER') return null; // WorkspaceRoute redirects
 
-  // Reach is kept per role; onboarding gives every non-farmer role the same one.
-  const reachRoles: AccountRole[] = [role, ...activeRolesOf(account).filter((r) => r !== role && r !== 'FARMER')];
   const home = WORKSPACE_HOME[role];
   const trimmed = name.trim();
 
@@ -123,7 +122,7 @@ export default function AccountOnboarding() {
         ) : (
           <div className="space-y-4">
             <ReachEditor
-              roles={reachRoles}
+              role={role}
               submitLabel={t('identity.onboarding.finish')}
               onSaved={() => navigate(home, { replace: true })}
             />

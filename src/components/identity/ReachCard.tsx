@@ -30,7 +30,7 @@ export function ReachSheet({ role, open, onOpenChange }: ReachSheetProps) {
         </SheetHeader>
         {open && (
           <ReachEditor
-            roles={[role]}
+            role={role}
             initial={reach}
             submitLabel={t('identity.reach.save')}
             onSaved={() => onOpenChange(false)}

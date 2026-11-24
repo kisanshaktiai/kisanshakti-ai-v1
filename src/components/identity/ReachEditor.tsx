@@ -10,9 +10,13 @@ import type { ReachState } from '@/stores/accountStore';
 import { radiusSteps, type AccountRole } from '@/lib/accountRoles';
 
 interface ReachEditorProps {
-  /** Every role listed gets the same Reach (onboarding sets all at once). */
-  roles: AccountRole[];
-  /** Current Reach of the first role, when one is already known. */
+  /**
+   * The workspace whose Reach is edited. It must be the workspace the session
+   * is in: the database accepts a Reach only for the session's own role, so
+   * another role's Reach is set from inside that role's workspace.
+   */
+  role: AccountRole;
+  /** Current Reach of that role, when one is already known. */
   initial?: ReachState | null;
   submitLabel: string;
   onSaved: (reach: ReachState) => void;
@@ -24,9 +28,9 @@ interface ReachEditorProps {
  * a slider over the steps the server policy allows. Nothing is validated here
  * that the database function does not validate again.
  */
-export function ReachEditor({ roles, initial, submitLabel, onSaved }: ReachEditorProps) {
+export function ReachEditor({ role, initial, submitLabel, onSaved }: ReachEditorProps) {
   const { t, i18n } = useTranslation();
-  const primaryRole = roles[0];
+  const primaryRole = role;
   const [reach, setReach] = useState<ReachState | null>(initial ?? null);
   const [location, setLocation] = useState<LocationValue>({ country: 'India', country_code: 'IN' });
   const [radius, setRadius] = useState<number | null>(initial?.radius_km ?? null);
@@ -75,22 +79,21 @@ export function ReachEditor({ roles, initial, submitLabel, onSaved }: ReachEdito
   const unchanged =
     !!reach?.is_set && villageId === reach.base_village_id && radius === reach.radius_km;
   const limitReached = !!reach?.is_set && reach.changes_remaining <= 0;
-  const canSave = !!villageId && radius != null && !saving && !loading && !unchanged && !limitReached;
+  // Nothing to change is not an error: the button then simply confirms what is saved.
+  const canSave = !!villageId && radius != null && !saving && !loading && (unchanged || !limitReached);
 
   const handleSave = async () => {
     if (!villageId || radius == null) return;
+    if (unchanged && reach) {
+      onSaved(reach);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      let saved: ReachState | null = null;
-      for (const role of roles) {
-        const result = await accountReachService.set(role, villageId, radius, villageName);
-        if (role === primaryRole) saved = result;
-      }
-      if (saved) {
-        setReach(saved);
-        onSaved(saved);
-      }
+      const saved = await accountReachService.set(role, villageId, radius, villageName);
+      setReach(saved);
+      onSaved(saved);
     } catch (err) {
       setError(messageFor(err));
     } finally {
