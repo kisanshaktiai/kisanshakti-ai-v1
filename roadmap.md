@@ -1,3 +1,7 @@
+# Full-screen camera wording
+- [x] Add Marathi and Hindi wording for the full-screen camera screen's starting message, shutter and switch-camera labels.
+- [x] Guard the keys with a regression test; 4 wording checks pass, type-check clean, preview build OK.
+
 # General Scan registration failure
 - [x] Confirm live photo triggers still require a land and reject General Scan with NULL land_id.
 - [x] Preserve identity checks and report a specific setup error with localized recovery instead of generic photo failure.
