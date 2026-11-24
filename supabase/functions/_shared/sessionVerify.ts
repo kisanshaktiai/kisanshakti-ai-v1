@@ -63,6 +63,66 @@ export async function resolveVerifiedCaller(req: Request): Promise<VerifiedCalle
   return { kind: 'farmer', farmerId: row.farmer_id, tenantId: row.tenant_id ?? null };
 }
 
+// ---------------------------------------------------------------------------
+// Multi-role identity (2026-11-24, additive). Everything above is unchanged and
+// still means "a farmer in the Farmer Workspace": after the identity cutover
+// verified_session_context() returns no row for a session whose active role is
+// Service Provider or Customer, so every function using resolveVerifiedCaller()
+// stays closed to them without being edited.
+//
+// Provider and Customer functions (later tasks) use the two exports below. The
+// role comes from the database on every call (public.verified_account_context),
+// never from a header: a suspended or removed role stops resolving at once.
+// ---------------------------------------------------------------------------
+
+export type AccountRole = 'FARMER' | 'SERVICE_PROVIDER' | 'CUSTOMER';
+
+export type VerifiedAccountCaller =
+  | { kind: 'service' }
+  | { kind: 'account'; accountId: string; tenantId: string; role: AccountRole; sessionId: string };
+
+/** Ask the database which account and active role this session token carries. */
+export async function lookupAccountSession(sessionToken: string): Promise<
+  { session_id: string; account_id: string; tenant_id: string; active_role: AccountRole } | null
+> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false },
+    global: { headers: { 'x-session-token': sessionToken } },
+  });
+  const { data, error } = await client.rpc('verified_account_context');
+  if (error) {
+    console.warn('[sessionVerify] verified_account_context failed:', error.message);
+    return null;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row?.account_id && row?.tenant_id && row?.active_role ? row : null;
+}
+
+/**
+ * Resolve the caller as an account in one of the allowed roles. Service role is
+ * trusted (cron/admin). Null when there is no live session, or the session's
+ * active role is not in `allowedRoles`. Pass the roles the function serves, e.g.
+ * ['SERVICE_PROVIDER'] — an empty list admits nobody.
+ */
+export async function resolveVerifiedAccount(
+  req: Request,
+  allowedRoles: readonly AccountRole[],
+): Promise<VerifiedAccountCaller | null> {
+  if (isServiceRoleBearer(req)) return { kind: 'service' };
+  const sessionToken = req.headers.get('x-session-token')?.trim();
+  if (!sessionToken) return null;
+  const row = await lookupAccountSession(sessionToken);
+  if (!row || !allowedRoles.includes(row.active_role)) return null;
+  return {
+    kind: 'account',
+    accountId: row.account_id,
+    tenantId: row.tenant_id,
+    role: row.active_role,
+    sessionId: row.session_id,
+  };
+}
+
 /** Standard rejection when no verified session is present. */
 export function sessionRequiredResponse(corsHeaders: Record<string, string>): Response {
   return new Response(
