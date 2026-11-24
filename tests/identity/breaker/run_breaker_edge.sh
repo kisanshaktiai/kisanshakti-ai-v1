@@ -31,6 +31,7 @@ FILES=(
   20261124100000_identity_account_auth_functions.sql
   20261124110000_identity_breaker_fixes.sql
   20261124120000_identity_pin_attempt_claim.sql
+  20261124130000_rate_limit_atomic_hit.sql
   20261124100100_identity_feature_flag.sql
   20261124091000_identity_cutover_verified_session_context.sql
 )
