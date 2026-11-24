@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_link_conflicts: {
+        Row: {
+          account_id: string | null
+          detected_at: string
+          farmer_id: string
+          id: string
+          mobile_number: string | null
+          reason: string
+          resolution: string | null
+          resolved_at: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          detected_at?: string
+          farmer_id: string
+          id?: string
+          mobile_number?: string | null
+          reason: string
+          resolution?: string | null
+          resolved_at?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          detected_at?: string
+          farmer_id?: string
+          id?: string
+          mobile_number?: string | null
+          reason?: string
+          resolution?: string | null
+          resolved_at?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       account_lockouts: {
         Row: {
           created_at: string | null
@@ -49,6 +85,239 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      account_reach_history: {
+        Row: {
+          account_id: string
+          change_kind: string
+          changed_at: string
+          id: string
+          new_radius_km: number
+          new_village_id: string
+          old_radius_km: number | null
+          old_village_id: string | null
+          role: string
+          session_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          account_id: string
+          change_kind: string
+          changed_at?: string
+          id?: string
+          new_radius_km: number
+          new_village_id: string
+          old_radius_km?: number | null
+          old_village_id?: string | null
+          role: string
+          session_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          account_id?: string
+          change_kind?: string
+          changed_at?: string
+          id?: string
+          new_radius_km?: number
+          new_village_id?: string
+          old_radius_km?: number | null
+          old_village_id?: string | null
+          role?: string
+          session_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      account_reach_settings: {
+        Row: {
+          account_id: string
+          base_village_id: string
+          changed_at: string
+          created_at: string
+          id: string
+          radius_km: number
+          role: string
+          tenant_id: string
+        }
+        Insert: {
+          account_id: string
+          base_village_id: string
+          changed_at?: string
+          created_at?: string
+          id?: string
+          radius_km: number
+          role: string
+          tenant_id: string
+        }
+        Update: {
+          account_id?: string
+          base_village_id?: string
+          changed_at?: string
+          created_at?: string
+          id?: string
+          radius_km?: number
+          role?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_reach_settings_base_village_id_fkey"
+            columns: ["base_village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_reach_settings_membership_fkey"
+            columns: ["account_id", "role", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "account_roles"
+            referencedColumns: ["account_id", "role", "tenant_id"]
+          },
+        ]
+      }
+      account_role_codes: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      account_roles: {
+        Row: {
+          account_id: string
+          granted_at: string
+          granted_by: string | null
+          id: string
+          role: string
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          role: string
+          source: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          role?: string
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_roles_account_tenant_fkey"
+            columns: ["account_id", "tenant_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id", "tenant_id"]
+          },
+          {
+            foreignKeyName: "account_roles_role_fkey"
+            columns: ["role"]
+            isOneToOne: false
+            referencedRelation: "account_role_codes"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      accounts: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          failed_login_attempts: number
+          id: string
+          language_code: string | null
+          last_failed_login: string | null
+          last_login_at: string | null
+          mobile_number: string
+          mobile_verified_at: string | null
+          notification_preferences: Json
+          pin_hash: string | null
+          pin_hash_version: number
+          pin_updated_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          failed_login_attempts?: number
+          id?: string
+          language_code?: string | null
+          last_failed_login?: string | null
+          last_login_at?: string | null
+          mobile_number: string
+          mobile_verified_at?: string | null
+          notification_preferences?: Json
+          pin_hash?: string | null
+          pin_hash_version?: number
+          pin_updated_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          failed_login_attempts?: number
+          id?: string
+          language_code?: string | null
+          last_failed_login?: string | null
+          last_login_at?: string | null
+          mobile_number?: string
+          mobile_verified_at?: string | null
+          notification_preferences?: Json
+          pin_hash?: string | null
+          pin_hash_version?: number
+          pin_updated_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       accuracy_fix_log: {
         Row: {
@@ -21787,6 +22056,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          min_plan: Database["public"]["Enums"]["subscription_plan"]
           name: string
           slug: string
           sort_order: number
@@ -21800,6 +22070,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          min_plan?: Database["public"]["Enums"]["subscription_plan"]
           name: string
           slug: string
           sort_order?: number
@@ -21813,6 +22084,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          min_plan?: Database["public"]["Enums"]["subscription_plan"]
           name?: string
           slug?: string
           sort_order?: number
@@ -25163,39 +25435,50 @@ export type Database = {
       }
       pin_reset_codes: {
         Row: {
+          account_id: string | null
           attempts: number
           code_hash: string
           consumed_at: string | null
           created_at: string
           expires_at: string
-          farmer_id: string
+          farmer_id: string | null
           id: string
           mobile_number: string
           tenant_id: string | null
         }
         Insert: {
+          account_id?: string | null
           attempts?: number
           code_hash: string
           consumed_at?: string | null
           created_at?: string
           expires_at: string
-          farmer_id: string
+          farmer_id?: string | null
           id?: string
           mobile_number: string
           tenant_id?: string | null
         }
         Update: {
+          account_id?: string | null
           attempts?: number
           code_hash?: string
           consumed_at?: string | null
           created_at?: string
           expires_at?: string
-          farmer_id?: string
+          farmer_id?: string | null
           id?: string
           mobile_number?: string
           tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pin_reset_codes_account_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plan_features: {
         Row: {
@@ -37083,6 +37366,7 @@ export type Database = {
       user_sessions: {
         Row: {
           access_token_hash: string | null
+          active_role: string | null
           created_at: string
           device_info: Json | null
           expires_at: string
@@ -37090,12 +37374,14 @@ export type Database = {
           is_active: boolean | null
           last_activity_at: string | null
           refresh_token_hash: string | null
+          role_verified_at: string | null
           session_id: string
           updated_at: string
           user_id: string
         }
         Insert: {
           access_token_hash?: string | null
+          active_role?: string | null
           created_at?: string
           device_info?: Json | null
           expires_at: string
@@ -37103,12 +37389,14 @@ export type Database = {
           is_active?: boolean | null
           last_activity_at?: string | null
           refresh_token_hash?: string | null
+          role_verified_at?: string | null
           session_id: string
           updated_at?: string
           user_id: string
         }
         Update: {
           access_token_hash?: string | null
+          active_role?: string | null
           created_at?: string
           device_info?: Json | null
           expires_at?: string
@@ -37116,11 +37404,27 @@ export type Database = {
           is_active?: boolean | null
           last_activity_at?: string | null
           refresh_token_hash?: string | null
+          role_verified_at?: string | null
           session_id?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_sessions_account_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_sessions_active_role_fkey"
+            columns: ["active_role"]
+            isOneToOne: false
+            referencedRelation: "account_role_codes"
+            referencedColumns: ["code"]
+          },
+        ]
       }
       user_tenants: {
         Row: {
@@ -42046,6 +42350,15 @@ export type Database = {
           },
         ]
       }
+      v_identity_integrity_gaps: {
+        Row: {
+          account_id: string | null
+          farmer_id: string | null
+          gap: string | null
+          tenant_id: string | null
+        }
+        Relationships: []
+      }
       v_intent_missing_vernacular: {
         Row: {
           crop_code: string | null
@@ -43893,6 +44206,36 @@ export type Database = {
         Returns: unknown
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      account_add_role_self: {
+        Args: { p_account_id: string; p_role: string }
+        Returns: string
+      }
+      account_reach_policy: {
+        Args: never
+        Returns: {
+          change_limit_count: number
+          change_limit_window_days: number
+          radius_default_km: number
+          radius_max_km: number
+          radius_min_km: number
+          radius_step_km: number
+        }[]
+      }
+      account_register_self: {
+        Args: {
+          p_display_name: string
+          p_language: string
+          p_mobile: string
+          p_pin_hash: string
+          p_roles: string[]
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      account_switch_session_role: {
+        Args: { p_role: string; p_token_hash: string }
+        Returns: string
+      }
       accumulate_gdd_batch: { Args: { p_limit?: number }; Returns: Json }
       accumulate_gdd_for_land: {
         Args: { p_land_id: string; p_lookback_days?: number }
@@ -43988,6 +44331,15 @@ export type Database = {
       assign_mgrs_tile_to_land:
         | { Args: never; Returns: Json }
         | { Args: { land_id_param?: string }; Returns: undefined }
+      auth_claim_pin_attempt: {
+        Args: {
+          p_id: string
+          p_lock_minutes: number
+          p_max_attempts: number
+          p_subject: string
+        }
+        Returns: Json
+      }
       award_activity_points: {
         Args: {
           p_activity_type: string
@@ -44782,6 +45134,7 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_account_reach: { Args: { p_role: string }; Returns: Json }
       get_agri_tiles: {
         Args: { country_code: string }
         Returns: {
@@ -44851,6 +45204,7 @@ export type Database = {
         }[]
       }
       get_bootstrap_status: { Args: never; Returns: Json }
+      get_current_account_id: { Args: never; Returns: string }
       get_current_admin_role: { Args: never; Returns: string }
       get_current_farmer_context: {
         Args: never
@@ -44861,6 +45215,7 @@ export type Database = {
         }[]
       }
       get_current_farmer_id: { Args: never; Returns: string }
+      get_current_role: { Args: never; Returns: string }
       get_current_tenant_id: { Args: never; Returns: string }
       get_current_user_email: { Args: never; Returns: string }
       get_current_user_id: { Args: never; Returns: string }
@@ -45031,6 +45386,16 @@ export type Database = {
           total_cost_usd: number
           total_data_mb: number
           total_processing_units: number
+        }[]
+      }
+      get_tenant_master_themes: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          description: string
+          name: string
+          slug: string
+          sort_order: number
+          theme: Json
         }[]
       }
       get_tenant_revenue: {
@@ -45345,6 +45710,15 @@ export type Database = {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json
       }
+      link_farmer_account: {
+        Args: {
+          p_farmer_id: string
+          p_mobile: string
+          p_source: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       log_admin_action: {
         Args: {
           p_action: string
@@ -45474,6 +45848,16 @@ export type Database = {
         }
         Returns: Json
       }
+      note_account_link_conflict: {
+        Args: {
+          p_account_id: string
+          p_farmer_id: string
+          p_mobile: string
+          p_reason: string
+          p_tenant_id: string
+        }
+        Returns: undefined
+      }
       persist_ai_crop_schedule_atomic: {
         Args: { p_land: Json; p_schedule: Json; p_tasks: Json }
         Returns: {
@@ -45577,6 +45961,15 @@ export type Database = {
           title: string
           topic_codes: string[]
         }[]
+      }
+      rate_limit_hit: {
+        Args: {
+          p_endpoint: string
+          p_identifier: string
+          p_max: number
+          p_window_ms: number
+        }
+        Returns: Json
       }
       reactivate_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       reanchor_land_gdd: {
@@ -45839,6 +46232,10 @@ export type Database = {
           p_type?: string
         }
         Returns: string
+      }
+      set_account_reach: {
+        Args: { p_radius_km: number; p_role: string; p_village_id: string }
+        Returns: Json
       }
       set_app_session: {
         Args: {
@@ -46819,6 +47216,15 @@ export type Database = {
       validate_white_label_config: {
         Args: { config_data: Json }
         Returns: Json
+      }
+      verified_account_context: {
+        Args: never
+        Returns: {
+          account_id: string
+          active_role: string
+          session_id: string
+          tenant_id: string
+        }[]
       }
       verified_farmer_id: { Args: never; Returns: string }
       verified_session_context: {
