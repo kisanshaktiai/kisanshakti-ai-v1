@@ -282,20 +282,31 @@ SELECT chk('F07 a farmers row whose id is already an account of ANOTHER tenant: 
   'OK rows=1 account_tenant=2222 farmer_roles=0 note=TENANT_MISMATCH');
 DELETE FROM farmers WHERE id = '9a000000-0000-0000-0000-000000000002';
 UPDATE account_link_conflicts SET resolved_at = now(), resolution = 'TEST_CLEANUP' WHERE farmer_id = '9a000000-0000-0000-0000-000000000002';
-SELECT run_as('service_role', NULL, $$INSERT INTO farmers (id, tenant_id, mobile_number, pin_hash, farmer_code) VALUES ('aaaaaaaa-3000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', '0000009001', repeat('38', 32), 'TST-A-3008')$$) AS act \gset
-SELECT chk('F08 (open point for review) the portal inserts a farmer whose number a provider-only account of the SAME tenant holds: insert succeeds, provider account untouched, no re-key, MOBILE_ACCOUNT_EXISTS note',
+-- F08/F09: a dedicated person registered as provider only (own PIN, a live session, one unused reset code)
+INSERT INTO accounts (id, tenant_id, mobile_number, display_name, pin_hash, pin_updated_at)
+VALUES ('9a000000-0000-0000-0000-0000000000f8', '11111111-1111-1111-1111-111111111111', '0000009008', 'Test Provider F08', repeat('99', 32), now());
+INSERT INTO account_roles (account_id, tenant_id, role, status, source)
+VALUES ('9a000000-0000-0000-0000-0000000000f8', '11111111-1111-1111-1111-111111111111', 'SERVICE_PROVIDER', 'ACTIVE', 'SELF_REGISTERED');
+INSERT INTO user_sessions (user_id, session_id, access_token_hash, expires_at, is_active, active_role, role_verified_at)
+VALUES ('9a000000-0000-0000-0000-0000000000f8', 'sess-f8', hash_session_token('tok-f8'), now() + interval '1 day', true, 'SERVICE_PROVIDER', now());
+SELECT run_as('service_role', NULL, $$INSERT INTO farmers (id, tenant_id, mobile_number, pin_hash, farmer_code) VALUES ('aaaaaaaa-3000-0000-0000-000000000008', '11111111-1111-1111-1111-111111111111', '0000009008', repeat('38', 32), 'TST-A-3008')$$) AS act \gset
+SELECT chk('F08 the portal inserts a farmer whose number a provider-only account of the SAME tenant holds: the account is adopted under the farmer id (one login per person), keeps its Provider role, gains FARMER, loses its own PIN copy and its old sessions, and no conflict stays open',
   :'act'
-  || ' farmer_account=' || (SELECT count(*) FROM accounts WHERE id = 'aaaaaaaa-3000-0000-0000-000000000008')
-  || ' provider=' || (SELECT status || '/' || (pin_hash IS NOT NULL) FROM accounts WHERE id = '9a000000-0000-0000-0000-000000000001')
-  || ' note=' || (SELECT reason || '>' || right(account_id::text, 4) FROM account_link_conflicts WHERE farmer_id = 'aaaaaaaa-3000-0000-0000-000000000008' AND resolved_at IS NULL),
-  'OK rows=1 farmer_account=0 provider=ACTIVE/true note=MOBILE_ACCOUNT_EXISTS>0001');
+  || ' old_id=' || (SELECT count(*) FROM accounts WHERE id = '9a000000-0000-0000-0000-0000000000f8')
+  || ' farmer_account=' || (SELECT status || '/' || display_name || '/pin=' || (pin_hash IS NOT NULL) FROM accounts WHERE id = 'aaaaaaaa-3000-0000-0000-000000000008')
+  || ' roles=' || (SELECT string_agg(role || ':' || status, ',' ORDER BY role) FROM account_roles WHERE account_id = 'aaaaaaaa-3000-0000-0000-000000000008')
+  || ' live_old_sessions=' || (SELECT count(*) FROM user_sessions WHERE session_id = 'sess-f8' AND is_active)
+  || ' open_notes=' || (SELECT count(*) FROM account_link_conflicts WHERE farmer_id = 'aaaaaaaa-3000-0000-0000-000000000008' AND resolved_at IS NULL)
+  || ' open_accounts_for_number=' || (SELECT count(*) FROM accounts WHERE mobile_number = '0000009008' AND status <> 'CLOSED'),
+  'OK rows=1 old_id=0 farmer_account=ACTIVE/Test Provider F08/pin=false roles=FARMER:ACTIVE,SERVICE_PROVIDER:ACTIVE live_old_sessions=0 open_notes=0 open_accounts_for_number=1');
 SELECT run_as('service_role', NULL, $$INSERT INTO user_sessions (user_id, session_id, access_token_hash, expires_at) VALUES ('aaaaaaaa-3000-0000-0000-000000000008', 'sess-y', hash_session_token('tok-y'), now() + interval '1 day')$$) AS act \gset
-SELECT chk('F09 … that farmer cannot get a session until the conflict is resolved (fails closed), and the standing check reports it',
+SELECT chk('F09 … that farmer gets a session and a farmer context, the token of the earlier registration is dead, and the standing check is clean',
   :'act'
+  || ' farmer_ctx=' || coalesce(call_as('anon', 'tok-y', $$SELECT (get_current_farmer_id() = 'aaaaaaaa-3000-0000-0000-000000000008')::text$$), '(null)')
+  || ' old_token=' || coalesce(call_as('anon', 'tok-f8', $$SELECT coalesce(get_current_account_id()::text, 'none')$$), '(null)')
   || ' gap=' || (SELECT coalesce(string_agg(gap, ','), '(none)') FROM v_identity_integrity_gaps WHERE farmer_id = 'aaaaaaaa-3000-0000-0000-000000000008'),
-  'ERR 23503 insert or update on table "user_sessions" violates foreign key constraint "user_sessions_account_fkey" gap=FARMER_WITHOUT_ACCOUNT');
+  'OK rows=1 farmer_ctx=true old_token=none gap=(none)');
 DELETE FROM farmers WHERE id = 'aaaaaaaa-3000-0000-0000-000000000008';
-UPDATE account_link_conflicts SET resolved_at = now(), resolution = 'TEST_CLEANUP' WHERE farmer_id = 'aaaaaaaa-3000-0000-0000-000000000008';
 
 \echo '=== Mobile number changes made by a portal ==='
 SELECT run_as('service_role', NULL, $$UPDATE farmers SET mobile_number = '0000003099' WHERE id = 'aaaaaaaa-3000-0000-0000-000000000004'$$) AS act \gset
@@ -449,4 +460,4 @@ SELECT chk('X03 after: the farmer session is dead, the provider session still wo
   call_as('anon', 'tok-a1p', $$SELECT get_current_role() || ' radius ' || (get_account_reach('SERVICE_PROVIDER')->>'radius_km')$$), 'none / none ; SERVICE_PROVIDER radius 35');
 SELECT chk('X04 standing check after everything: 0 gaps (no credential held twice, none missing)', (SELECT count(*)::text FROM v_identity_integrity_gaps), '0');
 SELECT chk('X05 accounts that hold a pin_hash are exactly the people without a farmers row',
-  (SELECT count(*) || ' with pin, ' || count(*) FILTER (WHERE EXISTS (SELECT 1 FROM farmers f WHERE f.id = a.id)) || ' of them also farmers' FROM accounts a WHERE a.pin_hash IS NOT NULL), '5 with pin, 0 of them also farmers');
+  (SELECT count(*) || ' with pin, ' || count(*) FILTER (WHERE EXISTS (SELECT 1 FROM farmers f WHERE f.id = a.id)) || ' of them also farmers' FROM accounts a WHERE a.pin_hash IS NOT NULL), '6 with pin, 0 of them also farmers');

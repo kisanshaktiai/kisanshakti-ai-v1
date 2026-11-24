@@ -292,22 +292,35 @@ async function accountSummary(accountId: string, activeRole: RoleCode | null) {
   };
 }
 
-/** Session role for a farmer login. Flag OFF: FARMER, and no account is read. */
-async function farmerSessionRole(farmer: any, hint: unknown): Promise<{ role: RoleCode; multi: boolean }> {
-  const multi = await multiRoleEnabled(farmer.tenant_id);
-  if (!multi) return { role: "FARMER", multi };
-  const held = await activeRolesOf(farmer.id);
-  return { role: (await chooseRole(farmer.id, held, hint)) ?? "FARMER", multi };
-}
-
-/** The same reply shape farmer logins use, plus `account` while the flag is ON. */
+/**
+ * Reply for a login of a person who has a farmers row.
+ *
+ * The PIN has already been checked. A session is issued only while the account
+ * is ACTIVE and holds an ACTIVE role, which is what the database enforces on
+ * every later request (verified_session_context / verified_account_context):
+ * a suspended or removed person gets no token and no farmer data here either.
+ *   Flag OFF: the role is FARMER or nothing, and no `account` is returned.
+ *   Flag ON:  the role comes from chooseRole(); the farmer row and profile are
+ *             returned only while the FARMER role itself is ACTIVE.
+ */
 async function farmerAuthReply(farmer: any, profile: any, req: Request, hint: unknown) {
-  const { role, multi } = await farmerSessionRole(farmer, hint);
+  const multi = await multiRoleEnabled(farmer.tenant_id);
+  const { data: acc, error } = await admin.from("accounts")
+    .select("status").eq("id", farmer.id).maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const held = acc?.status === "ACTIVE" ? await activeRolesOf(farmer.id) : [];
+  const isFarmer = held.includes("FARMER");
+  const role: RoleCode | null = multi
+    ? await chooseRole(farmer.id, held, hint)
+    : (isFarmer ? "FARMER" : null);
+  if (!role) return json({ error: "account_inactive" }, 403);
+
   const session = await createSession(farmer.id, req, role);
   return json({
     session: { token: session.token, expiresAt: session.expiresAt },
-    farmer: sanitizeFarmer(farmer),
-    profile: profile ?? null,
+    farmer: isFarmer ? sanitizeFarmer(farmer) : null,
+    profile: isFarmer ? (profile ?? null) : null,
     ...(multi ? { account: await accountSummary(farmer.id, role) } : {}),
   });
 }
@@ -324,6 +337,19 @@ async function accountAuthReply(account: any, req: Request, hint: unknown): Prom
     farmer: null,
     profile: null,
   });
+}
+
+/**
+ * Existence only, for `lookup` called without a tenant: findFarmer() then
+ * searches every tenant, so a person without a farmers row must answer the same
+ * way or the pair of answers would tell the two kinds of people apart. Nothing
+ * is read from the row and no account action ever uses this.
+ */
+async function anyOpenAccount(mobile: string): Promise<boolean> {
+  const { data, error } = await admin.from("accounts").select("id")
+    .eq("mobile_number", mobile).neq("status", "CLOSED").limit(1);
+  if (error) throw new Error(error.message);
+  return (data?.length ?? 0) > 0;
 }
 
 async function rateLimited(identifier: string, endpoint: string, config: { maxRequests: number; windowMs: number }) {
@@ -520,7 +546,7 @@ async function accountChangePin(account: any, req: Request, body: any): Promise<
 
 /** requestPinReset for a person without a farmers row. Same limits as farmers. */
 async function accountRequestPinReset(account: any, mobile: string): Promise<Response> {
-  if (account.status !== "ACTIVE") return json({ sent: true });
+  if (account.status !== "ACTIVE") return json({ sent: true, expiresInSeconds: RESET_CODE_TTL_MS / 1000 });
 
   const { data: recent } = await admin.from("pin_reset_codes")
     .select("created_at")
@@ -648,7 +674,7 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
       const account = !farmer && multiRole ? await findAccountOnly(mobile, tenantId) : null;
       // Deliberately minimal: no farmer id, no tenant id, no profile data.
       return json({
-        exists: !!farmer || !!account,
+        exists: !!farmer || !!account || (!farmer && !tenantId && await anyOpenAccount(mobile)),
         requiresPinSetup: !!farmer && !farmer.pin_hash,
         multiRole,
       });
@@ -873,7 +899,7 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
         if (account) return await accountRequestPinReset(account, mobile);
       }
       // Uniform response — never reveal whether the mobile is registered.
-      if (!farmer) return json({ sent: true });
+      if (!farmer) return json({ sent: true, expiresInSeconds: RESET_CODE_TTL_MS / 1000 });
 
       // Rate limit: max 3 per hour, min 60s between sends.
       const { data: recent } = await admin.from("pin_reset_codes")

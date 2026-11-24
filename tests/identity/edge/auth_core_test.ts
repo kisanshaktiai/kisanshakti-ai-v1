@@ -355,7 +355,7 @@ Deno.test({ name: "auth core, multi-role identity", sanitizeResources: false, sa
     // Without an SMS gateway both kinds of person get the same answer, and an unknown number a uniform one.
     assertEquals((await call({ action: "requestPinReset", mobile: P3, tenantId: TENANT_A })).body, { error: "sms_not_configured" });
     assertEquals((await call({ action: "requestPinReset", mobile: F1, tenantId: TENANT_A })).body, { error: "sms_not_configured" });
-    assertEquals((await call({ action: "requestPinReset", mobile: "0000007996", tenantId: TENANT_A })).body, { sent: true });
+    assertEquals((await call({ action: "requestPinReset", mobile: "0000007996", tenantId: TENANT_A })).body, { sent: true, expiresInSeconds: 600 });
 
     // The code row the SMS step would have written (account_id set, farmer_id NULL).
     const ins = await db.from("pin_reset_codes").insert({

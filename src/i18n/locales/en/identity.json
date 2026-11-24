@@ -125,7 +125,8 @@
       "invalid_language": "This language cannot be saved.",
       "invalid_request": "This request could not be understood. Please try again.",
       "rate_limited": "Too many tries. Please wait a little and try again.",
-      "transport_unavailable": "Network connection is weak. Please try again."
+      "transport_unavailable": "Network connection is weak. Please try again.",
+      "account_inactive": "This account is not active. Please contact support."
     }
   }
 }
