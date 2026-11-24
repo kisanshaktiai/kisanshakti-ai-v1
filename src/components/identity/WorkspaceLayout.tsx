@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Home, User } from 'lucide-react';
+import { Briefcase, Home, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from '@/components/layout/ScrollContext';
 import { WorkspaceSwitcher } from '@/components/identity/WorkspaceSwitcher';
 import { ReachHeaderButton } from '@/components/identity/ReachCard';
 import { useAccountReach } from '@/hooks/useAccountReach';
+import { useProviderFlag } from '@/hooks/useProviderFlag';
 import { ROLE_ICONS } from '@/components/identity/RoleOptionList';
 import { useAccountStore } from '@/stores/accountStore';
 import { WORKSPACE_HOME, activeRolesOf, type AccountRole } from '@/lib/accountRoles';
@@ -19,7 +20,8 @@ interface WorkspaceLayoutProps {
 /**
  * Shell of the Provider and Customer workspaces: header with the role chip, the
  * base village with radius as a button and the language, one scroll container, and a bottom navigation with Home and
- * Profile. Built beside AppLayout with the same layout utilities; it mounts no
+ * Profile — plus "My business" in the Provider workspace while the
+ * provider_workspace flag is on. Built beside AppLayout with the same layout utilities; it mounts no
  * farmer provider, so no farmer data is requested from these workspaces.
  */
 export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
@@ -34,6 +36,8 @@ export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
   // One refresh of this workspace's Reach; the header button and the home
   // card both read it from the store.
   useAccountReach(role);
+  // Asks the server whether the Provider Workspace is switched on (false for the Customer workspace).
+  const providerWorkspaceOn = useProviderFlag(role);
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, left: 0 });
@@ -41,6 +45,9 @@ export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
 
   const navItems = [
     { path: home, icon: Home, labelKey: 'nav.home', end: true },
+    ...(providerWorkspaceOn
+      ? [{ path: `${home}/business`, icon: Briefcase, labelKey: 'provider.nav.business', end: false }]
+      : []),
     { path: `${home}/profile`, icon: User, labelKey: 'nav.profile', end: false },
   ];
 
