@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/stores/authStore';
+import { isMultiRoleEnabled } from '@/services/farmerAuthService';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { 
   User, 
@@ -21,7 +22,8 @@ import {
   Package,
   Activity,
   BarChart3,
-  Clock
+  Clock,
+  Users
 } from 'lucide-react';
 import { TTSSettingsPanel } from '@/components/tts';
 import { PageShell } from '@/components/layout/PageShell';
@@ -521,6 +523,20 @@ export default function Profile() {
           Edit Profile
         </Button>
         
+        {/* Multi-role identity: the farmer's way to the Roles page, where the same
+            person adds the Service Provider or Customer role (no new number, no
+            new PIN) and opens that workspace. Shown only while the flag is on. */}
+        {isMultiRoleEnabled() && (
+          <Button
+            onClick={() => navigate('/roles')}
+            variant="outline"
+            className="w-full border-primary/20 hover:bg-primary/5"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            {t('identity.profile.addRoleEntry')}
+          </Button>
+        )}
+
         <Button 
           onClick={handleLogout} 
           variant="destructive" 

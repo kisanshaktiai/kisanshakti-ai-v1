@@ -112,7 +112,8 @@
       "language": "Language",
       "rolesHint": "See your roles or add another one",
       "edit": "Edit",
-      "save": "Save"
+      "save": "Save",
+      "addRoleEntry": "Add Service Provider or Customer role"
     },
     "errors": {
       "generic": "Something went wrong. Please try again.",

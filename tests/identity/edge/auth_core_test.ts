@@ -300,6 +300,39 @@ Deno.test({ name: "auth core, multi-role identity", sanitizeResources: false, sa
     await db.from("account_roles").update({ status: "ACTIVE" }).eq("account_id", p1Id).eq("role", "CUSTOMER");
   });
 
+  await t.step("a registered FARMER later becomes a Service Provider too: no new registration, no new PIN, one login, switch both ways", async () => {
+    const M = "0000007701";
+    const reg = await call({ action: "register", mobile: M, tenantId: TENANT_A, pin: "7701" });
+    assertEquals([reg.status, reg.body.account.activeRole, roleOf(reg.body.account, "SERVICE_PROVIDER")], [200, "FARMER", null]);
+    const token = reg.body.session.token;
+    const farmerId = reg.body.farmer.id;
+
+    // registering the same number again is refused: the way in is "add a role"
+    const again = await call({ action: "register", mobile: M, tenantId: TENANT_A, pin: "7701", roles: ["SERVICE_PROVIDER"] });
+    assertEquals([again.status, again.body], [409, { error: "already_registered" }]);
+
+    const add = await call({ action: "addRole", role: "SERVICE_PROVIDER" }, token);
+    assertEquals([add.status, add.body.roleStatus, add.body.account.id, add.body.account.activeRole], [200, "ACTIVE", farmerId, "FARMER"]);
+    assertEquals((await one("farmers", { id: farmerId }))[0]?.pin_hash != null, true);   // the credential stays on the farmer row
+    assertEquals((await one("accounts", { id: farmerId }))[0]?.pin_hash ?? null, null);            // single copy
+
+    const toProvider = await call({ action: "switchRole", role: "SERVICE_PROVIDER" }, token);
+    assertEquals([toProvider.status, toProvider.body.account.activeRole, toProvider.body.farmer], [200, "SERVICE_PROVIDER", null]);
+    if (CUTOVER) assertEquals(await verify.lookupSession(token), null);                // farmer data closed in the Provider workspace (the cutover is live)
+    assertEquals((await verify.lookupAccountSession(token))?.active_role, "SERVICE_PROVIDER");
+
+    const toFarmer = await call({ action: "switchRole", role: "FARMER" }, token);
+    assertEquals([toFarmer.status, toFarmer.body.account.activeRole, toFarmer.body.farmer?.id], [200, "FARMER", farmerId]);
+    assertEquals((await verify.lookupSession(token))?.farmer_id, farmerId);
+
+    // same mobile and PIN; "AUTO" opens the workspace used last
+    await call({ action: "switchRole", role: "SERVICE_PROVIDER" }, token);
+    const login = await call({ action: "verifyPin", mobile: M, tenantId: TENANT_A, pin: "7701", role: "AUTO" });
+    assertEquals([login.status, login.body.account.activeRole, login.body.account.id], [200, "SERVICE_PROVIDER", farmerId]);
+    const plain = await call({ action: "verifyPin", mobile: M, tenantId: TENANT_A, pin: "7701" });
+    assertEquals([plain.status, plain.body.account.activeRole, plain.body.farmer.id], [200, "FARMER", farmerId]);
+  });
+
   await t.step("provider adds the Farmer role: farmers row with the same id, credential MOVED, same PIN still works", async () => {
     const before = (await one("accounts", { id: p1Id }))[0].pin_hash;
     const add = await call({ action: "addRole", role: "FARMER" }, p1Token);
