@@ -1,0 +1,131 @@
+{
+  "__meta": {
+    "page": "identity",
+    "version": "1.0",
+    "last_updated": "2026-11-24"
+  },
+  "identity": {
+    "roles": {
+      "FARMER": {
+        "name": "Farmer",
+        "description": "Manage my land, crops and advice"
+      },
+      "SERVICE_PROVIDER": {
+        "name": "Service Provider",
+        "description": "Offer machinery, labour or other farm services"
+      },
+      "CUSTOMER": {
+        "name": "Customer",
+        "description": "Buy farm produce from farmers"
+      }
+    },
+    "chooseRoles": {
+      "title": "How will you use the app?",
+      "description": "Choose one or more. Each one opens its own workspace.",
+      "addLater": "You can add another one later."
+    },
+    "onboarding": {
+      "step": "Step {{current}} of {{total}}",
+      "profileTitle": "About you",
+      "profileDescription": "This name is shown to people you deal with.",
+      "nameLabel": "Your name",
+      "nameHint": "Your own name or the name of your business.",
+      "languageLabel": "Language",
+      "reachTitle": "Your area",
+      "reachDescription": "Choose your village and how far around it you want to work.",
+      "finish": "Finish",
+      "reachLater": "Do this later"
+    },
+    "reach": {
+      "title": "Your area",
+      "villageLabel": "Base village",
+      "villageHint": "Only the village is used. Your address is never asked.",
+      "currentVillage": "Saved village: {{village}}",
+      "villageSaved": "saved",
+      "villageFromList": "Please choose the village from the list.",
+      "radiusLabel": "Distance around the village",
+      "radiusValue": "{{km}} km",
+      "changesRemaining": "Changes left: {{count}} (in {{days}} days)",
+      "notSet": "Area not set yet",
+      "summary": "{{village}} · {{km}} km",
+      "set": "Set area",
+      "change": "Change area",
+      "save": "Save area",
+      "errors": {
+        "NOT_AUTHENTICATED": "Please sign in again.",
+        "REACH_ROLE_INVALID": "This area cannot be saved. Please try again.",
+        "REACH_ROLE_NOT_ACTIVE": "This workspace is not active for you.",
+        "REACH_POLICY_MISSING": "Area settings are not available right now. Please try later.",
+        "REACH_RADIUS_OUT_OF_BOUNDS": "Please choose a distance within the allowed range.",
+        "REACH_RADIUS_OFF_STEP": "Please choose one of the distances on the slider.",
+        "REACH_VILLAGE_INVALID": "This village cannot be used. Please choose another one.",
+        "REACH_CHANGE_LIMIT_REACHED": "You have used all your changes for now. Please try again later.",
+        "REACH_CHANGE_LIMIT_REACHED_AT": "You have used all your changes for now. You can change it again after {{when}}.",
+        "REACH_UNAVAILABLE": "Could not reach the server. Please check your connection and try again."
+      },
+      "headerLabel": "Your area: {{summary}}. Tap to change.",
+      "whyNeeded": "Set your village and distance to see what is near you.",
+      "offline": "You need an internet connection to change your area."
+    },
+    "switcher": {
+      "open": "Workspace: {{role}}. Tap to change.",
+      "title": "Your workspaces",
+      "description": "Choose the workspace you want to open.",
+      "current": "Open now",
+      "addRole": "Add another role",
+      "offline": "You need an internet connection to change workspace.",
+      "failed": "Could not change workspace. Please try again."
+    },
+    "rolesPage": {
+      "title": "Roles",
+      "description": "The ways you use the app. Adding one does not need a new mobile number or PIN.",
+      "add": "Add",
+      "open": "Open",
+      "added": {
+        "ACTIVE": "{{role}} has been added.",
+        "PENDING": "{{role}} is waiting for approval.",
+        "SUSPENDED": "{{role}} is paused for your number. Please contact support.",
+        "REVOKED": "{{role}} cannot be added for your number. Please contact support."
+      },
+      "status": {
+        "PENDING": "Waiting for approval",
+        "SUSPENDED": "Paused. Please contact support.",
+        "REVOKED": "Not available"
+      }
+    },
+    "home": {
+      "greeting": "Welcome, {{name}}",
+      "SERVICE_PROVIDER": {
+        "requestsTitle": "No requests yet",
+        "requestsDescription": "Service requests from farmers in your area will appear here.",
+        "jobsTitle": "No jobs yet",
+        "jobsDescription": "Jobs you have agreed with farmers will appear here."
+      },
+      "CUSTOMER": {
+        "produceTitle": "No produce to show yet",
+        "produceDescription": "Produce that farmers offer in your area will appear here."
+      }
+    },
+    "profile": {
+      "name": "Name",
+      "mobile": "Mobile",
+      "language": "Language",
+      "rolesHint": "See your roles or add another one",
+      "edit": "Edit",
+      "save": "Save"
+    },
+    "errors": {
+      "generic": "Something went wrong. Please try again.",
+      "feature_disabled": "This is not available yet.",
+      "session_required": "Please sign in again.",
+      "invalid_role": "This choice is not valid. Please try again.",
+      "role_not_held": "You do not have this role.",
+      "role_not_available": "This role is not available for you right now.",
+      "invalid_display_name": "Please enter a name of up to 80 characters.",
+      "invalid_language": "This language cannot be saved.",
+      "invalid_request": "This request could not be understood. Please try again.",
+      "rate_limited": "Too many tries. Please wait a little and try again.",
+      "transport_unavailable": "Network connection is weak. Please try again."
+    }
+  }
+}

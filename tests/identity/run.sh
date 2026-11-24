@@ -34,7 +34,7 @@ M1_FILES=(
   20261124090600_identity_reach_settings.sql
   20261124090700_identity_config_seeds.sql
 )
-CUTOVER="STAGED_20261124091000_identity_cutover_verified_session_context.sql"
+CUTOVER="20261124091000_identity_cutover_verified_session_context.sql"
 ROLLBACK="ROLLBACK_20261124090000_identity_accounts.sql"
 PRECHECK="PRECHECK_20261124090000_identity_accounts.sql"
 

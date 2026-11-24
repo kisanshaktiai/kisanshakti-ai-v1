@@ -2,6 +2,7 @@ import { localDB } from './localDB';
 import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
 import { farmerAuthService, FarmerAuthError } from './farmerAuthService';
+import { accountSessionService } from './accountSessionService';
 
 interface OfflineAuthData {
   farmerId: string;
@@ -129,6 +130,8 @@ class OfflineAuthService {
     farmerData?: any;
     profileData?: any;
     error?: string;
+    /** Multi-role identity: route of the non-farmer workspace the session opened in. */
+    accountDestination?: string;
   }> {
     // OFFLINE-FIRST: Check cached auth IMMEDIATELY, regardless of network status
     const offlineResult = await this.validateOfflinePin(mobile, pin);
@@ -174,7 +177,9 @@ class OfflineAuthService {
         const result = await Promise.race([authPromise, timeoutPromise]);
         
         // If online auth succeeds, cache the data for future offline use
-        if (result.success) {
+        // A session that opened in the Provider or Customer workspace has no
+        // farmer data to cache and never gets an offline PIN copy.
+        if (result.success && !result.accountDestination) {
           console.log('✅ [OfflineAuth] Online authentication successful, caching data');
           await this.cacheAuthData(
             result.farmerData?.id ?? farmerId,
@@ -250,11 +255,19 @@ class OfflineAuthService {
     farmerData?: any;
     profileData?: any;
     error?: string;
+    accountDestination?: string;
   }> {
     // Credentials are verified server-side only. The client never reads
     // `pin_hash` and never derives its own identity.
     try {
       const result = await farmerAuthService.verifyPin(mobile, tenantId || null, pin);
+
+      // Multi-role identity: null with the flag off or when the session opened
+      // in the Farmer workspace — then the farmer path below runs as before.
+      const accountDestination = accountSessionService.applyAuthResult(result);
+      if (accountDestination) {
+        return { success: true, isOffline: false, accountDestination };
+      }
 
       updateSupabaseHeaders(result.farmer.id, result.farmer.tenant_id);
 

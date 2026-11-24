@@ -29,7 +29,7 @@ FILES=(
   20261124100000_identity_account_auth_functions.sql
   20261124100100_identity_feature_flag.sql
 )
-CUTOVER="STAGED_20261124091000_identity_cutover_verified_session_context.sql"
+CUTOVER="20261124091000_identity_cutover_verified_session_context.sql"
 SECRET="identity-it-local-only-jwt-secret-0123456789"
 PGRST_PORT="${IT_POSTGREST_PORT:-54398}"
 FAILED=0

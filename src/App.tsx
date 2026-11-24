@@ -13,6 +13,11 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+// Multi-role identity (Farmer + Service Provider + Customer) — inert until the
+// server reports the multi_role_identity flag as on for the tenant.
+import { FarmerRoleGate } from "@/components/identity/FarmerRoleGate";
+import { WorkspaceRoute } from "@/components/identity/WorkspaceRoute";
+import { AccountResume } from "@/components/identity/AccountResume";
 // FirstRunOnboardingController removed — replaced by PermissionOnboarding + FeatureWalkthrough
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
@@ -63,6 +68,15 @@ const CropGrowthTracking = lazy(() => import("./pages/CropGrowthTracking"));
 const ProactiveAlerts = lazy(() => import("./pages/ProactiveAlerts"));
 const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
 const PermissionOnboarding = lazy(() => import("./pages/PermissionOnboarding"));
+// Multi-role identity pages and shells
+const ChooseRoles = lazy(() => import("./pages/identity/ChooseRoles"));
+const AccountOnboarding = lazy(() => import("./pages/identity/AccountOnboarding"));
+const RolesPage = lazy(() => import("./pages/identity/RolesPage"));
+const WorkspaceHome = lazy(() => import("./pages/identity/WorkspaceHome"));
+const WorkspaceProfile = lazy(() => import("./pages/identity/WorkspaceProfile"));
+const WorkspaceLayout = lazy(() =>
+  import("./components/identity/WorkspaceLayout").then((m) => ({ default: m.WorkspaceLayout }))
+);
 
 // Loading fallback component
 const PageLoader = () => (
@@ -332,7 +346,7 @@ const router = createBrowserRouter([
   },
   {
     path: "/auth",
-    element: <Suspense fallback={<PageLoader />}><AuthScreen /></Suspense>,
+    element: <AccountResume><Suspense fallback={<PageLoader />}><AuthScreen /></Suspense></AccountResume>,
     errorElement: <RouteErrorBoundary />,
   },
   {
@@ -363,9 +377,11 @@ const router = createBrowserRouter([
   {
     path: "/app",
     element: (
-      <ProtectedRoute>
-        <AppLayout />
-      </ProtectedRoute>
+      <FarmerRoleGate>
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      </FarmerRoleGate>
     ),
     errorElement: <RouteErrorBoundary />,
     children: [
@@ -400,6 +416,56 @@ const router = createBrowserRouter([
       { path: "growth-tracking", element: <Suspense fallback={<PageLoader />}><CropGrowthTracking /></Suspense> },
       { path: "proactive-alerts", element: <Suspense fallback={<PageLoader />}><ProactiveAlerts /></Suspense> },
       { path: "subscription", element: <Suspense fallback={<PageLoader />}><SubscriptionPage /></Suspense> },
+    ],
+  },
+  // ── Multi-role identity ────────────────────────────────────────────────
+  {
+    path: "/choose-roles",
+    element: <Suspense fallback={<PageLoader />}><ChooseRoles /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/welcome",
+    element: (
+      <WorkspaceRoute allowIncomplete>
+        <Suspense fallback={<PageLoader />}><AccountOnboarding /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/roles",
+    element: (
+      <WorkspaceRoute>
+        <Suspense fallback={<PageLoader />}><RolesPage /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/provider",
+    element: (
+      <WorkspaceRoute role="SERVICE_PROVIDER">
+        <Suspense fallback={<PageLoader />}><WorkspaceLayout role="SERVICE_PROVIDER" /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><WorkspaceHome role="SERVICE_PROVIDER" /></Suspense> },
+      { path: "profile", element: <Suspense fallback={<PageLoader />}><WorkspaceProfile /></Suspense> },
+    ],
+  },
+  {
+    path: "/customer",
+    element: (
+      <WorkspaceRoute role="CUSTOMER">
+        <Suspense fallback={<PageLoader />}><WorkspaceLayout role="CUSTOMER" /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><WorkspaceHome role="CUSTOMER" /></Suspense> },
+      { path: "profile", element: <Suspense fallback={<PageLoader />}><WorkspaceProfile /></Suspense> },
     ],
   },
   {

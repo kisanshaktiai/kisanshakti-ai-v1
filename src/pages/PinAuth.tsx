@@ -73,6 +73,14 @@ export default function PinAuth() {
         throw new Error(authResult.error || 'Authentication failed');
       }
 
+      // Multi-role identity: the session opened in the Provider or Customer
+      // workspace (the account is already stored). Never set with the flag off.
+      if (authResult.accountDestination) {
+        queryClient.clear();
+        navigate(authResult.accountDestination, { replace: true });
+        return;
+      }
+
       const farmer = authResult.farmerData;
       const profileData = authResult.profileData;
 

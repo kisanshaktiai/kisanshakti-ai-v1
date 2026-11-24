@@ -9,6 +9,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 import { Loader2, KeyRound, ArrowLeft } from 'lucide-react';
 import { useTenant } from '@/contexts/TenantContext';
 import { farmerAuthService } from '@/services/farmerAuthService';
+import { accountSessionService } from '@/services/accountSessionService';
 import { offlineAuthService } from '@/services/offlineAuthService';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -108,6 +109,14 @@ export default function ForgotPin() {
 
       // The old PIN is gone — drop any cached offline credential for it.
       await offlineAuthService.clearCachedAuth();
+
+      // Multi-role identity: a person without the Farmer role lands in their
+      // own workspace. Null (flag off, or Farmer workspace) = continue as before.
+      const accountDestination = accountSessionService.applyAuthResult(result);
+      if (accountDestination) {
+        navigate(accountDestination, { replace: true });
+        return;
+      }
 
       const farmer = result.farmer;
       const profile = result.profile;
