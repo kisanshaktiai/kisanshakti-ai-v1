@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { wipeDeviceAfterLogout } from '@/services/deviceWipe';
 import { setGlobalAuthData, setSessionToken, updateSupabaseHeaders, clearGlobalAuthData } from '@/integrations/supabase/client';
 
 interface User {
@@ -234,6 +235,9 @@ export const useAuthStore = create<AuthState>()(
         import('@/services/localDB')
           .then(({ localDB }) => localDB.clearAll())
           .catch((e) => console.warn('[Auth] Local cache wipe failed:', e));
+        // Shared phones: also remove the offline PIN copy, the other per-person
+        // keys and the cached API responses (see services/deviceWipe.ts).
+        wipeDeviceAfterLogout();
         try { window.dispatchEvent(new Event('ks:auth-logout')); } catch { /* non-browser */ }
 
         console.log('✅ [Auth] Logout complete');

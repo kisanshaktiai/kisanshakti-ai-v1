@@ -199,6 +199,27 @@ function lockoutRemainingMs(farmer: any): number {
   return Math.max(0, until - Date.now());
 }
 
+/**
+ * Takes one PIN attempt, atomically, BEFORE a PIN is compared. The database
+ * counts the attempt under the row lock and refuses it when the person is
+ * locked out, so the 5-attempt limit also holds when many requests arrive at
+ * the same moment. Null = go on and compare; a Response = locked out.
+ */
+async function claimPinAttempt(subject: "FARMER" | "ACCOUNT", id: string): Promise<Response | null> {
+  const { data, error } = await admin.rpc("auth_claim_pin_attempt", {
+    p_subject: subject,
+    p_id: id,
+    p_max_attempts: MAX_FAILED_ATTEMPTS,
+    p_lock_minutes: LOCKOUT_MINUTES,
+  });
+  if (error) throw new Error(error.message);
+  if ((data as any)?.allowed === true) return null;
+  return json({
+    error: "locked_out",
+    retryAfterSeconds: Number((data as any)?.retry_after_seconds ?? LOCKOUT_MINUTES * 60),
+  }, 429);
+}
+
 // ============================================================================
 // Multi-role identity helpers
 // ============================================================================
@@ -487,17 +508,15 @@ async function accountVerifyPin(account: any, req: Request, body: any): Promise<
     return json({ error: "locked_out", retryAfterSeconds: Math.ceil(remaining / 1000) }, 429);
   }
 
+  const locked = await claimPinAttempt("ACCOUNT", account.id);   // counts this attempt
+  if (locked) return locked;
+
   const ok = (await hashPin(body.pin)) === account.pin_hash;
-  if (!ok) {
-    await admin.from("accounts").update({
-      failed_login_attempts: Number(account.failed_login_attempts ?? 0) + 1,
-      last_failed_login: new Date().toISOString(),
-    }).eq("id", account.id);
-    return json({ error: "invalid_credentials" }, 401);
-  }
+  if (!ok) return json({ error: "invalid_credentials" }, 401);
 
   await admin.from("accounts").update({
     failed_login_attempts: 0,
+    last_failed_login: account.last_failed_login ?? null,   // the claim stamped it; this was not a failure
     last_login_at: new Date().toISOString(),
   }).eq("id", account.id);
 
@@ -514,13 +533,9 @@ async function accountChangePin(account: any, req: Request, body: any): Promise<
     if (remaining > 0) {
       return json({ error: "locked_out", retryAfterSeconds: Math.ceil(remaining / 1000) }, 429);
     }
+    const locked = await claimPinAttempt("ACCOUNT", account.id);   // counts this attempt
+    if (locked) return locked;
     authorized = (await hashPin(body.currentPin)) === account.pin_hash;
-    if (!authorized) {
-      await admin.from("accounts").update({
-        failed_login_attempts: Number(account.failed_login_attempts ?? 0) + 1,
-        last_failed_login: new Date().toISOString(),
-      }).eq("id", account.id);
-    }
   }
 
   if (!authorized) {
@@ -530,12 +545,26 @@ async function accountChangePin(account: any, req: Request, body: any): Promise<
 
   if (!authorized) return json({ error: "invalid_credentials" }, 401);
 
-  const { error } = await admin.from("accounts").update({
-    pin_hash: await hashPin(body.newPin),
+  // Written only while the account still holds the credential. If the person
+  // added the FARMER role at this very moment, the credential has moved to the
+  // farmers row (single-copy rule) and the new PIN belongs there: writing it
+  // here would create a second copy and leave the old PIN working.
+  const newHash = await hashPin(body.newPin);
+  const { data: written, error } = await admin.from("accounts").update({
+    pin_hash: newHash,
     pin_updated_at: new Date().toISOString(),
     failed_login_attempts: 0,
-  }).eq("id", account.id);
+    last_failed_login: account.last_failed_login ?? null,
+  }).eq("id", account.id).not("pin_hash", "is", null).select("id");
   if (error) return json({ error: "server_error" }, 500);
+  if (!written?.length) {
+    const { data: moved, error: farmerError } = await admin.from("farmers").update({
+      pin_hash: newHash,
+      pin_updated_at: new Date().toISOString(),
+      failed_login_attempts: 0,
+    }).eq("id", account.id).select("id");
+    if (farmerError || !moved?.length) return json({ error: "server_error" }, 500);
+  }
 
   // Any existing session is invalidated on credential change. chooseRole("AUTO")
   // still reads the role of the last one, so the person returns to the same workspace.
@@ -802,17 +831,15 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
         return json({ error: "locked_out", retryAfterSeconds: Math.ceil(remaining / 1000) }, 429);
       }
 
+      const locked = await claimPinAttempt("FARMER", farmer.id);   // counts this attempt
+      if (locked) return locked;
+
       const ok = (await hashPin(body.pin)) === farmer.pin_hash;
-      if (!ok) {
-        await admin.from("farmers").update({
-          failed_login_attempts: Number(farmer.failed_login_attempts ?? 0) + 1,
-          last_failed_login: new Date().toISOString(),
-        }).eq("id", farmer.id);
-        return json({ error: "invalid_credentials" }, 401);
-      }
+      if (!ok) return json({ error: "invalid_credentials" }, 401);
 
       await admin.from("farmers").update({
         failed_login_attempts: 0,
+        last_failed_login: farmer.last_failed_login ?? null,   // the claim stamped it; this was not a failure
         last_login_at: new Date().toISOString(),
         last_app_open: new Date().toISOString(),
         total_app_opens: Number(farmer.total_app_opens ?? 0) + 1,
@@ -845,13 +872,9 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
         if (remaining > 0) {
           return json({ error: "locked_out", retryAfterSeconds: Math.ceil(remaining / 1000) }, 429);
         }
+        const locked = await claimPinAttempt("FARMER", farmer.id);   // counts this attempt
+        if (locked) return locked;
         authorized = (await hashPin(body.currentPin)) === farmer.pin_hash;
-        if (!authorized) {
-          await admin.from("farmers").update({
-            failed_login_attempts: Number(farmer.failed_login_attempts ?? 0) + 1,
-            last_failed_login: new Date().toISOString(),
-          }).eq("id", farmer.id);
-        }
       }
 
       if (!authorized) {
@@ -876,6 +899,7 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
         pin_hash: await hashPin(body.newPin),
         pin_updated_at: new Date().toISOString(),
         failed_login_attempts: 0,
+        last_failed_login: farmer.last_failed_login ?? null,
       }).eq("id", farmer.id);
       if (error) return json({ error: error.message }, 400);
 

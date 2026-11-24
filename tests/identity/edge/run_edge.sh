@@ -28,6 +28,7 @@ FILES=(
   20261124090700_identity_config_seeds.sql
   20261124100000_identity_account_auth_functions.sql
   20261124110000_identity_breaker_fixes.sql
+  20261124120000_identity_pin_attempt_claim.sql
   20261124100100_identity_feature_flag.sql
 )
 CUTOVER="20261124091000_identity_cutover_verified_session_context.sql"

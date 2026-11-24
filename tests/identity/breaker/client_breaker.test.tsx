@@ -172,7 +172,9 @@ describe('identity breaker: device side', () => {
   it('L05 service-worker cache (read from vite.config.ts and the two logout functions)', () => {
     const vite = src('vite.config.ts');
     const cachesSupabase = /urlPattern: \/\^https:\\\/\\\/\.\*\\\.supabase\\\.co\\\/\.\*\/i,\s*handler: 'NetworkFirst',\s*options: \{\s*cacheName: 'api-cache'/.test(vite);
-    const logoutCode = src('src/stores/authStore.ts') + src('src/services/accountSessionService.ts');
+    // the cache wipe lives in services/deviceWipe.ts and must be called by authStore.logout
+    const auth = src('src/stores/authStore.ts');
+    const logoutCode = auth + src('src/services/accountSessionService.ts') + (/wipeDeviceAfterLogout\(\)/.test(auth) ? src('src/services/deviceWipe.ts') : '');
     const logoutClearsCaches = /caches\.(delete|keys)/.test(logoutCode);
     verdict('L05', 'logout empties the service-worker cache that stores Supabase API responses (api-cache, keyed by URL only)', !cachesSupabase || logoutClearsCaches,
       { supabaseResponsesCachedNetworkFirst: cachesSupabase, anyLogoutTouchesCacheStorage: logoutClearsCaches, expiry: (vite.match(/cacheName: 'api-cache',[\s\S]{0,120}?expiration: \{([^}]*)\}/) ?? [])[1]?.trim() });
