@@ -1,9 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  CalendarOff, ChevronRight, Clock, Sprout, Store, Tractor, Wrench, type LucideIcon,
-} from 'lucide-react';
-import { ProviderPage } from '@/components/provider/ProviderUi';
+import { CalendarOff, Clock, Store, Tractor, TreePine, Wrench, type LucideIcon } from 'lucide-react';
+import { NavRow, ProviderPage, StatusBadge } from '@/components/provider/ProviderUi';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
 import { catalogueLabel } from '@/lib/providerText';
@@ -13,12 +11,15 @@ interface Section {
   icon: LucideIcon;
   path: string;
   summary: string;
+  /** Shown as a pill on the right when the part still needs filling. */
+  todo?: boolean;
 }
 
 /**
- * "My business" tab: one row per part of the business, each with a one-line
- * summary of what is saved. Every part except the business profile opens only
- * after the profile exists, because the server keeps the rest under it.
+ * "My business" tab: one big row per part of the business, each with a
+ * picture, a one-line summary and a pill when something is still missing.
+ * Every part except the business details opens only after they exist, because
+ * the server keeps the rest under them.
  */
 export default function ProviderBusiness() {
   const { t } = useTranslation();
@@ -42,47 +43,46 @@ export default function ProviderBusiness() {
                 ),
               })
             : t('provider.business.profileMissing'),
+          todo: !profile,
         },
-        { key: 'services', icon: Wrench, path: PROVIDER_ROUTES.services, summary: count(workspace.services.length) },
+        {
+          key: 'services', icon: Wrench, path: PROVIDER_ROUTES.services,
+          summary: count(workspace.services.length), todo: workspace.services.length === 0,
+        },
         {
           key: 'hours', icon: Clock, path: PROVIDER_ROUTES.hours,
           summary: workingDays > 0 ? t('provider.business.hoursSummary', { count: workingDays }) : t('provider.business.hoursMissing'),
+          todo: workingDays === 0,
         },
         { key: 'daysOff', icon: CalendarOff, path: PROVIDER_ROUTES.daysOff, summary: count(workspace.blackouts.length) },
         { key: 'equipment', icon: Tractor, path: PROVIDER_ROUTES.equipment, summary: count(workspace.equipment.length) },
-        { key: 'nursery', icon: Sprout, path: PROVIDER_ROUTES.nursery, summary: count(workspace.nursery_products.length) },
+        { key: 'nursery', icon: TreePine, path: PROVIDER_ROUTES.nursery, summary: count(workspace.nursery_products.length) },
       ]
     : [];
 
   return (
     <ProviderPage
       title={t('provider.business.title')}
+      eyebrow={profile?.public_name}
       pending={loading && !workspace}
       loadError={loadError}
       onRetry={reload}
       isOnline={isOnline}
     >
       {!profile && workspace && (
-        <p className="text-sm text-muted-foreground">{t('provider.business.profileFirst')}</p>
+        <p className="text-base text-muted-foreground">{t('provider.business.profileFirst')}</p>
       )}
       <div className="space-y-3">
-        {sections.map(({ key, icon: Icon, path, summary }) => (
-          <button
+        {sections.map(({ key, icon, path, summary, todo }) => (
+          <NavRow
             key={key}
-            type="button"
+            icon={icon}
+            title={t(`provider.business.sections.${key}`)}
+            summary={summary}
             onClick={() => navigate(path)}
             disabled={key !== 'profile' && !profile}
-            className="w-full min-h-[72px] flex items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left disabled:opacity-60"
-          >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-              <Icon className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-base font-semibold text-foreground">{t(`provider.business.sections.${key}`)}</span>
-              <span className="block text-sm text-muted-foreground break-words">{summary}</span>
-            </span>
-            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          </button>
+            badge={todo ? <StatusBadge tone="busy">{t('provider.business.todo')}</StatusBadge> : undefined}
+          />
         ))}
       </div>
     </ProviderPage>

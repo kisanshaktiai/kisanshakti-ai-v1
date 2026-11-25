@@ -20,20 +20,33 @@ const EMPTY_SECTIONS: Record<WorkspaceRole, { key: string; icon: LucideIcon }[]>
 };
 
 /**
- * Home shell of the Provider and Customer workspaces: greeting, the Reach
- * card, and empty states for the content the later tasks bring.
+ * Home shell of the Provider (while its workspace flag is off) and Customer
+ * workspaces: the role and greeting in large type, a coloured card that says
+ * what this workspace is for, the Reach card, and empty states for the
+ * content the later tasks bring.
  */
 export default function WorkspaceHome({ role }: { role: WorkspaceRole }) {
   const { t } = useTranslation();
   const account = useAccountStore((s) => s.account);
+  const RoleIcon = ROLE_ICONS[role];
 
   return (
     <PageShell variant="gradient-soft">
       <div className="space-y-1">
-        <p className="text-sm text-muted-foreground">{t(`identity.roles.${role}.name`)}</p>
-        <h1 className="text-2xl font-bold text-foreground break-words">
+        <p className="text-sm font-medium text-muted-foreground">{t(`identity.roles.${role}.name`)}</p>
+        <h1 className="text-2xl font-bold leading-tight text-foreground break-words">
           {t('identity.home.greeting', { name: account?.displayName ?? '' })}
         </h1>
+      </div>
+
+      <div className="flex items-center gap-4 rounded-3xl bg-primary p-5 text-primary-foreground shadow-md">
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary-foreground/20">
+          <RoleIcon className="h-8 w-8" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xl font-bold leading-tight">{t(`identity.roles.${role}.name`)}</p>
+          <p className="text-sm opacity-90 mt-1">{t(`identity.roles.${role}.description`)}</p>
+        </div>
       </div>
 
       <ReachCard role={role} />

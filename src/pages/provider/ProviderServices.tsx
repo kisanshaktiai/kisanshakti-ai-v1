@@ -2,22 +2,23 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Pause, Pencil, Play, Plus, Trash2, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/layout/EmptyState';
-import { ProviderPage, SaveError } from '@/components/provider/ProviderUi';
+import { Panel, PrimaryAction, ProviderPage, SaveError, StatusBadge } from '@/components/provider/ProviderUi';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
 import { providerWorkspaceService } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
+import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel, serviceRateText } from '@/lib/providerText';
+import { cn } from '@/lib/utils';
 
 /**
- * The services the provider offers, each with its rate. A service can be
- * paused (kept, but not offered), resumed, edited or removed.
+ * The services the provider offers, each as a card with the picture of its
+ * kind of work and the rate in large type. A service can be paused (kept, but
+ * not offered), resumed, edited or removed.
  */
 export default function ProviderServices() {
   const { t } = useTranslation();
@@ -36,21 +37,17 @@ export default function ProviderServices() {
       loadError={loadError}
       onRetry={reload}
       isOnline={isOnline}
+      footer={workspace && catalogue ? (
+        <PrimaryAction onClick={() => navigate(PROVIDER_ROUTES.serviceNew)} disabled={limitReached || !isOnline} icon={Plus}>
+          {t('provider.services.add')}
+        </PrimaryAction>
+      ) : undefined}
     >
       {workspace && catalogue && (
-        <>
+        <div className="space-y-3">
           <SaveError message={saveError} />
-
-          <Button
-            className="w-full h-12 text-base"
-            onClick={() => navigate(PROVIDER_ROUTES.serviceNew)}
-            disabled={limitReached || !isOnline}
-          >
-            <Plus className="w-5 h-5 mr-2" aria-hidden="true" />
-            {t('provider.services.add')}
-          </Button>
           {limitReached && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {t('provider.services.limit', { count: workspace.policy.max_services })}
             </p>
           )}
@@ -65,25 +62,27 @@ export default function ProviderServices() {
 
           {services.map((service) => {
             const category = catalogue.categories.find((c) => c.code === service.category_code);
+            const Icon = familyIcon(category?.parent_code);
             const paused = service.status === 'PAUSED';
             return (
-              <Card key={service.id} className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-base font-semibold text-foreground break-words">{service.title}</p>
+              <Panel key={service.id} className={cn('space-y-3', paused && 'opacity-80')}>
+                <div className="flex items-start gap-3">
+                  <span className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl', paused ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary')}>
+                    <Icon className="h-7 w-7" strokeWidth={1.75} aria-hidden="true" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-lg font-bold leading-tight text-foreground break-words">{service.title}</p>
                     <p className="text-sm text-muted-foreground break-words">
                       {catalogueLabel('category', service.category_code, category?.label_en)}
                     </p>
                   </div>
-                  <Badge variant={paused ? 'secondary' : 'default'} className="shrink-0">
-                    {t(`provider.common.status.${service.status}`)}
-                  </Badge>
+                  <StatusBadge tone={paused ? 'off' : 'good'}>{t(`provider.common.status.${service.status}`)}</StatusBadge>
                 </div>
-                <p className="text-lg font-semibold text-foreground">{serviceRateText(service, catalogue.pricingUnits)}</p>
+                <p className="text-2xl font-bold text-primary">{serviceRateText(service, catalogue.pricingUnits)}</p>
                 <div className="grid grid-cols-3 gap-2">
                   <Button
                     variant="outline"
-                    className="h-12"
+                    className="h-12 rounded-2xl"
                     onClick={() => navigate(PROVIDER_ROUTES.serviceEdit(service.id))}
                     disabled={!isOnline}
                     aria-label={t('provider.common.edit')}
@@ -93,7 +92,7 @@ export default function ProviderServices() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-12"
+                    className="h-12 rounded-2xl"
                     disabled={busy}
                     onClick={() => run(() => providerWorkspaceService.setServiceStatus(service.id, paused ? 'ACTIVE' : 'PAUSED'))}
                   >
@@ -102,7 +101,7 @@ export default function ProviderServices() {
                   </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="h-12" disabled={busy}>
+                      <Button variant="outline" className="h-12 rounded-2xl" disabled={busy}>
                         <Trash2 className="w-4 h-4 mr-1.5" aria-hidden="true" />
                         <span className="truncate">{t('provider.common.remove')}</span>
                       </Button>
@@ -124,10 +123,10 @@ export default function ProviderServices() {
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
-              </Card>
+              </Panel>
             );
           })}
-        </>
+        </div>
       )}
     </ProviderPage>
   );

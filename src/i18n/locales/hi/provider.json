@@ -23,7 +23,12 @@
         "ACTIVE": "चालू",
         "PAUSED": "रुका हुआ",
         "REMOVED": "हटाया गया"
-      }
+      },
+      "next": "आगे",
+      "previousStep": "एक कदम पीछे",
+      "stepOf": "{{total}} में से {{current}}",
+      "less": "कम",
+      "more": "ज़्यादा"
     },
     "availability": {
       "title": "किसानों को आप ऐसे दिखते हैं",
@@ -40,7 +45,8 @@
       },
       "acceptingLabel": "नए अनुरोध लें",
       "acceptingHint": "जब और काम नहीं ले सकते, तब बंद करें।",
-      "markBusy": "मेरे व्यस्त दिन भरें"
+      "markBusy": "मेरे व्यस्त दिन भरें",
+      "acceptingShort": "काम ले रहे हैं"
     },
     "setup": {
       "title": "सूची में आएँ",
@@ -68,7 +74,9 @@
         }
       },
       "submit": "जाँच के लिए भेजें",
-      "submitHint": "अपनी सूची भेजने के लिए चारों चरण पूरे करें।"
+      "submitHint": "अपनी सूची भेजने के लिए चारों चरण पूरे करें।",
+      "progress": "{{total}} में से {{done}} पूरे",
+      "next": "अगला: {{step}}"
     },
     "listing": {
       "title": "आपकी सूची",
@@ -104,7 +112,8 @@
         "daysOff": "व्यस्त दिन",
         "equipment": "उपकरण",
         "nursery": "नर्सरी स्टोर"
-      }
+      },
+      "todo": "बाकी है"
     },
     "profile": {
       "title": "काम की जानकारी",
@@ -114,7 +123,9 @@
       "experienceLabel": "अनुभव के साल",
       "experienceInvalid": "0 से {{max}} तक का पूरा अंक भरें।",
       "aboutLabel": "अपने काम के बारे में (वैकल्पिक)",
-      "languagesLabel": "आप कौन-सी भाषाएँ बोलते हैं"
+      "languagesLabel": "आप कौन-सी भाषाएँ बोलते हैं",
+      "typeQuestion": "आप क्या हैं?",
+      "experienceCaption": "साल"
     },
     "services": {
       "title": "सेवाएँ और दरें",
@@ -175,7 +186,19 @@
       "crewLabel": "टोली में लोग",
       "skillLabel": "कौशल स्तर",
       "equipmentLabel": "इस्तेमाल होने वाला उपकरण",
-      "paymentLabel": "आप भुगतान कैसे लेते हैं"
+      "paymentLabel": "आप भुगतान कैसे लेते हैं",
+      "step1Title": "आप कौन सा काम करते हैं?",
+      "step2Title": "आपका रेट क्या है?",
+      "step3Title": "आख़िरी जानकारी",
+      "familyQuestion": "काम का प्रकार चुनें",
+      "seeAllFamilies": "सभी {{count}} प्रकार के काम देखें",
+      "categoryQuestion": "कौन सी सेवा?",
+      "unitQuestion": "आप कैसे चार्ज करते हैं?",
+      "otherUnits": "चार्ज करने के अन्य तरीके",
+      "rateQuestion": "कितना?",
+      "includesQuestion": "रेट में क्या शामिल है?",
+      "includesHint": "जो भी दाम में शामिल है, उस पर टैप करें।",
+      "paymentQuestion": "आप पैसे कैसे लेते हैं?"
     },
     "hours": {
       "title": "काम का समय",
@@ -185,7 +208,14 @@
       "from": "से",
       "to": "तक",
       "invalid": "दोनों समय भरें; ख़त्म होने का समय शुरू होने के बाद का हो।",
-      "copyToAll": "पहले काम के दिन का समय सभी दिनों पर लगाएँ"
+      "copyToAll": "पहले काम के दिन का समय सभी दिनों पर लगाएँ",
+      "daysQuestion": "आप किन दिनों काम करते हैं?",
+      "noDays": "जिन दिनों काम करते हैं, उन पर टैप करें।",
+      "daysCount": "काम के दिन: {{count}}",
+      "timesQuestion": "कितने बजे से कितने बजे तक?",
+      "useUsual": "{{from}} से {{to}} रखें",
+      "perDayLabel": "अलग-अलग दिन अलग समय",
+      "perDayHint": "हर दिन का समय अलग रखने के लिए चालू करें।"
     },
     "daysOff": {
       "title": "व्यस्त दिन",
@@ -208,7 +238,17 @@
       "emptyDescription": "आप अपने सभी काम के दिनों में उपलब्ध दिख रहे हैं।",
       "fromJob": "तय किया हुआ काम",
       "ownEntry": "आपने दर्ज किया",
-      "cancel": "फिर खाली"
+      "cancel": "फिर खाली",
+      "whenQuestion": "आप कब व्यस्त हैं?",
+      "pickDates": "या तारीखें चुनें",
+      "spanText": "{{count}} दिन व्यस्त",
+      "listTitle": "आपके व्यस्त दिन",
+      "quick": {
+        "today": "आज",
+        "tomorrow": "कल",
+        "threeDays": "अगले 3 दिन",
+        "week": "यह हफ़्ता"
+      }
     },
     "equipment": {
       "title": "उपकरण",
@@ -237,7 +277,8 @@
       },
       "registrationLabel": "रजिस्ट्रेशन नंबर (वैकल्पिक)",
       "registrationHint": "सिर्फ़ आख़िरी चार अक्षर रखे जाते हैं।",
-      "registrationEnding": "नंबर के आख़िरी अक्षर {{last4}}"
+      "registrationEnding": "नंबर के आख़िरी अक्षर {{last4}}",
+      "typeQuestion": "कौन सी मशीन है?"
     },
     "nursery": {
       "title": "नर्सरी स्टोर",
@@ -261,7 +302,12 @@
       "minOrderLabel": "सबसे छोटा ऑर्डर (वैकल्पिक)",
       "totalLabel": "कितने",
       "totalHint": "किसानों से पहले ही वादा किया: {{count}}। संख्या इससे कम नहीं हो सकती।",
-      "readyLabel": "कब तैयार होंगे"
+      "readyLabel": "कब तैयार होंगे",
+      "summaryPlants": "बिक्री पर पौधे",
+      "summaryStock": "स्टॉक में",
+      "summaryReserved": "बुक हुए",
+      "inStock": "स्टॉक में: {{count}}",
+      "cropQuestion": "आप कौन सा पौधा बेचते हैं?"
     },
     "errors": {
       "generic": "कुछ गड़बड़ हो गई। कृपया फिर कोशिश करें।",
@@ -520,6 +566,10 @@
         "BANK_TRANSFER": "बैंक ट्रांसफ़र",
         "CREDIT_AFTER_HARVEST": "कटाई तक उधार"
       }
+    },
+    "home": {
+      "activeCount": "चालू: {{count}}",
+      "readyPlants": "बिक्री के लिए तैयार: {{count}}"
     }
   }
 }

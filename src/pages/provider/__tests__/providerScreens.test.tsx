@@ -135,11 +135,12 @@ describe('Provider Workspace screens', () => {
     it('keeps "send for review" closed until profile, service, hours and area are all there', async () => {
       serverHolds(workspace({ profile }));
       renderAt('/provider', <ProviderHome />);
-      const submit = await screen.findByText('provider.setup.submit');
-      expect((submit.closest('button') as HTMLButtonElement).disabled).toBe(true);
+      // The main button leads to the next missing step; "send for review" waits until all are done.
+      expect(await screen.findByText('provider.setup.next')).not.toBeNull();
+      expect(screen.queryByText('provider.setup.submit')).toBeNull();
       expect(screen.queryByText('provider.setup.submitHint')).not.toBeNull();
-      expect(screen.getAllByText('provider.setup.steps.profile.done')).toHaveLength(1);
-      expect(screen.getAllByText('provider.setup.steps.service.todo')).toHaveLength(1);
+      expect(screen.getAllByLabelText('provider.setup.steps.profile.title: provider.setup.steps.profile.done')).toHaveLength(1);
+      expect(screen.getAllByLabelText('provider.setup.steps.service.title: provider.setup.steps.service.todo')).toHaveLength(1);
     });
 
     it('sends the listing for review once every step is done', async () => {
@@ -206,21 +207,31 @@ describe('Provider Workspace screens', () => {
   });
 
   describe('service form', () => {
+    const next = () => screen.getByText('provider.common.next').closest('button') as HTMLButtonElement;
+    const saveButton = () => screen.getByText('provider.common.save').closest('button') as HTMLButtonElement;
+    /** Step 1: pick the kind of work by its tile, then the service by its chip, then go on. */
     const open = async () => {
       serverHolds(workspace({ profile }));
       renderAt('/provider/business/services/new', <ProviderServiceForm />);
-      fireEvent.change(await screen.findByLabelText('provider.services.familyLabel'), { target: { value: 'LAND_PREP' } });
-      fireEvent.change(screen.getByLabelText('provider.services.categoryLabel'), { target: { value: 'PLOUGHING' } });
+      const family = await screen.findByText('Land preparation');
+      expect(next().disabled).toBe(true);
+      fireEvent.click(family);
+      fireEvent.click(screen.getByText('Ploughing'));
+      expect(next().disabled).toBe(false);
+      fireEvent.click(next());
     };
-    const saveButton = () => screen.getByText('provider.common.save').closest('button') as HTMLButtonElement;
 
-    it('names the service after the chosen category and needs a rate for a priced unit', async () => {
+    it('asks the work, then the rate, then the name, and names the service after the chosen service', async () => {
       await open();
-      expect((screen.getByLabelText('provider.services.titleLabel') as HTMLInputElement).value).toBe('Ploughing');
-      fireEvent.change(screen.getByLabelText('provider.services.unitLabel'), { target: { value: 'PER_ACRE' } });
-      expect(saveButton().disabled).toBe(true);
-
+      // Step 2: a priced unit needs a rate before going on.
+      expect(next().disabled).toBe(true);
+      fireEvent.click(screen.getByText('Per acre'));
+      expect(next().disabled).toBe(true);
       fireEvent.change(screen.getByLabelText('provider.services.rateLabel'), { target: { value: '1200' } });
+      expect(next().disabled).toBe(false);
+      fireEvent.click(next());
+      // Step 3: the name follows the chosen service.
+      expect((screen.getByLabelText('provider.services.titleLabel') as HTMLInputElement).value).toBe('Ploughing');
       expect(saveButton().disabled).toBe(false);
       mocks.service.saveService.mockResolvedValue(workspace({ profile }));
       fireEvent.click(saveButton());
@@ -234,10 +245,22 @@ describe('Provider Workspace screens', () => {
       expect(await screen.findByText('other-screen')).not.toBeNull();
     });
 
+    it('sets the rate with the plus button in steps of fifty', async () => {
+      await open();
+      fireEvent.click(screen.getByText('Per acre'));
+      fireEvent.click(screen.getByLabelText('provider.common.more'));
+      fireEvent.click(screen.getByLabelText('provider.common.more'));
+      expect((screen.getByLabelText('provider.services.rateLabel') as HTMLInputElement).value).toBe('100');
+      fireEvent.click(screen.getByLabelText('provider.common.less'));
+      expect((screen.getByLabelText('provider.services.rateLabel') as HTMLInputElement).value).toBe('50');
+    });
+
     it('asks for no rate and sends none when the price is open to discussion', async () => {
       await open();
-      fireEvent.change(screen.getByLabelText('provider.services.unitLabel'), { target: { value: 'NEGOTIABLE' } });
+      fireEvent.click(screen.getByText('provider.services.otherUnits'));
+      fireEvent.click(screen.getByText('Negotiable'));
       expect(screen.queryByLabelText('provider.services.rateLabel')).toBeNull();
+      fireEvent.click(next());
       mocks.service.saveService.mockResolvedValue(workspace({ profile }));
       fireEvent.click(saveButton());
       await waitFor(() => expect(mocks.service.saveService).toHaveBeenCalledTimes(1));
@@ -246,7 +269,9 @@ describe('Provider Workspace screens', () => {
 
     it('stays on the form and shows the reason when the server refuses', async () => {
       await open();
-      fireEvent.change(screen.getByLabelText('provider.services.unitLabel'), { target: { value: 'NEGOTIABLE' } });
+      fireEvent.click(screen.getByText('provider.services.otherUnits'));
+      fireEvent.click(screen.getByText('Negotiable'));
+      fireEvent.click(next());
       mocks.service.saveService.mockRejectedValue(new ProviderError('PROVIDER_LIMIT_REACHED' as never));
       fireEvent.click(saveButton());
       expect(await screen.findByText('provider.errors.PROVIDER_LIMIT_REACHED')).not.toBeNull();
@@ -258,11 +283,12 @@ describe('Provider Workspace screens', () => {
     it('starts with every day off, refuses an end before the start, and saves all seven days', async () => {
       serverHolds(workspace({ profile }));
       renderAt('/provider/business/hours', <ProviderHours />);
-      const switches = await screen.findAllByRole('switch');
-      expect(switches).toHaveLength(7);
-      expect(switches.every((s) => s.getAttribute('aria-checked') === 'false')).toBe(true);
+      const days = await screen.findAllByRole('button', { pressed: false });
+      expect(days.filter((d) => d.getAttribute('aria-label'))).toHaveLength(7);
+      expect(screen.queryByText('provider.hours.noDays')).not.toBeNull();
 
-      fireEvent.click(switches[1]); // weekday 1
+      // Monday is the first tile shown; weekday 1 on the server.
+      fireEvent.click(days[0]);
       const save = screen.getByText('provider.common.save').closest('button') as HTMLButtonElement;
       expect(save.disabled).toBe(true); // a working day without times
       fireEvent.change(screen.getByLabelText('provider.hours.from'), { target: { value: '18:00' } });
@@ -276,10 +302,25 @@ describe('Provider Workspace screens', () => {
       mocks.service.setWorkingHours.mockResolvedValue(workspace({ profile }));
       fireEvent.click(save);
       await waitFor(() => expect(mocks.service.setWorkingHours).toHaveBeenCalledTimes(1));
-      const days = mocks.service.setWorkingHours.mock.calls[0][0];
-      expect(days).toHaveLength(7);
-      expect(days[1]).toEqual({ weekday: 1, is_working: true, start_time: '07:00', end_time: '18:00' });
-      expect(days[0]).toEqual({ weekday: 0, is_working: false, start_time: null, end_time: null });
+      const sent = mocks.service.setWorkingHours.mock.calls[0][0];
+      expect(sent).toHaveLength(7);
+      expect(sent[1]).toEqual({ weekday: 1, is_working: true, start_time: '07:00', end_time: '18:00' });
+      expect(sent[0]).toEqual({ weekday: 0, is_working: false, start_time: null, end_time: null });
+    });
+
+    it('gives a day switched on later the same times as the others', async () => {
+      serverHolds(workspace({ profile }));
+      renderAt('/provider/business/hours', <ProviderHours />);
+      const days = await screen.findAllByRole('button', { pressed: false });
+      fireEvent.click(days[0]);
+      fireEvent.click(screen.getByText('provider.hours.useUsual'));
+      fireEvent.click(days[1]);
+      mocks.service.setWorkingHours.mockResolvedValue(workspace({ profile }));
+      fireEvent.click(screen.getByText('provider.common.save'));
+      await waitFor(() => expect(mocks.service.setWorkingHours).toHaveBeenCalledTimes(1));
+      const sent = mocks.service.setWorkingHours.mock.calls[0][0];
+      expect(sent[1]).toEqual({ weekday: 1, is_working: true, start_time: '08:00', end_time: '18:00' });
+      expect(sent[2]).toEqual({ weekday: 2, is_working: true, start_time: '08:00', end_time: '18:00' });
     });
   });
 
@@ -292,7 +333,7 @@ describe('Provider Workspace screens', () => {
       const year = new Date().getFullYear() + 1;
       fireEvent.change(from, { target: { value: `${year}-03-10` } });
       fireEvent.change(screen.getByLabelText('provider.daysOff.to'), { target: { value: `${year}-03-12` } });
-      fireEvent.change(screen.getByLabelText('provider.daysOff.reasonLabel'), { target: { value: 'MAINTENANCE' } });
+      fireEvent.click(screen.getByText('provider.daysOff.reasons.MAINTENANCE'));
       fireEvent.click(screen.getByText('provider.daysOff.add'));
       await waitFor(() => expect(mocks.service.addBlackout).toHaveBeenCalledTimes(1));
       const [start, end, reason] = mocks.service.addBlackout.mock.calls[0];
@@ -310,6 +351,18 @@ describe('Provider Workspace screens', () => {
       fireEvent.change(screen.getByLabelText('provider.daysOff.to'), { target: { value: `${year}-06-01` } });
       expect(screen.queryByText('provider.daysOff.invalid')).not.toBeNull();
       expect((screen.getByText('provider.daysOff.add').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('offers today and the next days as one tap', async () => {
+      serverHolds(workspace({ profile }));
+      mocks.service.addBlackout.mockResolvedValue(workspace({ profile }));
+      renderAt('/provider/business/days-off', <ProviderDaysOff />);
+      fireEvent.click(await screen.findByText('provider.daysOff.quick.tomorrow'));
+      fireEvent.click(screen.getByText('provider.daysOff.add'));
+      await waitFor(() => expect(mocks.service.addBlackout).toHaveBeenCalledTimes(1));
+      const [start, end] = mocks.service.addBlackout.mock.calls[0];
+      expect((end.getTime() - start.getTime()) / 86_400_000).toBe(1);
+      expect(start.getTime()).toBeGreaterThan(Date.now());
     });
 
     it('lets the provider lift an own entry but not one that came from a booked job', async () => {

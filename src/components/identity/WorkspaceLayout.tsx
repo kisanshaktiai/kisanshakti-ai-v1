@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Briefcase, Home, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { ScrollContext } from '@/components/layout/ScrollContext';
 import { WorkspaceSwitcher } from '@/components/identity/WorkspaceSwitcher';
 import { ReachHeaderButton } from '@/components/identity/ReachCard';
@@ -19,7 +20,7 @@ interface WorkspaceLayoutProps {
 
 /**
  * Shell of the Provider and Customer workspaces: header with the role chip, the
- * base village with radius as a button and the language, one scroll container, and a bottom navigation with Home and
+ * base village with radius as a button, the read-aloud button and the language, one scroll container, and a bottom navigation with Home and
  * Profile — plus "My business" in the Provider workspace while the
  * provider_workspace flag is on. Built beside AppLayout with the same layout utilities; it mounts no
  * farmer provider, so no farmer data is requested from these workspaces.
@@ -69,6 +70,7 @@ export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <ReachHeaderButton role={role} />
+            <SpeakPageButton />
             <LanguageSelector />
           </div>
         </header>

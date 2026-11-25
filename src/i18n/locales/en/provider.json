@@ -23,7 +23,12 @@
         "ACTIVE": "Active",
         "PAUSED": "Paused",
         "REMOVED": "Removed"
-      }
+      },
+      "next": "Next",
+      "previousStep": "Go back one step",
+      "stepOf": "{{current}} of {{total}}",
+      "less": "Less",
+      "more": "More"
     },
     "availability": {
       "title": "Farmers see you as",
@@ -40,7 +45,8 @@
       },
       "acceptingLabel": "Take new requests",
       "acceptingHint": "Turn off when you cannot take more work.",
-      "markBusy": "Mark the days I am busy"
+      "markBusy": "Mark the days I am busy",
+      "acceptingShort": "Taking work"
     },
     "setup": {
       "title": "Get listed",
@@ -68,7 +74,9 @@
         }
       },
       "submit": "Send for review",
-      "submitHint": "Finish all four steps to send your listing."
+      "submitHint": "Finish all four steps to send your listing.",
+      "progress": "{{done}} of {{total}} done",
+      "next": "Next: {{step}}"
     },
     "listing": {
       "title": "Your listing",
@@ -104,7 +112,8 @@
         "daysOff": "Busy days",
         "equipment": "Equipment",
         "nursery": "Nursery store"
-      }
+      },
+      "todo": "To do"
     },
     "profile": {
       "title": "Business details",
@@ -114,7 +123,9 @@
       "experienceLabel": "Years of experience",
       "experienceInvalid": "Enter a whole number from 0 to {{max}}.",
       "aboutLabel": "About your work (optional)",
-      "languagesLabel": "Languages you speak"
+      "languagesLabel": "Languages you speak",
+      "typeQuestion": "What are you?",
+      "experienceCaption": "years"
     },
     "services": {
       "title": "Services and rates",
@@ -175,7 +186,19 @@
       "crewLabel": "People in the crew",
       "skillLabel": "Skill level",
       "equipmentLabel": "Equipment used",
-      "paymentLabel": "How you accept payment"
+      "paymentLabel": "How you accept payment",
+      "step1Title": "What work do you do?",
+      "step2Title": "What is your rate?",
+      "step3Title": "Last details",
+      "familyQuestion": "Pick the kind of work",
+      "seeAllFamilies": "See all {{count}} kinds of work",
+      "categoryQuestion": "Which service exactly?",
+      "unitQuestion": "How do you charge?",
+      "otherUnits": "Other ways to charge",
+      "rateQuestion": "How much?",
+      "includesQuestion": "What does your rate include?",
+      "includesHint": "Tap all that are included in the price.",
+      "paymentQuestion": "How do you take payment?"
     },
     "hours": {
       "title": "Working hours",
@@ -185,7 +208,14 @@
       "from": "From",
       "to": "To",
       "invalid": "Set both times; the end must be after the start.",
-      "copyToAll": "Use the first working day for all days"
+      "copyToAll": "Use the first working day for all days",
+      "daysQuestion": "Which days do you work?",
+      "noDays": "Tap the days you work.",
+      "daysCount": "Working days: {{count}}",
+      "timesQuestion": "From what time to what time?",
+      "useUsual": "Use {{from}} to {{to}}",
+      "perDayLabel": "Different times on different days",
+      "perDayHint": "Turn on to set each day on its own."
     },
     "daysOff": {
       "title": "Busy days",
@@ -208,7 +238,17 @@
       "emptyDescription": "You are shown as available on all your working days.",
       "fromJob": "Booked job",
       "ownEntry": "Marked by you",
-      "cancel": "Free again"
+      "cancel": "Free again",
+      "whenQuestion": "When are you busy?",
+      "pickDates": "Or pick the dates",
+      "spanText": "Busy for {{count}} day(s)",
+      "listTitle": "Your busy days",
+      "quick": {
+        "today": "Today",
+        "tomorrow": "Tomorrow",
+        "threeDays": "Next 3 days",
+        "week": "This week"
+      }
     },
     "equipment": {
       "title": "Equipment",
@@ -237,7 +277,8 @@
       },
       "registrationLabel": "Registration number (optional)",
       "registrationHint": "Only the last four characters are kept.",
-      "registrationEnding": "Number ending {{last4}}"
+      "registrationEnding": "Number ending {{last4}}",
+      "typeQuestion": "What machine is it?"
     },
     "nursery": {
       "title": "Nursery store",
@@ -261,7 +302,12 @@
       "minOrderLabel": "Smallest order (optional)",
       "totalLabel": "How many",
       "totalHint": "Already promised to farmers: {{count}}. The number cannot go below this.",
-      "readyLabel": "Ready on"
+      "readyLabel": "Ready on",
+      "summaryPlants": "Plants on sale",
+      "summaryStock": "In stock",
+      "summaryReserved": "Booked",
+      "inStock": "In stock: {{count}}",
+      "cropQuestion": "Which plant do you sell?"
     },
     "errors": {
       "generic": "Something went wrong. Please try again.",
@@ -520,6 +566,10 @@
         "BANK_TRANSFER": "Bank transfer",
         "CREDIT_AFTER_HARVEST": "Credit until harvest"
       }
+    },
+    "home": {
+      "activeCount": "Active: {{count}}",
+      "readyPlants": "Ready to sell: {{count}}"
     }
   }
 }

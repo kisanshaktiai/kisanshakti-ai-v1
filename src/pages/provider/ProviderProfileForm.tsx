@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Building2, Landmark, Rocket, Tractor, TreePine, UserRound, Users, type LucideIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ChoiceChips, Field, INPUT_CLASS, ProviderPage, SaveError } from '@/components/provider/ProviderUi';
+import {
+  BigNumber, ChoiceChips, Field, INPUT_CLASS, PrimaryAction, ProviderPage, Question, SaveError, TileGrid,
+} from '@/components/provider/ProviderUi';
 import { useAccountStore } from '@/stores/accountStore';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
@@ -18,10 +19,22 @@ const NAME_MAX = 80;
 const ABOUT_MAX = 600;
 const EXPERIENCE_MAX = 80;
 
+// A picture for each kind of provider in the catalogue.
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  INDIVIDUAL: UserRound,
+  BUSINESS: Building2,
+  CUSTOM_HIRING_CENTRE: Tractor,
+  FPO_COOPERATIVE: Users,
+  NURSERY: TreePine,
+  STARTUP: Rocket,
+  INSTITUTION: Landmark,
+};
+
 /**
- * Business profile: who the provider is, the name farmers will see, years of
- * experience, a short note and the languages spoken. Verification, rating and
- * listing status are set by the platform and have no field here.
+ * Business details: who the provider is (a picture tile per kind), the name
+ * farmers will see, years of experience, a short note and the languages
+ * spoken. Verification, rating and listing status are set by the platform and
+ * have no field here.
  */
 export default function ProviderProfileForm() {
   const { t } = useTranslation();
@@ -53,8 +66,7 @@ export default function ProviderProfileForm() {
   const yearsValid = years == null || (Number.isInteger(years) && years >= 0 && years <= EXPERIENCE_MAX);
   const canSave = !!providerType && !!name.trim() && yearsValid && !saving && isOnline;
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async () => {
     if (!canSave) return;
     const ok = await run(() => providerWorkspaceService.saveProfile({
       provider_type: providerType,
@@ -75,22 +87,22 @@ export default function ProviderProfileForm() {
       loadError={loadError}
       onRetry={reload}
       isOnline={isOnline}
+      footer={catalogue ? <PrimaryAction onClick={handleSave} disabled={!canSave} busy={saving}>{t('provider.common.save')}</PrimaryAction> : undefined}
     >
       {catalogue && (
-        <form onSubmit={handleSave} className="space-y-5">
+        <div className="space-y-5">
           <SaveError message={saveError} />
 
-          <Field label={t('provider.profile.typeLabel')}>
-            <ChoiceChips
-              label={t('provider.profile.typeLabel')}
-              options={catalogue.providerTypes.map((p) => ({
-                value: p.code, label: catalogueLabel('providerType', p.code, p.label_en),
-              }))}
-              selected={providerType ? [providerType] : []}
-              onToggle={setProviderType}
-              disabled={saving}
-            />
-          </Field>
+          <Question>{t('provider.profile.typeQuestion')}</Question>
+          <TileGrid
+            label={t('provider.profile.typeLabel')}
+            options={catalogue.providerTypes.map((p) => ({
+              value: p.code, label: catalogueLabel('providerType', p.code, p.label_en), icon: TYPE_ICONS[p.code] ?? UserRound,
+            }))}
+            selected={providerType ? [providerType] : []}
+            onToggle={setProviderType}
+            disabled={saving}
+          />
 
           <Field label={t('provider.profile.nameLabel')} htmlFor="provider-name" hint={t('provider.profile.nameHint')}>
             <Input
@@ -104,20 +116,23 @@ export default function ProviderProfileForm() {
             />
           </Field>
 
-          <Field
+          <BigNumber
+            id="provider-experience"
             label={t('provider.profile.experienceLabel')}
-            htmlFor="provider-experience"
-            hint={yearsValid ? undefined : t('provider.profile.experienceInvalid', { max: EXPERIENCE_MAX })}
-          >
-            <Input
-              id="provider-experience"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={EXPERIENCE_MAX}
-              value={experience}
-              onChange={(e) => setExperience(e.target.value)}
-              className={INPUT_CLASS}
+            value={experience}
+            onChange={setExperience}
+            caption={yearsValid ? t('provider.profile.experienceCaption') : t('provider.profile.experienceInvalid', { max: EXPERIENCE_MAX })}
+            disabled={saving}
+          />
+
+          <Field label={t('provider.profile.languagesLabel')}>
+            <ChoiceChips
+              label={t('provider.profile.languagesLabel')}
+              options={availableLanguages.map((l) => ({ value: l.code, label: l.nativeName }))}
+              selected={languages}
+              onToggle={(code) =>
+                setLanguages((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]))
+              }
               disabled={saving}
             />
           </Field>
@@ -133,28 +148,11 @@ export default function ProviderProfileForm() {
               onChange={(e) => setAbout(e.target.value.slice(0, ABOUT_MAX))}
               maxLength={ABOUT_MAX}
               rows={4}
-              className="text-lg rounded-2xl"
+              className="text-lg rounded-2xl border-2"
               disabled={saving}
             />
           </Field>
-
-          <Field label={t('provider.profile.languagesLabel')}>
-            <ChoiceChips
-              label={t('provider.profile.languagesLabel')}
-              options={availableLanguages.map((l) => ({ value: l.code, label: l.nativeName }))}
-              selected={languages}
-              onToggle={(code) =>
-                setLanguages((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]))
-              }
-              disabled={saving}
-            />
-          </Field>
-
-          <Button type="submit" disabled={!canSave} className="w-full h-12 text-base">
-            {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
-            {t('provider.common.save')}
-          </Button>
-        </form>
+        </div>
       )}
     </ProviderPage>
   );

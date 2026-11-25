@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CalendarOff, Loader2, X } from 'lucide-react';
+import { CalendarOff, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/layout/EmptyState';
-import { Field, INPUT_CLASS, NativeSelect, ProviderPage, SaveError } from '@/components/provider/ProviderUi';
+import {
+  ChoiceChips, Field, INPUT_CLASS, Panel, PrimaryAction, ProviderPage, Question, SaveError, StatusBadge,
+} from '@/components/provider/ProviderUi';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
 import { providerWorkspaceService, type Blackout } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
+import { hapticFeedback } from '@/lib/haptics';
 import { formatDay } from '@/lib/providerText';
+import { cn } from '@/lib/utils';
 
 // Reason codes the provider may give. The reason stays with the provider:
 // farmers only ever see "busy until <date>".
@@ -25,6 +28,11 @@ const endOfDay = (value: string) => {
   date.setDate(date.getDate() + 1);
   return date;
 };
+const daysFromToday = (n: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + n);
+  return dayValue(date);
+};
 
 /** "3 Dec 2026" for one day, "3 Dec 2026 – 6 Dec 2026" for several. */
 function periodText(blackout: Blackout): string {
@@ -37,9 +45,11 @@ function periodText(blackout: Blackout): string {
 }
 
 /**
- * Days off ("I am busy"): periods in which the provider cannot take work.
- * While a period runs, farmers see the provider as busy until the next free
- * working day — never where the provider is or for whom they work.
+ * Busy days ("I am busy"): periods in which the provider cannot take work.
+ * Quick choices cover the common cases (today, tomorrow, a few days); the
+ * dates can also be picked. While a period runs, farmers see the provider as
+ * busy until the next free working day — never where the provider is or for
+ * whom they work.
  */
 export default function ProviderDaysOff() {
   const { t } = useTranslation();
@@ -54,8 +64,15 @@ export default function ProviderDaysOff() {
   const valid = !!from && !!to && to >= from && to >= today && span <= maxDays;
   const canAdd = valid && !saving && isOnline;
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const quick = [
+    { key: 'today', from: today, to: today },
+    { key: 'tomorrow', from: daysFromToday(1), to: daysFromToday(1) },
+    { key: 'threeDays', from: today, to: daysFromToday(2) },
+    { key: 'week', from: today, to: daysFromToday(6) },
+  ];
+  const pickQuick = (q: { from: string; to: string }) => { hapticFeedback('light'); setFrom(q.from); setTo(q.to); };
+
+  const handleAdd = async () => {
     if (!canAdd) return;
     const ok = await run(() => providerWorkspaceService.addBlackout(startOfDay(from), endOfDay(to), reason || null));
     if (ok) { setFrom(today); setTo(today); setReason(''); }
@@ -71,61 +88,79 @@ export default function ProviderDaysOff() {
       loadError={loadError}
       onRetry={reload}
       isOnline={isOnline}
+      footer={workspace ? <PrimaryAction onClick={handleAdd} disabled={!canAdd} busy={saving} icon={CalendarOff}>{t('provider.daysOff.add')}</PrimaryAction> : undefined}
     >
       {workspace && (
-        <>
-          <p className="text-sm text-muted-foreground">{t('provider.daysOff.description')}</p>
+        <div className="space-y-5">
           <SaveError message={saveError} />
 
-          <Card className="p-4">
-            <form onSubmit={handleAdd} className="space-y-4">
-              <h2 className="text-lg font-semibold text-foreground">{t('provider.daysOff.addTitle')}</h2>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label={t('provider.daysOff.from')} htmlFor="daysoff-from">
-                  <Input
-                    id="daysoff-from"
-                    type="date"
-                    min={today}
-                    value={from}
-                    onChange={(e) => { setFrom(e.target.value); if (e.target.value > to) setTo(e.target.value); }}
-                    className={INPUT_CLASS}
-                    disabled={saving}
-                    required
-                  />
-                </Field>
-                <Field label={t('provider.daysOff.to')} htmlFor="daysoff-to">
-                  <Input
-                    id="daysoff-to"
-                    type="date"
-                    min={from || today}
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    className={INPUT_CLASS}
-                    disabled={saving}
-                    required
-                  />
-                </Field>
-              </div>
-              {!valid && from && to && (
-                <p className="text-xs text-destructive">{t('provider.daysOff.invalid', { count: maxDays })}</p>
-              )}
-              <Field label={t('provider.daysOff.reasonLabel')} htmlFor="daysoff-reason" hint={t('provider.daysOff.reasonHint')}>
-                <NativeSelect
-                  id="daysoff-reason"
-                  value={reason}
-                  onChange={setReason}
-                  options={REASON_CODES.map((code) => ({ value: code, label: t(`provider.daysOff.reasons.${code}`) }))}
-                  placeholder={t('provider.common.notSet')}
+          <Question hint={t('provider.daysOff.description')}>{t('provider.daysOff.whenQuestion')}</Question>
+          <div role="group" aria-label={t('provider.daysOff.whenQuestion')} className="grid grid-cols-2 gap-3">
+            {quick.map((q) => {
+              const isOn = from === q.from && to === q.to;
+              return (
+                <button
+                  key={q.key}
+                  type="button"
+                  aria-pressed={isOn}
                   disabled={saving}
+                  onClick={() => pickQuick(q)}
+                  className={cn(
+                    'min-h-[64px] rounded-3xl border-[3px] px-3 text-lg font-bold transition-colors active:scale-[0.98]',
+                    isOn ? 'border-primary bg-primary/10 text-foreground' : 'border-transparent bg-card text-foreground shadow-sm',
+                  )}
+                >
+                  {t(`provider.daysOff.quick.${q.key}`)}
+                </button>
+              );
+            })}
+          </div>
+
+          <Panel className="space-y-4">
+            <p className="text-base font-bold text-foreground">{t('provider.daysOff.pickDates')}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('provider.daysOff.from')} htmlFor="daysoff-from">
+                <Input
+                  id="daysoff-from"
+                  type="date"
+                  min={today}
+                  value={from}
+                  onChange={(e) => { setFrom(e.target.value); if (e.target.value > to) setTo(e.target.value); }}
+                  className={INPUT_CLASS}
+                  disabled={saving}
+                  required
                 />
               </Field>
-              <Button type="submit" className="w-full h-12 text-base" disabled={!canAdd}>
-                {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
-                {t('provider.daysOff.add')}
-              </Button>
-            </form>
-          </Card>
+              <Field label={t('provider.daysOff.to')} htmlFor="daysoff-to">
+                <Input
+                  id="daysoff-to"
+                  type="date"
+                  min={from || today}
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className={INPUT_CLASS}
+                  disabled={saving}
+                  required
+                />
+              </Field>
+            </div>
+            {!valid && from && to && (
+              <p className="text-sm text-destructive">{t('provider.daysOff.invalid', { count: maxDays })}</p>
+            )}
+            {valid && <p className="text-base font-medium text-foreground">{t('provider.daysOff.spanText', { count: span })}</p>}
+          </Panel>
 
+          <Field label={t('provider.daysOff.reasonLabel')} hint={t('provider.daysOff.reasonHint')}>
+            <ChoiceChips
+              label={t('provider.daysOff.reasonLabel')}
+              options={REASON_CODES.map((code) => ({ value: code, label: t(`provider.daysOff.reasons.${code}`) }))}
+              selected={reason ? [reason] : []}
+              onToggle={(code) => setReason((r) => (r === code ? '' : code))}
+              disabled={saving}
+            />
+          </Field>
+
+          <h2 className="text-lg font-bold text-foreground pt-2">{t('provider.daysOff.listTitle')}</h2>
           {blackouts.length === 0 && (
             <EmptyState
               icon={CalendarOff}
@@ -135,21 +170,21 @@ export default function ProviderDaysOff() {
           )}
 
           {blackouts.map((blackout) => (
-            <Card key={blackout.id} className="p-4 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-base font-semibold text-foreground break-words">{periodText(blackout)}</p>
-                <p className="text-sm text-muted-foreground">
+            <Panel key={blackout.id} className="flex items-center gap-3">
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-lg font-bold leading-tight text-foreground break-words">{periodText(blackout)}</p>
+                <StatusBadge tone={blackout.source === 'JOB' ? 'neutral' : 'busy'}>
                   {blackout.source === 'JOB'
                     ? t('provider.daysOff.fromJob')
                     : blackout.reason_code
                       ? t(`provider.daysOff.reasons.${blackout.reason_code}`, { defaultValue: t('provider.daysOff.ownEntry') })
                       : t('provider.daysOff.ownEntry')}
-                </p>
+                </StatusBadge>
               </div>
               {blackout.source === 'MANUAL' && (
                 <Button
                   variant="outline"
-                  className="h-12 shrink-0"
+                  className="h-12 shrink-0 rounded-2xl"
                   disabled={saving || !isOnline}
                   onClick={() => run(() => providerWorkspaceService.cancelBlackout(blackout.id))}
                 >
@@ -157,9 +192,9 @@ export default function ProviderDaysOff() {
                   {t('provider.daysOff.cancel')}
                 </Button>
               )}
-            </Card>
+            </Panel>
           ))}
-        </>
+        </div>
       )}
     </ProviderPage>
   );

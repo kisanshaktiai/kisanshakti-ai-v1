@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({ online: true, refreshEnabled: vi.fn() }));
 
+vi.mock('@/components/header/SpeakPageButton', () => ({ SpeakPageButton: () => null }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
 }));

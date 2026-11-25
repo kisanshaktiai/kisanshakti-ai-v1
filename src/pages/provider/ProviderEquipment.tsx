@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Pencil, Plus, Tractor, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
@@ -11,7 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/layout/EmptyState';
 import {
-  Field, INPUT_CLASS, NativeSelect, ProviderPage, SaveError, SwitchRow,
+  ChoiceChips, Field, INPUT_CLASS, Panel, PrimaryAction, ProviderPage, Question, SaveError, SwitchRow, TileGrid,
 } from '@/components/provider/ProviderUi';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
 import {
@@ -52,9 +51,10 @@ function equipmentTitle(catalogue: ProviderCatalogue, item: Equipment): string {
 }
 
 /**
- * Equipment the provider works with. The fields of a machine depend on its
- * type (the attribute list comes with the type from the catalogue). Only the
- * last four characters of a registration number are ever kept.
+ * Equipment the provider works with. The machine is picked from picture-free
+ * tiles by name, and its fields depend on its type (the attribute list comes
+ * with the type from the catalogue). Only the last four characters of a
+ * registration number are ever kept.
  */
 export default function ProviderEquipment() {
   const { t } = useTranslation();
@@ -125,15 +125,11 @@ export default function ProviderEquipment() {
       loadError={loadError}
       onRetry={reload}
       isOnline={isOnline}
+      footer={workspace && catalogue ? <PrimaryAction onClick={openNew} disabled={!isOnline} icon={Plus}>{t('provider.equipment.add')}</PrimaryAction> : undefined}
     >
       {workspace && catalogue && (
-        <>
+        <div className="space-y-3">
           {!form && <SaveError message={saveError} />}
-
-          <Button className="w-full h-12 text-base" onClick={openNew} disabled={!isOnline}>
-            <Plus className="w-5 h-5 mr-2" aria-hidden="true" />
-            {t('provider.equipment.add')}
-          </Button>
 
           {equipment.length === 0 && (
             <EmptyState
@@ -144,25 +140,30 @@ export default function ProviderEquipment() {
           )}
 
           {equipment.map((item) => (
-            <Card key={item.id} className="p-4 space-y-3">
-              <div>
-                <p className="text-base font-semibold text-foreground break-words">{equipmentTitle(catalogue, item)}</p>
-                <p className="text-sm text-muted-foreground break-words">
-                  {[
-                    t(`provider.equipment.ownership.${item.ownership}`),
-                    item.year_made != null ? String(item.year_made) : null,
-                    item.registration_last4 ? t('provider.equipment.registrationEnding', { last4: item.registration_last4 }) : null,
-                  ].filter(Boolean).join(' · ')}
-                </p>
+            <Panel key={item.id} className="space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <Tractor className="h-7 w-7" strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-lg font-bold leading-tight text-foreground break-words">{equipmentTitle(catalogue, item)}</p>
+                  <p className="text-sm text-muted-foreground break-words mt-1">
+                    {[
+                      t(`provider.equipment.ownership.${item.ownership}`),
+                      item.year_made != null ? String(item.year_made) : null,
+                      item.registration_last4 ? t('provider.equipment.registrationEnding', { last4: item.registration_last4 }) : null,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" className="h-12" onClick={() => openEdit(item)} disabled={!isOnline}>
+                <Button variant="outline" className="h-12 rounded-2xl" onClick={() => openEdit(item)} disabled={!isOnline}>
                   <Pencil className="w-4 h-4 mr-1.5" aria-hidden="true" />
                   {t('provider.common.edit')}
                 </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="outline" className="h-12" disabled={saving || !isOnline}>
+                    <Button variant="outline" className="h-12 rounded-2xl" disabled={saving || !isOnline}>
                       <Trash2 className="w-4 h-4 mr-1.5" aria-hidden="true" />
                       {t('provider.common.remove')}
                     </Button>
@@ -181,107 +182,116 @@ export default function ProviderEquipment() {
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
-            </Card>
+            </Panel>
           ))}
 
           <Sheet open={!!form} onOpenChange={(open) => { if (!open) setForm(null); }}>
             <SheetContent side="bottom" className="rounded-t-3xl pb-safe max-h-[92vh] overflow-y-auto">
               <SheetHeader className="text-left mb-4">
-                <SheetTitle>{t(form?.id ? 'provider.equipment.editTitle' : 'provider.equipment.add')}</SheetTitle>
+                <SheetTitle className="text-xl">{t(form?.id ? 'provider.equipment.editTitle' : 'provider.equipment.add')}</SheetTitle>
               </SheetHeader>
               {form && (
                 <form onSubmit={handleSave} className="space-y-5">
                   <SaveError message={saveError} />
 
-                  <Field label={t('provider.equipment.typeLabel')} htmlFor="equipment-type">
-                    <NativeSelect
-                      id="equipment-type"
-                      value={form.type}
-                      onChange={(type) => setForm((f) => (f ? { ...f, type, attributes: {} } : f))}
+                  {!form.id && <Question>{t('provider.equipment.typeQuestion')}</Question>}
+                  {form.id ? (
+                    <Field label={t('provider.equipment.typeLabel')}>
+                      <p className="text-lg font-bold text-foreground">{typeLabel(catalogue, form.type)}</p>
+                    </Field>
+                  ) : (
+                    <ChoiceChips
+                      label={t('provider.equipment.typeLabel')}
                       options={catalogue.equipmentTypes.map((e) => ({ value: e.code, label: typeLabel(catalogue, e.code) }))}
-                      placeholder={t('provider.common.choose')}
+                      selected={form.type ? [form.type] : []}
+                      onToggle={(type) => setForm((f) => (f ? { ...f, type, attributes: {} } : f))}
                       disabled={saving}
                     />
-                  </Field>
+                  )}
 
-                  <Field label={t('provider.equipment.makeLabel')} htmlFor="equipment-make">
-                    <Input id="equipment-make" value={form.make} onChange={(e) => set('make', e.target.value.slice(0, TEXT_MAX))} maxLength={TEXT_MAX} className={INPUT_CLASS} disabled={saving} />
-                  </Field>
-                  <Field label={t('provider.equipment.modelLabel')} htmlFor="equipment-model">
-                    <Input id="equipment-model" value={form.model} onChange={(e) => set('model', e.target.value.slice(0, TEXT_MAX))} maxLength={TEXT_MAX} className={INPUT_CLASS} disabled={saving} />
-                  </Field>
-                  <Field
-                    label={t('provider.equipment.yearLabel')}
-                    htmlFor="equipment-year"
-                    hint={yearValid ? undefined : t('provider.equipment.yearInvalid', { min: YEAR_MIN })}
-                  >
-                    <Input id="equipment-year" type="number" inputMode="numeric" value={form.year} onChange={(e) => set('year', e.target.value)} className={INPUT_CLASS} disabled={saving} />
-                  </Field>
+                  {form.type && (
+                    <>
+                      <Field label={t('provider.equipment.makeLabel')} htmlFor="equipment-make">
+                        <Input id="equipment-make" value={form.make} onChange={(e) => set('make', e.target.value.slice(0, TEXT_MAX))} maxLength={TEXT_MAX} className={INPUT_CLASS} disabled={saving} />
+                      </Field>
+                      <Field label={t('provider.equipment.modelLabel')} htmlFor="equipment-model">
+                        <Input id="equipment-model" value={form.model} onChange={(e) => set('model', e.target.value.slice(0, TEXT_MAX))} maxLength={TEXT_MAX} className={INPUT_CLASS} disabled={saving} />
+                      </Field>
+                      <Field
+                        label={t('provider.equipment.yearLabel')}
+                        htmlFor="equipment-year"
+                        hint={yearValid ? undefined : t('provider.equipment.yearInvalid', { min: YEAR_MIN })}
+                      >
+                        <Input id="equipment-year" type="number" inputMode="numeric" value={form.year} onChange={(e) => set('year', e.target.value)} className={INPUT_CLASS} disabled={saving} />
+                      </Field>
 
-                  {definitions.map((definition) => {
-                    const fieldLabel = catalogueLabel('attribute', definition.code, definition.label_en);
-                    const id = `equipment-attr-${definition.code}`;
-                    if (definition.type === 'boolean') {
-                      return (
-                        <SwitchRow
-                          key={definition.code}
-                          id={id}
-                          label={fieldLabel}
-                          checked={form.attributes[definition.code] === true}
-                          onCheckedChange={(checked) => set('attributes', { ...form.attributes, [definition.code]: checked })}
-                          disabled={saving}
-                        />
-                      );
-                    }
-                    return (
-                      <Field key={definition.code} label={definition.unit ? `${fieldLabel} (${definition.unit})` : fieldLabel} htmlFor={id}>
-                        <Input
-                          id={id}
-                          type={definition.type === 'number' ? 'number' : 'text'}
-                          inputMode={definition.type === 'number' ? 'decimal' : undefined}
-                          step={definition.type === 'number' ? 'any' : undefined}
-                          value={typeof form.attributes[definition.code] === 'string' ? (form.attributes[definition.code] as string) : ''}
-                          onChange={(e) => set('attributes', { ...form.attributes, [definition.code]: e.target.value })}
-                          maxLength={definition.type === 'number' ? undefined : TEXT_MAX}
-                          className={INPUT_CLASS}
+                      {definitions.map((definition) => {
+                        const fieldLabel = catalogueLabel('attribute', definition.code, definition.label_en);
+                        const id = `equipment-attr-${definition.code}`;
+                        if (definition.type === 'boolean') {
+                          return (
+                            <SwitchRow
+                              key={definition.code}
+                              id={id}
+                              label={fieldLabel}
+                              checked={form.attributes[definition.code] === true}
+                              onCheckedChange={(checked) => set('attributes', { ...form.attributes, [definition.code]: checked })}
+                              disabled={saving}
+                            />
+                          );
+                        }
+                        return (
+                          <Field key={definition.code} label={definition.unit ? `${fieldLabel} (${definition.unit})` : fieldLabel} htmlFor={id}>
+                            <Input
+                              id={id}
+                              type={definition.type === 'number' ? 'number' : 'text'}
+                              inputMode={definition.type === 'number' ? 'decimal' : undefined}
+                              step={definition.type === 'number' ? 'any' : undefined}
+                              value={typeof form.attributes[definition.code] === 'string' ? (form.attributes[definition.code] as string) : ''}
+                              onChange={(e) => set('attributes', { ...form.attributes, [definition.code]: e.target.value })}
+                              maxLength={definition.type === 'number' ? undefined : TEXT_MAX}
+                              className={INPUT_CLASS}
+                              disabled={saving}
+                            />
+                          </Field>
+                        );
+                      })}
+
+                      <Field label={t('provider.equipment.ownershipLabel')}>
+                        <TileGrid
+                          label={t('provider.equipment.ownershipLabel')}
+                          columns={3}
+                          options={OWNERSHIPS.map((code) => ({ value: code, label: t(`provider.equipment.ownership.${code}`) }))}
+                          selected={[form.ownership]}
+                          onToggle={(value) => set('ownership', value)}
                           disabled={saving}
                         />
                       </Field>
-                    );
-                  })}
+                      <Field label={t('provider.equipment.conditionLabel')}>
+                        <TileGrid
+                          label={t('provider.equipment.conditionLabel')}
+                          columns={3}
+                          options={CONDITIONS.map((code) => ({ value: code, label: t(`provider.equipment.condition.${code}`) }))}
+                          selected={form.condition ? [form.condition] : []}
+                          onToggle={(value) => set('condition', form.condition === value ? '' : value)}
+                          disabled={saving}
+                        />
+                      </Field>
+                      <Field label={t('provider.equipment.registrationLabel')} htmlFor="equipment-registration" hint={t('provider.equipment.registrationHint')}>
+                        <Input id="equipment-registration" value={form.registration} onChange={(e) => set('registration', e.target.value.slice(0, 20))} maxLength={20} autoCapitalize="characters" className={INPUT_CLASS} disabled={saving} />
+                      </Field>
+                    </>
+                  )}
 
-                  <Field label={t('provider.equipment.ownershipLabel')} htmlFor="equipment-ownership">
-                    <NativeSelect
-                      id="equipment-ownership"
-                      value={form.ownership}
-                      onChange={(value) => set('ownership', value)}
-                      options={OWNERSHIPS.map((code) => ({ value: code, label: t(`provider.equipment.ownership.${code}`) }))}
-                      disabled={saving}
-                    />
-                  </Field>
-                  <Field label={t('provider.equipment.conditionLabel')} htmlFor="equipment-condition">
-                    <NativeSelect
-                      id="equipment-condition"
-                      value={form.condition}
-                      onChange={(value) => set('condition', value)}
-                      options={CONDITIONS.map((code) => ({ value: code, label: t(`provider.equipment.condition.${code}`) }))}
-                      placeholder={t('provider.common.notSet')}
-                      disabled={saving}
-                    />
-                  </Field>
-                  <Field label={t('provider.equipment.registrationLabel')} htmlFor="equipment-registration" hint={t('provider.equipment.registrationHint')}>
-                    <Input id="equipment-registration" value={form.registration} onChange={(e) => set('registration', e.target.value.slice(0, 20))} maxLength={20} autoCapitalize="characters" className={INPUT_CLASS} disabled={saving} />
-                  </Field>
-
-                  <Button type="submit" disabled={!canSave} className="w-full h-12 text-base">
-                    {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
+                  <Button type="submit" disabled={!canSave} className="w-full h-14 rounded-2xl text-lg font-semibold">
+                    {saving && <Loader2 className="w-5 h-5 animate-spin mr-2" aria-hidden="true" />}
                     {t('provider.common.save')}
                   </Button>
                 </form>
               )}
             </SheetContent>
           </Sheet>
-        </>
+        </div>
       )}
     </ProviderPage>
   );

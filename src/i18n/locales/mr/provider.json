@@ -23,7 +23,12 @@
         "ACTIVE": "चालू",
         "PAUSED": "थांबवलेले",
         "REMOVED": "काढलेले"
-      }
+      },
+      "next": "पुढे",
+      "previousStep": "एक पाऊल मागे",
+      "stepOf": "{{total}} पैकी {{current}}",
+      "less": "कमी",
+      "more": "जास्त"
     },
     "availability": {
       "title": "शेतकऱ्यांना तुम्ही असे दिसता",
@@ -40,7 +45,8 @@
       },
       "acceptingLabel": "नवीन मागण्या घ्या",
       "acceptingHint": "आणखी काम घेता येत नसेल तेव्हा बंद करा.",
-      "markBusy": "माझे व्यस्त दिवस भरा"
+      "markBusy": "माझे व्यस्त दिवस भरा",
+      "acceptingShort": "काम घेत आहात"
     },
     "setup": {
       "title": "यादीत या",
@@ -68,7 +74,9 @@
         }
       },
       "submit": "तपासणीसाठी पाठवा",
-      "submitHint": "तुमची नोंद पाठवण्यासाठी चारही टप्पे पूर्ण करा."
+      "submitHint": "तुमची नोंद पाठवण्यासाठी चारही टप्पे पूर्ण करा.",
+      "progress": "{{total}} पैकी {{done}} पूर्ण",
+      "next": "पुढील: {{step}}"
     },
     "listing": {
       "title": "तुमची नोंद",
@@ -104,7 +112,8 @@
         "daysOff": "व्यस्त दिवस",
         "equipment": "उपकरणे",
         "nursery": "रोपवाटिका दुकान"
-      }
+      },
+      "todo": "बाकी आहे"
     },
     "profile": {
       "title": "व्यवसायाची माहिती",
@@ -114,7 +123,9 @@
       "experienceLabel": "अनुभवाची वर्षे",
       "experienceInvalid": "0 ते {{max}} मधील पूर्ण अंक भरा.",
       "aboutLabel": "तुमच्या कामाबद्दल (ऐच्छिक)",
-      "languagesLabel": "तुम्ही बोलता त्या भाषा"
+      "languagesLabel": "तुम्ही बोलता त्या भाषा",
+      "typeQuestion": "तुम्ही काय आहात?",
+      "experienceCaption": "वर्षे"
     },
     "services": {
       "title": "सेवा व दर",
@@ -175,7 +186,19 @@
       "crewLabel": "टोळीतील माणसे",
       "skillLabel": "कौशल्य पातळी",
       "equipmentLabel": "वापरले जाणारे उपकरण",
-      "paymentLabel": "तुम्ही पैसे कसे घेता"
+      "paymentLabel": "तुम्ही पैसे कसे घेता",
+      "step1Title": "तुम्ही कोणते काम करता?",
+      "step2Title": "तुमचा दर काय आहे?",
+      "step3Title": "शेवटची माहिती",
+      "familyQuestion": "कामाचा प्रकार निवडा",
+      "seeAllFamilies": "सर्व {{count}} प्रकारची कामे पाहा",
+      "categoryQuestion": "नेमकी कोणती सेवा?",
+      "unitQuestion": "तुम्ही कसे आकारता?",
+      "otherUnits": "आकारण्याचे इतर मार्ग",
+      "rateQuestion": "किती?",
+      "includesQuestion": "दरात काय समाविष्ट आहे?",
+      "includesHint": "दरात जे समाविष्ट आहे त्यावर टॅप करा.",
+      "paymentQuestion": "तुम्ही पैसे कसे घेता?"
     },
     "hours": {
       "title": "कामाच्या वेळा",
@@ -185,7 +208,14 @@
       "from": "पासून",
       "to": "पर्यंत",
       "invalid": "दोन्ही वेळा भरा; संपण्याची वेळ सुरू होण्याच्या वेळेनंतरची असावी.",
-      "copyToAll": "पहिल्या कामाच्या दिवसाची वेळ सर्व दिवसांना लावा"
+      "copyToAll": "पहिल्या कामाच्या दिवसाची वेळ सर्व दिवसांना लावा",
+      "daysQuestion": "तुम्ही कोणत्या दिवशी काम करता?",
+      "noDays": "ज्या दिवशी काम करता त्यावर टॅप करा.",
+      "daysCount": "कामाचे दिवस: {{count}}",
+      "timesQuestion": "किती वाजल्यापासून किती वाजेपर्यंत?",
+      "useUsual": "{{from}} ते {{to}} ठेवा",
+      "perDayLabel": "वेगवेगळ्या दिवशी वेगळी वेळ",
+      "perDayHint": "प्रत्येक दिवसाची वेळ वेगळी ठेवण्यासाठी चालू करा."
     },
     "daysOff": {
       "title": "व्यस्त दिवस",
@@ -208,7 +238,17 @@
       "emptyDescription": "तुम्ही तुमच्या सर्व कामाच्या दिवशी उपलब्ध दिसत आहात.",
       "fromJob": "ठरलेले काम",
       "ownEntry": "तुम्ही नोंदवलेले",
-      "cancel": "पुन्हा मोकळे"
+      "cancel": "पुन्हा मोकळे",
+      "whenQuestion": "तुम्ही कधी व्यस्त आहात?",
+      "pickDates": "किंवा तारखा निवडा",
+      "spanText": "{{count}} दिवस व्यस्त",
+      "listTitle": "तुमचे व्यस्त दिवस",
+      "quick": {
+        "today": "आज",
+        "tomorrow": "उद्या",
+        "threeDays": "पुढील 3 दिवस",
+        "week": "हा आठवडा"
+      }
     },
     "equipment": {
       "title": "उपकरणे",
@@ -237,7 +277,8 @@
       },
       "registrationLabel": "नोंदणी क्रमांक (ऐच्छिक)",
       "registrationHint": "फक्त शेवटची चार अक्षरे ठेवली जातात.",
-      "registrationEnding": "क्रमांकाची शेवटची अक्षरे {{last4}}"
+      "registrationEnding": "क्रमांकाची शेवटची अक्षरे {{last4}}",
+      "typeQuestion": "कोणते यंत्र आहे?"
     },
     "nursery": {
       "title": "रोपवाटिका दुकान",
@@ -261,7 +302,12 @@
       "minOrderLabel": "सर्वात लहान ऑर्डर (ऐच्छिक)",
       "totalLabel": "किती",
       "totalHint": "शेतकऱ्यांसाठी आधीच राखीव: {{count}}. संख्या यापेक्षा कमी होऊ शकत नाही.",
-      "readyLabel": "कधी तयार होतील"
+      "readyLabel": "कधी तयार होतील",
+      "summaryPlants": "विक्रीसाठी रोपे",
+      "summaryStock": "साठ्यात",
+      "summaryReserved": "बुक झालेली",
+      "inStock": "साठ्यात: {{count}}",
+      "cropQuestion": "तुम्ही कोणते रोप विकता?"
     },
     "errors": {
       "generic": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.",
@@ -520,6 +566,10 @@
         "BANK_TRANSFER": "बँक ट्रान्सफर",
         "CREDIT_AFTER_HARVEST": "काढणीपर्यंत उधारी"
       }
+    },
+    "home": {
+      "activeCount": "चालू: {{count}}",
+      "readyPlants": "विक्रीसाठी तयार: {{count}}"
     }
   }
 }

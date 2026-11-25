@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Copy, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { ProviderPage, SaveError, SwitchRow } from '@/components/provider/ProviderUi';
+import {
+  Field, INPUT_CLASS, Panel, PrimaryAction, ProviderPage, Question, SaveError, SwitchRow,
+} from '@/components/provider/ProviderUi';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
 import { providerWorkspaceService, type WorkingDay } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
-import { clockValue, weekdayName } from '@/lib/providerText';
+import { hapticFeedback } from '@/lib/haptics';
+import { clockValue, weekdayName, weekdayShort } from '@/lib/providerText';
+import { cn } from '@/lib/utils';
 
-// 0 = Sunday … 6 = Saturday, as the server counts.
+// 0 = Sunday … 6 = Saturday, as the server counts. Shown Monday first.
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
+const SHOWN_ORDER = [1, 2, 3, 4, 5, 6, 0];
+/** Offered when a day is first switched on and no time is set yet. */
+const DEFAULT_START = '08:00';
+const DEFAULT_END = '18:00';
 
 /** Seven rows for the form; a day the provider never saved starts as a day off. */
 function toForm(saved: WorkingDay[]): WorkingDay[] {
@@ -30,9 +36,15 @@ function toForm(saved: WorkingDay[]): WorkingDay[] {
 const dayValid = (day: WorkingDay) =>
   !day.is_working || (!!day.start_time && !!day.end_time && day.end_time > day.start_time);
 
+/** True when every working day has the same times (so one pair of times is enough). */
+function sameTimes(days: WorkingDay[]): boolean {
+  const working = days.filter((d) => d.is_working);
+  return working.every((d) => d.start_time === working[0].start_time && d.end_time === working[0].end_time);
+}
+
 /**
- * Working hours: for each day of the week, whether the provider works and from
- * when to when. The server uses them, with the days off, to tell farmers
+ * Working hours: tap the days worked, then set the times once for all of them
+ * (or day by day). The server uses them, with the busy days, to tell farmers
  * whether the provider is free.
  */
 export default function ProviderHours() {
@@ -40,20 +52,42 @@ export default function ProviderHours() {
   const navigate = useNavigate();
   const { workspace, loading, loadError, isOnline, saving, saveError, run, reload } = useProviderWorkspace();
   const [days, setDays] = useState<WorkingDay[] | null>(null);
+  const [perDay, setPerDay] = useState(false);
 
   useEffect(() => {
-    if (!days && workspace) setDays(toForm(workspace.working_hours));
+    if (!days && workspace) {
+      const form = toForm(workspace.working_hours);
+      setDays(form);
+      setPerDay(!sameTimes(form));
+    }
   }, [days, workspace]);
 
   const update = (weekday: number, change: Partial<WorkingDay>) =>
     setDays((current) => current?.map((d) => (d.weekday === weekday ? { ...d, ...change } : d)) ?? null);
 
-  const firstWorking = days?.find((d) => d.is_working && dayValid(d));
-  const copyToAll = () => {
-    if (!firstWorking) return;
-    setDays((current) => current?.map((d) => ({
-      ...d, is_working: true, start_time: firstWorking.start_time, end_time: firstWorking.end_time,
-    })) ?? null);
+  const working = days?.filter((d) => d.is_working) ?? [];
+  const shared = working[0] ?? null;
+
+  const toggleDay = (weekday: number) => {
+    hapticFeedback('light');
+    setDays((current) => {
+      if (!current) return current;
+      const day = current.find((d) => d.weekday === weekday)!;
+      if (day.is_working) return current.map((d) => (d.weekday === weekday ? { ...d, is_working: false } : d));
+      // A day switched on takes the shared times, or the usual day when none is set yet.
+      const first = current.find((d) => d.is_working);
+      const start = perDay ? '' : first?.start_time || '';
+      const end = perDay ? '' : first?.end_time || '';
+      return current.map((d) => (d.weekday === weekday ? { ...d, is_working: true, start_time: start, end_time: end } : d));
+    });
+  };
+
+  const setShared = (change: Partial<WorkingDay>) =>
+    setDays((current) => current?.map((d) => (d.is_working ? { ...d, ...change } : d)) ?? null);
+
+  const switchPerDay = (on: boolean) => {
+    setPerDay(on);
+    if (!on && shared) setShared({ start_time: shared.start_time, end_time: shared.end_time });
   };
 
   const allValid = !!days && days.every(dayValid);
@@ -72,6 +106,31 @@ export default function ProviderHours() {
     if (ok) navigate(PROVIDER_ROUTES.business);
   };
 
+  const timePair = (idSuffix: string, day: Pick<WorkingDay, 'start_time' | 'end_time'>, onChange: (change: Partial<WorkingDay>) => void, labelFrom: string, labelTo: string) => (
+    <div className="grid grid-cols-2 gap-3">
+      <Field label={labelFrom} htmlFor={`hours-start-${idSuffix}`}>
+        <Input
+          id={`hours-start-${idSuffix}`}
+          type="time"
+          value={day.start_time ?? ''}
+          onChange={(e) => onChange({ start_time: e.target.value })}
+          className={INPUT_CLASS}
+          disabled={saving}
+        />
+      </Field>
+      <Field label={labelTo} htmlFor={`hours-end-${idSuffix}`}>
+        <Input
+          id={`hours-end-${idSuffix}`}
+          type="time"
+          value={day.end_time ?? ''}
+          onChange={(e) => onChange({ end_time: e.target.value })}
+          className={INPUT_CLASS}
+          disabled={saving}
+        />
+      </Field>
+    </div>
+  );
+
   return (
     <ProviderPage
       title={t('provider.hours.title')}
@@ -80,63 +139,81 @@ export default function ProviderHours() {
       loadError={loadError}
       onRetry={reload}
       isOnline={isOnline}
+      footer={days ? <PrimaryAction onClick={handleSave} disabled={!canSave} busy={saving}>{t('provider.common.save')}</PrimaryAction> : undefined}
     >
       {days && (
-        <>
-          <p className="text-sm text-muted-foreground">{t('provider.hours.description')}</p>
+        <div className="space-y-5">
           <SaveError message={saveError} />
 
-          {days.map((day) => (
-            <Card key={day.weekday} className="p-4 space-y-3">
-              <SwitchRow
-                id={`hours-working-${day.weekday}`}
-                label={weekdayName(day.weekday)}
-                hint={t(day.is_working ? 'provider.hours.working' : 'provider.hours.dayOff')}
-                checked={day.is_working}
-                onCheckedChange={(checked) => update(day.weekday, { is_working: checked })}
-                disabled={saving}
-              />
-              {day.is_working && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label htmlFor={`hours-start-${day.weekday}`} className="text-sm text-muted-foreground">{t('provider.hours.from')}</label>
-                    <Input
-                      id={`hours-start-${day.weekday}`}
-                      type="time"
-                      value={day.start_time ?? ''}
-                      onChange={(e) => update(day.weekday, { start_time: e.target.value })}
-                      className="h-14 text-lg rounded-2xl"
-                      disabled={saving}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label htmlFor={`hours-end-${day.weekday}`} className="text-sm text-muted-foreground">{t('provider.hours.to')}</label>
-                    <Input
-                      id={`hours-end-${day.weekday}`}
-                      type="time"
-                      value={day.end_time ?? ''}
-                      onChange={(e) => update(day.weekday, { end_time: e.target.value })}
-                      className="h-14 text-lg rounded-2xl"
-                      disabled={saving}
-                    />
-                  </div>
-                  {!dayValid(day) && (
-                    <p className="col-span-2 text-xs text-destructive">{t('provider.hours.invalid')}</p>
+          <Question hint={t('provider.hours.description')}>{t('provider.hours.daysQuestion')}</Question>
+          <div role="group" aria-label={t('provider.hours.daysQuestion')} className="grid grid-cols-7 gap-1.5">
+            {SHOWN_ORDER.map((weekday) => {
+              const day = days.find((d) => d.weekday === weekday)!;
+              return (
+                <button
+                  key={weekday}
+                  type="button"
+                  aria-pressed={day.is_working}
+                  aria-label={weekdayName(weekday)}
+                  disabled={saving}
+                  onClick={() => toggleDay(weekday)}
+                  className={cn(
+                    'flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-2xl border-[3px] text-sm font-bold transition-colors active:scale-95',
+                    day.is_working ? 'border-primary bg-primary text-primary-foreground' : 'border-transparent bg-card text-muted-foreground shadow-sm',
                   )}
-                </div>
-              )}
-            </Card>
-          ))}
+                >
+                  {day.is_working ? <Check className="h-5 w-5" aria-hidden="true" /> : <span className="h-5" aria-hidden="true" />}
+                  <span className="truncate max-w-full px-0.5">{weekdayShort(weekday)}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-base font-medium text-foreground">
+            {working.length === 0 ? t('provider.hours.noDays') : t('provider.hours.daysCount', { count: working.length })}
+          </p>
 
-          <Button variant="outline" className="w-full h-12 text-base" onClick={copyToAll} disabled={!firstWorking || saving}>
-            <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
-            {t('provider.hours.copyToAll')}
-          </Button>
-          <Button className="w-full h-12 text-base" onClick={handleSave} disabled={!canSave}>
-            {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" aria-hidden="true" />}
-            {t('provider.common.save')}
-          </Button>
-        </>
+          {working.length > 0 && (
+            <>
+              <Question>{t('provider.hours.timesQuestion')}</Question>
+              {!perDay && shared && (
+                <Panel className="space-y-3">
+                  {timePair('all', shared, setShared, t('provider.hours.from'), t('provider.hours.to'))}
+                  {!dayValid(shared) && <p className="text-sm text-destructive">{t('provider.hours.invalid')}</p>}
+                  {!shared.start_time && !shared.end_time && (
+                    <button
+                      type="button"
+                      onClick={() => setShared({ start_time: DEFAULT_START, end_time: DEFAULT_END })}
+                      className="min-h-[44px] text-base font-semibold text-primary"
+                    >
+                      {t('provider.hours.useUsual', { from: DEFAULT_START, to: DEFAULT_END })}
+                    </button>
+                  )}
+                </Panel>
+              )}
+              <Panel>
+                <SwitchRow
+                  id="hours-per-day"
+                  label={t('provider.hours.perDayLabel')}
+                  hint={t('provider.hours.perDayHint')}
+                  checked={perDay}
+                  onCheckedChange={switchPerDay}
+                  disabled={saving}
+                />
+              </Panel>
+              {perDay && SHOWN_ORDER.map((weekday) => {
+                const day = days.find((d) => d.weekday === weekday)!;
+                if (!day.is_working) return null;
+                return (
+                  <Panel key={weekday} className="space-y-3">
+                    <p className="text-base font-bold text-foreground">{weekdayName(weekday)}</p>
+                    {timePair(String(weekday), day, (change) => update(weekday, change), t('provider.hours.from'), t('provider.hours.to'))}
+                    {!dayValid(day) && <p className="text-sm text-destructive">{t('provider.hours.invalid')}</p>}
+                  </Panel>
+                );
+              })}
+            </>
+          )}
+        </div>
       )}
     </ProviderPage>
   );

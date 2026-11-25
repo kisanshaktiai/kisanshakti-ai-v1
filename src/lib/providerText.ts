@@ -63,6 +63,12 @@ export function weekdayName(weekday: number): string {
     .format(new Date(Date.UTC(1970, 0, 4 + weekday)));
 }
 
+/** Short weekday name ("Mon"); 0 = Sunday, as the server counts. */
+export function weekdayShort(weekday: number): string {
+  return new Intl.DateTimeFormat(i18n.language, { weekday: 'short', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(1970, 0, 4 + weekday)));
+}
+
 /** Month name; 1 = January. */
 export function monthName(month: number): string {
   return new Intl.DateTimeFormat(i18n.language, { month: 'long', timeZone: 'UTC' })
