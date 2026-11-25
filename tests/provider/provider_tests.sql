@@ -340,6 +340,99 @@ SELECT chk('F06 rollout 100 turns it on for every tenant', q($$SELECT call_as('a
 UPDATE feature_flags SET is_enabled = false, rollout_percentage = 0 WHERE flag_name = 'provider_workspace';
 SELECT chk('F07 switched off again: false', q($$SELECT call_as('anon', 'tok-p1', 'SELECT provider_workspace_enabled()')$$), 'false');
 
+\echo '=== nursery store: variety, description, photos (20261124140500) ==='
+SELECT id AS np1 FROM nursery_products WHERE account_id = '9a000000-0000-0000-0000-000000000003' LIMIT 1 \gset
+SELECT chk('N01 a variety must be a seed variety of the same crop; a local name is kept only without one',
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"variety_id":"d0000000-0000-0000-0000-000000000002"}')$$, :'np1')) || ' | ' ||
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"variety_id":"d0000000-0000-0000-0000-000000000009"}')$$, :'np1')) || ' | ' ||
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"variety_id":"d0000000-0000-0000-0000-000000000001","variety_name_local":"ignored"}')$$, :'np1')) || ' ' ||
+  q(format($q$SELECT coalesce(variety_id::text, 'none') || '/' || coalesce(variety_name_local, 'none') FROM nursery_products WHERE id = %L$q$, :'np1')) || ' | ' ||
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"variety_name_local":"  Local Name  "}')$$, :'np1')) || ' ' ||
+  q(format($q$SELECT coalesce(variety_id::text, 'none') || '/' || coalesce(variety_name_local, 'none') FROM nursery_products WHERE id = %L$q$, :'np1')),
+  'ERR NURSERY_VARIETY_INVALID | ERR NURSERY_VARIETY_INVALID | OK d0000000-0000-0000-0000-000000000001/none | OK none/Local Name');
+SELECT chk('N02 the description keeps its language, is trimmed, and is capped at 600',
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"description":" Healthy plants ","description_language":"mr"}')$$, :'np1')) || ' ' ||
+  q(format($q$SELECT description || '/' || description_language FROM nursery_products WHERE id = %L$q$, :'np1')) || ' | ' ||
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"description":"%s","description_language":"mr"}')$$, :'np1', repeat('x', 601))) || ' | ' ||
+  w('tok-p3', format($$nursery_save_product('{"id":"%s","crop_id":"c0000000-0000-0000-0000-000000000001","item_kind":"SEEDLING","pricing_unit":"PER_TRAY","price":150,"description":"","description_language":"mr"}')$$, :'np1')) || ' ' ||
+  q(format($q$SELECT coalesce(description, 'none') || '/' || coalesce(description_language, 'none') FROM nursery_products WHERE id = %L$q$, :'np1')),
+  'OK Healthy plants/mr | ERR PROVIDER_INPUT_INVALID | OK none/none');
+SELECT chk('N03 photos: only the service role attaches, only under the product''s own folder, at most three, same path once',
+  left(call_as('anon', 'tok-p3', format($$SELECT nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, 'x')::text$$, :'np1')), 9) || ' | ' ||
+  call_as('service_role', NULL, format($$SELECT nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000001/%s/abcdefgh.jpg')::text$$, :'np1', :'np1')) || ' | ' ||
+  call_as('service_role', NULL, format($$SELECT nursery_attach_photo('9a000000-0000-0000-0000-000000000001', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000001/%s/abcdefgh.jpg')::text$$, :'np1', :'np1')) || ' | ' ||
+  call_as('service_role', NULL, format($$SELECT jsonb_array_length(nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0001.jpg'))::text$$, :'np1', :'np1')) || ' ' ||
+  call_as('service_role', NULL, format($$SELECT jsonb_array_length(nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0001.jpg'))::text$$, :'np1', :'np1')) || ' ' ||
+  call_as('service_role', NULL, format($$SELECT jsonb_array_length(nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0002.jpg'))::text$$, :'np1', :'np1')) || ' ' ||
+  call_as('service_role', NULL, format($$SELECT jsonb_array_length(nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0003.jpg'))::text$$, :'np1', :'np1')) || ' ' ||
+  regexp_replace(call_as('service_role', NULL, format($$SELECT nursery_attach_photo('9a000000-0000-0000-0000-000000000003', %L, '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0004.jpg')::text$$, :'np1', :'np1')), '^ERR [0-9A-Z]{5} ', 'ERR ') || ' | ' ||
+  g('tok-p3', '{nursery_products,0,photo_paths,2}'),
+  'ERR 42501 | ERR P0001 NURSERY_PHOTO_PATH_INVALID | ERR P0001 NURSERY_PRODUCT_NOT_FOUND | 1 1 2 3 ERR NURSERY_PHOTO_LIMIT | 11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/' || :'np1' || '/photo-0003.jpg');
+SELECT chk('N04 the owner removes a photo; another provider cannot; the array shrinks',
+  w('tok-p1', format($$nursery_remove_photo('%s', '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0003.jpg')$$, :'np1', :'np1')) || ' | ' ||
+  w('tok-p3', format($$nursery_remove_photo('%s', '11111111-1111-1111-1111-111111111111/9a000000-0000-0000-0000-000000000003/%s/photo-0003.jpg')$$, :'np1', :'np1')) || ' ' ||
+  q(format($q$SELECT cardinality(photo_paths)::text FROM nursery_products WHERE id = %L$q$, :'np1')),
+  'ERR NURSERY_PRODUCT_NOT_FOUND | OK 2');
+
+\echo '=== services near me (20261124140500) ==='
+-- fixtures: provider one (tractor work) and provider three (nursery) both based in Test Village One; farmer one's land 2 km away
+INSERT INTO account_reach_settings (account_id, tenant_id, role, base_village_id, radius_km) VALUES
+  ('9a000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'SERVICE_PROVIDER', '71000000-0000-0000-0000-000000000001', 25),
+  ('9a000000-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'SERVICE_PROVIDER', '71000000-0000-0000-0000-000000000001', 25)
+  ON CONFLICT DO NOTHING;
+UPDATE service_provider_profiles SET listing_status = 'LISTED' WHERE account_id IN ('9a000000-0000-0000-0000-000000000001', '9a000000-0000-0000-0000-000000000003');
+UPDATE nursery_products SET status = 'ACTIVE' WHERE id = :'np1';
+SELECT chk('S01 flag off: refused; a provider session is not a farmer; no session is refused',
+  w('tok-f1', 'farm_services_nearby()') || ' | ' || w('tok-p1', 'farm_services_nearby()') || ' | ' || w(NULL, 'farm_services_nearby()') || ' | ' ||
+  call_as('anon', 'tok-f1', 'SELECT farm_services_enabled()::text'),
+  'ERR FEATURE_DISABLED | ERR NOT_AUTHENTICATED | ERR NOT_AUTHENTICATED | false');
+UPDATE feature_flags SET is_enabled = true, target_tenants = ARRAY['11111111-1111-1111-1111-111111111111']::uuid[] WHERE flag_name = 'farm_services_search';
+SELECT chk('S02 flag on, farmer without a located land: not located, every kind counts zero',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT (farm_services_nearby() ->> ''located'') || '' '' || (SELECT count(*) FILTER (WHERE (f ->> ''count'')::int > 0) || ''/'' || count(*) FROM jsonb_array_elements(farm_services_nearby() -> ''families'') f)')$$),
+  'false 0/16');
+INSERT INTO lands (id, farmer_id, tenant_id, name, center_lat, center_lon) VALUES
+  ('1a000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Test Land Near', 16.7230, 74.2433),
+  ('1a000000-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'Test Land Far',  18.5204, 73.8567);
+SELECT chk('S03 with a land 2 km away: land preparation and nursery each count one provider',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT (farm_services_nearby() ->> ''located'') || '' '' || (SELECT string_agg(f ->> ''code'' || ''='' || (f ->> ''count''), '','' ORDER BY f ->> ''code'') FROM jsonb_array_elements(farm_services_nearby() -> ''families'') f WHERE (f ->> ''count'')::int > 0)')$$),
+  'true LABOUR=1,LAND_PREP=1,NURSERY=1');
+SELECT chk('S04 the land-preparation list: provider one, nearest land, his rotavator rate, no nursery store, no mobile',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT (SELECT (c ->> ''public_name'') || '' '' || (c ->> ''distance_km'') || '' '' || jsonb_array_length(c -> ''services'') || '' '' || (c #>> ''{services,0,base_rate}'') || '' '' || coalesce(c ->> ''store'', ''null'') || '' '' || (c ? ''mobile_number'') || (c::text ILIKE ''%mobile%'') FROM jsonb_array_elements(farm_services_providers(''LAND_PREP'')) c)')$$),
+  'Test Tractor Service 2.0 1 1100.00 null falsefalse');
+SELECT chk('S05 the nursery list: provider three with a store summary of one plant and two photos, and his one nursery service',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT (SELECT (c ->> ''public_name'') || '' '' || (c #>> ''{store,product_count}'') || '' '' || jsonb_array_length(c #> ''{store,photo_paths}'') || '' '' || jsonb_array_length(c -> ''services'') FROM jsonb_array_elements(farm_services_providers(''NURSERY'')) c)')$$),
+  'Test Nursery Three 1 2 1');
+SELECT chk('S06 an unknown kind is refused',
+  w('tok-f1', $$farm_services_providers('UNICORN')$$), 'ERR SERVICE_FAMILY_INVALID');
+UPDATE nursery_batches SET ready_date = current_date - 1 WHERE product_id = :'np1';
+SELECT chk('S07 the store: the plant as last saved (every save is whole), its photos and the stock free now',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT (SELECT (s #>> ''{provider,public_name}'') || '' | '' || coalesce(p ->> ''variety_name_local'', ''none'') || '' '' || coalesce(p ->> ''description'', ''none'') || ''/'' || coalesce(p ->> ''description_language'', ''none'') || '' '' || jsonb_array_length(p -> ''photo_paths'') || '' '' || (p ->> ''available_qty'') || '' '' || jsonb_array_length(p -> ''batches'') FROM nursery_store(''9a000000-0000-0000-0000-000000000003'') s, jsonb_array_elements(s -> ''products'') p)')$$),
+  'Test Nursery Three | none none/none 2 0 0');
+UPDATE nursery_batches SET total_qty = 100, reserved_qty = 40 WHERE product_id = :'np1';
+SELECT chk('S08 the store counts stock as total minus reserved and shows a batch only while something is free',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT (SELECT (p ->> ''available_qty'') || '' '' || (p #>> ''{batches,0,available_qty}'') FROM nursery_store(''9a000000-0000-0000-0000-000000000003'') s, jsonb_array_elements(s -> ''products'') p)')$$),
+  '60 60');
+SELECT chk('S09 a provider without plants, or one not listed, or one out of reach, has no store and is not listed',
+  w('tok-f1', $$nursery_store('9a000000-0000-0000-0000-000000000001')$$) || ' | ' ||
+  q($$SELECT run_as('service_role', NULL, $u$UPDATE service_provider_profiles SET listing_status = 'PENDING_REVIEW' WHERE account_id = '9a000000-0000-0000-0000-000000000003'$u$)$$) || ' ' ||
+  w('tok-f1', $$nursery_store('9a000000-0000-0000-0000-000000000003')$$) || ' | ' ||
+  q($$SELECT run_as('service_role', NULL, $u$UPDATE service_provider_profiles SET listing_status = 'LISTED' WHERE account_id = '9a000000-0000-0000-0000-000000000003'$u$)$$) || ' ' ||
+  q($$SELECT run_as('service_role', NULL, $u$UPDATE account_reach_settings SET radius_km = 1 WHERE account_id = '9a000000-0000-0000-0000-000000000003'$u$)$$) || ' ' ||
+  w('tok-f1', $$nursery_store('9a000000-0000-0000-0000-000000000003')$$) || ' ' ||
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT jsonb_array_length(farm_services_providers(''NURSERY''))::text')$$),
+  'ERR NURSERY_STORE_NOT_FOUND | OK rows=1 ERR NURSERY_STORE_NOT_FOUND | OK rows=1 OK rows=1 ERR NURSERY_STORE_NOT_FOUND 0');
+UPDATE account_reach_settings SET radius_km = 25 WHERE account_id = '9a000000-0000-0000-0000-000000000003';
+SELECT chk('S10 a farmer of another tenant inside the radius sees the same providers (discovery by radius, not tenant)',
+  q($$SELECT run_as('service_role', NULL, $u$INSERT INTO user_sessions (user_id, session_id, access_token_hash, expires_at, is_active, active_role, created_at) VALUES ('bbbbbbbb-0000-0000-0000-000000000001', 'sess-fb', hash_session_token('tok-fb'), now() + interval '30 days', true, 'FARMER', now())$u$)$$) || ' ' ||
+  q($$SELECT run_as('service_role', NULL, $u$INSERT INTO lands (id, farmer_id, tenant_id, name, center_lat, center_lon) VALUES ('1b000000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000001', '22222222-2222-2222-2222-222222222222', 'Test Land B', 16.7100, 74.2500)$u$)$$) || ' ' ||
+  q($$SELECT run_as('service_role', NULL, $u$UPDATE feature_flags SET target_tenants = ARRAY['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222']::uuid[] WHERE flag_name = 'farm_services_search'$u$)$$) || ' ' ||
+  q($$SELECT call_as('anon', 'tok-fb', 'SELECT jsonb_array_length(farm_services_providers(''NURSERY''))::text || ''/'' || jsonb_array_length(farm_services_providers(''LAND_PREP''))::text')$$),
+  'OK rows=1 OK rows=1 OK rows=1 1/1');
+SELECT chk('S11 the farmer functions never return a session, a mobile number or a tenant',
+  q($$SELECT call_as('anon', 'tok-f1', 'SELECT ((farm_services_providers(''NURSERY'')::text || farm_services_providers(''LAND_PREP'')::text || nursery_store(''9a000000-0000-0000-0000-000000000003'')::text) ~* ''(mobile|session|tenant_id|pin_hash)'')::text')$$),
+  'false');
+UPDATE feature_flags SET is_enabled = false, target_tenants = '{}'::uuid[] WHERE flag_name = 'farm_services_search';
+
 \echo '=== suspension and account adoption ==='
 UPDATE account_roles SET status = 'SUSPENDED' WHERE account_id = '9a000000-0000-0000-0000-000000000003' AND role = 'SERVICE_PROVIDER';
 SELECT chk('A01 a suspended provider is shut out on the next request and shows OFFLINE to the server',

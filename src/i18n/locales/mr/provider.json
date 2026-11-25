@@ -307,7 +307,16 @@
       "summaryStock": "साठ्यात",
       "summaryReserved": "बुक झालेली",
       "inStock": "साठ्यात: {{count}}",
-      "cropQuestion": "तुम्ही कोणते रोप विकता?"
+      "cropQuestion": "तुम्ही कोणते रोप विकता?",
+      "varietyLabel": "कोणती जात?",
+      "varietyNone": "या पिकाची कोणतीही जात अजून यादीत नाही; नाव लिहा.",
+      "varietyOther": "इतर / नाव लिहा",
+      "varietyNameLabel": "जातीचे नाव",
+      "varietyFromMaster": "जात",
+      "descriptionLabel": "या रोपाबद्दल काही शब्द (ऐच्छिक)",
+      "photosAfterSave": "आधी सेव्ह करा, मग रोपाच्या कार्डवरून 3 पर्यंत फोटो जोडा.",
+      "addPhoto": "फोटो जोडा",
+      "removePhoto": "फोटो काढा"
     },
     "errors": {
       "generic": "काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.",
@@ -347,7 +356,15 @@
       "NURSERY_PRODUCT_NOT_FOUND": "हे रोप सापडले नाही.",
       "NURSERY_BATCH_INVALID": "संख्या आणि तारीख तपासा.",
       "NURSERY_BATCH_NOT_FOUND": "ही साठ्याची नोंद सापडली नाही.",
-      "NURSERY_BATCH_BELOW_RESERVED": "संख्या शेतकऱ्यांसाठी राखीव संख्येपेक्षा कमी होऊ शकत नाही."
+      "NURSERY_BATCH_BELOW_RESERVED": "संख्या शेतकऱ्यांसाठी राखीव संख्येपेक्षा कमी होऊ शकत नाही.",
+      "NURSERY_VARIETY_INVALID": "ही जात निवडलेल्या पिकाची नाही.",
+      "NURSERY_PHOTO_LIMIT": "एका रोपाचे 3 फोटो असू शकतात. आधी एक काढा.",
+      "NURSERY_PHOTO_PATH_INVALID": "हा फोटो जोडता आला नाही.",
+      "PHOTO_NOT_IMAGE": "कृपया फोटो निवडा.",
+      "PHOTO_TOO_LARGE": "हा फोटो खूप मोठा आहे.",
+      "PHOTO_UNREADABLE": "हा फोटो वाचता आला नाही. दुसरा वापरून पाहा.",
+      "PHOTO_UPLOAD_FAILED": "फोटो अपलोड होऊ शकला नाही. नेटवर्क तपासा आणि पुन्हा प्रयत्न करा.",
+      "PROVIDER_FEATURE_DISABLED": "हे तुमच्या खात्यासाठी अजून उपलब्ध नाही."
     },
     "catalogue": {
       "category": {

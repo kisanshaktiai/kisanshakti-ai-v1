@@ -307,7 +307,16 @@
       "summaryStock": "In stock",
       "summaryReserved": "Booked",
       "inStock": "In stock: {{count}}",
-      "cropQuestion": "Which plant do you sell?"
+      "cropQuestion": "Which plant do you sell?",
+      "varietyLabel": "Which variety?",
+      "varietyNone": "No variety of this crop is in the list yet; type its name.",
+      "varietyOther": "Other / type the name",
+      "varietyNameLabel": "Variety name",
+      "varietyFromMaster": "Variety",
+      "descriptionLabel": "A few words about this plant (optional)",
+      "photosAfterSave": "Save first, then add up to 3 photos from the plant's card.",
+      "addPhoto": "Add photo",
+      "removePhoto": "Remove photo"
     },
     "errors": {
       "generic": "Something went wrong. Please try again.",
@@ -347,7 +356,15 @@
       "NURSERY_PRODUCT_NOT_FOUND": "This plant was not found.",
       "NURSERY_BATCH_INVALID": "Check the quantity and the date.",
       "NURSERY_BATCH_NOT_FOUND": "This stock entry was not found.",
-      "NURSERY_BATCH_BELOW_RESERVED": "The number cannot go below what is already promised to farmers."
+      "NURSERY_BATCH_BELOW_RESERVED": "The number cannot go below what is already promised to farmers.",
+      "NURSERY_VARIETY_INVALID": "This variety does not belong to the chosen crop.",
+      "NURSERY_PHOTO_LIMIT": "A plant can have 3 photos. Remove one first.",
+      "NURSERY_PHOTO_PATH_INVALID": "This photo could not be attached.",
+      "PHOTO_NOT_IMAGE": "Please pick a photo.",
+      "PHOTO_TOO_LARGE": "This photo is too large.",
+      "PHOTO_UNREADABLE": "This photo could not be read. Try another.",
+      "PHOTO_UPLOAD_FAILED": "The photo could not be uploaded. Check your network and try again.",
+      "PROVIDER_FEATURE_DISABLED": "This is not available for your account yet."
     },
     "catalogue": {
       "category": {

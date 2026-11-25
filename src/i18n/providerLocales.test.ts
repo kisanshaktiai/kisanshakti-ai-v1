@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import en from './locales/en/provider.json';
 import hi from './locales/hi/provider.json';
 import mr from './locales/mr/provider.json';
+import fsEn from './locales/en/farmServices.json';
+import fsHi from './locales/hi/farmServices.json';
+import fsMr from './locales/mr/farmServices.json';
 
 /** Every leaf key of a bundle, as dotted paths. */
 function keysOf(node: unknown, prefix = ''): string[] {
@@ -37,6 +40,23 @@ describe('provider locale bundles', () => {
   it('have no empty text', () => {
     for (const bundle of Object.values(bundles)) {
       expect(Object.entries(placeholdersOf(bundle)).length).toBeGreaterThan(300);
+      const texts: string[] = [];
+      JSON.stringify(bundle, (_key, value) => { if (typeof value === 'string') texts.push(value); return value; });
+      expect(texts.filter((text) => !text.trim())).toEqual([]);
+    }
+  });
+});
+
+describe('farmServices locale bundles', () => {
+  const bundles = { en: fsEn.farmServices, hi: fsHi.farmServices, mr: fsMr.farmServices };
+
+  it('hold exactly the same keys and placeholders in every language, with no empty text', () => {
+    const reference = keysOf(bundles.en).sort();
+    expect(keysOf(bundles.hi).sort()).toEqual(reference);
+    expect(keysOf(bundles.mr).sort()).toEqual(reference);
+    expect(placeholdersOf(bundles.hi)).toEqual(placeholdersOf(bundles.en));
+    expect(placeholdersOf(bundles.mr)).toEqual(placeholdersOf(bundles.en));
+    for (const bundle of Object.values(bundles)) {
       const texts: string[] = [];
       JSON.stringify(bundle, (_key, value) => { if (typeof value === 'string') texts.push(value); return value; });
       expect(texts.filter((text) => !text.trim())).toEqual([]);

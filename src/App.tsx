@@ -36,6 +36,10 @@ declare global {
 const Home = lazy(() => import("./pages/Home"));
 const Weather = lazy(() => import("./pages/Weather"));
 const Market = lazy(() => import("./pages/Market"));
+// "Services near me" (Provider Workspace part A, file 6): farmer side, behind the farm_services_search flag.
+const ServicesNearMe = lazy(() => import("./pages/services/ServicesNearMe"));
+const ServiceProviders = lazy(() => import("./pages/services/ServiceProviders"));
+const NurseryStorePage = lazy(() => import("./pages/services/NurseryStorePage"));
 const Advisory = lazy(() => import("./pages/Advisory"));
 const Schemes = lazy(() => import("./pages/Schemes"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -400,6 +404,9 @@ const router = createBrowserRouter([
       { path: "home", element: <Suspense fallback={<PageLoader />}><Home /></Suspense> },
       { path: "weather", element: <Suspense fallback={<PageLoader />}><Weather /></Suspense> },
       { path: "market", element: <Suspense fallback={<PageLoader />}><Market /></Suspense> },
+      { path: "services-near-me", element: <Suspense fallback={<PageLoader />}><ServicesNearMe /></Suspense> },
+      { path: "services-near-me/nursery/:accountId", element: <Suspense fallback={<PageLoader />}><NurseryStorePage /></Suspense> },
+      { path: "services-near-me/:family", element: <Suspense fallback={<PageLoader />}><ServiceProviders /></Suspense> },
       { path: "advisory", element: <Suspense fallback={<PageLoader />}><Advisory /></Suspense> },
       { path: "schemes", element: <Suspense fallback={<PageLoader />}><Schemes /></Suspense> },
       { path: "profile", element: <Suspense fallback={<PageLoader />}><Profile /></Suspense> },

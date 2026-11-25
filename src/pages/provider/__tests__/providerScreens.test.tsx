@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     saveService: vi.fn(), setServiceStatus: vi.fn(), setWorkingHours: vi.fn(), addBlackout: vi.fn(),
     cancelBlackout: vi.fn(), saveEquipment: vi.fn(), removeEquipment: vi.fn(), saveNurseryProduct: vi.fn(),
     saveNurseryBatch: vi.fn(), submitForReview: vi.fn(), cropNames: vi.fn(), cropGroups: vi.fn(), cropsOfGroup: vi.fn(),
+    varietiesOfCrop: vi.fn(), removeNurseryPhoto: vi.fn(),
   },
 }));
 
@@ -25,6 +26,11 @@ vi.mock('@/i18n/config', () => ({
 }));
 vi.mock('@/hooks/useOfflineStatus', () => ({ useOfflineStatus: () => mocks.online }));
 vi.mock('@/components/identity/ReachEditor', () => ({ ReachEditor: () => null }));
+vi.mock('@/services/nurseryPhotoService', () => ({
+  nurseryPhotoUrl: (path: string) => `https://photos.test/${path}`,
+  nurseryPhotoService: { add: vi.fn(), remove: vi.fn() },
+  NurseryPhotoError: class extends Error { code: string; constructor(code: string) { super(code); this.code = code; } },
+}));
 vi.mock('@/stores/languageStore', () => ({
   useLanguageStore: () => ({
     currentLanguage: 'en', availableLanguages: [{ code: 'en', nativeName: 'English' }], setLanguage: vi.fn(),
@@ -35,7 +41,8 @@ vi.mock('@/services/providerWorkspaceService', () => {
     code: string;
     constructor(code: string) { super(code); this.code = code; }
   }
-  return { ProviderError, providerWorkspaceService: mocks.service, localName: () => '' };
+  const localName = (names: Record<string, string> | undefined, language: string) => names?.[language] ?? names?.default ?? '';
+  return { ProviderError, providerWorkspaceService: mocks.service, localName };
 });
 
 // jsdom has no ResizeObserver, which some of the UI primitives need.
@@ -45,6 +52,7 @@ import ProviderHome from '../ProviderHome';
 import ProviderServiceForm from '../ProviderServiceForm';
 import ProviderHours from '../ProviderHours';
 import ProviderDaysOff from '../ProviderDaysOff';
+import ProviderNursery from '../ProviderNursery';
 import { ProviderFlagGate } from '@/components/provider/ProviderFlagGate';
 import { useProviderStore } from '@/stores/providerStore';
 import { useAccountStore } from '@/stores/accountStore';
@@ -57,10 +65,11 @@ const catalogue = {
   ],
   pricingUnits: [
     { code: 'PER_ACRE', label_en: 'Per acre', is_per_area: true, is_negotiable: false },
+    { code: 'PER_PIECE', label_en: 'Per piece', is_per_area: false, is_negotiable: false },
     { code: 'NEGOTIABLE', label_en: 'Negotiable', is_per_area: false, is_negotiable: true },
   ],
   equipmentTypes: [], providerTypes: [{ code: 'INDIVIDUAL', label_en: 'Individual' }],
-  skillTiers: [], nurseryItemKinds: [], paymentMethods: [{ code: 'CASH', label_en: 'Cash' }],
+  skillTiers: [], nurseryItemKinds: [{ code: 'SEEDLING', label_en: 'Seedling' }], paymentMethods: [{ code: 'CASH', label_en: 'Cash' }],
 };
 const profile = {
   provider_type: 'INDIVIDUAL', public_name: 'Test Provider', experience_years: 3, about_text: null,
@@ -321,6 +330,81 @@ describe('Provider Workspace screens', () => {
       const sent = mocks.service.setWorkingHours.mock.calls[0][0];
       expect(sent[1]).toEqual({ weekday: 1, is_working: true, start_time: '08:00', end_time: '18:00' });
       expect(sent[2]).toEqual({ weekday: 2, is_working: true, start_time: '08:00', end_time: '18:00' });
+    });
+  });
+
+  describe('nursery store', () => {
+    const plant = {
+      id: 'np-1', crop_id: 'c-1', variety_id: null, variety_name_local: 'Local Name', item_kind: 'SEEDLING',
+      pricing_unit: 'PER_PIECE', price: 2, currency: 'INR', min_order_qty: null, description: 'Healthy plants',
+      description_language: 'en', photo_paths: ['t/a/np-1/one.jpg'], status: 'ACTIVE',
+      batches: [{ id: 'b-1', total_qty: 100, reserved_qty: 40, ready_date: '2027-01-15', status: 'ACTIVE' }],
+    };
+
+    it('adds a plant with a typed variety and a note, in the language in use', async () => {
+      serverHolds(workspace({ profile }));
+      mocks.service.cropGroups.mockResolvedValue([{ id: 'g-1', names: { default: 'Vegetables' } }]);
+      mocks.service.cropsOfGroup.mockResolvedValue([{ id: 'c-1', names: { default: 'Test Crop One' } }]);
+      mocks.service.varietiesOfCrop.mockResolvedValue([{ id: 'v-1', names: { default: 'Variety One' } }]);
+      mocks.service.saveNurseryProduct.mockResolvedValue(workspace({ profile }));
+      renderAt('/provider/business/nursery', <ProviderNursery />);
+      fireEvent.click(await screen.findByText('provider.nursery.add'));
+      fireEvent.change(await screen.findByLabelText('provider.nursery.groupLabel'), { target: { value: 'g-1' } });
+      fireEvent.change(await screen.findByLabelText('provider.nursery.cropLabel'), { target: { value: 'c-1' } });
+      expect(await screen.findByText('Variety One')).not.toBeNull();
+      fireEvent.click(screen.getByText('provider.nursery.varietyOther'));
+      fireEvent.change(screen.getByLabelText('provider.nursery.varietyNameLabel'), { target: { value: '  My Local Variety ' } });
+      fireEvent.click(screen.getByText('Seedling'));
+      fireEvent.click(screen.getByText('Per piece'));
+      fireEvent.change(screen.getByLabelText('provider.nursery.priceLabel'), { target: { value: '2' } });
+      fireEvent.change(screen.getByLabelText('provider.nursery.descriptionLabel'), { target: { value: 'Healthy plants' } });
+      fireEvent.click(screen.getByText('provider.common.save'));
+      await waitFor(() => expect(mocks.service.saveNurseryProduct).toHaveBeenCalledTimes(1));
+      expect(mocks.service.saveNurseryProduct.mock.calls[0][0]).toMatchObject({
+        crop_id: 'c-1', variety_id: null, variety_name_local: 'My Local Variety', item_kind: 'SEEDLING',
+        pricing_unit: 'PER_PIECE', price: 2, description: 'Healthy plants', description_language: 'en',
+      });
+    });
+
+    it('sends the master variety and no local name when one from the list is chosen', async () => {
+      serverHolds(workspace({ profile }));
+      mocks.service.cropGroups.mockResolvedValue([{ id: 'g-1', names: { default: 'Vegetables' } }]);
+      mocks.service.cropsOfGroup.mockResolvedValue([{ id: 'c-1', names: { default: 'Test Crop One' } }]);
+      mocks.service.varietiesOfCrop.mockResolvedValue([{ id: 'v-1', names: { default: 'Variety One' } }]);
+      mocks.service.saveNurseryProduct.mockResolvedValue(workspace({ profile }));
+      renderAt('/provider/business/nursery', <ProviderNursery />);
+      fireEvent.click(await screen.findByText('provider.nursery.add'));
+      fireEvent.change(await screen.findByLabelText('provider.nursery.groupLabel'), { target: { value: 'g-1' } });
+      fireEvent.change(await screen.findByLabelText('provider.nursery.cropLabel'), { target: { value: 'c-1' } });
+      fireEvent.click(await screen.findByText('Variety One'));
+      fireEvent.click(screen.getByText('Seedling'));
+      fireEvent.click(screen.getByText('Per piece'));
+      fireEvent.change(screen.getByLabelText('provider.nursery.priceLabel'), { target: { value: '2' } });
+      fireEvent.click(screen.getByText('provider.common.save'));
+      await waitFor(() => expect(mocks.service.saveNurseryProduct).toHaveBeenCalledTimes(1));
+      expect(mocks.service.saveNurseryProduct.mock.calls[0][0]).toMatchObject({ variety_id: 'v-1', variety_name_local: null, description: null, description_language: null });
+    });
+
+    it('shows the plant with its photo, variety, note and stock bar, and offers to add a photo while under three', async () => {
+      serverHolds(workspace({ profile, nursery_products: [plant] }));
+      mocks.service.cropNames.mockResolvedValue({ 'c-1': { default: 'Test Crop One' } });
+      renderAt('/provider/business/nursery', <ProviderNursery />);
+      expect(await screen.findByText('Test Crop One')).not.toBeNull();
+      expect(screen.queryByText(/Local Name/)).not.toBeNull();
+      expect(document.querySelectorAll('img[src^="https://photos.test/"]')).toHaveLength(2); // card picture and the strip
+      expect(screen.queryByText('provider.nursery.addPhoto')).not.toBeNull();
+      expect(screen.getAllByLabelText('provider.nursery.removePhoto')).toHaveLength(1);
+      expect(screen.queryByText('provider.nursery.inStock')).not.toBeNull();
+      expect(screen.queryAllByText('provider.nursery.batchReserved').length).toBeGreaterThan(0);
+    });
+
+    it('hides "add photo" once a plant has three', async () => {
+      serverHolds(workspace({ profile, nursery_products: [{ ...plant, photo_paths: ['a/1.jpg', 'a/2.jpg', 'a/3.jpg'] }] }));
+      mocks.service.cropNames.mockResolvedValue({ 'c-1': { default: 'Test Crop One' } });
+      renderAt('/provider/business/nursery', <ProviderNursery />);
+      expect(await screen.findByText('Test Crop One')).not.toBeNull();
+      expect(screen.queryByText('provider.nursery.addPhoto')).toBeNull();
+      expect(screen.getAllByLabelText('provider.nursery.removePhoto')).toHaveLength(3);
     });
   });
 

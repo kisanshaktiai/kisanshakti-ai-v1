@@ -44,8 +44,29 @@ async function sha256Hex(s: string) {
 }
 
 // supabase-js calls <SUPABASE_URL>/rest/v1/...; PostgREST serves from the root.
+// Stand-in for Storage: the objects "uploaded" so far (the nursery photo
+// confirm must only register an object that exists).
+const storedObjects = new Set<string>();
+const signedPaths: string[] = [];
 const proxy = Deno.serve({ port: PROXY_PORT, onListen: () => {} }, async (req) => {
   const u = new URL(req.url);
+  if (u.pathname.startsWith("/storage/v1/")) {
+    const sign = u.pathname.match(/^\/storage\/v1\/object\/upload\/sign\/([^/]+)\/(.+)$/);
+    if (sign) {
+      signedPaths.push(`${sign[1]}/${sign[2]}`);
+      return Response.json({ url: `/object/upload/sign/${sign[1]}/${sign[2]}?token=fake-upload-token` });
+    }
+    const list = u.pathname.match(/^\/storage\/v1\/object\/list\/([^/]+)$/);
+    if (list) {
+      const body = await req.json();
+      const names = [...storedObjects]
+        .filter((o) => o.startsWith(`${list[1]}/${body.prefix}/`))
+        .map((o) => o.slice(`${list[1]}/${body.prefix}/`.length))
+        .filter((n) => !body.search || n.includes(body.search));
+      return Response.json(names.map((name) => ({ name })));
+    }
+    return Response.json({ error: "not stubbed" }, { status: 500 });
+  }
   const target = POSTGREST + u.pathname.replace(/^\/rest\/v1/, "") + u.search;
   const res = await fetch(target, { method: req.method, headers: req.headers, body: req.body });
   return new Response(res.body, { status: res.status, headers: res.headers });
@@ -440,6 +461,71 @@ Deno.test({ name: "auth core, multi-role identity", sanitizeResources: false, sa
       statuses.push((await call({ action: "register", mobile: P4, tenantId: TENANT_A, pin: "1234", roles: ["CUSTOMER"] })).status);
     }
     assertEquals(statuses, [200, 409, 409, 409, 409, 429, 429]);
+  });
+
+  await t.step("nursery photos: sign, confirm only what exists, only the owner, at most three, only with the flag", async () => {
+    // provider one is listed with a nursery product; the workspace flag starts off
+    await call({ action: "switchRole", role: "SERVICE_PROVIDER" }, p1Token);
+    const profile = await db.from("service_provider_profiles").insert({
+      account_id: p1Id, tenant_id: TENANT_A, provider_type: "NURSERY", public_name: "Test Nursery One",
+    });
+    assertEquals(profile.error, null);
+    const { data: crop } = await db.from("crops").select("id").limit(1).single();
+    const product = await db.from("nursery_products").insert({
+      account_id: p1Id, crop_id: crop!.id, item_kind: "SEEDLING", pricing_unit: "PER_PIECE", price: 2,
+    }).select("id").single();
+    assertEquals(product.error, null);
+    const productId = product.data!.id as string;
+
+    const off = await call({ action: "nurseryPhotoSign", productId }, p1Token);
+    assertEquals([off.status, off.body], [403, { error: "feature_disabled" }]);
+    const flagInsert = await db.from("feature_flags").upsert(
+      { flag_name: "provider_workspace", is_enabled: true, rollout_percentage: 0, target_tenants: [TENANT_A], flag_status: "active" },
+      { onConflict: "flag_name" },
+    );
+    assertEquals(flagInsert.error, null);
+
+    const bad = await call({ action: "nurseryPhotoSign", productId: "not-a-uuid" }, p1Token);
+    assertEquals([bad.status, bad.body], [400, { error: "invalid_request" }]);
+    const stranger = await call({ action: "nurseryPhotoSign", productId: "9a000000-0000-0000-0000-00000000dead" }, p1Token);
+    assertEquals([stranger.status, stranger.body], [404, { error: "product_not_found" }]);
+
+    const signed = await call({ action: "nurseryPhotoSign", productId }, p1Token);
+    assertEquals(signed.status, 200);
+    assertEquals(signed.body.bucket, "nursery-photos");
+    assert((signed.body.path as string).startsWith(`${TENANT_A}/${p1Id}/${productId}/`));
+    assert(/\/[0-9a-f]{32}\.jpg$/.test(signed.body.path));
+    assertEquals(signed.body.token, "fake-upload-token");
+    assertEquals(signedPaths.at(-1), `nursery-photos/${signed.body.path}`);
+
+    // confirm before the bytes are there: refused, nothing registered
+    const early = await call({ action: "nurseryPhotoConfirm", productId, path: signed.body.path }, p1Token);
+    assertEquals([early.status, early.body], [404, { error: "object_missing" }]);
+    // a path outside the product's own folder: refused even if such an object existed
+    storedObjects.add(`nursery-photos/${TENANT_A}/${p1Id}/other-product/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg`);
+    const elsewhere = await call({ action: "nurseryPhotoConfirm", productId, path: `${TENANT_A}/${p1Id}/other-product/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg` }, p1Token);
+    assertEquals([elsewhere.status, elsewhere.body], [400, { error: "invalid_request" }]);
+
+    storedObjects.add(`nursery-photos/${signed.body.path}`);
+    const ok = await call({ action: "nurseryPhotoConfirm", productId, path: signed.body.path }, p1Token);
+    assertEquals([ok.status, ok.body], [200, { photoPaths: [signed.body.path] }]);
+    const again = await call({ action: "nurseryPhotoConfirm", productId, path: signed.body.path }, p1Token);
+    assertEquals(again.body, { photoPaths: [signed.body.path] });
+
+    for (let i = 0; i < 2; i++) {
+      const s = await call({ action: "nurseryPhotoSign", productId }, p1Token);
+      storedObjects.add(`nursery-photos/${s.body.path}`);
+      assertEquals((await call({ action: "nurseryPhotoConfirm", productId, path: s.body.path }, p1Token)).status, 200);
+    }
+    const full = await call({ action: "nurseryPhotoSign", productId }, p1Token);
+    assertEquals([full.status, full.body], [409, { error: "photo_limit" }]);
+    const { data: row } = await db.from("nursery_products").select("photo_paths").eq("id", productId).single();
+    assertEquals((row!.photo_paths as string[]).length, 3);
+
+    // a farmer session is not a provider
+    const asFarmer = await call({ action: "nurseryPhotoSign", productId }, f1Token);
+    assertEquals([asFarmer.status, asFarmer.body], [403, { error: "role_not_active" }]);
+    await db.from("feature_flags").update({ is_enabled: false, target_tenants: [] }).eq("flag_name", "provider_workspace");
   });
 
   await t.step("logout kills the token for every context", async () => {

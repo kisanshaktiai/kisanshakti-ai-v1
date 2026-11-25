@@ -41,6 +41,17 @@
  *   addRole       { role }                                   -> { account, roleStatus }
  *   updateAccount { displayName?, languageCode? }            -> { account }
  *
+ * 2026-11-25 — Nursery store photos (Provider Workspace, part A, file 6).
+ *              The browser never writes the nursery-photos bucket. A provider
+ *              session asks this router to sign one upload, puts the bytes on
+ *              the signed URL, then asks it to confirm; the router checks the
+ *              object is really there and registers the path through
+ *              public.nursery_attach_photo() (service role only). Served only
+ *              while the `provider_workspace` flag is ON for the tenant.
+ *
+ *   nurseryPhotoSign    { productId }        -> { bucket, path, signedUrl, token }
+ *   nurseryPhotoConfirm { productId, path }  -> { photoPaths }
+ *
  * `account` = { id, tenantId, displayName, avatarUrl, languageCode,
  *               mobileMasked, roles: [{ role, status }], activeRole }.
  * Roles are returned only to an authenticated caller, never by lookup.
@@ -79,6 +90,10 @@ const ROLE_REGISTER_LIMIT = { maxRequests: 5, windowMs: 3600_000 };
 const ROLE_ADD_LIMIT = { maxRequests: 10, windowMs: 3600_000 };
 const ROLE_SWITCH_LIMIT = { maxRequests: 30, windowMs: 60_000 };
 const ACCOUNT_UPDATE_LIMIT = { maxRequests: 20, windowMs: 3600_000 };
+const PROVIDER_WORKSPACE_FLAG = "provider_workspace";
+const NURSERY_PHOTO_BUCKET = "nursery-photos";
+const NURSERY_PHOTO_MAX = 3;
+const NURSERY_PHOTO_LIMIT = { maxRequests: 40, windowMs: 3600_000 };
 
 const MSG91_AUTH_KEY = Deno.env.get("MSG91_AUTH_KEY") ?? "";
 const MSG91_SENDER_ID = Deno.env.get("MSG91_SENDER_ID") ?? "";
@@ -423,11 +438,15 @@ function accountRpcError(message: string | undefined): Response {
 
 /** Session-authenticated actions. Returns null when `action` is not one of them. */
 async function handleSessionAction(action: string, req: Request, body: any): Promise<Response | null> {
-  if (!["sessionInfo", "switchRole", "addRole", "updateAccount"].includes(action)) return null;
+  if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "nurseryPhotoSign", "nurseryPhotoConfirm"].includes(action)) return null;
 
   const ctx = await sessionAccount(req, body);
   if (!ctx) return json({ error: "session_required" }, 401);
   const multi = await multiRoleEnabled(ctx.account.tenant_id);
+
+  if (action === "nurseryPhotoSign" || action === "nurseryPhotoConfirm") {
+    return await handleNurseryPhoto(action, ctx, body);
+  }
 
   if (action === "sessionInfo") {
     return json({
@@ -495,6 +514,69 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
   const { error } = await admin.from("accounts").update(patch).eq("id", ctx.account.id);
   if (error) return json({ error: "server_error" }, 500);
   return json({ account: await accountSummary(ctx.account.id, await liveSessionRole(ctx)) });
+}
+
+/**
+ * Nursery store photos. The caller must be a live SERVICE_PROVIDER session of a
+ * tenant with the provider_workspace flag on, and the product must be theirs.
+ * Objects go to <tenant>/<account>/<product>/<32 hex>.jpg; a confirm registers
+ * only an object that exists, and only under that very folder.
+ */
+async function handleNurseryPhoto(action: string, ctx: { sess: any; account: any }, body: any): Promise<Response> {
+  const role = await liveSessionRole(ctx);
+  if (role !== "SERVICE_PROVIDER") return json({ error: "role_not_active" }, 403);
+  const flag = await isFlagEnabled(admin, PROVIDER_WORKSPACE_FLAG, { tenantId: ctx.account.tenant_id });
+  if (!flag.enabled) return json({ error: "feature_disabled" }, 403);
+  if (!isUuid(body?.productId)) return json({ error: "invalid_request" }, 400);
+
+  const limited = await rateLimited(ctx.account.id, "nurseryPhoto", NURSERY_PHOTO_LIMIT);
+  if (limited) return limited;
+
+  const { data: product, error: productError } = await admin.from("nursery_products")
+    .select("id, photo_paths, status")
+    .eq("id", body.productId).eq("account_id", ctx.account.id).neq("status", "REMOVED")
+    .maybeSingle();
+  if (productError) return json({ error: "server_error" }, 500);
+  if (!product) return json({ error: "product_not_found" }, 404);
+  const folder = `${ctx.account.tenant_id}/${ctx.account.id}/${product.id}/`;
+
+  if (action === "nurseryPhotoSign") {
+    if ((product.photo_paths ?? []).length >= NURSERY_PHOTO_MAX) return json({ error: "photo_limit" }, 409);
+    const path = folder + crypto.randomUUID().replace(/-/g, "") + ".jpg";
+    const { data, error } = await admin.storage.from(NURSERY_PHOTO_BUCKET).createSignedUploadUrl(path);
+    if (error || !data) {
+      console.error("[farmer-auth] nursery photo sign failed", error?.message);
+      return json({ error: "server_error" }, 500);
+    }
+    return json({ bucket: NURSERY_PHOTO_BUCKET, path, signedUrl: data.signedUrl, token: data.token });
+  }
+
+  // nurseryPhotoConfirm
+  const path = typeof body?.path === "string" ? body.path : "";
+  if (!path.startsWith(folder) || !/^[A-Za-z0-9_-]{8,64}\.jpg$/.test(path.slice(folder.length))) {
+    return json({ error: "invalid_request" }, 400);
+  }
+  const fileName = path.slice(folder.length);
+  const { data: objects, error: listError } = await admin.storage.from(NURSERY_PHOTO_BUCKET)
+    .list(folder.slice(0, -1), { limit: 1, search: fileName });
+  if (listError) {
+    console.error("[farmer-auth] nursery photo list failed", listError.message);
+    return json({ error: "server_error" }, 500);
+  }
+  if (!objects?.some((o) => o.name === fileName)) return json({ error: "object_missing" }, 404);
+
+  const { data: paths, error } = await admin.rpc("nursery_attach_photo", {
+    p_account_id: ctx.account.id, p_product_id: product.id, p_path: path,
+  });
+  if (error) {
+    const m = error.message ?? "";
+    if (m.includes("NURSERY_PHOTO_LIMIT")) return json({ error: "photo_limit" }, 409);
+    if (m.includes("NURSERY_PRODUCT_NOT_FOUND")) return json({ error: "product_not_found" }, 404);
+    if (m.includes("NURSERY_PHOTO_PATH_INVALID")) return json({ error: "invalid_request" }, 400);
+    console.error("[farmer-auth] nursery_attach_photo", m);
+    return json({ error: "server_error" }, 500);
+  }
+  return json({ photoPaths: paths ?? [] });
 }
 
 /** verifyPin for a person without a farmers row (credential on accounts). */
@@ -1052,5 +1134,7 @@ export function isFarmerAuthAction(body: any): boolean {
       "switchRole",
       "addRole",
       "updateAccount",
+      "nurseryPhotoSign",
+      "nurseryPhotoConfirm",
     ].includes(body.action);
 }

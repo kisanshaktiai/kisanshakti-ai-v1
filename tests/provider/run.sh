@@ -4,12 +4,12 @@
 # REPO: kisanshaktiai/kisanshakti-ai-v1  (farmer app)
 #
 # Tests the Provider Workspace migrations (supabase/migrations/20261124140000 …
-# 140400) on a throw-away local database and drops it afterwards. Builds on the
+# 140500) on a throw-away local database and drops it afterwards. Builds on the
 # identity replica (tests/identity/replica_bootstrap.sql) with the identity
 # migrations and the cutover applied. Uses the standard libpq variables.
 # NEVER point this at a Supabase project: it creates roles and databases.
 #
-#   1. the five files apply, and apply a second time without error
+#   1. the six files apply, and apply a second time without error
 #   2. every verification SELECT inside the files returns actual = expected
 #   3. provider_tests.sql: every line PASS
 #   4. concurrency: 12 overlapping blackouts → 1 accepted; 12 services against a limit of 3 → 3 stored
@@ -37,6 +37,7 @@ PROVIDER_FILES=(
   20261124140200_provider_workspace_functions.sql
   20261124140300_provider_service_map_and_flag.sql
   20261124140400_provider_workspace_flag_check.sql
+  20261124140500_nursery_store_and_farm_services_search.sql
 )
 DB="provider_it_$$"
 OUT="${KEEP_OUT:-$(mktemp -d)}"; mkdir -p "$OUT"
@@ -51,14 +52,14 @@ for f in "${IDENTITY_FILES[@]}"; do
   psql -v ON_ERROR_STOP=1 -q -d "$DB" -f "$MIG/$f" >/dev/null 2>>"$OUT/identity.log" || { echo "FAIL  applying $f"; tail -5 "$OUT/identity.log"; exit 1; }
 done
 
-echo "── 1. the five provider files, applied twice ──────────────────────────────"
+echo "── 1. the six provider files, applied twice ──────────────────────────────"
 for round in 1 2; do
   for f in "${PROVIDER_FILES[@]}"; do
     psql -v ON_ERROR_STOP=1 -q -At -F ' | ' -d "$DB" -f "$MIG/$f" >"$OUT/apply.$round.$f.out" 2>"$OUT/apply.$round.$f.err" \
       || { echo "FAIL  applying $f (round $round)"; tail -8 "$OUT/apply.$round.$f.err"; exit 1; }
   done
 done
-echo "PASS  all 5 files applied, then applied again without error"
+echo "PASS  all 6 files applied, then applied again without error"
 
 echo "── 2. the verification SELECTs inside the files ───────────────────────────"
 BAD=$(cat "$OUT"/apply.2.*.out | awk -F' \\| ' 'NF==3 && $2 != $3' || true)

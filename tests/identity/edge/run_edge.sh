@@ -32,6 +32,16 @@ FILES=(
   20261124130000_rate_limit_atomic_hit.sql
   20261124100100_identity_feature_flag.sql
 )
+# Provider Workspace files (the nursery photo actions need its tables and functions).
+# They need verified_account_context(), so they run after the identity files.
+PROVIDER_FILES=(
+  20261124140000_provider_catalogue_lookups.sql
+  20261124140100_provider_workspace_tables.sql
+  20261124140200_provider_workspace_functions.sql
+  20261124140300_provider_service_map_and_flag.sql
+  20261124140400_provider_workspace_flag_check.sql
+  20261124140500_nursery_store_and_farm_services_search.sql
+)
 CUTOVER="20261124091000_identity_cutover_verified_session_context.sql"
 SECRET="identity-it-local-only-jwt-secret-0123456789"
 PGRST_PORT="${IT_POSTGREST_PORT:-54398}"
@@ -55,6 +65,8 @@ run_case() {          # run_case <label> <cutover 0|1>
   for f in "${FILES[@]}"; do psql -v ON_ERROR_STOP=1 -q -At -d "$db" -f "$MIG/$f" >/dev/null; done
   for f in "${FILES[@]}"; do psql -v ON_ERROR_STOP=1 -q -At -d "$db" -f "$MIG/$f" >/dev/null; done   # safe to re-run
   if [ "$2" = "1" ]; then psql -v ON_ERROR_STOP=1 -q -At -d "$db" -f "$MIG/$CUTOVER" >/dev/null; fi
+  psql -v ON_ERROR_STOP=1 -q -d "$db" -f ../../provider/replica_provider_addon.sql >/dev/null 2>&1
+  for f in "${PROVIDER_FILES[@]}"; do psql -v ON_ERROR_STOP=1 -q -At -d "$db" -f "$MIG/$f" >/dev/null 2>>"/tmp/edge_provider_$$.log" || { echo "FAIL applying $f"; tail -5 "/tmp/edge_provider_$$.log"; exit 1; }; done
 
   PGRST_DB_URI="postgres://identity_it_authenticator:identity_it_local_only@127.0.0.1:${PGPORT:-5432}/${db}" \
   PGRST_DB_SCHEMAS=public PGRST_DB_ANON_ROLE=anon PGRST_JWT_SECRET="$SECRET" \

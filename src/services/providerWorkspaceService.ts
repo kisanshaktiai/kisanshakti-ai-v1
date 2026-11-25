@@ -108,11 +108,19 @@ export interface NurseryBatch {
 export interface NurseryProduct {
   id: string;
   crop_id: string;
+  /** From the seed variety master (v_crop_varieties.variety_id), when it is there. */
+  variety_id: string | null;
+  /** The variety as the nursery calls it, when it is not in the master. */
+  variety_name_local: string | null;
   item_kind: string;
   pricing_unit: string;
   price: number | null;
   currency: string;
   min_order_qty: number | null;
+  description: string | null;
+  description_language: string | null;
+  /** Up to three objects in the public bucket nursery-photos. */
+  photo_paths: string[];
   status: ItemStatus;
   batches: NurseryBatch[];
 }
@@ -178,6 +186,7 @@ const PROVIDER_CODES = [
   'PROVIDER_EQUIPMENT_INVALID', 'PROVIDER_NO_ACTIVE_SERVICE', 'PROVIDER_REACH_NOT_SET', 'PROVIDER_REVIEW_NOT_ALLOWED',
   'NURSERY_CROP_INVALID', 'NURSERY_KIND_INVALID', 'NURSERY_PRICE_REQUIRED', 'NURSERY_PRODUCT_NOT_FOUND',
   'NURSERY_BATCH_INVALID', 'NURSERY_BATCH_NOT_FOUND', 'NURSERY_BATCH_BELOW_RESERVED',
+  'NURSERY_VARIETY_INVALID', 'NURSERY_PHOTO_LIMIT', 'NURSERY_PHOTO_PATH_INVALID',
 ] as const;
 export type ProviderErrorCode = (typeof PROVIDER_CODES)[number] | 'PROVIDER_UNAVAILABLE';
 
@@ -240,10 +249,14 @@ export interface ProfileInput {
 export interface NurseryProductInput {
   id?: string;
   crop_id: string;
+  variety_id?: string | null;
+  variety_name_local?: string | null;
   item_kind: string;
   pricing_unit: string;
   price: number | null;
   min_order_qty: number | null;
+  description?: string | null;
+  description_language?: string | null;
   status?: ItemStatus;
 }
 export interface NurseryBatchInput {
@@ -312,6 +325,9 @@ export const providerWorkspaceService = {
     workspaceCall('provider_remove_equipment', { p_equipment_id: equipmentId }),
   saveNurseryProduct: (input: NurseryProductInput) => workspaceCall('nursery_save_product', { p: input }),
   saveNurseryBatch: (input: NurseryBatchInput) => workspaceCall('nursery_save_batch', { p: input }),
+  /** Takes a photo off a plant; the object stays in the bucket. */
+  removeNurseryPhoto: (productId: string, path: string) =>
+    workspaceCall('nursery_remove_photo', { p_product_id: productId, p_path: path }),
   submitForReview: () => workspaceCall('provider_submit_for_review'),
 
   /** The lookup rows, read once per app start. Only active rows are readable. */
@@ -360,6 +376,18 @@ export const providerWorkspaceService = {
     if (error || !data) throw new ProviderError('PROVIDER_UNAVAILABLE');
     return (data as Record<string, unknown>[]).map((row) => ({ id: String(row.id), names: namesOf(row, 'group_name') }));
   },
+  /** Seed varieties of one crop from the variety master, named in the languages it holds. */
+  async varietiesOfCrop(cropId: string): Promise<NamedOption[]> {
+    const { data, error } = await (supabase as any)
+      .from('v_crop_varieties').select('variety_id, name, label_hi, label_mr')
+      .eq('crop_id', cropId).eq('status', 'active').order('name');
+    if (error || !data) throw new ProviderError('PROVIDER_UNAVAILABLE');
+    return (data as Record<string, unknown>[]).map((row) => ({
+      id: String(row.variety_id),
+      names: { ...namesOf(row, 'label'), default: String(row.name ?? '') },
+    }));
+  },
+
   async cropsOfGroup(groupId: string): Promise<NamedOption[]> {
     const { data, error } = await supabase
       .from('crops').select('*').eq('crop_group_id', groupId).eq('is_active', true).order('display_order');

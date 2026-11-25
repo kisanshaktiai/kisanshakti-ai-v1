@@ -1,0 +1,52 @@
+{
+  "farmServices": {
+    "title": "मेरे पास की सेवाएँ",
+    "subtitle": "जिनका क्षेत्र आपकी ज़मीन तक है",
+    "whatQuestion": "आपको क्या चाहिए?",
+    "nearCount": "आपके पास {{count}}",
+    "seeAll": "सभी {{count}} प्रकार के काम देखें",
+    "notLocatedTitle": "पहले अपनी ज़मीन जोड़ें",
+    "notLocatedDescription": "सेवा देने वाले आपकी ज़मीन के आसपास खोजे जाते हैं। ज़मीन उसके स्थान के साथ जोड़ें, फिर यहाँ आएँ।",
+    "providersCount": "आपके पास {{count}} सेवा देने वाले",
+    "noneTitle": "अभी आपके पास कोई नहीं",
+    "noneDescription": "इस प्रकार का कोई सूचीबद्ध सेवा देने वाला अभी आपकी ज़मीन तक नहीं आता। दूसरा काम देखें।",
+    "distance": "{{km}} किमी दूर",
+    "busyUntil": "{{date}} तक व्यस्त",
+    "state": {
+      "AVAILABLE": "काम के लिए खाली",
+      "BUSY": "व्यस्त",
+      "NOT_ACCEPTING": "काम नहीं ले रहे",
+      "OFFLINE": "उपलब्ध नहीं"
+    },
+    "storePlants": "{{count}} पौधे बिक्री पर",
+    "openStore": "स्टोर खोलें",
+    "storeTitle": "नर्सरी स्टोर",
+    "storePlantsTitle": "इस स्टोर के पौधे",
+    "storeEmptyTitle": "अभी कुछ बिक्री पर नहीं",
+    "storeEmptyDescription": "इस नर्सरी में आज कोई पौधा बिक्री पर नहीं है।",
+    "readyNow": "{{count}} अभी तैयार",
+    "readyOn": "{{count}} {{date}} को तैयार",
+    "outOfStock": "स्टॉक खत्म",
+    "minOrder": "कम से कम ऑर्डर: {{count}}",
+    "bookingSoon": "ऐप से बुकिंग जल्द आ रही है। तब तक नर्सरी पर जाएँ।",
+    "verification": {
+      "MOBILE": "मोबाइल सत्यापित",
+      "PLATFORM": "प्लेटफ़ॉर्म द्वारा सत्यापित",
+      "PROFESSIONAL_EQUIPMENT": "उपकरण सत्यापित",
+      "INSTITUTIONAL": "संस्था सत्यापित"
+    },
+    "homeCard": {
+      "title": "मेरे पास की सेवाएँ",
+      "description": "ट्रैक्टर, मज़दूर, छिड़काव, नर्सरी के पौधे और बहुत कुछ",
+      "stats": "सेवा देने वाला खोजें"
+    },
+    "errors": {
+      "generic": "अभी लोड नहीं हो सका। फिर कोशिश करें।",
+      "NOT_AUTHENTICATED": "कृपया फिर से लॉगिन करें।",
+      "FEATURE_DISABLED": "यह आपके खाते के लिए अभी उपलब्ध नहीं है।",
+      "SERVICE_FAMILY_INVALID": "यह काम सूची में नहीं है।",
+      "NURSERY_STORE_NOT_FOUND": "यह स्टोर आपके पास उपलब्ध नहीं है।",
+      "UNAVAILABLE": "सर्वर से संपर्क नहीं हो सका। नेटवर्क जाँचें और फिर कोशिश करें।"
+    }
+  }
+}

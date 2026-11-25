@@ -211,4 +211,20 @@ export const farmerAuthService = {
   },
 };
 
+/** Nursery store photos (Provider Workspace). Both need a live provider session. */
+export const nurseryPhotoTransport = {
+  /** One signed upload for a new photo of the provider's own plant. */
+  sign(productId: string) {
+    return call<{ bucket: string; path: string; signedUrl: string; token: string }>({
+      action: 'nurseryPhotoSign', productId, sessionToken: getSessionToken() ?? undefined,
+    });
+  },
+  /** Registers the photo once its bytes are in the bucket. */
+  confirm(productId: string, path: string) {
+    return call<{ photoPaths: string[] }>({
+      action: 'nurseryPhotoConfirm', productId, path, sessionToken: getSessionToken() ?? undefined,
+    });
+  },
+};
+
 export { FarmerAuthError };

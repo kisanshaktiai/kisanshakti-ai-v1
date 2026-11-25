@@ -19,6 +19,7 @@ import {
   CloudRain,
   CloudSnow,
   RefreshCw,
+  Tractor,
 } from 'lucide-react';
 
 
@@ -35,6 +36,7 @@ import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
+import { useFarmServicesFlag } from '@/hooks/useFarmServicesFlag';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useFeatures } from '@/hooks/useFeatures';
 import { Button } from '@/components/ui/button';
@@ -165,6 +167,8 @@ export default function Home() {
 
   // Plan-gated locked-paths set (SSOT: useFeatures + resolve_farmer_entitlements)
   const { features: planFeatures } = useFeatures();
+  // "Services near me" shows only while its flag is on for this tenant.
+  const farmServicesOn = useFarmServicesFlag();
   const lockedPaths = useMemo(
     () => new Set(planFeatures.filter((f) => f.locked).map((f) => f.path)),
     [planFeatures],
@@ -222,6 +226,18 @@ export default function Home() {
 
   const secondaryFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
+      ...(farmServicesOn
+        ? [{
+            title: t('farmServices.homeCard.title'),
+            icon: Tractor,
+            path: '/app/services-near-me',
+            description: t('farmServices.homeCard.description'),
+            stats: t('farmServices.homeCard.stats'),
+            color: 'bg-primary/10',
+            iconColor: 'text-primary',
+            badge: t('home.badge.new'),
+          } satisfies HomeFeatureCard]
+        : []),
       {
         title: t('home.features.community.title'),
         icon: Users,
@@ -264,7 +280,7 @@ export default function Home() {
         trendValue: '+12%',
       },
     ],
-    [t, avgNdvi],
+    [t, avgNdvi, farmServicesOn],
   );
 
   // Apply plan-gated `locked` flag from useFeatures (SSOT) onto each card.

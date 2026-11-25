@@ -307,7 +307,16 @@
       "summaryStock": "स्टॉक में",
       "summaryReserved": "बुक हुए",
       "inStock": "स्टॉक में: {{count}}",
-      "cropQuestion": "आप कौन सा पौधा बेचते हैं?"
+      "cropQuestion": "आप कौन सा पौधा बेचते हैं?",
+      "varietyLabel": "कौन सी किस्म?",
+      "varietyNone": "इस फसल की कोई किस्म अभी सूची में नहीं है; नाम लिखें।",
+      "varietyOther": "अन्य / नाम लिखें",
+      "varietyNameLabel": "किस्म का नाम",
+      "varietyFromMaster": "किस्म",
+      "descriptionLabel": "इस पौधे के बारे में कुछ शब्द (ज़रूरी नहीं)",
+      "photosAfterSave": "पहले सेव करें, फिर पौधे के कार्ड से 3 तक फ़ोटो जोड़ें।",
+      "addPhoto": "फ़ोटो जोड़ें",
+      "removePhoto": "फ़ोटो हटाएँ"
     },
     "errors": {
       "generic": "कुछ गड़बड़ हो गई। कृपया फिर कोशिश करें।",
@@ -347,7 +356,15 @@
       "NURSERY_PRODUCT_NOT_FOUND": "यह पौधा नहीं मिला।",
       "NURSERY_BATCH_INVALID": "संख्या और तारीख़ जाँचें।",
       "NURSERY_BATCH_NOT_FOUND": "यह स्टॉक प्रविष्टि नहीं मिली।",
-      "NURSERY_BATCH_BELOW_RESERVED": "संख्या किसानों से किए गए वादे से कम नहीं हो सकती।"
+      "NURSERY_BATCH_BELOW_RESERVED": "संख्या किसानों से किए गए वादे से कम नहीं हो सकती।",
+      "NURSERY_VARIETY_INVALID": "यह किस्म चुनी हुई फसल की नहीं है।",
+      "NURSERY_PHOTO_LIMIT": "एक पौधे की 3 फ़ोटो हो सकती हैं। पहले एक हटाएँ।",
+      "NURSERY_PHOTO_PATH_INVALID": "यह फ़ोटो जोड़ी नहीं जा सकी।",
+      "PHOTO_NOT_IMAGE": "कृपया फ़ोटो चुनें।",
+      "PHOTO_TOO_LARGE": "यह फ़ोटो बहुत बड़ी है।",
+      "PHOTO_UNREADABLE": "यह फ़ोटो पढ़ी नहीं जा सकी। दूसरी आज़माएँ।",
+      "PHOTO_UPLOAD_FAILED": "फ़ोटो अपलोड नहीं हो सकी। नेटवर्क जाँचें और फिर कोशिश करें।",
+      "PROVIDER_FEATURE_DISABLED": "यह आपके खाते के लिए अभी उपलब्ध नहीं है।"
     },
     "catalogue": {
       "category": {

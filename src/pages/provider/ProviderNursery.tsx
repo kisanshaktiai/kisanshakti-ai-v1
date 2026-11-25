@@ -1,31 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Pause, Pencil, Play, Plus, Sprout, TreePine } from 'lucide-react';
+import { Camera, Loader2, Pause, Pencil, Play, Plus, Sprout, TreePine, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { EmptyState } from '@/components/layout/EmptyState';
 import {
   BigNumber, ChoiceChips, Field, INPUT_CLASS, NativeSelect, Panel, PrimaryAction, ProviderPage, Question, SaveError, StatusBadge,
 } from '@/components/provider/ProviderUi';
+import { useLanguageStore } from '@/stores/languageStore';
+import { nurseryPhotoService, nurseryPhotoUrl, NurseryPhotoError } from '@/services/nurseryPhotoService';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
 import {
   localName, providerWorkspaceService,
   type LocalNames, type NamedOption, type NurseryBatch, type NurseryProduct,
 } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
-import { catalogueLabel, formatDay, formatMoney, numberOrNull } from '@/lib/providerText';
+import { catalogueLabel, formatDay, formatMoney, numberOrNull, providerErrorMessage } from '@/lib/providerText';
 import { cn } from '@/lib/utils';
 
 interface ProductForm {
   id?: string;
   group: string;
   cropId: string;
+  /** A variety from the master, or OTHER_VARIETY for a name the nursery types. */
+  varietyId: string;
+  varietyName: string;
   kind: string;
   unit: string;
   price: string;
   minOrder: string;
+  description: string;
 }
+
+/** Chip value for "not in the list, I will type it". */
+const OTHER_VARIETY = 'OTHER_VARIETY';
+const DESCRIPTION_MAX = 600;
+const VARIETY_NAME_MAX = 80;
+const PHOTO_MAX = 3;
 interface BatchForm {
   id?: string;
   productId: string;
@@ -34,16 +47,17 @@ interface BatchForm {
   reserved: number;
 }
 
-const EMPTY_PRODUCT: ProductForm = { group: '', cropId: '', kind: '', unit: '', price: '', minOrder: '' };
+const EMPTY_PRODUCT: ProductForm = { group: '', cropId: '', varietyId: '', varietyName: '', kind: '', unit: '', price: '', minOrder: '', description: '' };
 const pad = (n: number) => String(n).padStart(2, '0');
 /** The device's own calendar day as "YYYY-MM-DD". */
 const todayValue = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
 /**
- * Nursery store: the plants a nursery sells (crop, kind of plant, price) as
- * cards, each with its stock shown as a bar of what is free against what is
- * already promised to farmers. Stock already promised can never be reduced
- * below what is promised.
+ * Nursery store: the plants a nursery sells (crop, variety, kind of plant,
+ * price, a short note and up to three photos) as cards, each with its stock
+ * shown as a bar of what is free against what is already promised to farmers.
+ * Stock already promised can never be reduced below what is promised. This is
+ * what farmers see when they open the store.
  */
 export default function ProviderNursery() {
   const { t, i18n } = useTranslation();
@@ -51,7 +65,14 @@ export default function ProviderNursery() {
     workspace, catalogue, loading, loadError, isOnline, saving, saveError, clearSaveError, run, reload,
   } = useProviderWorkspace();
 
+  const { currentLanguage } = useLanguageStore();
   const [cropNames, setCropNames] = useState<Record<string, LocalNames>>({});
+  const [varietyNames, setVarietyNames] = useState<Record<string, LocalNames>>({});
+  const [varieties, setVarieties] = useState<NamedOption[]>([]);
+  const [photoBusy, setPhotoBusy] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const photoTarget = useRef<string | null>(null);
   const [groups, setGroups] = useState<NamedOption[]>([]);
   const [crops, setCrops] = useState<NamedOption[]>([]);
   const [product, setProduct] = useState<ProductForm | null>(null);
@@ -59,6 +80,19 @@ export default function ProviderNursery() {
 
   const products = workspace?.nursery_products ?? [];
   const cropIdsKey = products.map((p) => p.crop_id).sort().join(',');
+  const varietyCropsKey = Array.from(new Set(products.filter((p) => p.variety_id).map((p) => p.crop_id))).sort().join(',');
+  useEffect(() => {
+    if (!varietyCropsKey) return;
+    let cancelled = false;
+    Promise.all(varietyCropsKey.split(',').map((cropId) => providerWorkspaceService.varietiesOfCrop(cropId).catch(() => [] as NamedOption[])))
+      .then((lists) => {
+        if (cancelled) return;
+        const names: Record<string, LocalNames> = {};
+        for (const list of lists) for (const v of list) names[v.id] = v.names;
+        setVarietyNames((current) => ({ ...current, ...names }));
+      });
+    return () => { cancelled = true; };
+  }, [varietyCropsKey]);
 
   // Names of the crops already in the store.
   useEffect(() => {
@@ -91,6 +125,24 @@ export default function ProviderNursery() {
     return () => { cancelled = true; };
   }, [group]);
 
+  const formCrop = product?.cropId ?? '';
+  useEffect(() => {
+    setVarieties([]);
+    if (!formCrop) return;
+    let cancelled = false;
+    providerWorkspaceService.varietiesOfCrop(formCrop)
+      .then((rows) => {
+        if (cancelled) return;
+        setVarieties(rows);
+        setVarietyNames((current) => ({ ...current, ...Object.fromEntries(rows.map((r) => [r.id, r.names])) }));
+      })
+      .catch(() => { /* the form offers a typed name instead */ });
+    return () => { cancelled = true; };
+  }, [formCrop]);
+
+  const varietyText = (item: Pick<NurseryProduct, 'variety_id' | 'variety_name_local'>) =>
+    item.variety_id ? (localName(varietyNames[item.variety_id], i18n.language) || t('provider.nursery.varietyFromMaster')) : (item.variety_name_local ?? '');
+
   const cropName = (cropId: string) => localName(cropNames[cropId], i18n.language) || t('provider.nursery.cropUnknown');
   const kindLabel = (code: string) => catalogueLabel('nurseryKind', code, catalogue?.nurseryItemKinds.find((k) => k.code === code)?.label_en);
   const unitLabel = (code: string) => catalogueLabel('unit', code, catalogue?.pricingUnits.find((u) => u.code === code)?.label_en);
@@ -104,22 +156,31 @@ export default function ProviderNursery() {
   const openEditProduct = (item: NurseryProduct) => {
     clearSaveError();
     setProduct({
-      id: item.id, group: '', cropId: item.crop_id, kind: item.item_kind, unit: item.pricing_unit,
+      id: item.id, group: '', cropId: item.crop_id,
+      varietyId: item.variety_id ?? (item.variety_name_local ? OTHER_VARIETY : ''),
+      varietyName: item.variety_name_local ?? '',
+      kind: item.item_kind, unit: item.pricing_unit,
       price: item.price != null ? String(item.price) : '',
       minOrder: item.min_order_qty != null ? String(item.min_order_qty) : '',
+      description: item.description ?? '',
     });
   };
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!product || !canSaveProduct) return;
+    const description = product.description.trim();
     const ok = await run(() => providerWorkspaceService.saveNurseryProduct({
       ...(product.id ? { id: product.id } : {}),
       crop_id: product.cropId,
+      variety_id: product.varietyId && product.varietyId !== OTHER_VARIETY ? product.varietyId : null,
+      variety_name_local: product.varietyId === OTHER_VARIETY ? product.varietyName.trim() || null : null,
       item_kind: product.kind,
       pricing_unit: product.unit,
       price: productUnit?.is_negotiable ? null : price,
       min_order_qty: numberOrNull(product.minOrder),
+      description: description || null,
+      description_language: description ? currentLanguage : null,
     }));
     if (ok) setProduct(null);
   };
@@ -152,8 +213,41 @@ export default function ProviderNursery() {
     run(() => providerWorkspaceService.saveNurseryProduct({
       id: item.id, crop_id: item.crop_id, item_kind: item.item_kind, pricing_unit: item.pricing_unit,
       price: item.price, min_order_qty: item.min_order_qty,
+      variety_id: item.variety_id, variety_name_local: item.variety_name_local,
+      description: item.description, description_language: item.description_language,
       status: item.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED',
     }));
+
+  const pickPhoto = (productId: string) => {
+    photoTarget.current = productId;
+    setPhotoError(null);
+    fileInput.current?.click();
+  };
+  const onPhotoPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const productId = photoTarget.current;
+    e.target.value = '';
+    if (!file || !productId) return;
+    setPhotoBusy(productId);
+    try {
+      await nurseryPhotoService.add(productId, file);
+    } catch (error) {
+      setPhotoError(error instanceof NurseryPhotoError ? providerErrorMessage(error) : providerErrorMessage(null));
+    } finally {
+      setPhotoBusy(null);
+    }
+  };
+  const removePhoto = async (productId: string, path: string) => {
+    setPhotoBusy(productId);
+    setPhotoError(null);
+    try {
+      await nurseryPhotoService.remove(productId, path);
+    } catch (error) {
+      setPhotoError(providerErrorMessage(error));
+    } finally {
+      setPhotoBusy(null);
+    }
+  };
 
   const sheetOpen = !!product || !!batch;
   const totals = products.reduce(
@@ -177,6 +271,16 @@ export default function ProviderNursery() {
       {workspace && catalogue && (
         <div className="space-y-4">
           {!sheetOpen && <SaveError message={saveError} />}
+          <SaveError message={photoError} />
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-label={t('provider.nursery.addPhoto')}
+            onChange={onPhotoPicked}
+          />
 
           <div className="grid grid-cols-3 rounded-3xl bg-primary p-4 text-center text-primary-foreground shadow-md">
             <div>
@@ -209,12 +313,23 @@ export default function ProviderNursery() {
             return (
               <Panel key={item.id} className={cn('space-y-3', paused && 'opacity-80')}>
                 <div className="flex gap-3">
-                  <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <TreePine className="h-10 w-10" strokeWidth={1.5} aria-hidden="true" />
-                  </span>
+                  {item.photo_paths[0] ? (
+                    <img
+                      src={nurseryPhotoUrl(item.photo_paths[0])}
+                      alt={cropName(item.crop_id)}
+                      loading="lazy"
+                      className="h-24 w-24 shrink-0 rounded-2xl object-cover bg-muted"
+                    />
+                  ) : (
+                    <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <TreePine className="h-10 w-10" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                  )}
                   <div className="flex-1 min-w-0 space-y-1">
                     <p className="text-xl font-bold leading-tight text-foreground break-words">{cropName(item.crop_id)}</p>
-                    <p className="text-sm text-muted-foreground break-words">{kindLabel(item.item_kind)}</p>
+                    <p className="text-sm text-muted-foreground break-words">
+                      {[varietyText(item), kindLabel(item.item_kind)].filter(Boolean).join(' · ')}
+                    </p>
                     <p className="text-xl font-bold text-primary">
                       {item.price != null
                         ? t('provider.services.rateWithUnit', { rate: formatMoney(Number(item.price), item.currency), unit: unitLabel(item.pricing_unit) })
@@ -222,6 +337,34 @@ export default function ProviderNursery() {
                     </p>
                     <StatusBadge tone={paused ? 'off' : 'good'}>{t(`provider.common.status.${item.status}`)}</StatusBadge>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {item.photo_paths.map((path) => (
+                    <div key={path} className="relative">
+                      <img src={nurseryPhotoUrl(path)} alt="" loading="lazy" className="h-16 w-16 rounded-xl object-cover bg-muted" />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(item.id, path)}
+                        disabled={photoBusy === item.id || !isOnline}
+                        aria-label={t('provider.nursery.removePhoto')}
+                        className="absolute -right-1.5 -top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background shadow disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  ))}
+                  {item.photo_paths.length < PHOTO_MAX && (
+                    <button
+                      type="button"
+                      onClick={() => pickPhoto(item.id)}
+                      disabled={photoBusy === item.id || !isOnline}
+                      className="flex h-16 min-w-[64px] flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-primary/50 px-2 text-xs font-semibold text-primary disabled:opacity-50"
+                    >
+                      {photoBusy === item.id ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <Camera className="h-5 w-5" aria-hidden="true" />}
+                      {t('provider.nursery.addPhoto')}
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -321,6 +464,30 @@ export default function ProviderNursery() {
 
                   {product.cropId && (
                     <>
+                      <Field label={t('provider.nursery.varietyLabel')} hint={varieties.length === 0 ? t('provider.nursery.varietyNone') : undefined}>
+                        <ChoiceChips
+                          label={t('provider.nursery.varietyLabel')}
+                          options={[
+                            ...varieties.map((v) => ({ value: v.id, label: localName(v.names, i18n.language) })),
+                            { value: OTHER_VARIETY, label: t('provider.nursery.varietyOther') },
+                          ]}
+                          selected={product.varietyId ? [product.varietyId] : []}
+                          onToggle={(value) => setProduct({ ...product, varietyId: product.varietyId === value ? '' : value })}
+                          disabled={saving}
+                        />
+                      </Field>
+                      {product.varietyId === OTHER_VARIETY && (
+                        <Field label={t('provider.nursery.varietyNameLabel')} htmlFor="nursery-variety-name">
+                          <Input
+                            id="nursery-variety-name"
+                            value={product.varietyName}
+                            onChange={(e) => setProduct({ ...product, varietyName: e.target.value.slice(0, VARIETY_NAME_MAX) })}
+                            maxLength={VARIETY_NAME_MAX}
+                            className={INPUT_CLASS}
+                            disabled={saving}
+                          />
+                        </Field>
+                      )}
                       <Field label={t('provider.nursery.kindLabel')}>
                         <ChoiceChips
                           label={t('provider.nursery.kindLabel')}
@@ -353,6 +520,22 @@ export default function ProviderNursery() {
                       <Field label={t('provider.nursery.minOrderLabel')} htmlFor="nursery-min-order">
                         <Input id="nursery-min-order" type="number" inputMode="numeric" min={1} step="1" value={product.minOrder} onChange={(e) => setProduct({ ...product, minOrder: e.target.value })} className={INPUT_CLASS} disabled={saving} />
                       </Field>
+                      <Field
+                        label={t('provider.nursery.descriptionLabel')}
+                        htmlFor="nursery-description"
+                        hint={t('provider.common.charsLeft', { count: DESCRIPTION_MAX - product.description.length })}
+                      >
+                        <Textarea
+                          id="nursery-description"
+                          value={product.description}
+                          onChange={(e) => setProduct({ ...product, description: e.target.value.slice(0, DESCRIPTION_MAX) })}
+                          maxLength={DESCRIPTION_MAX}
+                          rows={3}
+                          className="text-lg rounded-2xl border-2"
+                          disabled={saving}
+                        />
+                      </Field>
+                      {!product.id && <p className="text-sm text-muted-foreground">{t('provider.nursery.photosAfterSave')}</p>}
                     </>
                   )}
 

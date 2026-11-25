@@ -1,0 +1,52 @@
+{
+  "farmServices": {
+    "title": "Services near me",
+    "subtitle": "Providers whose area covers your land",
+    "whatQuestion": "What do you need?",
+    "nearCount": "{{count}} near you",
+    "seeAll": "See all {{count}} kinds of work",
+    "notLocatedTitle": "Add your land first",
+    "notLocatedDescription": "Providers are found around your land. Add a land with its location, then come back here.",
+    "providersCount": "{{count}} providers near you",
+    "noneTitle": "No one near you yet",
+    "noneDescription": "No listed provider of this kind covers your land yet. Try another kind of work.",
+    "distance": "{{km}} km away",
+    "busyUntil": "Busy until {{date}}",
+    "state": {
+      "AVAILABLE": "Free for work",
+      "BUSY": "Busy",
+      "NOT_ACCEPTING": "Not taking work",
+      "OFFLINE": "Not available"
+    },
+    "storePlants": "{{count}} plants on sale",
+    "openStore": "Open store",
+    "storeTitle": "Nursery store",
+    "storePlantsTitle": "Plants in this store",
+    "storeEmptyTitle": "Nothing on sale right now",
+    "storeEmptyDescription": "This nursery has no plant on sale today.",
+    "readyNow": "{{count}} ready now",
+    "readyOn": "{{count}} ready on {{date}}",
+    "outOfStock": "Out of stock",
+    "minOrder": "Minimum order: {{count}}",
+    "bookingSoon": "Booking from the app comes soon. Until then, visit the nursery.",
+    "verification": {
+      "MOBILE": "Mobile verified",
+      "PLATFORM": "Verified by the platform",
+      "PROFESSIONAL_EQUIPMENT": "Equipment verified",
+      "INSTITUTIONAL": "Institution verified"
+    },
+    "homeCard": {
+      "title": "Services near me",
+      "description": "Tractor, labour, spraying, nursery plants and more",
+      "stats": "Find a provider"
+    },
+    "errors": {
+      "generic": "Could not load this right now. Try again.",
+      "NOT_AUTHENTICATED": "Please log in again.",
+      "FEATURE_DISABLED": "This is not available for your account yet.",
+      "SERVICE_FAMILY_INVALID": "This kind of work is not in the list.",
+      "NURSERY_STORE_NOT_FOUND": "This store is not available near you.",
+      "UNAVAILABLE": "Could not reach the server. Check your network and try again."
+    }
+  }
+}
