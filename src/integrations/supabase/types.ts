@@ -385,12 +385,74 @@ export type Database = {
         }
         Relationships: []
       }
+      activation_code_batches: {
+        Row: {
+          batch_label: string | null
+          code_count: number
+          created_at: string
+          created_by: string
+          expires_at: string
+          farmer_plan_id: string
+          id: string
+          released_at: string | null
+          released_by: string | null
+          subscription_interval: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_label?: string | null
+          code_count: number
+          created_at?: string
+          created_by: string
+          expires_at: string
+          farmer_plan_id: string
+          id?: string
+          released_at?: string | null
+          released_by?: string | null
+          subscription_interval: string
+          tenant_id: string
+        }
+        Update: {
+          batch_label?: string | null
+          code_count?: number
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          farmer_plan_id?: string
+          id?: string
+          released_at?: string | null
+          released_by?: string | null
+          subscription_interval?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activation_code_batches_farmer_plan_id_fkey"
+            columns: ["farmer_plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activation_code_batches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activation_codes: {
         Row: {
           archived: boolean | null
-          code: string
+          batch_id: string | null
+          code: string | null
+          code_ciphertext: string | null
+          code_hash: string | null
+          code_hint: string | null
           created_at: string | null
           created_by: string | null
+          expired_at: string | null
           expires_at: string | null
           id: string
           is_active: boolean | null
@@ -400,15 +462,26 @@ export type Database = {
           plan_id: string | null
           redeemed_at: string | null
           redeemed_by: string | null
+          released_at: string | null
+          released_by: string | null
+          revoke_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          state: string
           status: string | null
           tenant_id: string
           used_count: number | null
         }
         Insert: {
           archived?: boolean | null
-          code: string
+          batch_id?: string | null
+          code?: string | null
+          code_ciphertext?: string | null
+          code_hash?: string | null
+          code_hint?: string | null
           created_at?: string | null
           created_by?: string | null
+          expired_at?: string | null
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -418,15 +491,26 @@ export type Database = {
           plan_id?: string | null
           redeemed_at?: string | null
           redeemed_by?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          state?: string
           status?: string | null
           tenant_id: string
           used_count?: number | null
         }
         Update: {
           archived?: boolean | null
-          code?: string
+          batch_id?: string | null
+          code?: string | null
+          code_ciphertext?: string | null
+          code_hash?: string | null
+          code_hint?: string | null
           created_at?: string | null
           created_by?: string | null
+          expired_at?: string | null
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
@@ -436,11 +520,24 @@ export type Database = {
           plan_id?: string | null
           redeemed_at?: string | null
           redeemed_by?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          revoke_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          state?: string
           status?: string | null
           tenant_id?: string
           used_count?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "activation_codes_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "activation_code_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "activation_codes_plan_id_fkey"
             columns: ["plan_id"]
@@ -473,36 +570,51 @@ export type Database = {
       }
       activation_logs: {
         Row: {
-          activation_code_id: string
+          activation_code_id: string | null
+          actor_id: string | null
+          batch_id: string | null
           created_at: string | null
           error_message: string | null
+          event: string
+          farmer_id: string | null
           id: string
           ip_address: string | null
           metadata: Json | null
+          result_code: string | null
           success: boolean | null
-          tenant_id: string
+          tenant_id: string | null
           user_agent: string | null
         }
         Insert: {
-          activation_code_id: string
+          activation_code_id?: string | null
+          actor_id?: string | null
+          batch_id?: string | null
           created_at?: string | null
           error_message?: string | null
+          event?: string
+          farmer_id?: string | null
           id?: string
           ip_address?: string | null
           metadata?: Json | null
+          result_code?: string | null
           success?: boolean | null
-          tenant_id: string
+          tenant_id?: string | null
           user_agent?: string | null
         }
         Update: {
-          activation_code_id?: string
+          activation_code_id?: string | null
+          actor_id?: string | null
+          batch_id?: string | null
           created_at?: string | null
           error_message?: string | null
+          event?: string
+          farmer_id?: string | null
           id?: string
           ip_address?: string | null
           metadata?: Json | null
+          result_code?: string | null
           success?: boolean | null
-          tenant_id?: string
+          tenant_id?: string | null
           user_agent?: string | null
         }
         Relationships: [
@@ -13055,6 +13167,36 @@ export type Database = {
           },
         ]
       }
+      equipment_types: {
+        Row: {
+          attribute_definitions: Json
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          attribute_definitions?: Json
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          attribute_definitions?: Json
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       establishment_implement: {
         Row: {
           applies_to_method: string
@@ -14551,6 +14693,9 @@ export type Database = {
       farmers: {
         Row: {
           aadhaar_number: string | null
+          activated_at: string | null
+          activation_code_id: string | null
+          activation_pending: boolean
           annual_income_range: string | null
           app_install_date: string | null
           archived: boolean | null
@@ -14611,6 +14756,9 @@ export type Database = {
         }
         Insert: {
           aadhaar_number?: string | null
+          activated_at?: string | null
+          activation_code_id?: string | null
+          activation_pending?: boolean
           annual_income_range?: string | null
           app_install_date?: string | null
           archived?: boolean | null
@@ -14671,6 +14819,9 @@ export type Database = {
         }
         Update: {
           aadhaar_number?: string | null
+          activated_at?: string | null
+          activation_code_id?: string | null
+          activation_pending?: boolean
           annual_income_range?: string | null
           app_install_date?: string | null
           archived?: boolean | null
@@ -22056,6 +22207,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          is_default: boolean
           min_plan: Database["public"]["Enums"]["subscription_plan"]
           name: string
           slug: string
@@ -22070,6 +22222,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_default?: boolean
           min_plan?: Database["public"]["Enums"]["subscription_plan"]
           name: string
           slug: string
@@ -22084,6 +22237,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_default?: boolean
           min_plan?: Database["public"]["Enums"]["subscription_plan"]
           name?: string
           slug?: string
@@ -23434,6 +23588,188 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      nursery_batches: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          ready_date: string
+          reserved_qty: number
+          status: string
+          total_qty: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          ready_date: string
+          reserved_qty?: number
+          status?: string
+          total_qty: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          ready_date?: string
+          reserved_qty?: number
+          status?: string
+          total_qty?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nursery_batches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "nursery_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nursery_item_kinds: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      nursery_products: {
+        Row: {
+          account_id: string
+          created_at: string
+          crop_id: string
+          currency: string
+          description: string | null
+          description_language: string | null
+          id: string
+          item_kind: string
+          min_order_qty: number | null
+          photo_paths: string[]
+          price: number | null
+          pricing_unit: string
+          status: string
+          updated_at: string
+          variety_id: string | null
+          variety_name_local: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          crop_id: string
+          currency?: string
+          description?: string | null
+          description_language?: string | null
+          id?: string
+          item_kind: string
+          min_order_qty?: number | null
+          photo_paths?: string[]
+          price?: number | null
+          pricing_unit: string
+          status?: string
+          updated_at?: string
+          variety_id?: string | null
+          variety_name_local?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          crop_id?: string
+          currency?: string
+          description?: string | null
+          description_language?: string | null
+          id?: string
+          item_kind?: string
+          min_order_qty?: number | null
+          photo_paths?: string[]
+          price?: number | null
+          pricing_unit?: string
+          status?: string
+          updated_at?: string
+          variety_id?: string | null
+          variety_name_local?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nursery_products_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "nursery_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nursery_products_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "nursery_products_item_kind_fkey"
+            columns: ["item_kind"]
+            isOneToOne: false
+            referencedRelation: "nursery_item_kinds"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "nursery_products_pricing_unit_fkey"
+            columns: ["pricing_unit"]
+            isOneToOne: false
+            referencedRelation: "pricing_units"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "nursery_products_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nursery_products_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "nursery_products_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
           },
         ]
       }
@@ -25522,6 +25858,24 @@ export type Database = {
           },
         ]
       }
+      plan_theme_quota: {
+        Row: {
+          max_themes: number | null
+          plan: Database["public"]["Enums"]["subscription_plan"]
+          updated_at: string
+        }
+        Insert: {
+          max_themes?: number | null
+          plan: Database["public"]["Enums"]["subscription_plan"]
+          updated_at?: string
+        }
+        Update: {
+          max_themes?: number | null
+          plan?: Database["public"]["Enums"]["subscription_plan"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       plans: {
         Row: {
           archived: boolean | null
@@ -26464,6 +26818,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pricing_units: {
+        Row: {
+          area_sqm: number | null
+          code: string
+          created_at: string
+          is_active: boolean
+          is_negotiable: boolean
+          is_per_area: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          area_sqm?: number | null
+          code: string
+          created_at?: string
+          is_active?: boolean
+          is_negotiable?: boolean
+          is_per_area?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          area_sqm?: number | null
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          is_negotiable?: boolean
+          is_per_area?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       proactive_alerts: {
         Row: {
@@ -27612,6 +28002,377 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      provider_availability_states: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      provider_blackouts: {
+        Row: {
+          account_id: string
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          period: unknown
+          reason_code: string | null
+          source: string
+        }
+        Insert: {
+          account_id: string
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          period: unknown
+          reason_code?: string | null
+          source?: string
+        }
+        Update: {
+          account_id?: string
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          period?: unknown
+          reason_code?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_blackouts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+        ]
+      }
+      provider_equipment: {
+        Row: {
+          account_id: string
+          attributes: Json
+          condition: string | null
+          created_at: string
+          equipment_type: string
+          id: string
+          make: string | null
+          model: string | null
+          ownership: string
+          registration_last4: string | null
+          status: string
+          updated_at: string
+          verified_at: string | null
+          verified_by: string | null
+          year_made: number | null
+        }
+        Insert: {
+          account_id: string
+          attributes?: Json
+          condition?: string | null
+          created_at?: string
+          equipment_type: string
+          id?: string
+          make?: string | null
+          model?: string | null
+          ownership?: string
+          registration_last4?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+          year_made?: number | null
+        }
+        Update: {
+          account_id?: string
+          attributes?: Json
+          condition?: string | null
+          created_at?: string
+          equipment_type?: string
+          id?: string
+          make?: string | null
+          model?: string | null
+          ownership?: string
+          registration_last4?: string | null
+          status?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+          year_made?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_equipment_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "provider_equipment_equipment_type_fkey"
+            columns: ["equipment_type"]
+            isOneToOne: false
+            referencedRelation: "equipment_types"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      provider_payment_methods: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      provider_services: {
+        Row: {
+          account_id: string
+          advance_percent: number | null
+          base_rate: number | null
+          cancellation_hours: number | null
+          capacity_period: string | null
+          capacity_unit: string | null
+          capacity_value: number | null
+          category_code: string
+          created_at: string
+          crew_size: number | null
+          currency: string
+          description: string | null
+          description_language: string | null
+          equipment_id: string | null
+          free_travel_km: number | null
+          id: string
+          includes_fuel: boolean
+          includes_material: boolean
+          includes_operator: boolean
+          lead_time_days: number | null
+          min_billable_qty: number | null
+          min_charge: number | null
+          payment_methods: string[]
+          pricing_unit: string
+          same_day_cutoff: string | null
+          season_end_month: number | null
+          season_start_month: number | null
+          skill_tier: string | null
+          status: string
+          title: string
+          travel_charge: number | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          advance_percent?: number | null
+          base_rate?: number | null
+          cancellation_hours?: number | null
+          capacity_period?: string | null
+          capacity_unit?: string | null
+          capacity_value?: number | null
+          category_code: string
+          created_at?: string
+          crew_size?: number | null
+          currency?: string
+          description?: string | null
+          description_language?: string | null
+          equipment_id?: string | null
+          free_travel_km?: number | null
+          id?: string
+          includes_fuel?: boolean
+          includes_material?: boolean
+          includes_operator?: boolean
+          lead_time_days?: number | null
+          min_billable_qty?: number | null
+          min_charge?: number | null
+          payment_methods?: string[]
+          pricing_unit: string
+          same_day_cutoff?: string | null
+          season_end_month?: number | null
+          season_start_month?: number | null
+          skill_tier?: string | null
+          status?: string
+          title: string
+          travel_charge?: number | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          advance_percent?: number | null
+          base_rate?: number | null
+          cancellation_hours?: number | null
+          capacity_period?: string | null
+          capacity_unit?: string | null
+          capacity_value?: number | null
+          category_code?: string
+          created_at?: string
+          crew_size?: number | null
+          currency?: string
+          description?: string | null
+          description_language?: string | null
+          equipment_id?: string | null
+          free_travel_km?: number | null
+          id?: string
+          includes_fuel?: boolean
+          includes_material?: boolean
+          includes_operator?: boolean
+          lead_time_days?: number | null
+          min_billable_qty?: number | null
+          min_charge?: number | null
+          payment_methods?: string[]
+          pricing_unit?: string
+          same_day_cutoff?: string | null
+          season_end_month?: number | null
+          season_start_month?: number | null
+          skill_tier?: string | null
+          status?: string
+          title?: string
+          travel_charge?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_services_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "provider_services_capacity_unit_fkey"
+            columns: ["capacity_unit"]
+            isOneToOne: false
+            referencedRelation: "pricing_units"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "provider_services_category_code_fkey"
+            columns: ["category_code"]
+            isOneToOne: false
+            referencedRelation: "service_categories"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "provider_services_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "provider_equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "provider_services_pricing_unit_fkey"
+            columns: ["pricing_unit"]
+            isOneToOne: false
+            referencedRelation: "pricing_units"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "provider_services_skill_tier_fkey"
+            columns: ["skill_tier"]
+            isOneToOne: false
+            referencedRelation: "skill_tiers"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      provider_types: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      provider_working_hours: {
+        Row: {
+          account_id: string
+          end_time: string | null
+          is_working: boolean
+          start_time: string | null
+          updated_at: string
+          weekday: number
+        }
+        Insert: {
+          account_id: string
+          end_time?: string | null
+          is_working?: boolean
+          start_time?: string | null
+          updated_at?: string
+          weekday: number
+        }
+        Update: {
+          account_id?: string
+          end_time?: string | null
+          is_working?: boolean
+          start_time?: string | null
+          updated_at?: string
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_working_hours_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+        ]
       }
       push_subscriptions: {
         Row: {
@@ -32290,6 +33051,155 @@ export type Database = {
         }
         Relationships: []
       }
+      service_categories: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          parent_code: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          parent_code?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          parent_code?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_categories_parent_code_fkey"
+            columns: ["parent_code"]
+            isOneToOne: false
+            referencedRelation: "service_categories"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      service_map_activities: {
+        Row: {
+          is_mapped: boolean
+          note_en: string | null
+          task_type: string
+          updated_at: string
+        }
+        Insert: {
+          is_mapped: boolean
+          note_en?: string | null
+          task_type: string
+          updated_at?: string
+        }
+        Update: {
+          is_mapped?: boolean
+          note_en?: string | null
+          task_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      service_provider_profiles: {
+        Row: {
+          about_language: string | null
+          about_text: string | null
+          accepts_requests: boolean
+          account_id: string
+          created_at: string
+          experience_years: number | null
+          jobs_completed: number
+          languages_spoken: string[]
+          listed_at: string | null
+          listing_status: string
+          provider_type: string
+          public_name: string
+          rating_average: number | null
+          rating_count: number
+          response_minutes_median: number | null
+          review_note_code: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          submitted_at: string | null
+          tenant_id: string
+          updated_at: string
+          verification_level: string | null
+        }
+        Insert: {
+          about_language?: string | null
+          about_text?: string | null
+          accepts_requests?: boolean
+          account_id: string
+          created_at?: string
+          experience_years?: number | null
+          jobs_completed?: number
+          languages_spoken?: string[]
+          listed_at?: string | null
+          listing_status?: string
+          provider_type: string
+          public_name: string
+          rating_average?: number | null
+          rating_count?: number
+          response_minutes_median?: number | null
+          review_note_code?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          submitted_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          verification_level?: string | null
+        }
+        Update: {
+          about_language?: string | null
+          about_text?: string | null
+          accepts_requests?: boolean
+          account_id?: string
+          created_at?: string
+          experience_years?: number | null
+          jobs_completed?: number
+          languages_spoken?: string[]
+          listed_at?: string | null
+          listing_status?: string
+          provider_type?: string
+          public_name?: string
+          rating_average?: number | null
+          rating_count?: number
+          response_minutes_median?: number | null
+          review_note_code?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          submitted_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          verification_level?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_provider_profiles_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: true
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_provider_profiles_provider_type_fkey"
+            columns: ["provider_type"]
+            isOneToOne: false
+            referencedRelation: "provider_types"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       shopping_carts: {
         Row: {
           cart_status: string
@@ -32357,6 +33267,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      skill_tiers: {
+        Row: {
+          code: string
+          created_at: string
+          is_active: boolean
+          label_en: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          is_active?: boolean
+          label_en: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          is_active?: boolean
+          label_en?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       social_posts: {
         Row: {
@@ -35141,6 +36078,48 @@ export type Database = {
         }
         Relationships: []
       }
+      task_type_service_map: {
+        Row: {
+          category_code: string
+          created_at: string
+          includes_nursery_stock: boolean
+          is_active: boolean
+          sort_order: number
+          task_type: string
+        }
+        Insert: {
+          category_code: string
+          created_at?: string
+          includes_nursery_stock?: boolean
+          is_active?: boolean
+          sort_order?: number
+          task_type: string
+        }
+        Update: {
+          category_code?: string
+          created_at?: string
+          includes_nursery_stock?: boolean
+          is_active?: boolean
+          sort_order?: number
+          task_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_type_service_map_category_code_fkey"
+            columns: ["category_code"]
+            isOneToOne: false
+            referencedRelation: "service_categories"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "task_type_service_map_task_type_fkey"
+            columns: ["task_type"]
+            isOneToOne: false
+            referencedRelation: "service_map_activities"
+            referencedColumns: ["task_type"]
+          },
+        ]
+      }
       tax_configurations: {
         Row: {
           country_code: string
@@ -36233,6 +37212,48 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_theme_assignments: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          removed_at: string | null
+          sort_order: number
+          tenant_id: string
+          theme_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          removed_at?: string | null
+          sort_order?: number
+          tenant_id: string
+          theme_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          removed_at?: string | null
+          sort_order?: number
+          tenant_id?: string
+          theme_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_theme_assignments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_theme_assignments_theme_id_fkey"
+            columns: ["theme_id"]
+            isOneToOne: false
+            referencedRelation: "master_themes"
             referencedColumns: ["id"]
           },
         ]
@@ -44241,6 +45262,47 @@ export type Database = {
         Args: { p_land_id: string; p_lookback_days?: number }
         Returns: number
       }
+      activation_admin_generate_batch: {
+        Args: {
+          p_count: number
+          p_expires_at: string
+          p_farmer_plan_id: string
+          p_label?: string
+          p_subscription_interval: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      activation_admin_release_batch: {
+        Args: { p_batch_id: string }
+        Returns: Json
+      }
+      activation_admin_revoke: {
+        Args: { p_batch_id?: string; p_code_ids?: string[]; p_reason?: string }
+        Returns: Json
+      }
+      activation_enforcement_status: { Args: never; Returns: Json }
+      activation_expire_due: { Args: never; Returns: number }
+      activation_redeem: {
+        Args: {
+          p_code: string
+          p_farmer_id: string
+          p_ip?: string
+          p_user_agent?: string
+        }
+        Returns: Json
+      }
+      activation_reveal_codes: {
+        Args: { p_batch_id: string }
+        Returns: {
+          code: string
+          code_id: string
+          expires_at: string
+          qr_payload: string
+          state: string
+        }[]
+      }
+      activation_usage: { Args: { p_tenant_id: string }; Returns: Json }
       addauth: { Args: { "": string }; Returns: boolean }
       addgeometrycolumn:
         | {
@@ -44844,6 +45906,27 @@ export type Database = {
         Args: { resources: Json; task_type: string }
         Returns: number
       }
+      farm_services_enabled: { Args: never; Returns: boolean }
+      farm_services_nearby: { Args: never; Returns: Json }
+      farm_services_provider_card: {
+        Args: {
+          p_account_id: string
+          p_distance_km: number
+          p_family_code: string
+        }
+        Returns: Json
+      }
+      farm_services_providers: {
+        Args: { p_family_code: string }
+        Returns: Json
+      }
+      farm_services_reachable: {
+        Args: never
+        Returns: {
+          account_id: string
+          distance_km: number
+        }[]
+      }
       finalize_payment: { Args: { p_intent_id: string }; Returns: Json }
       find_intersecting_districts: {
         Args: { tile_geom: unknown }
@@ -45035,6 +46118,10 @@ export type Database = {
       generate_slug_suggestions: {
         Args: { p_organization_name: string }
         Returns: Json
+      }
+      geo_distance_km: {
+        Args: { lat1: number; lat2: number; lon1: number; lon2: number }
+        Returns: number
       }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
@@ -45858,6 +46945,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      nursery_attach_photo: {
+        Args: { p_account_id: string; p_path: string; p_product_id: string }
+        Returns: Json
+      }
+      nursery_remove_photo: {
+        Args: { p_path: string; p_product_id: string }
+        Returns: Json
+      }
+      nursery_save_batch: { Args: { p: Json }; Returns: Json }
+      nursery_save_product: { Args: { p: Json }; Returns: Json }
+      nursery_store: { Args: { p_account_id: string }; Returns: Json }
       persist_ai_crop_schedule_atomic: {
         Args: { p_land: Json; p_schedule: Json; p_tasks: Json }
         Returns: {
@@ -45910,6 +47008,50 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      provider_add_blackout: {
+        Args: { p_from: string; p_reason_code?: string; p_to: string }
+        Returns: Json
+      }
+      provider_availability: {
+        Args: { p_account_id: string }
+        Returns: {
+          next_free_date: string
+          state: string
+        }[]
+      }
+      provider_cancel_blackout: {
+        Args: { p_blackout_id: string }
+        Returns: Json
+      }
+      provider_remove_equipment: {
+        Args: { p_equipment_id: string }
+        Returns: Json
+      }
+      provider_review_listing: {
+        Args: { p_account_id: string; p_decision: string; p_note_code?: string }
+        Returns: string
+      }
+      provider_save_equipment: { Args: { p: Json }; Returns: Json }
+      provider_save_profile: { Args: { p: Json }; Returns: Json }
+      provider_save_service: { Args: { p: Json }; Returns: Json }
+      provider_session_account: {
+        Args: never
+        Returns: {
+          account_id: string
+          tenant_id: string
+        }[]
+      }
+      provider_session_profile_locked: { Args: never; Returns: string }
+      provider_set_accepting: { Args: { p_accepting: boolean }; Returns: Json }
+      provider_set_service_status: {
+        Args: { p_service_id: string; p_status: string }
+        Returns: Json
+      }
+      provider_set_working_hours: { Args: { p_days: Json }; Returns: Json }
+      provider_submit_for_review: { Args: never; Returns: Json }
+      provider_workspace_enabled: { Args: never; Returns: boolean }
+      provider_workspace_get: { Args: never; Returns: Json }
+      provider_workspace_policy: { Args: never; Returns: Json }
       rag_search_fulltext: {
         Args: {
           p_crops?: string[]
@@ -46243,6 +47385,10 @@ export type Database = {
           p_session_token?: string
           p_tenant_id: string
         }
+        Returns: undefined
+      }
+      set_default_master_theme: {
+        Args: { p_theme_id: string }
         Returns: undefined
       }
       set_farm_decision_status: {
