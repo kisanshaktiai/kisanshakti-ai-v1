@@ -456,6 +456,11 @@ export type Database = {
           expires_at: string | null
           id: string
           is_active: boolean | null
+          issue_note: string | null
+          issued_at: string | null
+          issued_by: string | null
+          issued_to_mobile: string | null
+          issued_to_name: string | null
           last_used_at: string | null
           max_uses: number | null
           metadata: Json | null
@@ -485,6 +490,11 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          issue_note?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          issued_to_mobile?: string | null
+          issued_to_name?: string | null
           last_used_at?: string | null
           max_uses?: number | null
           metadata?: Json | null
@@ -514,6 +524,11 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean | null
+          issue_note?: string | null
+          issued_at?: string | null
+          issued_by?: string | null
+          issued_to_mobile?: string | null
+          issued_to_name?: string | null
           last_used_at?: string | null
           max_uses?: number | null
           metadata?: Json | null
@@ -45674,6 +45689,15 @@ export type Database = {
       }
       activation_enforcement_status: { Args: never; Returns: Json }
       activation_expire_due: { Args: never; Returns: number }
+      activation_issue_code: {
+        Args: {
+          p_code_id: string
+          p_note?: string
+          p_recipient_mobile?: string
+          p_recipient_name?: string
+        }
+        Returns: Json
+      }
       activation_redeem: {
         Args: {
           p_code: string
