@@ -139,7 +139,15 @@ export default function SetPin() {
       navigate('/app');
     } catch (err: any) {
       console.error('Error setting PIN:', err);
-      setError(err.message || t('common.somethingWentWrong') || 'Something went wrong. Please try again.');
+      const code = err?.code;
+      if (code === 'locked_out') {
+        const mins = Math.max(1, Math.ceil((Number(err?.retryAfterSeconds) || 300) / 60));
+        setError(t('auth.pinLockedMinutes', { count: mins, defaultValue: 'Too many wrong PINs. Try again in {{count}} min.' }));
+      } else if (code === 'invalid_credentials') {
+        setError(t('auth.wrongPinTryAgain', 'You entered a wrong PIN. Please try again.'));
+      } else {
+        setError(err.message || t('common.somethingWentWrong') || 'Something went wrong. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
