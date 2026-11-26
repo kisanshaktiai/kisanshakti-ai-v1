@@ -55,7 +55,7 @@ export function ScrollToTopFab({ threshold = 400, className }: ScrollToTopFabPro
           exit={{ opacity: 0, scale: 0.6, y: 20 }}
           transition={{ type: 'spring', stiffness: 300, damping: 22 }}
           className={cn(
-            'fixed bottom-24 left-4 z-30 flex h-11 w-11 items-center justify-center',
+            'fixed bottom-40 left-4 z-30 flex h-11 w-11 items-center justify-center',
             'rounded-full bg-card/90 backdrop-blur-md border border-border/60',
             'shadow-lg active:scale-95 transition-transform',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',

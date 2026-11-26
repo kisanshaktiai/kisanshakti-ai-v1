@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_BUILD_TIMESTAMP': JSON.stringify(BUILD_TIMESTAMP),
     'import.meta.env.VITE_BUILD_HASH': JSON.stringify(BUILD_HASH),
   },
+  // Production builds drop console.log/debug/info calls (708 of them in src/ at
+  // the time of writing); console.warn and console.error stay.
+  esbuild: mode === 'production' ? { pure: ['console.log', 'console.debug', 'console.info'] } : undefined,
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
@@ -73,6 +76,14 @@ export default defineConfig(({ mode }) => ({
         clientsClaim: true,
         navigateFallbackDenylist: [/^\/api/, /supabase/, /^\/~oauth/],
         runtimeCaching: [
+          {
+            // Soil report/job state is per farmer and polled live: never answer it from the
+            // shared URL-keyed cache (stale "queued" state, or another farmer's report on a
+            // shared phone). Must precede the general Supabase rule; cross-origin workbox
+            // regexes must match from the start of the URL.
+            urlPattern: /^https:\/\/[^/]+\.supabase\.co\/functions\/v1\/lands-api\?(?:[^#]*&)?action=soil(?:&|#|$)/i,
+            handler: 'NetworkOnly',
+          },
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
             handler: 'NetworkFirst',

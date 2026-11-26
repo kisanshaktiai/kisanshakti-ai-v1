@@ -16,12 +16,14 @@ import {
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence, LayoutGroup, useReducedMotion } from 'framer-motion';
 import { useEnhancedTTS } from '@/hooks/useEnhancedTTS';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getSessionToken } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from '@/hooks/use-toast';
 import { useAnchorClarification } from '@/hooks/useAnchorClarification';
 import { AnchorClarificationCard } from '@/components/land/AnchorClarificationCard';
+import { HarvestConfirmDialog } from '@/components/proactive/HarvestConfirmDialog';
+import { harvestQuestionOf, localDayIso, type HarvestCard } from '@/lib/harvestCard';
 import { useLandNdvi, LandNdviReading } from '@/hooks/useLandNdvi';
 import { formatNdviValue, ndviRatio, ndviTone, type NdviTone } from '@/lib/ndviColor';
 import { alertSourceText, useTranslatedTexts, FARM_ADVICE_TEXT, type AlertTextField } from '@/hooks/useAlertText';
@@ -107,6 +109,8 @@ export default function ProactiveAlerts() {
   const { user } = useAuthStore();
   const { tenant } = useTenant();
   const [answeringAlertId, setAnsweringAlertId] = useState<string | null>(null);
+  // Harvest card opened from the list (the same card the app shows on open)
+  const [harvestCard, setHarvestCard] = useState<HarvestCard | null>(null);
   const { clarifications, submitSowingDate } = useAnchorClarification();
   const ambiguousLandIds = useMemo(
     () => new Set(clarifications.map(c => c.land_id)),
@@ -147,7 +151,8 @@ export default function ProactiveAlerts() {
           confirmed,
           language: lang,
         },
-        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '' },
+        // 2026-11-20: answers need the verified session (proactive-question-seed)
+        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '', 'x-session-token': getSessionToken() || '' },
       });
       if (error) throw error;
       const msg = (data as any)?.message;
@@ -169,7 +174,7 @@ export default function ProactiveAlerts() {
     try {
       const { error } = await supabase.functions.invoke('proactive-question-seed', {
         body: { action: 'irrigation_answer', alertId: alert.id, landId: alert.land_id },
-        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '' },
+        headers: { 'x-farmer-id': user?.id || '', 'x-tenant-id': tenant?.id || '', 'x-session-token': getSessionToken() || '' },
       });
       if (error) throw error;
       toast({ description: t('alerts.water.answered', 'Noted. Your watering will be counted in the next soil-water update.') });
@@ -535,6 +540,25 @@ export default function ProactiveAlerts() {
                           </div>
                         )}
 
+                      {/* Harvest card: after the harvest date, before the land is freed */}
+                      {(() => {
+                        const hq = harvestQuestionOf(alert);
+                        if (!hq || isHistorical || alert.status === 'ACTED' || !(localDayIso() > hq.harvest_date.slice(0, 10))) return null;
+                        return (
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHarvestCard({ alertId: alert.id, landId: hq.land_id, landName: alert.land?.name || alert.trigger_data?.land_name || null, question: hq });
+                            }}
+                            className="mt-3 h-10 w-full rounded-full gap-1.5 text-sm"
+                          >
+                            <Sprout className="h-4 w-4" />
+                            {t('alerts.harvest.update_button', 'Enter the harvest date')}
+                          </Button>
+                        );
+                      })()}
+
                       {/* One-tap "I watered this field" on a live irrigation alert */}
                       {alert.alert_category === 'IRRIGATION' && !isHistorical && alert.land_id && (
                         <Button
@@ -584,6 +608,13 @@ export default function ProactiveAlerts() {
           </AnimatePresence>
         </LayoutGroup>
       </div>
+
+      <HarvestConfirmDialog
+        card={harvestCard}
+        open={!!harvestCard}
+        onClose={() => setHarvestCard(null)}
+        onAnswered={(c) => { markActed(c.alertId); setHarvestCard(null); }}
+      />
     </div>
   );
 }
@@ -639,7 +670,7 @@ function Header({
   return (
     <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border">
       <div className="px-3 py-2 flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-lg shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} aria-label={t('common.back')} className="h-9 w-9 rounded-lg shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">

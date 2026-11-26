@@ -26,6 +26,8 @@ interface GoogleMapBoundaryDrawerProps {
   onCancel: () => void;
   initialCenter?: LatLng;
   initialBoundary?: LatLng[];
+  /** Shown in the top bar until the first point is marked (the land's name when editing). */
+  title?: string;
 }
 
 const mapContainerStyle: React.CSSProperties = {
@@ -43,13 +45,15 @@ export function GoogleMapBoundaryDrawer({
   onSave, 
   onCancel,
   initialCenter,
-  initialBoundary = []
+  initialBoundary = [],
+  title,
 }: GoogleMapBoundaryDrawerProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const { isLoaded, loadError, isLoading, retry } = useGoogleMapsScript();
   
   const [map, setMap] = useState<google.maps.Map | null>(null);
+  const [mapType, setMapType] = useState<'hybrid' | 'roadmap'>('hybrid');
   const [center, setCenter] = useState<LatLng>(
     initialCenter || { lat: 20.5937, lng: 78.9629 } // Default to India center
   );
@@ -136,22 +140,13 @@ export function GoogleMapBoundaryDrawer({
       // (the previous value) globally disabled the two-finger rotate gesture.
       tilt: 45,
       heading: 0,
-      rotateControl: true,
-      rotateControlOptions: {
-        position: google.maps.ControlPosition.RIGHT_TOP,
-      },
+      rotateControl: false,
       isFractionalZoomEnabled: true,
-      mapTypeControl: true,
-      mapTypeControlOptions: {
-        mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
-        position: google.maps.ControlPosition.TOP_LEFT,
-        style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-      },
+      // Google's own map-type, fullscreen and rotate buttons sat under the app's
+      // top bar; the map-type toggle is the app's own button in that bar.
+      mapTypeControl: false,
       streetViewControl: false,
-      fullscreenControl: true,
-      fullscreenControlOptions: {
-        position: google.maps.ControlPosition.RIGHT_TOP,
-      },
+      fullscreenControl: false,
       scaleControl: true,
       styles: [
         { featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'on' }] },
@@ -469,6 +464,27 @@ export function GoogleMapBoundaryDrawer({
     }
   }, [isTracking, startTracking, stopTracking]);
 
+  // While walking the edge the screen stays on, so the phone keeps recording
+  // in the pocket-to-hand moments. Phones without the API simply skip this.
+  useEffect(() => {
+    if (!isTracking || typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    let cancelled = false;
+    (navigator as Navigator & { wakeLock: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } })
+      .wakeLock.request('screen')
+      .then((l) => { if (cancelled) void l.release(); else lock = l; })
+      .catch(() => { /* not granted: the farmer can keep the screen on by hand */ });
+    return () => { cancelled = true; void lock?.release(); };
+  }, [isTracking]);
+
+  const handleToggleMapType = useCallback(() => {
+    setMapType((current) => {
+      const next = current === 'hybrid' ? 'roadmap' : 'hybrid';
+      map?.setMapTypeId(next);
+      return next;
+    });
+  }, [map]);
+
   // Save handler
   const handleSave = useCallback(() => {
     console.log('handleSave called', { boundary, area, validationError });
@@ -633,9 +649,9 @@ export function GoogleMapBoundaryDrawer({
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
           <p className="text-muted-foreground font-medium">
-            Loading Map...
+            {t('lands.map.loading.title')}
           </p>
-          <p className="text-xs text-muted-foreground">Please wait while we prepare the map</p>
+          <p className="text-xs text-muted-foreground">{t('lands.map.loading.hint')}</p>
           {!isOnline && (
             <div className="flex items-center justify-center gap-2 mt-2 text-amber-600">
               <WifiOff className="h-4 w-4" />
@@ -654,19 +670,19 @@ export function GoogleMapBoundaryDrawer({
       <div className="relative w-full h-full flex items-center justify-center bg-background p-4">
         <Card className="p-6 space-y-4 text-center max-w-md">
           <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
-          <h2 className="text-lg font-semibold text-destructive">Map Loading Failed</h2>
+          <h2 className="text-lg font-semibold text-destructive">{t('lands.map.loading.failed')}</h2>
           <p className="text-sm text-muted-foreground">
             {!isOnline 
-              ? 'No internet connection. Please connect to the internet and try again.'
+              ? t('lands.map.loading.offline')
               : loadError}
           </p>
           <div className="flex gap-3 justify-center pt-2">
             <Button onClick={onCancel} variant="outline">
-              Go Back
+              {t('lands.map.loading.go_back')}
             </Button>
             <Button onClick={retry} variant="default">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
+              {t('lands.map.loading.try_again')}
             </Button>
           </div>
         </Card>
@@ -681,7 +697,7 @@ export function GoogleMapBoundaryDrawer({
       <div className="relative w-full h-full flex items-center justify-center bg-background">
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground font-medium">Initializing map...</p>
+          <p className="text-muted-foreground font-medium">{t('lands.map.loading.initializing')}</p>
           <Button variant="outline" size="sm" onClick={retry} className="mt-2">
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
@@ -698,8 +714,8 @@ export function GoogleMapBoundaryDrawer({
         <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
           <Card className="p-6 space-y-4 text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Loading Hybrid Map...</p>
-            <p className="text-xs text-muted-foreground">Getting your location...</p>
+            <p className="text-muted-foreground">{t('lands.map.loading.hybrid')}</p>
+            <p className="text-xs text-muted-foreground">{t('lands.map.loading.locating')}</p>
           </Card>
         </div>
       )}
@@ -707,7 +723,7 @@ export function GoogleMapBoundaryDrawer({
       {/* Location center button — sits above the bottom action sheet, safe-area aware */}
       <button
         onClick={handleCenterOnLocation}
-        aria-label="Center on my location"
+        aria-label={t('lands.map.loading.center_me')}
         className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
         style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
         disabled={isCentering}
@@ -792,7 +808,14 @@ export function GoogleMapBoundaryDrawer({
         ) : null}
       </GoogleMap>
 
-      <AreaDisplay area={area} pointsCount={boundary.length} />
+      <AreaDisplay
+        area={area}
+        pointsCount={boundary.length}
+        title={title}
+        onBack={onCancel}
+        mapType={mapType}
+        onToggleMapType={handleToggleMapType}
+      />
       
       {/* Validation Error */}
       {validationError && (

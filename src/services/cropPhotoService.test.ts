@@ -10,7 +10,7 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: { functions: { invoke: mocks.invoke } },
 }));
 vi.mock('@/services/localDB', () => ({ localDB: { getPendingPhotoCaptures: mocks.pending, queuePhotoCapture: mocks.queue, updatePhotoCapture: mocks.update } }));
-import { getCapturePolicy, queueCapture, syncPendingPhotoCaptures, uploadQueued } from './cropPhotoService';
+import { getCapturePolicy, identifyGeneral, queueCapture, syncPendingPhotoCaptures, uploadQueued } from './cropPhotoService';
 import type { PhotoCaptureQueueItem } from './localDB';
 
 describe('shared photo identity isolation', () => {
@@ -43,5 +43,18 @@ describe('shared photo identity isolation', () => {
       return { data: { image_policy: {}, max_photos_per_diagnosis: 3 }, error: null };
     });
     await expect(getCapturePolicy({ farmerId: 'farmer-a', tenantId: 'tenant-a' })).rejects.toThrow('PHOTO_SESSION_CHANGED');
+  });
+  it('preserves the General Scan setup code without consuming its response body', async () => {
+    const context = new Response(JSON.stringify({ code: 'GENERAL_SCAN_NOT_CONFIGURED' }), { status: 503 });
+    mocks.invoke.mockResolvedValue({ data: null, error: { context } });
+    await expect(identifyGeneral({ id: { farmerId: 'farmer-a', tenantId: 'tenant-a' }, purpose: 'instascan', photos: [], language: 'mr' }))
+      .rejects.toThrow('GENERAL_SCAN_NOT_CONFIGURED');
+    expect(await context.json()).toEqual({ code: 'GENERAL_SCAN_NOT_CONFIGURED' });
+  });
+  it('does not relabel other registration failures as General Scan setup errors', async () => {
+    const error = { context: new Response(JSON.stringify({ code: 'PHOTO_REGISTER_FAILED' }), { status: 500 }) };
+    mocks.invoke.mockResolvedValue({ data: null, error });
+    await expect(identifyGeneral({ id: { farmerId: 'farmer-a', tenantId: 'tenant-a' }, purpose: 'instascan', photos: [], language: 'en' }))
+      .rejects.toBe(error);
   });
 });

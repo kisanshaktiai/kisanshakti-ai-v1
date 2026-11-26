@@ -6,6 +6,18 @@
  * PATH: supabase/functions/ai-agriculture-chat/photo/perception-engine.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23 — Vision audit fixes for land scans. (1) Photos are sent inline
+ *   (base64 data URL from the private bucket, service role) instead of 10-minute
+ *   signed URLs, so every provider in the vision.diagnose chain can read them —
+ *   the Gemini step behind the free GPT-4o pool had never been exercised with a
+ *   URL. Shared helper imageDataUrl() is also used by general-scan.ts.
+ *   (2) Temperature 0.7 → 0.2: perception is classification, the answer should
+ *   not vary between identical photos (General Scan already uses 0.2).
+ * 2026-11-22 — General Scan support (no behaviour change for land scans):
+ *   loadPolicies / visionPolicyUsable / policy types exported for
+ *   general-scan.ts; optional vision_diagnosis_policy.general_scan overrides
+ *   typed (2026-11-23: + timeout_ms, local_script_min_ratio, spray_plan); loadPhotoEvidenceForTurn refuses a land-less (general) diagnosis
+ *   so identification-only results never reach the Decision Brain.
  * 2026-09-27 — AI model SSOT: the vision model chain now comes from the AI model
  *   registry task vision.diagnose (ai_task_route / ai_task_route_step, via
  *   callAITask) instead of vision_diagnosis_policy.primary_model/fallback_model,
@@ -57,24 +69,48 @@ type Db = any;
 
 // primary_model / fallback_model / price_usd_per_1m may still be present in the stored JSON;
 // since 2026-09-27 they are ignored (model chain + prices come from the AI model registry).
-interface VisionPolicy {
+export interface VisionPolicy {
   enabled: boolean;
   image_detail: 'low' | 'high' | 'auto' | null;
   max_output_tokens: number | null;
   timeout_ms: number | null;
   prompt_version: string | null;
+  /** Optional overrides read only by general-scan.ts (land-less identification). */
+  general_scan?: {
+    max_output_tokens?: number | null;
+    min_confidence?: number | null;
+    timeout_ms?: number | null;
+    local_script_min_ratio?: number | null;
+    /** App-side spray calculator defaults (pump sizes, stock solution). */
+    spray_plan?: Record<string, unknown> | null;
+  } | null;
 }
 
-interface PhotoPolicy {
+export interface PhotoPolicy {
   max_photos_per_diagnosis: number;
   observation_min_confidence: number;
   vocabulary: { universal_observation_types: string[]; require_farmer_observable: boolean };
 }
 
-const SIGNED_URL_TTL_SECONDS = 600;
 const OBS_DESCRIPTION_MAX = 90;
 
-async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; photo: PhotoPolicy | null }> {
+/**
+ * One stored photo as an inline data URL (private bucket, service-role client),
+ * so the pixels reach every provider in the route — no provider has to fetch a URL.
+ * Chunked btoa (same pattern as text-to-speech) keeps large photos off the call stack.
+ */
+export async function imageDataUrl(
+  sb: Db, bucket: string, path: string,
+): Promise<{ ok: true; url: string } | { ok: false; detail: string | null }> {
+  const { data: blob, error } = await sb.storage.from(bucket).download(path);
+  if (error || !blob) return { ok: false, detail: error?.message ?? null };
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { ok: true, url: `data:image/jpeg;base64,${btoa(binary)}` };
+}
+
+export async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; photo: PhotoPolicy | null }> {
   const { data, error } = await sb
     .from('system_config')
     .select('config_key, config_value')
@@ -87,7 +123,7 @@ async function loadPolicies(sb: Db): Promise<{ vision: VisionPolicy | null; phot
   };
 }
 
-function visionPolicyUsable(p: VisionPolicy | null): p is VisionPolicy & { max_output_tokens: number; timeout_ms: number } {
+export function visionPolicyUsable(p: VisionPolicy | null): p is VisionPolicy & { max_output_tokens: number; timeout_ms: number } {
   return !!p && p.enabled === true && typeof p.max_output_tokens === 'number' && typeof p.timeout_ms === 'number';
 }
 
@@ -272,16 +308,17 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
       { diagnosis_id: diagnosisId, status: 'failed', error_code: 'VISION_POLICY_INCOMPLETE' });
   }
 
-  // Signed read URLs (private bucket); a missing object fails here.
+  // Pixels inline (private bucket, service role) so every provider in the chain can read them;
+  // a missing object fails here.
   const imageUrls: string[] = [];
   for (const p of args.photos) {
     const u = byId.get(p.upload_id);
-    const { data: signed, error: signErr } = await sb.storage.from(u.storage_bucket).createSignedUrl(u.storage_path, SIGNED_URL_TTL_SECONDS);
-    if (signErr || !signed?.signedUrl) {
-      return finish({ status: 'failed', error_code: 'OBJECT_MISSING', error_detail: signErr?.message ?? null },
+    const img = await imageDataUrl(sb, u.storage_bucket, u.storage_path);
+    if (!img.ok) {
+      return finish({ status: 'failed', error_code: 'OBJECT_MISSING', error_detail: img.detail },
         { diagnosis_id: diagnosisId, status: 'failed', error_code: 'OBJECT_MISSING' });
     }
-    imageUrls.push(signed.signedUrl);
+    imageUrls.push(img.url);
   }
   await sb.from('crop_growth_uploads').update({ object_confirmed: true }).in('id', ids);
 
@@ -290,7 +327,7 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
 
   // 2026-09-27 — one registry call: vision.diagnose steps in order (was primary_model, then fallback_model).
   // Request as before: max_output_tokens from the policy, json_schema output, reasoning "none" and the
-  // old default temperature 0.7 wherever the model's catalog contract accepts them, timeout_ms per model.
+  // temperature 0.2 (2026-11-23, was 0.7) wherever the model's catalog contract accepts it, timeout_ms per model.
   const started = Date.now();
   const call = await callAITask({
     db: sb,
@@ -299,7 +336,7 @@ export async function runPhotoDiagnosis(sb: Db, args: RunPhotoDiagnosisArgs): Pr
     farmerId: args.farmerId,
     messages,
     maxOutputTokens: vision.max_output_tokens,
-    temperature: 0.7,
+    temperature: 0.2,
     reasoningEffort: 'none',
     responseFormat: { type: 'json_schema', json_schema: PERCEPTION_JSON_SCHEMA },
     attemptTimeoutMs: vision.timeout_ms,
@@ -471,6 +508,8 @@ export async function loadPhotoEvidenceForTurn(
     .select('id, farmer_id, land_id, status, perception')
     .eq('id', args.diagnosisId).maybeSingle();
   if (!d || d.farmer_id !== args.farmerId || (args.landId && d.land_id !== args.landId)) return null;
+  // 2026-11-22 — a General Scan (land_id NULL) is identification only; it never feeds the governed brain.
+  if (d.land_id === null) return null;
   if (d.status !== 'completed' || !d.perception) return null;
   const { data: links } = await sb.from('crop_photo_diagnosis_photo').select('upload_id, photo_index')
     .eq('diagnosis_id', d.id).order('photo_index', { ascending: true });

@@ -85,7 +85,7 @@ export default function MobileAuth() {
       // caller cannot enumerate farmer/tenant UUIDs from this endpoint.
       console.log('🌐 [MobileAuth] Online mode - checking account via farmer-auth');
       const maxRetries = 2;
-      let lookup: { exists: boolean; requiresPinSetup: boolean } | null = null;
+      let lookup: { exists: boolean; requiresPinSetup: boolean; multiRole?: boolean } | null = null;
       let lastNetworkError: any = null;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -137,7 +137,9 @@ export default function MobileAuth() {
         localStorage.setItem('isNewRegistration', 'true');
         localStorage.setItem('registerMobile', mobile);
         localStorage.removeItem('requiresCurrentPin');
-        navigate('/set-pin');
+        localStorage.removeItem('registerRoles');
+        // Multi-role identity (flag on): role step before the PIN.
+        navigate(lookup.multiRole ? '/choose-roles' : '/set-pin');
       }
     } catch (err: any) {
       console.error('Error in mobile auth:', err);

@@ -107,8 +107,11 @@ export default function AuthScreen() {
         localStorage.setItem('tenantId', tenant.id);
         localStorage.setItem('isNewRegistration', 'true');
         localStorage.removeItem('requiresCurrentPin');
+        localStorage.removeItem('registerRoles');
         setStep('setpin');
-        navigate('/set-pin');
+        // Multi-role identity (flag on for the tenant): ask how the person will
+        // use the app before the PIN. Flag off: straight to the PIN as before.
+        navigate(lookup.multiRole ? '/choose-roles' : '/set-pin');
       } else {
         setMode('register');
         setError(t('auth.accountNotFound') || 'No account found with this number. Click Continue to register.');

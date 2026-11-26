@@ -7,10 +7,11 @@ import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { syncService } from '@/services/syncService';
 import { localDB } from '@/services/localDB';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
-import { format } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 export function SyncStatus() {
+  const { t, i18n } = useTranslation();
   const [syncMetadata, setSyncMetadata] = useState({
     lastSyncTime: null as number | null,
     pendingChanges: 0,
@@ -51,16 +52,17 @@ export function SyncStatus() {
   };
 
   const formatLastSync = (timestamp: number | null) => {
-    if (!timestamp) return 'Never synced';
-    
-    const now = Date.now();
-    const diff = now - timestamp;
-    
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours ago`;
-    
-    return format(new Date(timestamp), 'MMM d, h:mm a');
+    if (!timestamp) return t('sync.never_synced');
+    const diff = Date.now() - timestamp;
+    if (diff < 60000) return t('sync.just_now');
+    if (diff < 3600000) return t('sync.minutes_ago', { count: Math.floor(diff / 60000) });
+    if (diff < 86400000) return t('sync.hours_ago', { count: Math.floor(diff / 3600000) });
+    // date-fns has no Marathi locale; the platform formatter speaks every app language
+    try {
+      return new Intl.DateTimeFormat(`${(i18n.language || 'en').split('-')[0]}-IN`, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(timestamp));
+    } catch {
+      return new Date(timestamp).toLocaleString();
+    }
   };
 
   return (
@@ -75,7 +77,7 @@ export function SyncStatus() {
           )}
           <div className="min-w-0 flex-1">
             <span className="text-xs font-medium block truncate">
-              {isOnline ? 'Online' : 'Offline'}
+              {isOnline ? t('common.online') : t('common.offline')}
             </span>
             <span className="text-[10px] text-muted-foreground block truncate">
               {formatLastSync(syncMetadata.lastSyncTime)}
@@ -96,7 +98,8 @@ export function SyncStatus() {
           disabled={!isOnline || syncMetadata.syncInProgress}
           variant="ghost"
           size="icon"
-          className="h-7 w-7 shrink-0"
+          className="h-11 w-11 shrink-0"
+          aria-label={t('sync.sync_now')}
         >
           <RefreshCw 
             className={cn(

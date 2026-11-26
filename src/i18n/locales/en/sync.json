@@ -36,7 +36,10 @@
     "all_up_to_date": "Everything is up to date",
     "some_data_failed": "Some data could not be synced",
     "refresh_suggestion": "Pull down to refresh and try again",
-    "clearing_and_reloading": "Clearing data and reloading..."
+    "clearing_and_reloading": "Clearing data and reloading...",
+    "minutes_ago": "{{count}} min ago",
+    "hours_ago": "{{count}} h ago",
+    "sync_now": "Sync now"
   },
   "__qa": {
     "voice_examples_en": [

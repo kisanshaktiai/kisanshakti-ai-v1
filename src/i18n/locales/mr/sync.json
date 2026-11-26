@@ -37,7 +37,10 @@
     "all_up_to_date": "सर्व काही अद्ययावत आहे",
     "some_data_failed": "काही माहिती सिंक होऊ शकली नाही",
     "refresh_suggestion": "रिफ्रेश करण्यासाठी खाली ओढा आणि पुन्हा प्रयत्न करा",
-    "clearing_and_reloading": "डेटा काढून पुन्हा लोड होत आहे..."
+    "clearing_and_reloading": "डेटा काढून पुन्हा लोड होत आहे...",
+    "minutes_ago": "{{count}} मिनिटांपूर्वी",
+    "hours_ago": "{{count}} तासांपूर्वी",
+    "sync_now": "आता सिंक करा"
   },
   "__qa": {
     "voice_examples_en": [

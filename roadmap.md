@@ -1,6 +1,29 @@
+# Profile save repair
+- [x] Replace farmer profile direct reads/writes with verified-session service actions; no farmer/tenant identity accepted from the form.
+- [x] Repair avatar profile writes, offline profile sync, saved-address fallback and greeting state; provider/account flows already use verified server writers.
+- [x] Preserve trigger-managed profile fields across partial farmer writes; 28 profile/account/provider tests and both Deno entry-point checks pass, preview build OK.
+- [x] Deploy farmer-auth and tenant-config; final fake-session/spoofed-ID update probes return 401 session_required on both services. No database changes made.
+- [ ] Verify a real signed-in profile save/read-back: external user-managed farmer authentication cannot be minted in this sandbox.
+
+# Full-screen camera wording
+- [x] Add Marathi and Hindi wording for the full-screen camera screen's starting message, shutter and switch-camera labels.
+- [x] Guard the keys with a regression test; 4 wording checks pass, type-check clean, preview build OK.
+
+# General Scan registration failure
+- [x] Confirm live photo triggers still require a land and reject General Scan with NULL land_id.
+- [x] Preserve identity checks and report a specific setup error with localized recovery instead of generic photo failure.
+- [x] Read chat, InstaScan, schedule photos, growth tracking, satellite prompts, offline retries, legacy processing and all three live photo triggers; add land recovery for bound-camera General Scan failures and test error propagation.
+- [ ] Enable General Scan persistence: awaiting permission to update only photo ownership triggers and the storage-path constraint; no database changes performed.
+
 # Compact schedule top bar
 - [x] Move saved crop, land, variety and sowing/harvest summaries into the top bar; remove duplicate content below.
 - [x] Verify isolated compact layout at 394×732 and 1280×1800 with no horizontal overflow; 11 schedule regressions pass and preview build OK. Signed-in full-page verification remains unavailable with external unmanaged authentication.
+
+# Soil source configuration error
+- [x] Confirm ENGINE_NOT_CONFIGURED is the missing SOILGRIDS_SOURCE_VERSION gate, not a land-ownership failure.
+- [x] Prevent known configuration-blocked fetches while preserving saved-report reads, back navigation, and retries for unknown readiness.
+- [x] Set SOILGRIDS_SOURCE_VERSION to the operator-confirmed soilgrids-2.0-2020 and redeploy lands-api; unauthenticated soil read returns 401.
+- [ ] Verify authenticated soil job completion/read-back: external unmanaged farmer authentication is unavailable.
 
 # Schedule graphical view
 - [x] Remove the pending-sections notice and preserve the Basic view.

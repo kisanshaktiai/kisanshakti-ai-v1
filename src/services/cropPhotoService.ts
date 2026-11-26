@@ -6,6 +6,21 @@
  * PATH: src/services/cropPhotoService.ts
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23d — General Scan v1.3 types: chemical options carry product class
+ *   (type) and application method; spray roles nutrient → fertilizer /
+ *   micronutrient, + biopesticide, biostimulant.
+ * 2026-11-23 09:27 UTC — Preserve General Scan setup errors for localized capture recovery.
+ * 2026-11-23b — General Scan v1.2 types: root_cause, spray_plan (label doses in
+ *   the label's own unit; the app's src/lib/sprayPlan.ts does the arithmetic),
+ *   spray_defaults from config; farmer_card loses life_cycle/spread (moved to
+ *   root_cause).
+ * 2026-11-23 — GeneralIdentification gains `management` (prevention, biological
+ *   agents, chemical active ingredients with MoA group — no brands, no doses)
+ *   and the server's `language_check`.
+ * 2026-11-22 — General Scan (land-less identification): uploadGeneralPhoto()
+ *   and identifyGeneral() send scan_scope 'general' on the same photo routes.
+ *   Online only (no offline queue, so localDB is unchanged); the land queue,
+ *   upload, diagnosis and brain functions are untouched.
  * 2026-10-29 — Bind queued photos and policy cache to the active farmer/tenant session.
  * 2026-09-23 — v2 REWRITE (photo evidence store v2). Capture → offline queue →
  *   one resize + ONE JPEG encode with the server's image policy → SHA-256 →
@@ -95,7 +110,17 @@ async function invokeChat<T>(body: Record<string, unknown>, id: PhotoIdentity): 
   });
   assertPhotoIdentity(id);
   if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
-  if (error) throw error;
+  if (error) {
+    // FunctionsHttpError keeps the JSON error code in its Response context.
+    // Read a clone so diagnostics and other consumers retain the original body.
+    if (error.context instanceof Response) {
+      const payload = await error.context.clone().json().catch(() => null);
+      if (payload?.code === 'GENERAL_SCAN_NOT_CONFIGURED') {
+        throw new Error('GENERAL_SCAN_NOT_CONFIGURED');
+      }
+    }
+    throw error;
+  }
   return data as T;
 }
 
@@ -141,6 +166,13 @@ function newCaptured(blob: Blob, source: CaptureSource): CapturedPhoto {
  */
 export async function takeStillPhoto(): Promise<CapturedPhoto | null> {
   try {
+    try {
+      const perm = await Camera.checkPermissions();
+      if (perm.camera !== 'granted') {
+        const req = await Camera.requestPermissions({ permissions: ['camera'] });
+        if (req.camera === 'denied') return null;
+      }
+    } catch { /* permission API unavailable — let getPhoto ask */ }
     const photo = await Camera.getPhoto({
       source: CameraSource.Camera,
       resultType: CameraResultType.Uri,
@@ -416,6 +448,184 @@ export async function askDecisionBrain(a: {
     language: a.language,
     photoDiagnosisId: a.diagnosisId,
     metadata: { tenantId: a.id.tenantId, farmerId: a.id.farmerId, mediaType: 'photo' },
+  }, a.id);
+}
+
+// ── General Scan — land-less identification (online only) ─────────────────
+
+export type GeneralScanCategory =
+  | 'crop_plant' | 'weed' | 'insect_pest' | 'mite_pest' | 'pest_damage'
+  | 'fungal_disease' | 'bacterial_disease' | 'viral_disease' | 'nematode_damage'
+  | 'nutrient_deficiency' | 'abiotic_stress' | 'animal_damage' | 'beneficial_organism'
+  | 'not_agricultural' | 'unknown';
+
+export interface GeneralScanName {
+  common_name_en: string | null;
+  scientific_name: string | null;
+  local_name: string | null;
+  confidence: number;
+}
+
+/** Mirrors GeneralIdentification in supabase/functions/ai-agriculture-chat/photo/general-scan.ts. */
+/** Control measures from General Scan. Chemicals are active ingredients (ISO common names) only. */
+export interface GeneralManagement {
+  applicable: boolean;
+  prevention_local: string[];
+  biological: Array<{ agent: string; how_local: string | null }>;
+  chemical: Array<{
+    active_ingredient: string;
+    /** Product class and how it is applied (v1.3+; absent on older stored results). */
+    type?: ProductType | null;
+    application?: ApplicationMethod | null;
+    moa_group: string | null;
+    how_local: string | null;
+    watch_list?: boolean;
+  }>;
+  action_threshold_local: string | null;
+  safety_local: string | null;
+  /** Server held products back: identification not sure, or the regulatory list could not be read. */
+  products_withheld?: 'not_sure' | 'regulatory_unavailable' | null;
+}
+
+export type SprayRole = 'fungicide' | 'bactericide' | 'insecticide' | 'acaricide' | 'nematicide' | 'herbicide'
+  | 'biopesticide' | 'fertilizer' | 'micronutrient' | 'growth_regulator' | 'biostimulant' | 'adjuvant';
+export type ProductType = SprayRole | 'rodenticide' | 'molluscicide';
+export type ApplicationMethod = 'foliar_spray' | 'soil_application' | 'seed_treatment' | 'bait';
+export type DoseUnit = 'g_per_acre' | 'ml_per_acre' | 'g_per_ha' | 'ml_per_ha' | 'g_per_litre' | 'ml_per_litre';
+export type WaterUnit = 'l_per_acre' | 'l_per_ha';
+
+/** One product in the spray plan, dose exactly as the label states it. */
+export interface SprayComponent {
+  role: SprayRole;
+  active_ingredient: string;
+  formulation: string | null;
+  dose_value: number | null;
+  dose_unit: DoseUnit | null;
+  phi_days: number | null;
+  moa_group: string | null;
+  watch_list?: boolean;
+}
+
+export interface GeneralSprayPlan {
+  needed: boolean;
+  water_volume: number | null;
+  water_unit: WaterUnit | null;
+  components: SprayComponent[];
+  clash_note_local: string | null;
+  withheld?: 'not_sure' | 'regulatory_unavailable' | null;
+  dose_withheld?: 'crop_unknown' | null;
+}
+
+/** Config defaults for the pump / stock-solution calculator (system_config). */
+export interface SprayDefaults {
+  pump_sizes_l: number[];
+  default_pump_l: number;
+  stock_l_per_pump: number;
+  stock_min_dilution: number;
+}
+
+export interface GeneralIdentification {
+  scan_scope: 'general';
+  language: string;
+  image_usable: boolean;
+  retake_reason_code: RetakeReason | null;
+  retake_photo_index: number | null;
+  observed_features_en: string[];
+  category: GeneralScanCategory;
+  primary: GeneralScanName & { taxon_rank: string };
+  host_crop: GeneralScanName | null;
+  alternatives: Array<GeneralScanName & { category: GeneralScanCategory; how_to_tell_apart_local: string | null }>;
+  farmer_card: {
+    summary_local: string | null;
+    identification_marks_local: string[];
+    damage_or_role_local: string | null;
+    field_checks_local: string[];
+  };
+  root_cause: { primary_en: string | null; contributing_factors_local: string[]; life_cycle_local: string | null };
+  another_photo: { needed: boolean; shot_role: ShotRole | null; reason_local: string | null };
+  management: GeneralManagement;
+  spray_plan: GeneralSprayPlan;
+  abstained: boolean;
+  language_check?: 'ok' | 'repaired' | 'mismatch' | 'not_checked';
+}
+
+export interface GeneralScanResult {
+  diagnosis_id: string | null;
+  status: Extract<DiagnosisStatus, 'completed' | 'needs_follow_up' | 'retake_requested' | 'failed'>;
+  retake?: { reason_code: RetakeReason | null; photo_index: number | null };
+  identification?: GeneralIdentification;
+  spray_defaults?: SprayDefaults | null;
+  error_code?: string;
+}
+
+/**
+ * Register and upload one General Scan photo (no land). Same single encode,
+ * same private bucket and signed upload as land photos; returns the evidence id.
+ */
+export async function uploadGeneralPhoto(photo: CapturedPhoto, a: {
+  id: PhotoIdentity;
+  purpose: CapturePurpose;
+  shotRole: ShotRole;
+  location: PhotoCaptureQueueItem['location'];
+}): Promise<string> {
+  assertPhotoIdentity(a.id);
+  const token = sessionToken();
+  const { policy } = await getCapturePolicy(a.id);
+  const p = await prepareForUpload(photo.blob, a.shotRole, policy);
+  const begin = await invokeChat<BeginUploadResponse>({
+    action: 'photo_begin_upload',
+    scan_scope: 'general',
+    purpose: a.purpose,
+    shot_role: a.shotRole,
+    client_capture_id: photo.captureId,
+    content_sha256: p.sha256,
+    mime_type: 'image/jpeg',
+    bytes: p.jpeg.size,
+    width_px: p.width,
+    height_px: p.height,
+    original_width_px: p.originalWidth,
+    original_height_px: p.originalHeight,
+    captured_at: photo.capturedAt,
+    created_offline: false,
+    location: a.location,
+    client_quality: { sharpness: p.metrics.sharpness, brightness: p.metrics.brightness, contrast: p.metrics.contrast },
+    processing: {
+      pipeline_version: PHOTO_PIPELINE_VERSION,
+      source: photo.source,
+      resize: p.resize,
+      jpeg_quality: p.quality,
+      encoded_once: true,
+    },
+    device: { platform: Capacitor.getPlatform(), user_agent: navigator.userAgent },
+  }, a.id);
+  if (begin.upload) {
+    assertPhotoIdentity(a.id);
+    if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
+    const { error } = await supabase.storage
+      .from(begin.upload.bucket)
+      .uploadToSignedUrl(begin.upload.storage_path, begin.upload.token, p.jpeg, { contentType: 'image/jpeg' });
+    if (error) throw error;
+  }
+  assertPhotoIdentity(a.id);
+  if (sessionToken() !== token) throw new Error('PHOTO_SESSION_CHANGED');
+  return begin.upload_id;
+}
+
+/** Identification only — the result is shown as is; no Decision Brain turn follows. */
+export async function identifyGeneral(a: {
+  id: PhotoIdentity;
+  purpose: CapturePurpose;
+  photos: Array<{ upload_id: string; shot_role: ShotRole }>;
+  language: string;
+  farmerText?: string | null;
+}): Promise<GeneralScanResult> {
+  return await invokeChat<GeneralScanResult>({
+    action: 'diagnose_photo',
+    scan_scope: 'general',
+    purpose: a.purpose,
+    photos: a.photos,
+    language: a.language,
+    farmer_text: a.farmerText ?? null,
   }, a.id);
 }
 

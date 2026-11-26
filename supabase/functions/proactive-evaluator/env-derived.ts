@@ -34,6 +34,21 @@
 //   field), 0 no basis (no fresh pass, or the change is inside the noise
 //   limit). Limits come from sci_method_registry SAT_WATER_CORROBORATION
 //   (approved); without that row the value is 0 and rules behave as before.
+// 2026-11-18 — "canopy moisture held" test (SAT_WATER_CORROBORATION 1.1).
+//   The two-pass test above compares neighbours only, so a land whose bucket
+//   has said "empty" for weeks while its canopy moisture stays at its own
+//   90-day best looked like "no basis" (Takale mala: bucket at the ceiling
+//   since 2026-09-04, NDMI 0.275–0.301 over 11 passes; it got a "Time to
+//   water" card every day). New: when the water state is UNVERIFIED (no
+//   irrigation on record, bucket at the ceiling) and NDMI now (mean of the
+//   newest two passes) is within held_max_shortfall of the land's best NDMI
+//   in the window [newest − held_lookback_days, newest − held_exclude_recent_days]
+//   with at least held_min_baseline_passes passes there, the verdict is -1
+//   (basis canopy_moisture_held). Rule rows already route -1 to
+//   IRRIGATION_CHECK_FIELD ("check the soil before watering"); no alert is
+//   silenced. A verified state, or a land whose canopy moisture has fallen
+//   (Kodoli Mala 0.243 → 0.117, Shinghan Mal 0.298 → −0.013, both confirmed
+//   by field check), is untouched. Without the held_* params the test is off.
 
 import { isDepletionUnverifiedCeiling, UNVERIFIED_LOOKBACK_DAYS } from './weather/water-events.ts';
 
@@ -105,25 +120,100 @@ export interface SatelliteWaterEvidence {
   pass_gap_days: number | null;
   surface_water_p90: number | null;
   surface_water_date: string | null;
+  /** 2026-11-18 canopy-moisture-held test: mean NDMI of the newest two passes. */
+  ndmi_recent: number | null;
+  /** best NDMI in the baseline window, and how many passes were in it. */
+  ndmi_baseline_max: number | null;
+  ndmi_baseline_passes: number | null;
+  /** baseline best − recent (positive = canopy moisture fell). */
+  ndmi_shortfall: number | null;
+}
+
+/** One optical pass as the canopy-moisture-held test reads it (newest first or any order). */
+export interface NdmiPass {
+  acquisition_date: string | null;
+  ndmi: number | null;
+  evidence_rank: number | null;   // high=3 medium=2 low=1 insufficient/unrated=0
+}
+
+interface HeldNumbers {
+  ndmi_recent: number | null;
+  ndmi_baseline_max: number | null;
+  ndmi_baseline_passes: number | null;
+  ndmi_shortfall: number | null;
+}
+
+/**
+ * The numbers behind the canopy-moisture-held test. Pure. Null when the
+ * held_* params are absent (test off) or fewer than two supported passes exist.
+ */
+export function canopyMoistureHeldNumbers(
+  history: NdmiPass[],
+  params: Record<string, any> | null,
+): HeldNumbers | null {
+  if (!params) return null;
+  const lookback = num(params.held_lookback_days);
+  const exclude = num(params.held_exclude_recent_days);
+  const maxGap = num(params.max_pass_gap_days);
+  const minRank = num(params.min_evidence_rank) ?? 1;
+  if (lookback == null || exclude == null) return null;
+  const passes = (history || [])
+    .filter((h) => h && h.acquisition_date && num(h.ndmi) != null && (num(h.evidence_rank) ?? 0) >= minRank)
+    .sort((a, b) => String(b.acquisition_date).localeCompare(String(a.acquisition_date)));
+  if (passes.length < 2) return null;
+  const newest = String(passes[0].acquisition_date);
+  const gap01 = daysBetweenIso(newest, String(passes[1].acquisition_date));
+  const recent = (maxGap != null && gap01 != null && gap01 > maxGap)
+    ? (num(passes[0].ndmi) as number)
+    : ((num(passes[0].ndmi) as number) + (num(passes[1].ndmi) as number)) / 2;
+  const base = passes.filter((h) => {
+    const age = daysBetweenIso(newest, String(h.acquisition_date));
+    return age != null && age >= exclude && age <= lookback;
+  });
+  if (base.length === 0) {
+    return { ndmi_recent: round4(recent), ndmi_baseline_max: null, ndmi_baseline_passes: 0, ndmi_shortfall: null };
+  }
+  const baseMax = Math.max(...base.map((h) => num(h.ndmi) as number));
+  return {
+    ndmi_recent: round4(recent),
+    ndmi_baseline_max: round4(baseMax),
+    ndmi_baseline_passes: base.length,
+    ndmi_shortfall: round4(baseMax - recent),
+  };
+}
+
+function round4(v: number): number {
+  return Math.round(v * 10000) / 10000;
 }
 
 /**
  * Satellite check on the soil-water bucket. Pure; every limit is a param of
  * SAT_WATER_CORROBORATION (approved): ndmi_change_min, max_pass_gap_days,
- * min_evidence_rank, surface_water_index_min, surface_water_max_age_days.
+ * min_evidence_rank, surface_water_index_min, surface_water_max_age_days,
+ * and (1.1) held_lookback_days, held_exclude_recent_days,
+ * held_min_baseline_passes, held_max_shortfall.
  * No params → verdict 0 (no basis), so rules keep their old behaviour.
+ * `history` and `waterStateVerified` feed only the canopy-moisture-held test;
+ * callers that omit them get the 1.0 behaviour.
  */
 export function satelliteWaterVerdict(
   ndvi: { is_fresh: number | null; evidence_rank: number | null; ndmi: number | null; ndmi_previous: number | null; ndmi_drop: number | null; pass_gap_days: number | null },
   surface: SurfaceWaterReading | null,
   params: Record<string, any> | null,
   todayIso: string,
+  history: NdmiPass[] = [],
+  waterStateVerified: boolean | null = null,
 ): SatelliteWaterEvidence {
+  const held = canopyMoistureHeldNumbers(history, params);
   const ev: SatelliteWaterEvidence = {
     verdict: 0, basis: 'no_params',
     ndmi: ndvi.ndmi, ndmi_previous: ndvi.ndmi_previous, ndmi_drop: ndvi.ndmi_drop,
     pass_gap_days: ndvi.pass_gap_days,
     surface_water_p90: surface?.value_p90 ?? null, surface_water_date: surface?.acquisition_date ?? null,
+    ndmi_recent: held?.ndmi_recent ?? null,
+    ndmi_baseline_max: held?.ndmi_baseline_max ?? null,
+    ndmi_baseline_passes: held?.ndmi_baseline_passes ?? null,
+    ndmi_shortfall: held?.ndmi_shortfall ?? null,
   };
   if (!params) return ev;
   const p = (k: string) => num(params[k]);
@@ -140,6 +230,17 @@ export function satelliteWaterVerdict(
   if (ndvi.is_fresh !== 1) return { ...ev, basis: 'no_fresh_pass' };
   const minRank = p('min_evidence_rank') ?? 1;
   if ((ndvi.evidence_rank ?? 0) < minRank) return { ...ev, basis: 'weak_pass' };
+
+  // 2026-11-18: an unverified "empty" bucket while the canopy keeps its own
+  // recent best moisture → the satellite disagrees (see change log).
+  const heldMaxShortfall = p('held_max_shortfall');
+  const heldMinPasses = p('held_min_baseline_passes');
+  if (waterStateVerified === false && heldMaxShortfall != null && heldMinPasses != null
+      && held?.ndmi_shortfall != null && (held.ndmi_baseline_passes ?? 0) >= heldMinPasses
+      && held.ndmi_shortfall <= heldMaxShortfall) {
+    return { ...ev, verdict: -1, basis: 'canopy_moisture_held' };
+  }
+
   const maxGap = p('max_pass_gap_days');
   if (ndvi.ndmi_drop == null || ndvi.pass_gap_days == null || (maxGap != null && ndvi.pass_gap_days > maxGap)) {
     return { ...ev, basis: 'no_pass_pair' };

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { cn } from '@/lib/utils';
  * Shows plan, status, days remaining, and CTA to subscription page.
  */
 export function SubscriptionCard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data, isLoading, planName, daysRemaining, isInGracePeriod, subscriptionStatus } =
     useSubscriptionContext();
@@ -50,7 +52,7 @@ export function SubscriptionCard() {
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-primary shrink-0" />
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                My Subscription
+                {t('profile.subscription.title')}
               </span>
             </div>
 
@@ -59,18 +61,18 @@ export function SubscriptionCard() {
               {isActive && (
                 <Badge variant="outline" className="gap-1 text-success border-success/30 bg-success/5 text-[10px]">
                   <CheckCircle2 className="w-3 h-3" />
-                  Active
+                  {t('profile.subscription.active')}
                 </Badge>
               )}
               {isInGracePeriod && (
                 <Badge variant="outline" className="gap-1 text-warning border-warning/30 bg-warning/5 text-[10px]">
                   <AlertTriangle className="w-3 h-3" />
-                  Grace Period
+                  {t('profile.subscription.grace')}
                 </Badge>
               )}
               {isExpired && (
                 <Badge variant="destructive" className="text-[10px]">
-                  Expired
+                  {t('profile.subscription.expired')}
                 </Badge>
               )}
             </div>
@@ -78,19 +80,16 @@ export function SubscriptionCard() {
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Calendar className="w-3.5 h-3.5" />
               {isExpired ? (
-                <span>Renew to unlock premium features</span>
+                <span>{t('profile.subscription.renew_hint')}</span>
               ) : daysRemaining > 0 ? (
-                <span>
-                  <span className="font-semibold text-foreground">{daysRemaining}</span>{' '}
-                  {daysRemaining === 1 ? 'day' : 'days'} remaining
-                </span>
+                <span>{t('common.subscription.days_remaining', { d: daysRemaining })}</span>
               ) : (
-                <span>Plan expires today</span>
+                <span>{t('profile.subscription.expires_today')}</span>
               )}
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 -mr-1">
+          <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 -mr-2" aria-label={t('common.subscription.tap_to_manage')} tabIndex={-1}>
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>

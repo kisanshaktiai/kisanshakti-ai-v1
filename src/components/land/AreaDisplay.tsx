@@ -1,6 +1,8 @@
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Ruler } from 'lucide-react';
+import { ArrowLeft, Layers, Ruler } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 
 interface AreaDisplayProps {
   area: {
@@ -9,59 +11,83 @@ interface AreaDisplayProps {
     acres: number;
   };
   pointsCount: number;
+  /** Shown in the pill until the first point is marked (the land's name when editing). */
+  title?: string;
+  onBack: () => void;
+  mapType: 'hybrid' | 'roadmap';
+  onToggleMapType: () => void;
 }
 
-export function AreaDisplay({ area, pointsCount }: AreaDisplayProps) {
+/**
+ * The map screen's top bar: back, the status pill (what is marked and the
+ * area so far), and the satellite/map toggle. One row, so nothing sits on
+ * top of anything else; Google's own controls in that corner are turned off.
+ * The three-unit card appears under it once the shape is closed.
+ */
+export function AreaDisplay({ area, pointsCount, title, onBack, mapType, onToggleMapType }: AreaDisplayProps) {
   const { t } = useTranslation();
+  const round = 'h-11 w-11 shrink-0 rounded-full bg-background/95 backdrop-blur-md shadow-lg border-border/60';
 
   return (
     <div
-      className="pointer-events-none absolute left-1/2 -translate-x-1/2 z-20 w-[min(92vw,420px)] flex flex-col items-center gap-2"
+      className="pointer-events-none absolute left-0 right-0 z-30 flex flex-col items-center gap-2 px-3"
       style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
     >
-      {/* Compact top pill: points + acres always visible */}
-      <Card className="pointer-events-auto px-3 py-1.5 bg-background/90 backdrop-blur-md shadow-lg rounded-full border border-border/60">
-        <div className="flex items-center gap-2 text-xs font-medium">
-          <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
-            {pointsCount}
-          </span>
-          <span className="text-muted-foreground">
-            {t('lands.map.area.points_marked', { count: pointsCount }).replace(/^\d+\s*/, '')}
-          </span>
-          {pointsCount >= 3 && (
-            <>
-              <span className="text-border">•</span>
-              <Ruler className="h-3 w-3 text-primary" />
-              <span className="text-foreground font-semibold">
-                {area.acres.toFixed(3)} {t('lands.map.area.acres')}
-              </span>
-            </>
-          )}
-        </div>
-      </Card>
+      <div className="pointer-events-auto flex w-full max-w-md items-center gap-2">
+        <Button variant="outline" size="icon" onClick={onBack} aria-label={t('common.back')} className={round}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
 
-      {/* Detailed metrics card — only after polygon closes */}
+        <Card className="flex h-11 min-w-0 flex-1 items-center justify-center rounded-full border border-border/60 bg-background/95 px-3 shadow-lg backdrop-blur-md">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+            {pointsCount === 0 && title ? (
+              <span className="truncate text-foreground">{title}</span>
+            ) : (
+              <>
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground">
+                  {pointsCount}
+                </span>
+                <span className="truncate text-muted-foreground">
+                  {t('lands.map.area.points_marked', { count: pointsCount }).replace(/^\d+\s*/, '')}
+                </span>
+                {pointsCount >= 3 && (
+                  <>
+                    <Ruler className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="whitespace-nowrap font-semibold text-foreground">
+                      {area.acres.toFixed(2)} {t('lands.map.area.acres')}
+                    </span>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </Card>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onToggleMapType}
+          aria-label={t(mapType === 'hybrid' ? 'lands.map.layers.show_map' : 'lands.map.layers.show_satellite')}
+          aria-pressed={mapType === 'hybrid'}
+          className={cn(round, mapType === 'hybrid' && 'text-primary')}
+        >
+          <Layers className="h-5 w-5" />
+        </Button>
+      </div>
+
       {pointsCount >= 3 && (
-        <Card className="pointer-events-auto w-full p-2 bg-background/90 backdrop-blur-md shadow-lg rounded-2xl border border-border/60">
+        <Card className="pointer-events-auto w-full max-w-md rounded-2xl border border-border/60 bg-background/95 p-2 shadow-lg backdrop-blur-md">
           <div className="grid grid-cols-3 gap-1.5 text-center">
-            <div className="bg-primary/10 rounded-xl py-1.5">
-              <div className="text-sm font-bold text-primary leading-tight">
-                {area.sqft.toLocaleString()}
+            {[
+              { value: area.sqft.toLocaleString(), unit: t('lands.map.area.sqft') },
+              { value: area.guntha.toFixed(2), unit: t('lands.map.area.guntha') },
+              { value: area.acres.toFixed(3), unit: t('lands.map.area.acres') },
+            ].map(({ value, unit }) => (
+              <div key={unit} className="rounded-xl bg-primary/10 py-1.5">
+                <div className="text-sm font-bold leading-tight text-primary tabular-nums">{value}</div>
+                <div className="text-xs text-muted-foreground">{unit}</div>
               </div>
-              <div className="text-[10px] text-muted-foreground">{t('lands.map.area.sqft')}</div>
-            </div>
-            <div className="bg-primary/10 rounded-xl py-1.5">
-              <div className="text-sm font-bold text-primary leading-tight">
-                {area.guntha.toFixed(2)}
-              </div>
-              <div className="text-[10px] text-muted-foreground">{t('lands.map.area.guntha')}</div>
-            </div>
-            <div className="bg-primary/10 rounded-xl py-1.5">
-              <div className="text-sm font-bold text-primary leading-tight">
-                {area.acres.toFixed(3)}
-              </div>
-              <div className="text-[10px] text-muted-foreground">{t('lands.map.area.acres')}</div>
-            </div>
+            ))}
           </div>
         </Card>
       )}

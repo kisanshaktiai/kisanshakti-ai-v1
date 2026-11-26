@@ -9,6 +9,7 @@ import { Loader2, Shield, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { farmerAuthService } from '@/services/farmerAuthService';
+import { accountSessionService } from '@/services/accountSessionService';
 
 export default function SetPin() {
   const { t } = useTranslation();
@@ -69,7 +70,12 @@ export default function SetPin() {
       let result;
 
       if (isNewRegistration) {
-        result = await farmerAuthService.register(mobile!, tenantId!, pin, language);
+        // Multi-role identity: roles chosen on /choose-roles. None stored (flag
+        // off, or "Farmer" alone) = the farmer registration call as before.
+        const roles = accountSessionService.readRegisterRoles();
+        result = await farmerAuthService.register(
+          mobile!, tenantId!, pin, language, roles.length ? { roles } : undefined,
+        );
       } else {
         // Existing farmer: server requires the current PIN or a live session.
         result = await farmerAuthService.changePin(
@@ -80,6 +86,14 @@ export default function SetPin() {
         );
       }
 
+      // Multi-role identity: a session that opens in the Provider or Customer
+      // workspace leaves here. Null (flag off, or Farmer workspace) = continue.
+      const accountDestination = accountSessionService.applyAuthResult(result);
+      if (accountDestination) {
+        navigate(accountDestination, { replace: true });
+        return;
+      }
+
       const farmer = result.farmer;
       const profile = result.profile;
       localStorage.setItem('farmerId', farmer.id);
@@ -87,9 +101,14 @@ export default function SetPin() {
       // Create authenticated session
       const session = createSession(farmer.id, farmer.tenant_id, farmer.mobile_number);
       
-      // Mark session as PIN verified
+      // Mark session as PIN verified. The session carries the token the server
+      // issued: authStore sends session.token with every request (setSession,
+      // validateSession), so the placeholder createSession() generates would
+      // replace the real one and the server would refuse the farmer's very
+      // next call (2026-11-26).
       setSession({
         ...session,
+        token: result.session.token,
         isPinVerified: true
       });
       
@@ -115,11 +134,20 @@ export default function SetPin() {
       localStorage.removeItem('requiresCurrentPin');
       localStorage.removeItem('isNewRegistration');
       localStorage.removeItem('registerMobile');
+      localStorage.removeItem('registerRoles');
       
       navigate('/app');
     } catch (err: any) {
       console.error('Error setting PIN:', err);
-      setError(err.message || t('common.somethingWentWrong') || 'Something went wrong. Please try again.');
+      const code = err?.code;
+      if (code === 'locked_out') {
+        const mins = Math.max(1, Math.ceil((Number(err?.retryAfterSeconds) || 300) / 60));
+        setError(t('auth.pinLockedMinutes', { count: mins, defaultValue: 'Too many wrong PINs. Try again in {{count}} min.' }));
+      } else if (code === 'invalid_credentials') {
+        setError(t('auth.wrongPinTryAgain', 'You entered a wrong PIN. Please try again.'));
+      } else {
+        setError(err.message || t('common.somethingWentWrong') || 'Something went wrong. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

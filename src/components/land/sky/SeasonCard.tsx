@@ -36,6 +36,8 @@ export function SeasonCard({ sky }: { sky: FieldSky }) {
   // the stage's name in the farmer's language (sky.stage.<name>), the table's own word only as the fallback
   const stage = sky.stage.stageName ? t(stageKey(sky.stage.stageName), sky.stage.stageName) : '';
   const caption = (() => {
+    // no crop in the field: the line is plant cover the satellite saw, not a crop's season
+    if (sky.stage.state === 'no_crop') return t('sky.season.no_crop', 'No crop is registered now. The line shows plant cover the satellite saw on this field.');
     if (sky.stage.state === 'no_sowing_date') return t('sky.season.need_sowing', 'Add your sowing date to see what the crop should look like at each stage.');
     if (sky.stage.state === 'not_resolved') return t('sky.season.not_resolved', 'The stage of your crop has not been worked out yet. Check the sowing date in your crop schedule.');
     if (sky.stage.state === 'below') return t('sky.season.below', 'Below the expected range for {{stage}}.', { stage });

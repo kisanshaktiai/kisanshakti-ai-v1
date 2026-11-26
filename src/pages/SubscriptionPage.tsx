@@ -13,6 +13,7 @@ import { useFarmerPlans, type FarmerPlanRow } from '@/hooks/useFarmerPlans';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 
 type PlanRow = FarmerPlanRow;
 
@@ -38,22 +39,11 @@ const PLAN_ICONS: Record<string, typeof Leaf> = {
   'AI PRO': Crown,
 };
 
-const FEATURE_LABELS: Record<string, string> = {
-  ai_chat: 'AI Crop Advisor',
-  satellite_imagery: 'NDVI / Satellite Maps',
-  weather_forecast: 'Weather Forecast',
-  soil_testing: 'Soil Health Reports',
-  community_forum: 'Farmer Community',
-  marketplace: 'Marketplace',
-  advanced_analytics: 'Advanced Analytics',
-  custom_reports: 'Custom Reports',
-  drone_monitoring: 'Drone Monitoring',
-  predictive_analytics: 'Predictive Analytics',
-  white_label_mobile_app: 'White-label App',
-  api_access: 'API Access',
-};
+/** Feature codes from the plan row are named in profile.subscription.feature.<code>. */
+const FEATURE_CODES = ['ai_chat', 'satellite_imagery', 'weather_forecast', 'soil_testing', 'community_forum', 'marketplace', 'advanced_analytics', 'custom_reports', 'drone_monitoring', 'predictive_analytics', 'white_label_mobile_app', 'api_access'];
 
 export default function SubscriptionPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { data, planName, daysRemaining, isInGracePeriod, subscriptionStatus, isLoading } =
@@ -108,8 +98,8 @@ export default function SubscriptionPage() {
 
   const handleUpgrade = (plan: PlanRow) => {
     toast({
-      title: '🚀 Upgrade Coming Soon',
-      description: `Razorpay/PhonePe checkout for ${plan.name} (₹${plan.price_monthly}/mo) is being finalized. Contact your tenant admin to upgrade now.`,
+      title: t('profile.subscription.upgrade_soon_title'),
+      description: t('profile.subscription.upgrade_soon_desc', { plan: plan.name }),
     });
   };
 
@@ -125,13 +115,14 @@ export default function SubscriptionPage() {
             variant="ghost"
             size="icon"
             onClick={() => navigate(-1)}
-            className="h-9 w-9 rounded-xl"
+            className="h-11 w-11 rounded-xl"
+            aria-label={t('common.back')}
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-lg font-bold">My Subscription</h1>
-            <p className="text-xs text-muted-foreground">Manage your plan & usage</p>
+            <h1 className="text-lg font-bold">{t('profile.subscription.title')}</h1>
+            <p className="text-xs text-muted-foreground">{t('profile.subscription.subtitle')}</p>
           </div>
         </div>
       </div>
@@ -143,21 +134,21 @@ export default function SubscriptionPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  Current Plan
+                  {t('profile.subscription.current_plan')}
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <PlanBadge planName={planName} size="md" />
                   {isActive && (
                     <Badge variant="outline" className="text-success border-success/30 bg-success/5 text-[10px]">
-                      ✓ Active
+                      {t('profile.subscription.active')}
                     </Badge>
                   )}
                   {isInGracePeriod && (
                     <Badge variant="outline" className="text-warning border-warning/30 bg-warning/5 text-[10px]">
-                      Grace Period
+                      {t('profile.subscription.grace')}
                     </Badge>
                   )}
-                  {isExpired && <Badge variant="destructive" className="text-[10px]">Expired</Badge>}
+                  {isExpired && <Badge variant="destructive" className="text-[10px]">{t('profile.subscription.expired')}</Badge>}
                 </div>
               </div>
               <div className="text-right">
@@ -169,7 +160,7 @@ export default function SubscriptionPage() {
             {data?.end_date && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground border-t border-border/30 pt-3">
                 <Calendar className="w-3.5 h-3.5" />
-                <span>Renews on {format(new Date(data.end_date), 'dd MMM yyyy')}</span>
+                <span>{t('profile.subscription.renews_on', { date: format(new Date(data.end_date), 'dd MMM yyyy') })}</span>
               </div>
             )}
           </CardContent>
@@ -180,24 +171,24 @@ export default function SubscriptionPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Database className="w-4 h-4 text-primary" />
-              Usage This Month
+              {t('profile.subscription.usage_title')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <UsageMeter
-              label="AI Chat Queries"
+              label={t('profile.subscription.ai_queries')}
               current={aiUsage}
               limit={normalizeLimit(currentLimits.ai_queries_per_month)}
               icon={<MessageSquare className="w-3.5 h-3.5" />}
             />
             <UsageMeter
-              label="Lands Registered"
+              label={t('profile.subscription.lands')}
               current={landUsage}
               limit={normalizeLimit(currentLimits.land_limit)}
               icon={<MapPin className="w-3.5 h-3.5" />}
             />
             <UsageMeter
-              label="Soil Reports"
+              label={t('profile.subscription.soil_reports')}
               current={soilUsage}
               limit={normalizeLimit(currentLimits.soil_reports_per_month)}
               icon={<Database className="w-3.5 h-3.5" />}
@@ -208,7 +199,7 @@ export default function SubscriptionPage() {
         {/* Plan Comparison */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold">Available Plans</h2>
+            <h2 className="text-base font-bold">{t('profile.subscription.available_plans')}</h2>
             <div className="flex items-center bg-muted/50 rounded-full p-1 text-[10px]">
               {(['monthly', 'quarterly', 'annually'] as const).map((cycle) => (
                 <button
@@ -221,7 +212,7 @@ export default function SubscriptionPage() {
                       : 'text-muted-foreground'
                   )}
                 >
-                  {cycle === 'annually' ? 'Yearly' : cycle}
+                  {t(cycle === 'annually' ? 'profile.subscription.yearly' : cycle === 'quarterly' ? 'profile.subscription.quarterly' : 'profile.subscription.monthly')}
                 </button>
               ))}
             </div>
@@ -235,9 +226,9 @@ export default function SubscriptionPage() {
             <Card className="border-dashed border-border/60">
               <CardContent className="p-6 text-center space-y-2">
                 <Leaf className="w-8 h-8 text-muted-foreground mx-auto" />
-                <p className="text-sm font-medium">No plans available right now</p>
+                <p className="text-sm font-medium">{t('profile.subscription.no_plans')}</p>
                 <p className="text-xs text-muted-foreground">
-                  Please check back shortly or contact your tenant administrator.
+                  {t('profile.subscription.no_plans_hint')}
                 </p>
               </CardContent>
             </Card>
@@ -300,7 +291,7 @@ export default function SubscriptionPage() {
                           ₹{price?.toLocaleString('en-IN') ?? '—'}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          /{billingCycle === 'monthly' ? 'mo' : billingCycle === 'quarterly' ? 'qtr' : 'yr'}
+                          {t(billingCycle === 'monthly' ? 'profile.subscription.per_month' : billingCycle === 'quarterly' ? 'profile.subscription.per_quarter' : 'profile.subscription.per_year')}
                         </span>
                       </div>
 
@@ -309,13 +300,13 @@ export default function SubscriptionPage() {
                           <li key={key} className="flex items-center gap-2 text-xs">
                             <Check className="w-3.5 h-3.5 text-success shrink-0" />
                             <span className="text-foreground/80">
-                              {FEATURE_LABELS[key] ?? key.replace(/_/g, ' ')}
+                              {FEATURE_CODES.includes(key) ? t(`profile.subscription.feature.${key}`) : key.replace(/_/g, ' ')}
                             </span>
                           </li>
                         ))}
                         {featureKeys.length > 6 && (
                           <li className="text-[10px] text-muted-foreground pl-5">
-                            +{featureKeys.length - 6} more features
+                            {t('profile.subscription.more_features', { count: featureKeys.length - 6 })}
                           </li>
                         )}
                       </ul>
@@ -341,7 +332,7 @@ export default function SubscriptionPage() {
                           variant={plan.name === 'AI PRO' ? 'default' : 'outline'}
                           onClick={() => handleUpgrade(plan)}
                         >
-                          Upgrade to {plan.name}
+                          {t('profile.subscription.upgrade_to', { plan: plan.name })}
                         </Button>
                       )}
                     </CardContent>
@@ -358,7 +349,7 @@ export default function SubscriptionPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-primary" />
-                Payment History
+                {t('profile.subscription.payment_history')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -376,7 +367,7 @@ export default function SubscriptionPage() {
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {format(new Date(p.created_at), 'dd MMM yyyy')} ·{' '}
-                      {p.payment_method ?? 'Online'}
+                      {p.payment_method ?? t('profile.subscription.online')}
                     </p>
                   </div>
                   <Badge
@@ -396,7 +387,7 @@ export default function SubscriptionPage() {
 
         {/* Help footer */}
         <div className="text-center text-[10px] text-muted-foreground py-4">
-          Need help? Contact your tenant administrator.
+          {t('profile.subscription.help')}
         </div>
       </div>
     </div>

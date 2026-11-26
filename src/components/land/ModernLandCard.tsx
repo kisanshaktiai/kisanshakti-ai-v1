@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
+import { landAttributeLabel } from '@/lib/landLabels';
 import { 
   MapPin, 
   Mountain, 
@@ -51,6 +53,8 @@ interface ModernLandCardProps {
     water_source?: string;
     irrigation_type?: string;
     current_crop?: string;
+    current_crop_id?: string | null;
+    previous_crop_id?: string | null;
     previous_crop?: string;
     planting_date?: string;
     expected_harvest_date?: string;
@@ -67,6 +71,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -237,7 +242,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.current')}</p>
                     <div className="flex items-center gap-1">
                       <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
-                      <span className="text-xs sm:text-sm font-medium truncate">{land.current_crop}</span>
+                      <span className="text-xs sm:text-sm font-medium truncate">{cropNameOf(land.current_crop, land.current_crop_id)}</span>
                     </div>
                   </div>
                 )}
@@ -247,7 +252,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.previous')}</p>
                     <div className="flex items-center gap-1">
                       <TreePine className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-xs sm:text-sm truncate">{land.previous_crop}</span>
+                      <span className="text-xs sm:text-sm truncate">{cropNameOf(land.previous_crop, land.previous_crop_id)}</span>
                     </div>
                   </div>
                 )}
@@ -288,20 +293,20 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
               {land.irrigation_type && (
                 <Badge variant="secondary" className="text-xs px-2 py-0.5">
                   <Droplets className="h-2.5 w-2.5 mr-1" />
-                  {land.irrigation_type.replace('_', ' ')}
+                  {landAttributeLabel(t, 'irrigation_type', land.irrigation_type)}
                 </Badge>
               )}
               
               {land.soil_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
                   <Globe className="h-2.5 w-2.5 mr-1" />
-                  {land.soil_type.replace('_', ' ')}
+                  {landAttributeLabel(t, 'soil_type', land.soil_type)}
                 </Badge>
               )}
               
               {land.ownership_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
-                  {land.ownership_type}
+                  {landAttributeLabel(t, 'ownership_type', land.ownership_type)}
                 </Badge>
               )}
             </div>

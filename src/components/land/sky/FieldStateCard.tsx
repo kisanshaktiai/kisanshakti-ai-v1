@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { Volume2, Sprout, AlertTriangle, CloudOff, HelpCircle, TrendingDown, Leaf } from 'lucide-react';
+import { Volume2, Sprout, AlertTriangle, CloudOff, HelpCircle, TrendingDown, Leaf, PauseCircle, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatSkyDay, stageKey, type FieldSky } from '@/hooks/useFieldSky';
@@ -13,6 +13,10 @@ import { useSignedSatelliteImage } from '@/hooks/useSignedSatelliteImage';
  * pipeline, freshness from the decision view) — see useFieldSky. The picture
  * is the newest crop-growth frame of the map (sky.layerFrames.vigour[0]) and
  * carries its own date, so an old picture is never mistaken for today's.
+ *
+ * 2026-11-19: with no crop in the field (crop_on_hold) the card says crop monitoring is paused and
+ * that the picture shows plant cover the satellite cannot name; with a crop but no valid stage
+ * comparison (stage_unverified) it says what was seen, without a green verdict.
  */
 export function FieldStateCard({ sky, landName, landId, farmerId, tenantId, onSpeak, isSpeaking, onOpenMap }: {
   sky: FieldSky; landName: string; landId?: string | null; farmerId?: string; tenantId?: string;
@@ -32,11 +36,20 @@ export function FieldStateCard({ sky, landName, landId, farmerId, tenantId, onSp
       case 'slower': return t('sky.state.slower', '{{land}} is growing a little slower than nearby fields.', { land: landName });
       case 'something_wrong': return t('sky.state.something_wrong', 'Something looks off in {{land}}. Worth a walk through the field.', { land: landName });
       case 'unclear': return t('sky.state.unclear', 'Clouds have hidden {{land}} for a while. We will look again on the next clear day.', { land: landName });
+      case 'crop_on_hold': return t('sky.state.crop_on_hold', 'No crop is registered on {{land}} now, so crop health is not checked.', { land: landName });
+      case 'stage_unverified': return t('sky.state.stage_unverified', 'The satellite saw {{land}}, but we cannot yet say if the crop is on track for its stage.', { land: landName });
       default: return t('sky.state.no_data', 'The satellite has not had a clear look at {{land}} yet.', { land: landName });
     }
   })();
 
   const detail = (() => {
+    if (sky.state === 'crop_on_hold') {
+      const paused = t('sky.state.on_hold_detail', 'Crop alerts are paused. They start again when you add your next crop.');
+      return picture ? `${paused} ${t('sky.state.on_hold_picture', 'The picture shows plant cover only. The satellite cannot tell a crop from weeds or grass.')}` : paused;
+    }
+    if (sky.state === 'stage_unverified' && sky.sky.evidence && ['insufficient', 'unrated'].includes(sky.sky.evidence)) {
+      return t('sky.state.weak_reading', 'This field is too small for the satellite to measure clearly.');
+    }
     if (sky.state === 'unclear' && sky.radar) return t('sky.state.radar_note', 'Radar can see through cloud. It last saw this field on {{date}}.', { date: formatSkyDay(sky.radar.date, i18n.language) });
     if (sky.stage.state === 'no_sowing_date') return t('sky.state.need_sowing', 'Tell us when you sowed and we can compare with what the crop should look like now.');
     if (sky.stage.state === 'not_resolved') return t('sky.season.not_resolved', 'The stage of your crop has not been worked out yet. Check the sowing date in your crop schedule.');
@@ -97,4 +110,6 @@ const STATE_UI = {
   something_wrong: { icon: AlertTriangle, bg: 'bg-destructive/10', border: 'border-destructive/30', iconBg: 'bg-destructive/15', iconFg: 'text-destructive', fg: 'text-foreground' },
   unclear:         { icon: CloudOff,      bg: 'bg-muted/50',       border: 'border-border/40',      iconBg: 'bg-muted',          iconFg: 'text-muted-foreground', fg: 'text-foreground' },
   no_data:         { icon: HelpCircle,    bg: 'bg-muted/50',       border: 'border-border/40',      iconBg: 'bg-muted',          iconFg: 'text-muted-foreground', fg: 'text-foreground' },
+  crop_on_hold:    { icon: PauseCircle,   bg: 'bg-muted/50',       border: 'border-border/40',      iconBg: 'bg-muted',          iconFg: 'text-muted-foreground', fg: 'text-foreground' },
+  stage_unverified:{ icon: Eye,           bg: 'bg-muted/50',       border: 'border-border/40',      iconBg: 'bg-muted',          iconFg: 'text-muted-foreground', fg: 'text-foreground' },
 } as const;

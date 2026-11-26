@@ -8,7 +8,6 @@ import {
   Navigation2,
   LocateFixed,
   Trash2,
-  ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { hapticFeedback } from '@/lib/haptics';
@@ -43,7 +42,7 @@ export function MapControls({
   onModeChange,
   onUndo,
   onSave,
-  onCancel,
+  onCancel: _onCancel, // handled by the top bar now; kept so callers need no change
   onDeleteAll,
   canUndo,
   canSave,
@@ -57,43 +56,7 @@ export function MapControls({
 
   return (
     <>
-      {/* Back button — top-left, safe-area aware */}
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => {
-          haptic('light');
-          onCancel();
-        }}
-        aria-label="Back"
-        className="absolute left-3 z-30 h-11 w-11 rounded-full bg-background/95 backdrop-blur-md shadow-lg border-border/60"
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
-      >
-        <ArrowLeft className="h-5 w-5" />
-      </Button>
-
-      {/* GPS accuracy chip — top-right, safe-area aware */}
-      {gpsAccuracy !== undefined && gpsAccuracy > 0 && (
-        <div
-          className="absolute right-3 z-30 px-2.5 py-1.5 rounded-full bg-background/95 backdrop-blur-md shadow-lg border border-border/60"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
-        >
-          <div className="flex items-center gap-1.5 text-xs">
-            <LocateFixed
-              className={cn(
-                'h-3.5 w-3.5',
-                gpsAccuracy < 10
-                  ? 'text-success'
-                  : gpsAccuracy < 20
-                  ? 'text-warning'
-                  : 'text-destructive'
-              )}
-            />
-            <span className="font-semibold tabular-nums">±{gpsAccuracy.toFixed(0)}m</span>
-          </div>
-        </div>
-      )}
-
+      {/* The back button and the status pill are in AreaDisplay (the top bar). */}
       {/* Bottom action sheet — glass card, safe-area aware */}
       <div
         className="absolute left-0 right-0 bottom-0 z-30 pointer-events-none"
@@ -117,9 +80,10 @@ export function MapControls({
                 onModeChange('draw');
               }}
               className={cn(
-                'relative z-10 h-10 flex items-center justify-center gap-1.5 rounded-xl text-sm font-medium transition-colors',
+                'relative z-10 min-h-11 flex items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-medium leading-tight transition-colors',
                 mode === 'draw' ? 'text-foreground' : 'text-muted-foreground'
               )}
+              aria-pressed={mode === 'draw'}
             >
               <MapPin className="h-4 w-4" />
               {t('lands.map.mode.tap_to_mark')}
@@ -131,9 +95,10 @@ export function MapControls({
                 onModeChange('walk');
               }}
               className={cn(
-                'relative z-10 h-10 flex items-center justify-center gap-1.5 rounded-xl text-sm font-medium transition-colors',
+                'relative z-10 min-h-11 flex items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-medium leading-tight transition-colors',
                 mode === 'walk' ? 'text-foreground' : 'text-muted-foreground'
               )}
+              aria-pressed={mode === 'walk'}
             >
               <Footprints className="h-4 w-4" />
               {t('lands.map.mode.walk_boundary')}
@@ -154,6 +119,12 @@ export function MapControls({
               {isTracking
                 ? t('lands.map.gps.stop_tracking')
                 : t('lands.map.gps.start_tracking')}
+              {gpsAccuracy !== undefined && gpsAccuracy > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-background/20 px-2 py-0.5 text-xs font-semibold tabular-nums">
+                  <LocateFixed className={cn('h-3 w-3', gpsAccuracy < 10 ? 'text-success' : gpsAccuracy < 20 ? 'text-warning' : 'text-destructive')} />
+                  ±{gpsAccuracy.toFixed(0)} m
+                </span>
+              )}
             </Button>
           )}
 

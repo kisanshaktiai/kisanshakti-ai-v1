@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2 } from 'lucide-react';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { isActivationRequired } from '@/lib/activationState';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -79,6 +80,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     } catch { /* corrupt cache → not authenticated */ }
 
     if (!isOnline && hasVerifiedCachedSession) {
+      // Farmer activation: see the note at the end of this component.
+      if (isActivationRequired()) {
+        return <Navigate to="/activate" replace />;
+      }
       console.log('ProtectedRoute: Offline mode with cached auth, allowing access');
       
       // Try to restore auth if not already restoring
@@ -102,6 +107,16 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     // Redirect to splash screen to start proper auth flow
     console.log('ProtectedRoute: Not authenticated, redirecting to splash');
     return <Navigate to="/" state={{ from: location }} replace />;
+  }
+
+  // Farmer activation: a farmer who registered but has not redeemed an
+  // activation code yet goes to the Activate screen instead of the app. The
+  // server says so with every sign-in (farmer.activation_required) and it is
+  // remembered in lib/activationState. This only decides which screen opens: the
+  // database refuses such a farmer's session for every farmer table and
+  // function, whatever the app shows.
+  if (isActivationRequired()) {
+    return <Navigate to="/activate" replace />;
   }
 
   console.log('ProtectedRoute: User authenticated, showing protected content');

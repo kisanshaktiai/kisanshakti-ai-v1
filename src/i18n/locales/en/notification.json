@@ -34,6 +34,20 @@
     "unread": "Unread",
     "today": "Today",
     "yesterday": "Yesterday",
-    "earlier": "Earlier"
+    "earlier": "Earlier",
+    "settingsSubtitle": "Manage your alerts and reminders",
+    "enableShort": "Enable",
+    "disableShort": "Disable",
+    "active": "On",
+    "getUpdates": "Get updates as they happen",
+    "disabledTitle": "Notifications off",
+    "disabledDesc": "You will not receive push notifications any more",
+    "enabledTitle": "Notifications on",
+    "enabledDesc": "You will receive alerts and reminders in time",
+    "permissionDesc": "Allow notifications in your phone or browser settings",
+    "updateFailed": "Could not update the notification settings",
+    "settingsUpdated": "Settings updated",
+    "turnedOn": "{{what}} on",
+    "turnedOff": "{{what}} off"
   }
 }

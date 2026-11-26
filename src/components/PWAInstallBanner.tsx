@@ -24,6 +24,8 @@ import { X, Download, Share, Plus, Smartphone } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useTranslation } from 'react-i18next';
+import { useTenant } from '@/contexts/TenantContext';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -39,6 +41,9 @@ const STORAGE_KEY_DISMISSED = 'pwa_install_dismissed_at';
 const STORAGE_KEY_DISMISS_COUNT = 'pwa_install_dismiss_count';
 
 export const PWAInstallBanner: React.FC = () => {
+  const { t } = useTranslation();
+  const { branding, tenant } = useTenant();
+  const appName = branding?.company_name || tenant?.name || t('app.name');
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
   const [platform, setPlatform] = useState<Platform>(null);
@@ -360,7 +365,7 @@ export const PWAInstallBanner: React.FC = () => {
               <button
                 onClick={handleDismiss}
                 className="absolute top-2 right-2 p-1 rounded-full hover:bg-muted/50 transition-colors"
-                aria-label="Dismiss"
+                aria-label={t('pwa.banner.dismiss')}
               >
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -372,10 +377,10 @@ export const PWAInstallBanner: React.FC = () => {
                   </div>
                   <div className="flex-1 pr-6">
                     <h3 className="font-bold text-foreground mb-1">
-                      Install KisanShakti
+                      {t('pwa.install_title', { appName })}
                     </h3>
                     <p className="text-sm text-muted-foreground leading-snug">
-                      Fast access • Works offline • Get notifications
+                      {t('pwa.banner.benefits')}
                     </p>
                   </div>
                 </div>
@@ -388,7 +393,7 @@ export const PWAInstallBanner: React.FC = () => {
                     size="sm"
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    Install App
+                    {t('pwa.banner.install_app')}
                   </Button>
                   <Button
                     onClick={handleLater}
@@ -396,7 +401,7 @@ export const PWAInstallBanner: React.FC = () => {
                     size="sm"
                     className="text-muted-foreground"
                   >
-                    Later
+                    {t('pwa.prompt.later')}
                   </Button>
                 </div>
               </div>
@@ -419,7 +424,7 @@ export const PWAInstallBanner: React.FC = () => {
               <button
                 onClick={handleDismiss}
                 className="absolute top-2 right-2 p-1 rounded-full hover:bg-muted/50 transition-colors"
-                aria-label="Dismiss"
+                aria-label={t('pwa.banner.dismiss')}
               >
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
@@ -431,10 +436,10 @@ export const PWAInstallBanner: React.FC = () => {
                   </div>
                   <div className="flex-1 pr-6">
                     <h3 className="font-bold text-foreground mb-1">
-                      Install on iPhone
+                      {t('pwa.banner.install_iphone')}
                     </h3>
                     <p className="text-sm text-muted-foreground leading-snug">
-                      Add to Home Screen for better experience
+                      {t('pwa.banner.add_home_hint')}
                     </p>
                   </div>
                 </div>
@@ -445,7 +450,7 @@ export const PWAInstallBanner: React.FC = () => {
                     className="flex-1 bg-gradient-to-r from-primary to-primary/90 hover:opacity-90 shadow-md"
                     size="sm"
                   >
-                    Show Instructions
+                    {t('pwa.banner.show_steps')}
                   </Button>
                   <Button
                     onClick={handleLater}
@@ -453,7 +458,7 @@ export const PWAInstallBanner: React.FC = () => {
                     size="sm"
                     className="text-muted-foreground"
                   >
-                    Later
+                    {t('pwa.prompt.later')}
                   </Button>
                 </div>
               </div>
@@ -483,7 +488,7 @@ export const PWAInstallBanner: React.FC = () => {
               <Card className="bg-card border-border shadow-2xl">
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-bold text-foreground">Install KisanShakti</h2>
+                    <h2 className="text-xl font-bold text-foreground">{t('pwa.install_title', { appName })}</h2>
                     <Button
                       onClick={handleDismiss}
                       variant="ghost"
@@ -501,10 +506,10 @@ export const PWAInstallBanner: React.FC = () => {
                           1
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-foreground mb-1">Tap Share Button</p>
+                          <p className="font-medium text-foreground mb-1">{t('pwa.banner.step_share')}</p>
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <Share className="w-4 h-4" />
-                            Tap <span className="font-semibold">Share</span> in Safari toolbar (bottom)
+                            {t('pwa.banner.step_share_desc')}
                           </p>
                         </div>
                       </div>
@@ -514,10 +519,10 @@ export const PWAInstallBanner: React.FC = () => {
                           2
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-foreground mb-1">Add to Home Screen</p>
+                          <p className="font-medium text-foreground mb-1">{t('pwa.banner.step_add')}</p>
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <Plus className="w-4 h-4" />
-                            Scroll and tap <span className="font-semibold">"Add to Home Screen"</span>
+                            {t('pwa.banner.step_add_desc')}
                           </p>
                         </div>
                       </div>
@@ -527,10 +532,10 @@ export const PWAInstallBanner: React.FC = () => {
                           3
                         </div>
                         <div className="flex-1">
-                          <p className="font-medium text-foreground mb-1">Confirm Installation</p>
+                          <p className="font-medium text-foreground mb-1">{t('pwa.banner.step_confirm')}</p>
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <Smartphone className="w-4 h-4" />
-                            Tap <span className="font-semibold">"Add"</span> in top-right corner
+                            {t('pwa.banner.step_confirm_desc')}
                           </p>
                         </div>
                       </div>
@@ -542,13 +547,13 @@ export const PWAInstallBanner: React.FC = () => {
                       onClick={handleDismiss}
                       className="flex-1 bg-gradient-to-r from-primary to-primary/90"
                     >
-                      Got it!
+                      {t('pwa.banner.got_it')}
                     </Button>
                     <Button
                       onClick={handleDismiss}
                       variant="outline"
                     >
-                      Don't show again
+                      {t('pwa.banner.dont_show')}
                     </Button>
                   </div>
                 </div>

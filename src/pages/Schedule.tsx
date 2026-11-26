@@ -429,6 +429,7 @@ export default function Schedule() {
       // by a fully approved, atomically persisted schedule.
       resetRetries();
       setEditingReviewDraft(null);
+      setReviewDrafts([]);
 
       // Farmer-language completion: the schedule is persisted as soon as its agronomy is ready;
       // tasks not yet in the farmer's language are finished by the same function (action=narrate).
@@ -571,7 +572,7 @@ export default function Schedule() {
     return (
       <PageShell variant="gradient-primary">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/app')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/app')} aria-label={t('common.back')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-xl font-bold">{t('schedule.title')}</h1>

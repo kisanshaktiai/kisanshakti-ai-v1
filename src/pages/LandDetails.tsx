@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { 
   ArrowLeft, Edit, Trash2, Share2, Download, MapPin, 
   Droplets, Mountain, Sprout, Calendar, Camera, Activity,
@@ -57,6 +58,7 @@ interface Land {
   survey_number?: string;
   ownership_type?: string;
   last_soil_test_date?: string;
+  soil_data_source?: string;
   last_sowing_date?: string;
   expected_harvest_date?: string;
   created_at: string;
@@ -90,6 +92,7 @@ interface CropHistory {
 export default function LandDetails() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -239,7 +242,11 @@ export default function LandDetails() {
     }
   };
 
+  // A health score is only shown for measured soil (lab or device). A soil-map
+  // estimate has no plant-available N, P, K, so it is labelled, not scored.
+  const soilIsEstimate = land?.soil_data_source === 'soilgrid';
   const getSoilHealthScore = () => {
+    if (soilIsEstimate) return null;
     if (!land?.soil_ph && !land?.organic_carbon_percent && !land?.nitrogen_kg_per_ha) return null;
     
     let score = 0;
@@ -402,7 +409,7 @@ export default function LandDetails() {
                 </div>
                 <div>
                   <p className="text-xl md:text-2xl font-bold text-foreground line-clamp-1">
-                    {land.current_crop || t('lands.details.no_crop')}
+                    {land.current_crop ? cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id) : t('lands.details.no_crop')}
                   </p>
                   {land.crop_stage && (
                     <Badge variant="secondary" className="mt-1.5 text-xs bg-success/10 text-success border-success/20">
@@ -427,8 +434,8 @@ export default function LandDetails() {
                 </div>
                 {soilHealthScore === null ? (
                   <button type="button" onClick={() => navigate(`/app/lands/${id}/soil`)} className="text-left">
-                    <p className="text-lg font-bold text-foreground">{t('lands.details.not_tested')}</p>
-                    <p className="text-xs text-primary font-medium mt-1">{t('lands.details.add_soil_test')} →</p>
+                    <p className="text-lg font-bold text-foreground">{t(soilIsEstimate ? 'soil.sourceTypes.satellite' : 'lands.details.not_tested')}</p>
+                    <p className="text-xs text-primary font-medium mt-1">{t(soilIsEstimate ? 'soil.needsLab' : 'lands.details.add_soil_test')} →</p>
                   </button>
                 ) : (
                 <div className="space-y-2">

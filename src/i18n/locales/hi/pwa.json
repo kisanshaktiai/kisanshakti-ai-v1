@@ -68,6 +68,22 @@
     "success": {
       "installed": "ऐप सफलतापूर्वक इंस्टॉल हो गया!",
       "access_from_home": "अब आप अपनी होम स्क्रीन से किसानशक्ति एक्सेस कर सकते हैं"
+    },
+    "banner": {
+      "dismiss": "बंद करें",
+      "benefits": "तेज़ पहुँच • बिना इंटरनेट चले • सूचनाएँ",
+      "install_app": "ऐप इंस्टॉल करें",
+      "install_iphone": "iPhone पर इंस्टॉल करें",
+      "add_home_hint": "पूरे ऐप के लिए होम स्क्रीन पर जोड़ें",
+      "show_steps": "तरीका दिखाएँ",
+      "step_share": "Share बटन दबाएँ",
+      "step_share_desc": "Share नीचे Safari की पट्टी में है",
+      "step_add": "होम स्क्रीन पर जोड़ें",
+      "step_add_desc": "नीचे जाकर \"Add to Home Screen\" दबाएँ",
+      "step_confirm": "पुष्टि करें",
+      "step_confirm_desc": "ऊपर दाईं ओर \"Add\" दबाएँ",
+      "got_it": "समझ गया",
+      "dont_show": "फिर न दिखाएँ"
     }
   },
   "__qa": {

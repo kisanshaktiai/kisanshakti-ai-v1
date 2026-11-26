@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import i18n, { loadPageTranslations } from '@/i18n/config';
+import i18n, { isTranslatedLanguage, loadPageTranslations } from '@/i18n/config';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Language {
@@ -21,11 +21,14 @@ interface LanguageState {
   fetchLanguages: () => Promise<void>;
 }
 
+/** The language list, keeping only the languages the app has screens for. */
+const offered = (languages: Language[]): Language[] => languages.filter((l) => isTranslatedLanguage(l.code));
+
 export const useLanguageStore = create<LanguageState>()(
   persist(
     (set, get) => ({
       currentLanguage: 'hi',
-      availableLanguages: [
+      availableLanguages: offered([
         { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', displayOrder: 1 },
         { code: 'en', name: 'English', nativeName: 'English', displayOrder: 2 },
         { code: 'pa', name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ', displayOrder: 3 },
@@ -40,7 +43,7 @@ export const useLanguageStore = create<LanguageState>()(
         { code: 'as', name: 'Assamese', nativeName: 'অসমীয়া', displayOrder: 12 },
         { code: 'ur', name: 'Urdu', nativeName: 'اردو', displayOrder: 13 },
         { code: 'sa', name: 'Sanskrit', nativeName: 'संस्कृतम्', displayOrder: 14 },
-      ],
+      ]),
       isLoading: false,
 
       setLanguage: (language) => {
@@ -94,7 +97,7 @@ export const useLanguageStore = create<LanguageState>()(
               nativeName: lang.native_name,
               displayOrder: lang.display_order
             }));
-            set({ availableLanguages: languages, isLoading: false });
+            set({ availableLanguages: offered(languages), isLoading: false });
           } else {
             // Use fallback languages if fetch fails
             set({ isLoading: false });
@@ -107,6 +110,17 @@ export const useLanguageStore = create<LanguageState>()(
     }),
     {
       name: 'language-storage',
+      // v2: only translated languages are offered; a saved choice outside them falls back to English,
+      // which is what that person was already reading.
+      version: 2,
+      migrate: (persisted: unknown) => {
+        const state = (persisted ?? {}) as Partial<LanguageState>;
+        return {
+          ...state,
+          currentLanguage: state.currentLanguage && isTranslatedLanguage(state.currentLanguage) ? state.currentLanguage : 'en',
+          availableLanguages: offered(state.availableLanguages ?? []),
+        } as LanguageState;
+      },
     }
   )
 );

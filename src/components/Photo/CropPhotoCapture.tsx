@@ -6,6 +6,43 @@
  * PATH: src/components/Photo/CropPhotoCapture.tsx
  *
  * CHANGE LOG (newest first, keep entries short)
+ * 2026-11-23d — Control tab: each chemical shows its product class and how it is applied (General Scan v1.3).
+ * 2026-11-23 18:10 UTC — Browser/PWA "Take photo" opens an in-app live camera (falls back to file input).
+ * 2026-11-23 09:30 UTC — Offer land-scan recovery after General Scan failure, including cameras opened on a bound land.
+ * 2026-11-23 09:27 UTC — Explain unavailable General Scan setup while retaining photos and land selection.
+ * 2026-11-23c — General Scan result in tabs so nothing is buried under a long
+ *   scroll: hero (photo, names, crop, one-line summary, certainty) stays on
+ *   top; a sticky tab bar below it — Identify (signs, damage, field checks,
+ *   look-alikes) · Cause (why it happened, life cycle) · Control (when to act,
+ *   prevention, biological, chemical options, safety) · Spray (pump / stock
+ *   plan). Tabs without content are not shown. Panel headings moved to the tabs.
+ * 2026-11-23b — General Scan v1.2 result: non-farm photo gets a one-line card
+ *   ("scan again"); "Why it happened" (root cause + life cycle) replaces the
+ *   spread / life-cycle sections; Spray plan panel — area (acres) and pump size
+ *   in, stock solution out (computeSprayPlan in src/lib/sprayPlan.ts, defaults
+ *   from config via the scan response): jar test, stock litres with products in
+ *   mixing order, stock + water per pump, number of pumps, waiting days before
+ *   harvest, clash note, label note. Doses hidden when the crop is not named.
+ * 2026-11-23 — General Scan result: "How to control" panel (prevention,
+ *   biological agents, chemical active ingredients with mode-of-action group,
+ *   when to act, safety, label note; no brands, no doses). Shows why medicine
+ *   names are held back when the server withholds them. Section order puts
+ *   control right after recognition and damage.
+ * 2026-11-22b — General Scan is live (Option B, isolated path). The General
+ *   Scan card opens capture without a land; photos go through
+ *   uploadGeneralPhoto → identifyGeneral (vision model + agronomy harness, no
+ *   master tables). Result = identification card: photo, local / English /
+ *   scientific name, category, host crop, server-decided certainty, what it
+ *   is, how to recognise it, life cycle, damage or role, spread conditions,
+ *   field checks, look-alikes. No treatment in General Scan — "Scan on my
+ *   land" routes the same photos to the governed land diagnosis. Land path is
+ *   unchanged. Context chip can switch scope when no land is bound. General
+ *   Scan needs internet (no offline queue). Removed i18n key generalScanSoon;
+ *   new keys: generalNeedsInternet, changeScan, scanOnMyLand, identifyWithGeneral,
+ *   result*, category.*. After a land crop_mismatch / crop_unresolved the same
+ *   photos can be identified with General Scan in one tap.
+ * 2026-11-22 — Modern redesign. Camera primary, file upload below; land
+ *   picker with a General Scan option (was gated).
  * 2026-10-29 — Fix shared translations, mobile overflow and preview lifecycle.
  * 2026-09-23 — v2 REWRITE. Opens with a purpose (chat_question, instascan,
  *   schedule_task, growth_tracking, land_card) and a land (or asks which land).
@@ -18,33 +55,51 @@
  *
  * Styling: shadcn Dialog/Button/Textarea, semantic theme tokens only
  * (primary / muted / destructive / warning / success), lucide icons, sonner.
- * i18n: translation:cropGrowth.capture.* (en/hi/mr added 2026-09-23).
+ * i18n: translation:cropGrowth.capture.* (en/hi/mr; other languages fall back to en).
+ * All identification text shown in the result comes from the model in the
+ * farmer's language; the UI adds only i18n labels.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+import LiveCameraViewfinder, { canUseLiveCamera } from './LiveCameraViewfinder';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin } from 'lucide-react';
+import {
+  Camera, Images, Loader2, X, RotateCcw, AlertTriangle, CheckCircle2, MapPin, ScanLine, Sparkles, ChevronRight,
+  Sprout, Leaf, Bug, Microscope, Worm, FlaskConical, ThermometerSun, PawPrint, ShieldCheck, ImageOff, CircleHelp,
+  WifiOff, ArrowLeftRight, Droplets, Timer, type LucideIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { computeSprayPlan, measure } from '@/lib/sprayPlan';
 import {
   askDecisionBrain,
   capturedFromFile,
   diagnosePhotos,
   getCurrentLocation,
+  identifyGeneral,
   isNativeCamera,
   queueCapture,
   quickQualityCheck,
   takeStillPhoto,
+  uploadGeneralPhoto,
   uploadQueued,
   type BrainAnswer,
   type CapturePurpose,
   type CapturedPhoto,
   type CropPhotoUploadType,
   type DiagnoseResult,
+  type GeneralIdentification,
+  type GeneralManagement,
+  type GeneralSprayPlan,
+  type SprayDefaults,
+  type GeneralScanCategory,
+  type GeneralScanResult,
   type RetakeReason,
   type ShotRole,
 } from '@/services/cropPhotoService';
@@ -55,7 +110,7 @@ export interface CropPhotoCaptureProps {
   purpose: CapturePurpose;
   farmerId: string;
   tenantId: string;
-  /** Bound land. When absent the tool first asks which land (from `lands`). */
+  /** Bound land. When absent the tool first asks which land (from `lands`) or General Scan. */
   landId?: string;
   lands?: Array<{ id: string; name: string }>;
   sessionId?: string;
@@ -69,10 +124,10 @@ export interface CropPhotoCaptureProps {
   initialText?: string;
   /**
    * Chat screens send the brain turn through their own pipeline: the tool
-   * stops after perception and hands over the diagnosis id.
+   * stops after perception and hands over the diagnosis id. (Land scans only.)
    */
   onDiagnosed?: (r: { diagnosisId: string; landId: string; farmerText: string }) => void;
-  /** Other screens: the tool asks the Decision Brain and returns its answer. */
+  /** Other screens: the tool asks the Decision Brain and returns its answer. (Land scans only.) */
   onAnswer?: (r: { diagnosisId: string; landId: string; answer: BrainAnswer }) => void;
 }
 
@@ -86,6 +141,25 @@ interface Shot {
 }
 
 type Phase = 'land' | 'capture' | 'working' | 'result';
+type ScanMode = 'land' | 'general';
+
+const CATEGORY_ICON: Record<GeneralScanCategory, LucideIcon> = {
+  crop_plant: Sprout,
+  weed: Leaf,
+  insect_pest: Bug,
+  mite_pest: Bug,
+  pest_damage: Bug,
+  fungal_disease: Microscope,
+  bacterial_disease: Microscope,
+  viral_disease: Microscope,
+  nematode_damage: Worm,
+  nutrient_deficiency: FlaskConical,
+  abiotic_stress: ThermometerSun,
+  animal_damage: PawPrint,
+  beneficial_organism: ShieldCheck,
+  not_agricultural: ImageOff,
+  unknown: CircleHelp,
+};
 
 export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   const {
@@ -105,7 +179,15 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   const previewUrls = useRef(new Set<string>());
   const captureGeneration = useRef(0);
   const [picking, setPicking] = useState(false);
+  // Scan scope: 'land' = governed diagnosis against the chosen land's crop;
+  // 'general' = land-less identification of any crop/weed/pest/disease.
+  const [scanMode, setScanMode] = useState<ScanMode>('land');
+  const [offlineNote, setOfflineNote] = useState(false);
+  const [general, setGeneral] = useState<GeneralScanResult | null>(null);
+  // Land scan said the photo does not match the land's crop → offer General Scan with the same photos.
+  const [offerGeneral, setOfferGeneral] = useState(false);
   const identity = { farmerId, tenantId };
+  const landBound = !!props.landId;
 
   // Reset on open; release preview URLs on close.
   useEffect(() => {
@@ -115,6 +197,10 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
     if (!isOpen) return;
     setLandId(props.landId);
     setPhase(props.landId ? 'capture' : 'land');
+    setScanMode('land');
+    setOfflineNote(false);
+    setGeneral(null);
+    setOfferGeneral(false);
     setShots([]);
     setText(initialText ?? '');
     setProblem(null);
@@ -159,6 +245,7 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
   }, [isOpen, initialFiles, addPhoto, props.landId, farmerId, tenantId]);
 
   const replaceRef = useRef<number | undefined>(undefined);
+  const [liveCam, setLiveCam] = useState(false);
   const openCamera = async (replaceIndex?: number) => {
     if (picking) return;
     replaceRef.current = replaceIndex;
@@ -174,7 +261,14 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       }
       return;
     }
+    if (canUseLiveCamera()) { setLiveCam(true); return; }
     cameraInput.current?.click();
+  };
+  const onLiveCapture = async (blob: Blob) => {
+    setLiveCam(false);
+    const file = new File([blob], `crop-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    await addPhoto(capturedFromFile(file, true), replaceRef.current);
+    replaceRef.current = undefined;
   };
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>, fromCamera: boolean) => {
     const file = e.target.files?.[0];
@@ -185,12 +279,93 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
   const removeShot = (i: number) => setShots((prev) => prev.filter((_, idx) => idx !== i).map((s, idx) => ({ ...s, role: ROLES[idx] })));
 
-  const canSend = shots.length > 0 && shots.every((s) => !s.retake) && !!landId;
+  // ── Scope switching ─────────────────────────────────────────────────────
+  const chooseGeneral = () => {
+    if (!navigator.onLine) {
+      if (phase === 'capture') setProblem(t(`${K}.generalNeedsInternet`)); else setOfflineNote(true);
+      return;
+    }
+    setOfflineNote(false);
+    setOfferGeneral(false);
+    setScanMode('general');
+    setLandId(undefined);
+    setProblem(null);
+    setPhase('capture');
+  };
+  const chooseLand = (id: string) => {
+    setOfflineNote(false);
+    setScanMode('land');
+    setLandId(id);
+    setProblem(null);
+    setGeneral(null);
+    setPhase('capture');
+  };
+  const backToPicker = () => {
+    setProblem(null);
+    setGeneral(null);
+    setPhase('land');
+  };
 
-  const send = async () => {
-    if (!landId || !canSend) return;
+  const shotsOk = shots.length > 0 && shots.every((s) => !s.retake);
+  const canSend = shotsOk && (scanMode === 'general' || !!landId);
+
+  const markRetake = (idx: number | null | undefined, code: RetakeReason | null | undefined) => {
+    const i = idx ?? 0;
+    setShots((prev) => prev.map((s, k) => (k === i ? { ...s, retake: code ?? 'generic' } : s)));
+  };
+
+  // ── General Scan: identification only, online only ──────────────────────
+  const sendGeneral = async () => {
     const generation = captureGeneration.current;
     setProblem(null);
+    if (!navigator.onLine) { setProblem(t(`${K}.generalNeedsInternet`)); return; }
+    setPhase('working');
+    try {
+      const location = await getCurrentLocation();
+      if (generation !== captureGeneration.current) return;
+      if (requireLocation && !location) {
+        toast.error(t('cropGrowth.pleaseAddLocation'));
+        setPhase('capture');
+        return;
+      }
+      setWorkLabel(t(`${K}.uploading`));
+      const uploads: Array<{ upload_id: string; shot_role: ShotRole }> = [];
+      for (const s of shots) {
+        const uploadId = await uploadGeneralPhoto(s.photo, { id: identity, purpose, shotRole: s.role, location });
+        if (generation !== captureGeneration.current) return;
+        uploads.push({ upload_id: uploadId, shot_role: s.role });
+      }
+      setWorkLabel(t(`${K}.diagnosing`));
+      const r = await identifyGeneral({
+        id: identity, purpose, photos: uploads, language: i18n.language || 'en', farmerText: text,
+      });
+      if (generation !== captureGeneration.current) return;
+      if (r.status === 'retake_requested') {
+        markRetake(r.retake?.photo_index, r.retake?.reason_code);
+        setPhase('capture');
+        return;
+      }
+      if ((r.status !== 'completed' && r.status !== 'needs_follow_up') || !r.identification) {
+        setProblem(t(`${K}.failed`));
+        setPhase('capture');
+        return;
+      }
+      setGeneral(r);
+      setPhase('result');
+    } catch (e) {
+      if (generation !== captureGeneration.current) return;
+      console.error('[CropPhotoCapture] general scan failed', e);
+      setProblem(t(`${K}.${e instanceof Error && e.message === 'GENERAL_SCAN_NOT_CONFIGURED' ? 'generalUnavailable' : 'failed'}`));
+      setPhase('capture');
+    }
+  };
+
+  // ── Land scan: governed diagnosis + Decision Brain (unchanged) ──────────
+  const sendLand = async () => {
+    if (!landId) return;
+    const generation = captureGeneration.current;
+    setProblem(null);
+    setOfferGeneral(false);
     setPhase('working');
     try {
       const location = await getCurrentLocation();
@@ -230,13 +405,12 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
       });
       if (generation !== captureGeneration.current) return;
       if (d.status === 'retake_requested') {
-        const idx = d.retake?.photo_index ?? 0;
-        setShots((prev) => prev.map((s, i) => (i === idx ? { ...s, retake: d.retake?.reason_code ?? 'generic' } : s)));
+        markRetake(d.retake?.photo_index, d.retake?.reason_code);
         setPhase('capture');
         return;
       }
-      if (d.status === 'crop_mismatch') { setProblem(t(`${K}.cropMismatch`)); setPhase('capture'); return; }
-      if (d.status === 'crop_unresolved') { setProblem(t(`${K}.cropUnresolved`)); setPhase('capture'); return; }
+      if (d.status === 'crop_mismatch') { setProblem(t(`${K}.cropMismatch`)); setOfferGeneral(true); setPhase('capture'); return; }
+      if (d.status === 'crop_unresolved') { setProblem(t(`${K}.cropUnresolved`)); setOfferGeneral(true); setPhase('capture'); return; }
       if (d.status !== 'completed' || !d.diagnosis_id) { setProblem(t(`${K}.failed`)); setPhase('capture'); return; }
 
       // 4. The Decision Brain decides the answer.
@@ -261,13 +435,21 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
     }
   };
 
+  const send = () => {
+    if (!canSend) return;
+    void (scanMode === 'general' ? sendGeneral() : sendLand());
+  };
+
   const nextRole = ROLES[shots.length];
+  const landName = (lands ?? []).find((l) => l.id === landId)?.name ?? t(`${K}.thisLand`);
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent aria-describedby={undefined} className="flex flex-col gap-0 max-w-md w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] p-0 overflow-hidden rounded-lg [&>button]:hidden">
         <div className="flex shrink-0 min-w-0 items-center justify-between gap-2 px-4 py-3 border-b border-border">
-          <DialogTitle className="min-w-0 break-words text-base font-semibold text-foreground tracking-normal">{t(`${K}.title`)}</DialogTitle>
+          <DialogTitle className="min-w-0 break-words text-base font-semibold text-foreground tracking-normal">
+            {scanMode === 'general' && phase !== 'land' ? t(`${K}.generalScan`) : t(`${K}.title`)}
+          </DialogTitle>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} className="shrink-0" aria-label={t(`${K}.done`)}>
             <X className="h-5 w-5 text-muted-foreground" />
           </Button>
@@ -275,30 +457,101 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
 
         <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onFile(e, true)} />
         <input ref={galleryInput} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e, false)} />
+        {liveCam && (
+          <LiveCameraViewfinder
+            onCapture={(b) => { void onLiveCapture(b); }}
+            onCancel={() => { setLiveCam(false); replaceRef.current = undefined; }}
+            onUnavailable={() => { setLiveCam(false); cameraInput.current?.click(); }}
+          />
+        )}
 
         <div className="min-h-0 min-w-0 p-4 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain break-words">
           {phase === 'land' && (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-foreground">{t(`${K}.chooseLand`)}</p>
-              {(lands ?? []).length === 0 && <>
+            <div className="space-y-4">
+              {/* General Scan — land-less identification of any crop / weed / pest / disease. */}
+              <button
+                type="button"
+                onClick={chooseGeneral}
+                className="group relative w-full overflow-hidden rounded-2xl border border-primary/30 bg-primary/5 p-4 text-left transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                    <Sparkles className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground">{t(`${K}.generalScan`)}</p>
+                    <p className="text-xs text-muted-foreground">{t(`${K}.generalScanHint`)}</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </button>
+              {offlineNote && (
+                <div role="status" className="flex gap-2 rounded-xl bg-warning/10 p-3 text-xs text-foreground">
+                  <WifiOff className="h-4 w-4 mt-0.5 shrink-0 text-warning" />
+                  <span>{t(`${K}.generalNeedsInternet`)}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-1">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-xs font-medium text-muted-foreground">{t(`${K}.orChooseLand`)}</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              {(lands ?? []).length === 0 && (
                 <p className="text-sm text-muted-foreground">{t('cropGrowth.addLandFirst')}</p>
-                <Button variant="outline" className="w-full" onClick={onClose}>{t(`${K}.done`)}</Button>
-              </>}
-              {(lands ?? []).map((l) => (
-                <Button key={l.id} variant="outline" className="w-full justify-start h-12"
-                  onClick={() => { setLandId(l.id); setPhase('capture'); }}>
-                  <MapPin className="h-4 w-4 mr-2 text-primary" />{l.name}
-                </Button>
-              ))}
+              )}
+              <div className="space-y-2">
+                {(lands ?? []).map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => chooseLand(l.id)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/50 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <MapPin className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground">{l.name}</span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {phase === 'capture' && (
             <>
+              {/* Context chip: which scope this scan belongs to. Tappable when no land is bound. */}
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  {scanMode === 'general'
+                    ? <><Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="truncate">{t(`${K}.generalScan`)}</span></>
+                    : <><MapPin className="h-3.5 w-3.5 shrink-0 text-primary" /><span className="truncate">{landName}</span></>}
+                </div>
+                {!landBound && (
+                  <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 gap-1 px-2 text-xs text-primary" onClick={backToPicker}>
+                    <ArrowLeftRight className="h-3.5 w-3.5" />{t(`${K}.changeScan`)}
+                  </Button>
+                )}
+              </div>
               {problem && (
-                <div className="flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+                <div role="alert" className="flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" /><span>{problem}</span>
                 </div>
+              )}
+              {problem && scanMode === 'general' && (props.landId || (lands ?? []).length > 0) && (
+                <Button type="button" variant="outline" className="h-11 w-full" onClick={() => {
+                  if (props.landId) chooseLand(props.landId);
+                  else backToPicker();
+                }}>
+                  <MapPin className="h-4 w-4 mr-2" />{t(`${K}.scanOnMyLand`)}
+                </Button>
+              )}
+              {offerGeneral && scanMode === 'land' && (
+                <Button type="button" variant="outline" className="h-11 w-full rounded-xl border-primary/40" onClick={chooseGeneral}>
+                  <Sparkles className="h-4 w-4 mr-2 text-primary" />{t(`${K}.identifyWithGeneral`)}
+                </Button>
               )}
 
               {shots.map((s, i) => (
@@ -318,17 +571,24 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
               ))}
 
               {nextRole && (
-                <div className={cn('rounded-xl border-2 border-dashed p-4 space-y-3',
-                  shots.length === 0 ? 'border-primary bg-primary/5' : 'border-border')}>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{t(`${K}.shot.${nextRole}.title`)}</p>
-                    <p className="text-sm text-muted-foreground">{t(`${K}.shot.${nextRole}.hint`)}</p>
+                <div className={cn('rounded-2xl border-2 border-dashed p-4 space-y-4 transition-colors',
+                  shots.length === 0 ? 'border-primary/60 bg-primary/5' : 'border-border')}>
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <ScanLine className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{t(`${K}.shot.${nextRole}.title`)}</p>
+                      <p className="text-sm text-muted-foreground">{t(`${K}.shot.${nextRole}.hint`)}</p>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button className="min-h-12 h-auto min-w-0 whitespace-normal py-3 sm:flex-1" disabled={picking} onClick={() => openCamera()}>
-                      <Camera className="h-5 w-5 mr-2 shrink-0" /><span className="min-w-0">{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}</span>
+                  {/* Two clear options: camera on top, file upload directly below. */}
+                  <div className="flex flex-col gap-2.5">
+                    <Button className="h-14 w-full min-w-0 whitespace-normal rounded-xl text-base font-semibold shadow-sm" disabled={picking} onClick={() => openCamera()}>
+                      {picking ? <Loader2 className="h-5 w-5 mr-2 shrink-0 animate-spin" /> : <Camera className="h-5 w-5 mr-2 shrink-0" />}
+                      <span className="min-w-0">{shots.length === 0 ? t('cropGrowth.takePhoto') : t(`${K}.takeNext`)}</span>
                     </Button>
-                    <Button className="min-h-12 h-auto min-w-0 whitespace-normal py-3 sm:flex-1" disabled={picking} variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
+                    <Button className="h-12 w-full min-w-0 whitespace-normal rounded-xl" disabled={picking} variant="outline" onClick={() => { replaceRef.current = undefined; galleryInput.current?.click(); }}>
                       <Images className="h-5 w-5 mr-2 shrink-0" /><span className="min-w-0">{t(`${K}.addFromGallery`)}</span>
                     </Button>
                   </div>
@@ -345,13 +605,19 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
           )}
 
           {phase === 'working' && (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="flex flex-col items-center justify-center py-10 gap-3" role="status" aria-live="polite">
+              {shots[0] && (
+                <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-border">
+                  <img src={shots[0].photo.previewUrl} alt="" className="h-full w-full object-cover" />
+                  <span className="ks-scan-sweep pointer-events-none absolute inset-x-0 h-1/3 bg-gradient-to-b from-transparent via-primary/40 to-transparent motion-reduce:hidden" />
+                </div>
+              )}
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">{workLabel}</p>
             </div>
           )}
 
-          {phase === 'result' && (
+          {phase === 'result' && scanMode === 'land' && (
             <div className="space-y-4">
               <div className="flex gap-2 rounded-xl bg-success/10 p-3">
                 <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
@@ -360,9 +626,486 @@ export function CropPhotoCapture(props: CropPhotoCaptureProps) {
               <Button className="w-full h-12" onClick={onClose}>{t(`${K}.done`)}</Button>
             </div>
           )}
+
+          {phase === 'result' && scanMode === 'general' && general?.identification && (
+            <GeneralResultCard
+              id={general.identification}
+              status={general.status}
+              photoUrl={shots[0]?.photo.previewUrl}
+              canAddPhoto={shots.length < ROLES.length}
+              canScanLand={!landBound && (lands ?? []).length > 0}
+              sprayDefaults={general.spray_defaults ?? null}
+              onAddPhoto={() => { setGeneral(null); setPhase('capture'); }}
+              onScanAgain={() => { setGeneral(null); setShots([]); setText(''); setPhase('capture'); }}
+              onScanLand={() => { setGeneral(null); setScanMode('land'); setPhase('land'); }}
+              onDone={onClose}
+            />
+          )}
         </div>
+        <style>{`
+          @keyframes ks-scan-sweep { 0% { top: -33%; } 100% { top: 100%; } }
+          .ks-scan-sweep { animation: ks-scan-sweep 1.6s ease-in-out infinite; }
+        `}</style>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── General Scan result — an identification card, not a prescription ─────
+
+interface GeneralResultCardProps {
+  id: GeneralIdentification;
+  status: GeneralScanResult['status'];
+  photoUrl?: string;
+  canAddPhoto: boolean;
+  canScanLand: boolean;
+  sprayDefaults: SprayDefaults | null;
+  onAddPhoto: () => void;
+  onScanAgain: () => void;
+  onScanLand: () => void;
+  onDone: () => void;
+}
+
+export function GeneralResultCard({
+  id, status, photoUrl, canAddPhoto, canScanLand, sprayDefaults, onAddPhoto, onScanAgain, onScanLand, onDone,
+}: GeneralResultCardProps) {
+  const { t } = useTranslation();
+  const Icon = CATEGORY_ICON[id.category] ?? CircleHelp;
+
+  // Agri gate: not a farm subject — one line and a way back, nothing else.
+  if (id.category === 'not_agricultural') {
+    return (
+      <article className="space-y-4" aria-live="polite">
+        {photoUrl && <img src={photoUrl} alt="" className="h-40 w-full rounded-2xl border border-border object-cover opacity-80" />}
+        <div className="flex gap-3 rounded-2xl bg-muted p-4">
+          <ImageOff className="h-6 w-6 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold text-foreground">{t(`${K}.category.not_agricultural`)}</p>
+            <p className="text-sm text-muted-foreground">{t(`${K}.resultNotFarm`)}</p>
+          </div>
+        </div>
+        <Button className="h-12 w-full rounded-xl" onClick={onScanAgain}>
+          <Camera className="h-5 w-5 mr-2" />{t(`${K}.scanAgain`)}
+        </Button>
+        <Button variant="ghost" className="h-11 w-full rounded-xl" onClick={onDone}>{t(`${K}.done`)}</Button>
+      </article>
+    );
+  }
+
+  const sure = status === 'completed' && !id.abstained;
+  const p = id.primary;
+  const headline = p.local_name || p.common_name_en || t(`${K}.category.${id.category}`);
+  const showEnglish = !!p.common_name_en && p.common_name_en !== headline;
+  const pct = Math.round(Math.max(0, Math.min(1, p.confidence)) * 100);
+  const c = id.farmer_card;
+  const hostName = id.host_crop ? (id.host_crop.local_name || id.host_crop.common_name_en) : null;
+  const rc = id.root_cause ?? { primary_en: null, contributing_factors_local: [], life_cycle_local: null };
+  const hasCause = rc.contributing_factors_local.length > 0 || !!rc.life_cycle_local;
+  const hasControl = !!id.management?.applicable;
+  const hasSpray = !!id.spray_plan?.needed;
+  const tabs: Array<{ key: 'identify' | 'cause' | 'control' | 'spray'; icon: LucideIcon }> = [
+    { key: 'identify', icon: ScanLine },
+    ...(hasCause ? [{ key: 'cause' as const, icon: CircleHelp }] : []),
+    ...(hasControl ? [{ key: 'control' as const, icon: ShieldCheck }] : []),
+    ...(hasSpray ? [{ key: 'spray' as const, icon: Droplets }] : []),
+  ];
+
+  return (
+    <article className="space-y-5" aria-live="polite">
+      {/* Specimen: the farmer's own photo with the name set on it. */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        {photoUrl && (
+          <div className="relative">
+            <img src={photoUrl} alt="" className="h-48 w-full object-cover" />
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-background/90 px-2.5 py-1 text-xs font-medium text-foreground backdrop-blur">
+              <Icon className="h-3.5 w-3.5 text-primary" />{t(`${K}.category.${id.category}`)}
+            </span>
+          </div>
+        )}
+        <div className="space-y-3 p-4">
+          {!photoUrl && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Icon className="h-3.5 w-3.5 text-primary" />{t(`${K}.category.${id.category}`)}
+            </span>
+          )}
+          <div className="space-y-0.5">
+            <h3 className="text-2xl font-bold leading-tight text-foreground">{headline}</h3>
+            {showEnglish && <p className="text-sm text-foreground/80">{p.common_name_en}</p>}
+            {p.scientific_name && <p className="font-serif text-sm italic text-muted-foreground">{p.scientific_name}</p>}
+            {hostName && (
+              <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
+                <Sprout className="h-3.5 w-3.5 text-primary" />{t(`${K}.resultOnCrop`, { crop: hostName })}
+              </p>
+            )}
+          </div>
+          {c.summary_local && <p className="text-sm leading-relaxed text-foreground">{c.summary_local}</p>}
+
+          {/* Certainty — the server decides completed vs needs_follow_up; the UI only colours it. */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">{t(`${K}.resultConfidence`)}</span>
+              <span className={cn('font-semibold tabular-nums', sure ? 'text-success' : 'text-warning')}>{pct}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t(`${K}.resultConfidence`)}>
+              <div className={cn('h-full rounded-full', sure ? 'bg-success' : 'bg-warning')} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {!sure && (
+        <div className="space-y-3 rounded-xl bg-warning/10 p-3">
+          <div className="flex gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />
+            <div className="min-w-0 space-y-1 text-sm text-foreground">
+              <p className="font-medium">{t(`${K}.resultNotSure`)}</p>
+              {id.another_photo.reason_local && <p className="text-muted-foreground">{id.another_photo.reason_local}</p>}
+              {id.another_photo.shot_role && (
+                <p className="text-muted-foreground">{t(`${K}.shot.${id.another_photo.shot_role}.hint`)}</p>
+              )}
+            </div>
+          </div>
+          {canAddPhoto && (
+            <Button variant="outline" className="h-11 w-full rounded-xl" onClick={onAddPhoto}>
+              <Camera className="h-4 w-4 mr-2" />{t(`${K}.takeNext`)}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Everything else sits in tabs, so the farmer reaches the spray plan in one tap. */}
+      <Tabs defaultValue="identify" className="space-y-4">
+        <TabsList className="sticky top-0 z-10 grid h-auto w-full gap-1 rounded-2xl bg-muted p-1"
+          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+          {tabs.map(({ key, icon: TabIcon }) => (
+            <TabsTrigger key={key} value={key}
+              className="flex h-auto min-w-0 flex-col gap-1 whitespace-normal rounded-xl px-1 py-2 text-sm font-medium leading-tight text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
+              <TabIcon className="h-5 w-5 shrink-0" />
+              <span className="break-words text-center">{t(`${K}.tab.${key}`)}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="identify" className="mt-0 space-y-5">
+          {c.identification_marks_local.length > 0 && (
+            <Section title={t(`${K}.resultHowToRecognise`)}><Bullets items={c.identification_marks_local} /></Section>
+          )}
+          {c.damage_or_role_local && <Section title={t(`${K}.resultDamage`)}><p>{c.damage_or_role_local}</p></Section>}
+          {c.field_checks_local.length > 0 && (
+            <Section title={t(`${K}.resultFieldChecks`)}><Bullets items={c.field_checks_local} /></Section>
+          )}
+          {id.alternatives.length > 0 && (
+            <Section title={t(`${K}.resultCouldAlsoBe`)}>
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {id.alternatives.map((a, i) => {
+                  const AltIcon = CATEGORY_ICON[a.category] ?? CircleHelp;
+                  const name = a.local_name || a.common_name_en || t(`${K}.category.${a.category}`);
+                  return (
+                    <li key={`${name}-${i}`} className="flex gap-3 p-3">
+                      <AltIcon className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="font-medium text-foreground">
+                          {name}
+                          {a.scientific_name && <i className="ml-1.5 font-serif text-xs font-normal text-muted-foreground">{a.scientific_name}</i>}
+                        </p>
+                        {a.how_to_tell_apart_local && <p className="text-muted-foreground">{a.how_to_tell_apart_local}</p>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Section>
+          )}
+        </TabsContent>
+
+        {hasCause && (
+          <TabsContent value="cause" className="mt-0 space-y-5">
+            {rc.contributing_factors_local.length > 0 && (
+              <Section title={t(`${K}.resultRootCause`)}><Bullets items={rc.contributing_factors_local} /></Section>
+            )}
+            {rc.life_cycle_local && <Section title={t(`${K}.resultLifeCycle`)}><p>{rc.life_cycle_local}</p></Section>}
+          </TabsContent>
+        )}
+
+        {hasControl && (
+          <TabsContent value="control" className="mt-0">
+            <ControlPanel m={id.management} />
+          </TabsContent>
+        )}
+
+        {hasSpray && (
+          <TabsContent value="spray" className="mt-0">
+            <SprayPlanPanel plan={id.spray_plan} defaults={sprayDefaults} />
+          </TabsContent>
+        )}
+      </Tabs>
+
+      {/* General Scan identifies; treatment comes only from the governed land diagnosis. */}
+      <div className="space-y-2.5 border-t border-border pt-4">
+        <p className="flex gap-2 text-xs text-muted-foreground">
+          <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />{t(`${K}.resultTreatmentHint`)}
+        </p>
+        {canScanLand && (
+          <Button variant="outline" className="h-11 w-full rounded-xl" onClick={onScanLand}>
+            <MapPin className="h-4 w-4 mr-2" />{t(`${K}.scanOnMyLand`)}
+          </Button>
+        )}
+        <Button className="h-12 w-full rounded-xl" onClick={onDone}>{t(`${K}.done`)}</Button>
+      </div>
+    </article>
+  );
+}
+
+// ── How to control — prevention first, then biological, then chemical ingredients ──
+function ControlPanel({ m }: { m: GeneralManagement }) {
+  const { t } = useTranslation();
+  const hasProducts = m.biological.length > 0 || m.chemical.length > 0;
+  return (
+    <section className="space-y-4 rounded-2xl border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed text-foreground">
+
+      {m.action_threshold_local && (
+        <div className="space-y-1">
+          <p className="font-semibold">{t(`${K}.resultWhenToAct`)}</p>
+          <p>{m.action_threshold_local}</p>
+        </div>
+      )}
+
+      {m.prevention_local.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="flex items-center gap-1.5 font-semibold"><Sprout className="h-4 w-4 text-primary" />{t(`${K}.resultPrevention`)}</p>
+          <Bullets items={m.prevention_local} />
+        </div>
+      )}
+
+      {m.biological.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="flex items-center gap-1.5 font-semibold"><Leaf className="h-4 w-4 text-primary" />{t(`${K}.resultBiological`)}</p>
+          <ul className="space-y-2">
+            {m.biological.map((b, i) => (
+              <li key={`${b.agent}-${i}`} className="rounded-xl bg-background/70 p-3">
+                <p className="font-medium text-foreground">{b.agent}</p>
+                {b.how_local && <p className="text-muted-foreground">{b.how_local}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {m.chemical.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="flex items-center gap-1.5 font-semibold"><FlaskConical className="h-4 w-4 text-primary" />{t(`${K}.resultChemical`)}</p>
+          <ul className="space-y-2">
+            {m.chemical.map((x, i) => (
+              <li key={`${x.active_ingredient}-${i}`} className="rounded-xl bg-background/70 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-foreground">{x.active_ingredient}</p>
+                  {x.moa_group && (
+                    <span className="rounded-md border border-border px-1.5 py-0.5 text-xs text-muted-foreground" title={t(`${K}.resultMoaGroup`)}>
+                      {x.moa_group}
+                    </span>
+                  )}
+                </div>
+                {(x.type || x.application) && (
+                  <p className="text-xs font-medium text-primary">
+                    {[x.type ? t(`${K}.productType.${x.type}`) : null, x.application ? t(`${K}.application.${x.application}`) : null]
+                      .filter(Boolean).join(', ')}
+                  </p>
+                )}
+                {x.how_local && <p className="text-muted-foreground">{x.how_local}</p>}
+                {x.watch_list && <p className="pt-1 text-xs text-warning">{t(`${K}.resultWatchList`)}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {m.products_withheld && (
+        <p className="flex gap-2 rounded-xl bg-warning/10 p-3 text-foreground">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />
+          {t(m.products_withheld === 'not_sure' ? `${K}.resultProductsNeedSure` : `${K}.resultProductsUnavailable`)}
+        </p>
+      )}
+
+      {(m.safety_local || hasProducts) && (
+        <div className="space-y-1.5 border-t border-primary/20 pt-3">
+          {m.safety_local && (
+            <p className="flex gap-2"><AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" /><span>{m.safety_local}</span></p>
+          )}
+          {hasProducts && <p className="text-xs text-muted-foreground">{t(`${K}.resultLabelNote`)}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── Spray plan — label dose → stock solution and pumps (all arithmetic in src/lib/sprayPlan.ts) ──
+function SprayPlanPanel({ plan, defaults }: { plan: GeneralSprayPlan; defaults: SprayDefaults | null }) {
+  const { t } = useTranslation();
+  const [area, setArea] = useState('');
+  const [pumpL, setPumpL] = useState<number | null>(defaults?.default_pump_l ?? null);
+  const areaAcres = Number.parseFloat(area.replace(',', '.'));
+  const r = computeSprayPlan({
+    components: plan.components,
+    waterVolume: defaults ? plan.water_volume : null,
+    waterUnit: defaults ? plan.water_unit : null,
+    areaAcres: Number.isFinite(areaAcres) && areaAcres > 0 ? areaAcres : null,
+    pumpL: pumpL ?? 0,
+    stockLPerPump: defaults?.stock_l_per_pump ?? 0,
+    stockMinDilution: defaults?.stock_min_dilution ?? 0,
+  });
+  const unit = (u: 'g' | 'ml' | null) => (u ? t(`${K}.unit.${u}`) : '');
+  const amount = (n: number | null, u: 'g' | 'ml' | null) => (n === null || !u ? t(`${K}.sprayDoseOnLabel`) : `${measure(n)} ${unit(u)}`);
+  const phis = plan.components.filter((c) => c.phi_days !== null);
+
+  return (
+    <section className="space-y-4 rounded-2xl border border-border bg-card p-4 text-sm leading-relaxed text-foreground">
+
+      {defaults && r.mode !== 'label_only' && (
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">{t(`${K}.sprayArea`)}</span>
+            <Input inputMode="decimal" type="number" min="0" step="0.1" value={area} onChange={(e) => setArea(e.target.value)}
+              placeholder={t(`${K}.sprayAreaPlaceholder`)} className="h-11" />
+          </label>
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-muted-foreground">{t(`${K}.sprayPump`)}</span>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t(`${K}.sprayPump`)}>
+              {defaults.pump_sizes_l.map((size) => (
+                <button key={size} type="button" role="radio" aria-checked={pumpL === size} onClick={() => setPumpL(size)}
+                  className={cn('h-11 min-w-[3.25rem] rounded-xl border px-3 font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    pumpL === size ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground')}>
+                  {size} {t(`${K}.unit.l`)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {plan.dose_withheld === 'crop_unknown' && (
+        <p className="flex gap-2 rounded-xl bg-warning/10 p-3"><AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />{t(`${K}.sprayCropUnknown`)}</p>
+      )}
+
+      {r.mode === 'area' && (
+        <ol className="space-y-3">
+          <Step n={1}>{t(`${K}.sprayJarTest`)}</Step>
+          {r.stockL !== null ? (
+            <Step n={2}>
+              <p className="font-semibold">{t(`${K}.sprayMakeStock`, { litres: measure(r.stockL) })}</p>
+              <MixList lines={r.lines} amount={(l) => amount(l.total, l.unit)} />
+              <p className="pt-1 text-muted-foreground">{t(`${K}.sprayStockStir`)}</p>
+            </Step>
+          ) : (
+            <Step n={2}>
+              <p className="font-semibold">{t(`${K}.sprayEachPumpDirect`, { litres: measure(r.waterPerPumpL ?? 0) })}</p>
+              <MixList lines={r.lines} amount={(l) => amount(l.perPump, l.unit)} />
+            </Step>
+          )}
+          {r.stockL !== null && (
+            <Step n={3}>{t(`${K}.sprayEachPump`, { stock: measure(r.stockPerPumpL ?? 0), water: measure(r.waterPerPumpL ?? 0) })}</Step>
+          )}
+          <Step n={r.stockL !== null ? 4 : 3}>
+            <span className="font-semibold">{t(`${K}.sprayPumps`, { pumps: r.pumps ?? 0, litres: measure(r.sprayedL ?? 0) })}</span>
+          </Step>
+        </ol>
+      )}
+
+      {r.mode === 'one_pump' && (
+        <div className="space-y-1.5">
+          <p className="font-semibold">{t(`${K}.sprayOnePump`, { litres: measure(pumpL ?? 0) })}</p>
+          <MixList lines={r.lines} amount={(l) => amount(l.perPump, l.unit)} />
+          <p className="text-xs text-muted-foreground">{t(`${K}.sprayEnterArea`)}</p>
+        </div>
+      )}
+
+      {r.mode === 'label_only' && (
+        <ul className="space-y-2">
+          {r.lines.map((l, i) => (
+            <li key={`${l.component.active_ingredient}-${i}`} className="rounded-xl bg-muted/60 p-3">
+              <ProductName c={l.component} />
+              <p className="text-muted-foreground">
+                {l.component.dose_value !== null && l.component.dose_unit
+                  ? `${measure(l.component.dose_value)} ${t(`${K}.doseUnit.${l.component.dose_unit}`)}`
+                  : t(`${K}.sprayDoseOnLabel`)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {phis.length > 0 && (
+        <div className="space-y-1">
+          {phis.map((c, i) => (
+            <p key={`${c.active_ingredient}-phi-${i}`} className="flex gap-2 text-foreground">
+              <Timer className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+              {t(`${K}.sprayPhi`, { name: c.active_ingredient, days: c.phi_days })}
+            </p>
+          ))}
+        </div>
+      )}
+      {plan.components.some((c) => c.watch_list) && <p className="text-xs text-warning">{t(`${K}.resultWatchList`)}</p>}
+      {plan.clash_note_local && (
+        <p className="flex gap-2 rounded-xl bg-warning/10 p-3"><AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />{plan.clash_note_local}</p>
+      )}
+      <p className="border-t border-border pt-3 text-xs text-muted-foreground">{t(`${K}.resultLabelNote`)}</p>
+    </section>
+  );
+}
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary tabular-nums">{n}</span>
+      <div className="min-w-0 flex-1 space-y-1">{children}</div>
+    </li>
+  );
+}
+
+function ProductName({ c }: { c: GeneralSprayPlan['components'][number] }) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span className="font-semibold text-foreground">{c.active_ingredient}</span>
+      {c.formulation && <span className="text-muted-foreground">{c.formulation}</span>}
+      {c.moa_group && <span className="rounded-md border border-border px-1.5 py-0.5 text-xs text-muted-foreground">{c.moa_group}</span>}
+    </p>
+  );
+}
+
+function MixList({ lines, amount }: {
+  lines: ReturnType<typeof computeSprayPlan>['lines'];
+  amount: (l: ReturnType<typeof computeSprayPlan>['lines'][number]) => string;
+}) {
+  return (
+    <ul className="space-y-1.5">
+      {lines.map((l, i) => (
+        <li key={`${l.component.active_ingredient}-${i}`} className="flex items-start justify-between gap-3 rounded-xl bg-muted/60 px-3 py-2">
+          <ProductName c={l.component} />
+          <span className="shrink-0 font-semibold tabular-nums text-foreground">{amount(l)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-1.5 text-sm leading-relaxed text-foreground">
+      <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+      {children}
+    </section>
+  );
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {items.map((x, i) => (
+        <li key={i} className="flex gap-2">
+          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
+          <span className="min-w-0">{x}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

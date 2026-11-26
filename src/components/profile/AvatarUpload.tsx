@@ -8,6 +8,7 @@ import { Camera, Upload, X, ZoomIn, ZoomOut, Loader2, User } from 'lucide-react'
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
+import { farmerAuthService } from '@/services/farmerAuthService';
 import { cn } from '@/lib/utils';
 
 interface AvatarUploadProps {
@@ -205,20 +206,9 @@ export function AvatarUpload({
 
       console.log('Public URL:', publicUrl);
 
-      // Update user_profiles table using authenticated client
-      console.log('Updating user_profiles for farmer_id:', farmerId);
-      const { data: updateData, error: updateError } = await authClient
-        .from('user_profiles')
-        .update({ avatar_url: publicUrl })
-        .eq('farmer_id', farmerId)
-        .select();
-
-      if (updateError) {
-        console.error('Update error:', updateError);
-        throw updateError;
-      }
-
-      console.log('Profile updated:', updateData);
+      // The verified-session service owns the profile write; no farmer ID or
+      // tenant ID from the browser is accepted as write authorization.
+      await farmerAuthService.updateFarmerProfile({ avatarUrl: publicUrl });
 
       toast({
         title: 'Success!',

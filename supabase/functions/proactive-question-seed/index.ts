@@ -1,6 +1,19 @@
 // Proactive Alert → AI-Generated, Multilingual, Farmer-Friendly Question
 // ----------------------------------------------------------------------
 // CHANGE LOG (newest first)
+// 2026-11-20 — "germination_answer" and "irrigation_answer" now need the same verified
+//   session as "harvest_answer" (x-session-token, _shared/sessionVerify.ts, farmer must equal
+//   x-farmer-id). Both write lifecycle events (record_germination / record_irrigation) that
+//   move the stage clock and the soil-water bucket; the header pair alone let anyone holding
+//   the public key answer for another farmer by UUID. The farmer app sends the token
+//   (src/pages/ProactiveAlerts.tsx). Question generation (no action) is unchanged.
+// 2026-11-19 — action "harvest_answer": the farmer's answer on the daily harvest card
+//   (seeded by proactive-evaluator/harvest-question.ts) — "harvest done" with the actual
+//   date, or "crop still in the field" with an expected date. Written by the DB RPC
+//   `record_crop_harvest` (migration 20261119120000), which frees the land on a real
+//   harvest or moves the release countdown. Because this answer can free a land, the
+//   caller must hold a DB-verified session (x-session-token, _shared/sessionVerify.ts)
+//   whose farmer equals x-farmer-id — the header pair alone is not identity.
 // 2026-10-04 — action "irrigation_answer": the farmer's "I watered this field"
 //   tap on an IRRIGATION alert. Written by the DB RPC `record_irrigation`
 //   (the only writer of IRRIGATION_APPLIED lifecycle events); the alert is
@@ -34,11 +47,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { callAITask } from "../_shared/aiConfig.ts";
+import { resolveVerifiedCaller, sessionRequiredResponse } from "../_shared/sessionVerify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-farmer-id, x-tenant-id",
+    "authorization, x-client-info, apikey, content-type, x-farmer-id, x-tenant-id, x-session-token",
 };
 
 const SUPPORTED_LANGS = ["en", "hi", "mr", "pa", "ta", "te", "kn", "gu", "bn", "or", "ml"] as const;
@@ -234,10 +248,21 @@ Deno.serve(async (req: Request) => {
 
     if (!farmer) return json({ error: "Farmer profile not found" }, 403);
 
+    // Answers that write the farmer's own record need a DB-verified session whose farmer is
+    // this farmer; the header pair alone is not identity. Returns the refusal, or null.
+    const refuseUnverified = async (): Promise<Response | null> => {
+      const caller = await resolveVerifiedCaller(req);
+      if (!caller || caller.kind !== "farmer") return sessionRequiredResponse(corsHeaders);
+      if (caller.farmerId !== farmer.id) return json({ error: "Forbidden" }, 403);
+      return null;
+    };
+
     // ── One-tap germination answer (GERMINATION template) ────────────────
     // The tap is written by the DB RPC `record_germination`, the only writer
     // of GERMINATION_CONFIRMED / GERMINATION_NOT_OBSERVED lifecycle events.
     if (action === "germination_answer") {
+      const refused = await refuseUnverified();
+      if (refused) return refused;
       const answerLang: Lang = pickLang(body.language || farmer.language_preference, "en");
       return await handleGerminationAnswer(admin, {
         farmerId: farmer.id,
@@ -249,10 +274,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── Harvest card answer (2026-11-19) ─────────────────────────────────
+    // Written by the DB RPC `record_crop_harvest`. Frees a land, so identity
+    // comes from the verified session, never from the headers alone.
+    if (action === "harvest_answer") {
+      const refused = await refuseUnverified();
+      if (refused) return refused;
+      return await handleHarvestAnswer(admin, {
+        farmerId: farmer.id,
+        landId: String(body.landId || "").trim(),
+        alertId: String(body.alertId || "").trim() || null,
+        harvested: body.harvested === true,
+        date: String(body.date || "").trim(),
+      });
+    }
+
     // ── One-tap "I watered this field" on an IRRIGATION alert ────────────
     // The tap is written by the DB RPC `record_irrigation`, the only writer of
     // IRRIGATION_APPLIED lifecycle events.
     if (action === "irrigation_answer") {
+      const refused = await refuseUnverified();
+      if (refused) return refused;
       return await handleIrrigationAnswer(admin, {
         farmerId: farmer.id,
         landId: String(body.landId || "").trim(),
@@ -586,4 +628,53 @@ async function handleIrrigationAnswer(
 
   console.log(`[IRRIG_ANSWER] land=${landId.slice(0, 8)} depth_mm=${(recorded as any)?.applied_depth_mm ?? "none"}`);
   return json({ ok: true, recorded });
+}
+
+// ── Harvest card answer (2026-11-19) ─────────────────────────────────────────
+// "Harvest done" (date between sowing and today) or "crop still in the field"
+// (a date after today, not beyond the crop's harvest window). The DB RPC
+// `record_crop_harvest` validates and writes; this handler only maps its
+// refusals to 400/403 codes the app can show in the farmer's language.
+const HARVEST_REFUSALS = new Set([
+  "DATE_REQUIRED",
+  "HARVEST_DATE_IN_FUTURE",
+  "HARVEST_DATE_BEFORE_SOWING",
+  "EXPECTED_DATE_NOT_IN_FUTURE",
+  "EXPECTED_DATE_BEYOND_CROP_WINDOW",
+  "NO_ACTIVE_CROP",
+]);
+
+async function handleHarvestAnswer(
+  admin: any,
+  args: { farmerId: string; landId: string; alertId: string | null; harvested: boolean; date: string },
+): Promise<Response> {
+  const { farmerId, landId, alertId, harvested, date } = args;
+  if (!landId) return json({ error: "landId required" }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "date must be YYYY-MM-DD", code: "DATE_REQUIRED" }, 400);
+
+  const { data, error: rpcErr } = await admin.rpc("record_crop_harvest", {
+    p_land_id: landId,
+    p_farmer_id: farmerId,
+    p_harvested: harvested,
+    p_date: date,
+  });
+  if (rpcErr) {
+    const code = String(rpcErr.message || "").trim();
+    if (code === "LAND_NOT_FOUND") return json({ error: "Land not found", code }, 403);
+    if (HARVEST_REFUSALS.has(code)) return json({ error: code, code }, 400);
+    console.error("[proactive-question-seed] record_crop_harvest failed", rpcErr.message);
+    return json({ error: "Could not save the harvest answer" }, 500);
+  }
+
+  // the farmer answered this card
+  if (alertId) {
+    await admin
+      .from("proactive_alerts")
+      .update({ status: "ACTED", acted_at: new Date().toISOString() })
+      .eq("id", alertId)
+      .eq("farmer_id", farmerId);
+  }
+
+  console.log(`[HARVEST_ANSWER] land=${landId.slice(0, 8)} harvested=${harvested} date=${date}`);
+  return json({ ok: true, ...(data as Record<string, unknown> ?? {}) });
 }

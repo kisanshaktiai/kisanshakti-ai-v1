@@ -364,7 +364,10 @@
       "repeats": "Repeats every {{days}} days",
       "repeats_window": "From day {{start}} to day {{end}}",
       "recurring": "Recurring",
-      "photo": "Photo"
+      "photo": "Photo",
+      "install_voice": "Install",
+      "install_voice_hint": "Install this language's voice on the phone",
+      "voice_not_installed": "This phone has no voice for this language"
     },
     "schedule_card": {
       "variety": "Variety",
@@ -564,6 +567,9 @@
     },
     "completion": {
       "mark_when_finished": "Mark this task done after finishing it",
+      "unconfirmed": "Not confirmed yet",
+      "confirm_past": "Was this work done? Choose the day you did it and mark it done.",
+      "work_date_label": "Day you did this work",
       "completed_on": "Completed on {{date}}",
       "just_now": "just now",
       "status": "Status: {{status}}",
@@ -572,7 +578,8 @@
       "unmark": "Mark as not done",
       "syncing": "Saving...",
       "mark_done": "Mark task done",
-      "task_completed": "Task completed"
+      "task_completed": "Task completed",
+      "mark_complete": "Work done"
     },
     "crop_growth": {
       "title": "Crop Growth Tracking",
@@ -674,7 +681,15 @@
     "frequency": {
       "every_day": "every day",
       "every_week": "every week"
-    }
+    },
+    "irrigation": {
+      "actual_litres_hint": "Enter only the water you measured. The planned amount is not a measurement.",
+      "actual_litres_label": "Water actually given (litres, optional)",
+      "actual_litres_placeholder": "Leave empty if not measured",
+      "invalid_actual_litres": "Enter the measured water in litres, or leave it empty if you do not know."
+    },
+    "noTasks": "No tasks",
+    "refreshSchedule": "Refresh schedule"
   },
   "common": {
     "cancel": "Cancel",

@@ -1,5 +1,9 @@
 # Project AGENTS.md — standing technical rules
 
+## Soil fetch configuration
+- Block new soil requests only when the server explicitly reports missing source configuration or an unavailable queue; keep saved reports and navigation accessible. Why: retrying known setup failures cannot create a valid job, while unknown readiness may recover.
+- Soil source versions must match the operator-verified engine configuration; never invent a fallback version. Why: queued jobs and cached evidence are version-bound.
+
 ## Edge-function type checking
 - The preview build runs `deno check` across the whole ai-agriculture-chat function graph. The graph must stay at ZERO type errors (`deno check index.ts` from `supabase/functions/ai-agriculture-chat` exits 0). Why: a single bad type import in one file cascades hundreds of TS2339/never errors and fails the platform build, even though deploys ignore type errors.
 - When extending type contracts for DB/JSONB-populated values, add optional fields to the interface in the shared type file rather than scattering casts.

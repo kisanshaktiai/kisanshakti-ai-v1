@@ -5,6 +5,7 @@ import { tenantIsolationService } from '@/services/tenantIsolationService';
 import { resetTenantStores } from '@/utils/resetStores';
 import { getEnvironment, logEnvironmentInfo } from '@/utils/environment';
 import { getSupabaseFunctionUrl } from '@/config/supabase';
+import { useAuthStore } from '@/stores/authStore';
 
 // Extend Window interface
 declare global {
@@ -223,6 +224,18 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [currentDomain, setCurrentDomain] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const prevTenantIdRef = useRef<string | null>(null);
+
+  // Farmer activation (2026-11-25): a signed-in farmer belongs to the tenant
+  // whose activation code they redeemed, which need not be the tenant of the
+  // domain the app was opened on. While a farmer is signed in, their tenant is
+  // the one to load; signed out, the domain decides as before. Which tenant a
+  // farmer belongs to is decided by the server (it comes back with the session);
+  // this only chooses whose branding and settings to show.
+  const farmerTenantId = useAuthStore((s) => s.user?.tenantId ?? null);
+  const farmerTenantRef = useRef<string | null>(farmerTenantId);
+  farmerTenantRef.current = farmerTenantId;
+  // Tenant asked for by id when the loaded config was fetched (null = by domain).
+  const requestedTenantRef = useRef<string | null>(null);
 
   const getCurrentDomain = useCallback(() => {
     if (typeof window === 'undefined') return 'localhost';
@@ -661,16 +674,28 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let cachedEtag: string | null = null;
       let cachedLastDeployedAt: string | null = null;
       let usedCache = false;
+      // The signed-in farmer's tenant, or null = resolve by domain (see farmerTenantId).
+      const wantedTenantId = farmerTenantRef.current;
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          cachedEtag = parsed.etag || null;
-          cachedLastDeployedAt = parsed.last_deployed_at || null;
+          // The cache holds ONE tenant. It may be used only when it is the one
+          // wanted now: the signed-in farmer's tenant, or — signed out — a config
+          // that was resolved by domain. Otherwise it is left alone and the
+          // config is fetched below, without its ETag.
+          const cacheIsForWanted = wantedTenantId
+            ? parsed.data?.id === wantedTenantId
+            : !parsed.for_tenant;
           // Short TTL for fast paint; correctness comes from ETag/last_deployed_at revalidation below.
           const cacheValidity = isOnline ? 300000 : 86400000; // 5 min online, 24h offline
 
-          if (Date.now() - parsed.timestamp < cacheValidity) {
+          if (!cacheIsForWanted) {
+            console.log('📦 [TenantProvider] Cached tenant is not the one wanted now, fetching');
+          } else if (Date.now() - parsed.timestamp < cacheValidity) {
+            cachedEtag = parsed.etag || null;
+            cachedLastDeployedAt = parsed.last_deployed_at || null;
             console.log('📦 [TenantProvider] Using cached tenant config (fast paint)');
+            requestedTenantRef.current = parsed.for_tenant ?? null;
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
@@ -681,6 +706,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             usedCache = true;
             // Fall through to revalidate against the edge function (won't re-paint unless ETag changed)
           } else {
+            cachedEtag = parsed.etag || null;
+            cachedLastDeployedAt = parsed.last_deployed_at || null;
             console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
           }
         } catch (e) {
@@ -693,6 +720,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const headers: Record<string, string> = { Accept: 'application/json' };
         if (cachedEtag) headers['If-None-Match'] = cachedEtag;
+        // tenant-config resolves an explicit tenant id before the domain.
+        if (wantedTenantId) headers['x-tenant-id'] = wantedTenantId;
         const tenantConfigParams = new URLSearchParams({ domain, t: Date.now().toString() });
         const tenantConfigUrl = `${getSupabaseFunctionUrl('tenant-config')}?${tenantConfigParams.toString()}`;
 
@@ -745,6 +774,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             settings: apiConfig.settings,
           };
 
+          requestedTenantRef.current = wantedTenantId;
           setTenant(config);
           tenantIsolationService.setTenantContext(config.id, domain);
           applyThemeToDOM(config.branding, config.theme);
@@ -765,6 +795,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             timestamp: Date.now(),
             etag: newEtag,
             last_deployed_at: newLda,
+            for_tenant: wantedTenantId,
           }));
 
           console.log('✅ [TenantProvider] Config cached for offline use');
@@ -1118,6 +1149,21 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentDomain(domain);
     fetchTenantConfig();
   }, [getCurrentDomain, fetchTenantConfig]);
+
+  // Follow the signed-in farmer (farmer activation). Runs when a farmer signs
+  // in, redeems a code or signs out — and fetches only when the loaded tenant is
+  // not the one wanted: a farmer whose tenant is the domain's tenant (everybody
+  // before activation codes) never triggers it.
+  useEffect(() => {
+    if (!tenant?.id) return;   // the first load is still running and already asks for the right tenant
+    const needsFarmerTenant = !!farmerTenantId && farmerTenantId !== tenant.id;
+    const needsDomainTenant = !farmerTenantId && requestedTenantRef.current !== null;
+    if (needsFarmerTenant || needsDomainTenant) {
+      console.log('🔄 [TenantProvider] Signed-in farmer changed tenant, refetching');
+      fetchTenantConfig();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farmerTenantId]);
 
   // Re-fetch if domain changes
   useEffect(() => {

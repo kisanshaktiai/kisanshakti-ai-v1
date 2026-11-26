@@ -13,6 +13,12 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+// Multi-role identity (Farmer + Service Provider + Customer) — inert until the
+// server reports the multi_role_identity flag as on for the tenant.
+import { FarmerRoleGate } from "@/components/identity/FarmerRoleGate";
+import { WorkspaceRoute } from "@/components/identity/WorkspaceRoute";
+import { AccountResume } from "@/components/identity/AccountResume";
+import { ProviderFlagGate } from "@/components/provider/ProviderFlagGate";
 // FirstRunOnboardingController removed — replaced by PermissionOnboarding + FeatureWalkthrough
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
@@ -30,6 +36,12 @@ declare global {
 const Home = lazy(() => import("./pages/Home"));
 const Weather = lazy(() => import("./pages/Weather"));
 const Market = lazy(() => import("./pages/Market"));
+// "Services near me" (Provider Workspace part A, file 6): farmer side, behind the farm_services_search flag.
+const ServicesNearMe = lazy(() => import("./pages/services/ServicesNearMe"));
+const ServiceProviders = lazy(() => import("./pages/services/ServiceProviders"));
+const NurseryStorePage = lazy(() => import("./pages/services/NurseryStorePage"));
+const AskForWork = lazy(() => import("./pages/services/AskForWork"));
+const MyServiceRequests = lazy(() => import("./pages/services/MyServiceRequests"));
 const Advisory = lazy(() => import("./pages/Advisory"));
 const Schemes = lazy(() => import("./pages/Schemes"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -40,6 +52,7 @@ const LanguageSelection = lazy(() => import("./pages/LanguageSelection"));
 const AuthScreen = lazy(() => import("./pages/AuthScreen"));
 const PinAuth = lazy(() => import("./pages/PinAuth"));
 const SetPin = lazy(() => import("./pages/SetPin"));
+const Activate = lazy(() => import("./pages/Activate"));
 const ForgotPin = lazy(() => import("./pages/ForgotPin"));
 const LandManagement = lazy(() => import("./pages/LandManagement"));
 const AddLand = lazy(() => import("./pages/AddLand"));
@@ -49,7 +62,6 @@ const EnvDiagnostics = lazy(() => import("./pages/EnvDiagnostics"));
 const AIChat = lazy(() => import("./pages/AIChat"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const AICommunityPage = lazy(() => import("./pages/CommunityPage"));
-const CropSelectionTest = lazy(() => import("./pages/CropSelectionTest"));
 const Schedule = lazy(() => import("./pages/Schedule"));
 const MobileAuth = lazy(() => import("./pages/MobileAuth"));
 const NDVIAnalysis = lazy(() => import("./pages/NDVIAnalysis"));
@@ -63,6 +75,26 @@ const CropGrowthTracking = lazy(() => import("./pages/CropGrowthTracking"));
 const ProactiveAlerts = lazy(() => import("./pages/ProactiveAlerts"));
 const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
 const PermissionOnboarding = lazy(() => import("./pages/PermissionOnboarding"));
+// Multi-role identity pages and shells
+const ChooseRoles = lazy(() => import("./pages/identity/ChooseRoles"));
+const AccountOnboarding = lazy(() => import("./pages/identity/AccountOnboarding"));
+const RolesPage = lazy(() => import("./pages/identity/RolesPage"));
+const WorkspaceHome = lazy(() => import("./pages/identity/WorkspaceHome"));
+const WorkspaceProfile = lazy(() => import("./pages/identity/WorkspaceProfile"));
+// Provider Workspace (services, hours, equipment, nursery) — behind the provider_workspace flag
+const ProviderHome = lazy(() => import("./pages/provider/ProviderHome"));
+const ProviderBusiness = lazy(() => import("./pages/provider/ProviderBusiness"));
+const ProviderRequests = lazy(() => import("./pages/provider/ProviderRequests"));
+const ProviderProfileForm = lazy(() => import("./pages/provider/ProviderProfileForm"));
+const ProviderServices = lazy(() => import("./pages/provider/ProviderServices"));
+const ProviderServiceForm = lazy(() => import("./pages/provider/ProviderServiceForm"));
+const ProviderHours = lazy(() => import("./pages/provider/ProviderHours"));
+const ProviderDaysOff = lazy(() => import("./pages/provider/ProviderDaysOff"));
+const ProviderEquipment = lazy(() => import("./pages/provider/ProviderEquipment"));
+const ProviderNursery = lazy(() => import("./pages/provider/ProviderNursery"));
+const WorkspaceLayout = lazy(() =>
+  import("./components/identity/WorkspaceLayout").then((m) => ({ default: m.WorkspaceLayout }))
+);
 
 // Loading fallback component
 const PageLoader = () => (
@@ -197,14 +229,16 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           tenantIsolationService.setUserId(user.id);
         }
         
+        // Farmer activation (2026-11-25): a farmer belongs to the tenant whose
+        // activation code they redeemed, and that is not always the tenant this
+        // domain resolves to. Until now a difference here signed the farmer out,
+        // which would sign out every activated farmer at the next app start.
+        // The farmer's tenant is decided by the server and enforced by the
+        // database on every request (the session token). TenantProvider follows
+        // the signed-in farmer and loads that tenant; this effect then runs
+        // again with it and sets the tenant context and local database above.
         if (session && user?.tenantId && user.tenantId !== activeTenant.id) {
-          console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.');
-          useAuthStore.getState().logout();
-          tenantIsolationService.clearContext();
-          runInBackground(async () => {
-            const { localDB } = await import("@/services/localDB");
-            await localDB.clearAll();
-          });
+          console.warn('[AppInit] Signed-in farmer belongs to another tenant than the one loaded; TenantProvider is loading it.');
         }
         
         // STEP 4: Start location service in background (non-blocking, delayed)
@@ -332,7 +366,7 @@ const router = createBrowserRouter([
   },
   {
     path: "/auth",
-    element: <Suspense fallback={<PageLoader />}><AuthScreen /></Suspense>,
+    element: <AccountResume><Suspense fallback={<PageLoader />}><AuthScreen /></Suspense></AccountResume>,
     errorElement: <RouteErrorBoundary />,
   },
   {
@@ -360,12 +394,20 @@ const router = createBrowserRouter([
     element: <Suspense fallback={<PageLoader />}><ForgotPin /></Suspense>,
     errorElement: <RouteErrorBoundary />,
   },
+  // Farmer activation: where ProtectedRoute sends a farmer who has not redeemed a code.
+  {
+    path: "/activate",
+    element: <Suspense fallback={<PageLoader />}><Activate /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
   {
     path: "/app",
     element: (
-      <ProtectedRoute>
-        <AppLayout />
-      </ProtectedRoute>
+      <FarmerRoleGate>
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      </FarmerRoleGate>
     ),
     errorElement: <RouteErrorBoundary />,
     children: [
@@ -373,6 +415,11 @@ const router = createBrowserRouter([
       { path: "home", element: <Suspense fallback={<PageLoader />}><Home /></Suspense> },
       { path: "weather", element: <Suspense fallback={<PageLoader />}><Weather /></Suspense> },
       { path: "market", element: <Suspense fallback={<PageLoader />}><Market /></Suspense> },
+      { path: "services-near-me", element: <Suspense fallback={<PageLoader />}><ServicesNearMe /></Suspense> },
+      { path: "services-near-me/ask", element: <Suspense fallback={<PageLoader />}><AskForWork /></Suspense> },
+      { path: "services-near-me/requests", element: <Suspense fallback={<PageLoader />}><MyServiceRequests /></Suspense> },
+      { path: "services-near-me/nursery/:accountId", element: <Suspense fallback={<PageLoader />}><NurseryStorePage /></Suspense> },
+      { path: "services-near-me/:family", element: <Suspense fallback={<PageLoader />}><ServiceProviders /></Suspense> },
       { path: "advisory", element: <Suspense fallback={<PageLoader />}><Advisory /></Suspense> },
       { path: "schemes", element: <Suspense fallback={<PageLoader />}><Schemes /></Suspense> },
       { path: "profile", element: <Suspense fallback={<PageLoader />}><Profile /></Suspense> },
@@ -388,7 +435,6 @@ const router = createBrowserRouter([
       { path: "chat", element: <Suspense fallback={<PageLoader />}><AIChat /></Suspense> },
       { path: "community", element: <Suspense fallback={<PageLoader />}><AICommunityPage /></Suspense> },
       { path: "analytics", element: <Suspense fallback={<PageLoader />}><Analytics /></Suspense> },
-      { path: "test/crop-selection", element: <Suspense fallback={<PageLoader />}><CropSelectionTest /></Suspense> },
       { path: "schedule", element: <Suspense fallback={<PageLoader />}><Schedule /></Suspense> },
       { path: "ai-dashboard", element: <Suspense fallback={<PageLoader />}><AIScheduleDashboard /></Suspense> },
       { path: "ndvi", element: <Suspense fallback={<PageLoader />}><NDVIAnalysis /></Suspense> },
@@ -400,6 +446,73 @@ const router = createBrowserRouter([
       { path: "growth-tracking", element: <Suspense fallback={<PageLoader />}><CropGrowthTracking /></Suspense> },
       { path: "proactive-alerts", element: <Suspense fallback={<PageLoader />}><ProactiveAlerts /></Suspense> },
       { path: "subscription", element: <Suspense fallback={<PageLoader />}><SubscriptionPage /></Suspense> },
+    ],
+  },
+  // ── Multi-role identity ────────────────────────────────────────────────
+  {
+    path: "/choose-roles",
+    element: <Suspense fallback={<PageLoader />}><ChooseRoles /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/welcome",
+    element: (
+      <WorkspaceRoute allowIncomplete>
+        <Suspense fallback={<PageLoader />}><AccountOnboarding /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/roles",
+    element: (
+      <WorkspaceRoute>
+        <Suspense fallback={<PageLoader />}><RolesPage /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/provider",
+    element: (
+      <WorkspaceRoute role="SERVICE_PROVIDER">
+        <Suspense fallback={<PageLoader />}><WorkspaceLayout role="SERVICE_PROVIDER" /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      {
+        index: true,
+        element: (
+          <Suspense fallback={<PageLoader />}>
+            <ProviderFlagGate fallback={<WorkspaceHome role="SERVICE_PROVIDER" />}><ProviderHome /></ProviderFlagGate>
+          </Suspense>
+        ),
+      },
+      { path: "profile", element: <Suspense fallback={<PageLoader />}><WorkspaceProfile /></Suspense> },
+      { path: "requests", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderRequests /></ProviderFlagGate></Suspense> },
+      { path: "business", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderBusiness /></ProviderFlagGate></Suspense> },
+      { path: "business/profile", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderProfileForm /></ProviderFlagGate></Suspense> },
+      { path: "business/services", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServices /></ProviderFlagGate></Suspense> },
+      { path: "business/services/new", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServiceForm /></ProviderFlagGate></Suspense> },
+      { path: "business/services/:serviceId", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServiceForm /></ProviderFlagGate></Suspense> },
+      { path: "business/hours", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderHours /></ProviderFlagGate></Suspense> },
+      { path: "business/days-off", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderDaysOff /></ProviderFlagGate></Suspense> },
+      { path: "business/equipment", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderEquipment /></ProviderFlagGate></Suspense> },
+      { path: "business/nursery", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderNursery /></ProviderFlagGate></Suspense> },
+    ],
+  },
+  {
+    path: "/customer",
+    element: (
+      <WorkspaceRoute role="CUSTOMER">
+        <Suspense fallback={<PageLoader />}><WorkspaceLayout role="CUSTOMER" /></Suspense>
+      </WorkspaceRoute>
+    ),
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><WorkspaceHome role="CUSTOMER" /></Suspense> },
+      { path: "profile", element: <Suspense fallback={<PageLoader />}><WorkspaceProfile /></Suspense> },
     ],
   },
   {

@@ -1,0 +1,137 @@
+import { useEffect, useRef } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Briefcase, Home, Inbox, User } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { LanguageSelector } from '@/components/LanguageSelector';
+import { SpeakPageButton } from '@/components/header/SpeakPageButton';
+import { ScrollContext } from '@/components/layout/ScrollContext';
+import { WorkspaceSwitcher } from '@/components/identity/WorkspaceSwitcher';
+import { RolePicture } from '@/components/identity/RoleOptionList';
+import { ReachHeaderButton } from '@/components/identity/ReachCard';
+import { useAccountReach } from '@/hooks/useAccountReach';
+import { useProviderFlag } from '@/hooks/useProviderFlag';
+import { useProviderRequestsInbox } from '@/hooks/useProviderRequestsInbox';
+import { useAccountStore } from '@/stores/accountStore';
+import { WORKSPACE_HOME, activeRolesOf, type AccountRole } from '@/lib/accountRoles';
+
+interface WorkspaceLayoutProps {
+  role: Exclude<AccountRole, 'FARMER'>;
+}
+
+/**
+ * Shell of the Provider and Customer workspaces: header with the round picture of the workspace (a tap on it changes workspace, for people with several roles), the
+ * base village with radius as a button, the read-aloud button and the language, one scroll container, and a bottom navigation with Home and
+ * Profile — plus "Requests" (with the number of new ones) and "My business"
+ * in the Provider workspace while the provider_workspace flag is on. Built beside AppLayout with the same layout utilities; it mounts no
+ * farmer provider, so no farmer data is requested from these workspaces.
+ */
+export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  const account = useAccountStore((s) => s.account);
+  const hasSeveralRoles = activeRolesOf(account).length > 1;
+  const home = WORKSPACE_HOME[role];
+
+  // One refresh of this workspace's Reach; the header button and the home
+  // card both read it from the store.
+  useAccountReach(role);
+  // Asks the server whether the Provider Workspace is switched on (false for the Customer workspace).
+  const providerWorkspaceOn = useProviderFlag(role);
+  // Requests from farmers, read every minute; the number of new ones marks the navigation.
+  const { inbox } = useProviderRequestsInbox(providerWorkspaceOn);
+  const newRequests = providerWorkspaceOn ? inbox?.new.length ?? 0 : 0;
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
+
+  const navItems = [
+    { path: home, icon: Home, labelKey: 'nav.home', end: true, count: 0 },
+    ...(providerWorkspaceOn
+      ? [
+          { path: `${home}/requests`, icon: Inbox, labelKey: 'provider.nav.requests', end: false, count: newRequests },
+          { path: `${home}/business`, icon: Briefcase, labelKey: 'provider.nav.business', end: false, count: 0 },
+        ]
+      : []),
+    { path: `${home}/profile`, icon: User, labelKey: 'nav.profile', end: false, count: 0 },
+  ];
+
+  return (
+    <ScrollContext.Provider value={mainRef}>
+      <div className="flex flex-col h-mobile-screen bg-background">
+        <header className="glass-header fixed top-0 left-0 right-0 h-14 z-40 flex items-center gap-1.5 px-3 pt-safe">
+          <div className="flex-1 min-w-0">
+            {hasSeveralRoles ? (
+              <WorkspaceSwitcher variant="header" />
+            ) : (
+              <span
+                role="img"
+                aria-label={t(`identity.roles.${role}.name`)}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/30 bg-card"
+              >
+                <RolePicture role={role} />
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <ReachHeaderButton role={role} />
+            <SpeakPageButton />
+            <LanguageSelector />
+          </div>
+        </header>
+
+        <main
+          ref={mainRef}
+          className="pb-nav-safe mobile-scroll-container"
+          style={{ paddingTop: '3.5rem' }}
+        >
+          <Outlet />
+        </main>
+
+        <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
+          <div className="h-20 flex justify-around items-center px-3">
+            {navItems.map(({ path, icon: Icon, labelKey, end, count }) => (
+              <NavLink
+                key={path}
+                to={path}
+                end={end}
+                className="flex flex-col items-center justify-center flex-1 h-full py-2 group"
+              >
+                {({ isActive }) => (
+                  <>
+                    <div
+                      className={cn(
+                        'relative w-12 h-12 rounded-2xl flex items-center justify-center transition-colors group-active:scale-95',
+                        isActive ? 'bg-primary/15' : 'hover:bg-muted/60',
+                      )}
+                    >
+                      <Icon className={cn('w-5 h-5', isActive ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
+                      {count > 0 && (
+                        <span
+                          className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-bold text-destructive-foreground"
+                          aria-label={t('provider.requests.newCount', { count })}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={cn(
+                        'text-[11px] mt-1 font-medium leading-tight',
+                        isActive ? 'text-primary font-semibold' : 'text-muted-foreground/80',
+                      )}
+                    >
+                      {t(labelKey)}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      </div>
+    </ScrollContext.Provider>
+  );
+}

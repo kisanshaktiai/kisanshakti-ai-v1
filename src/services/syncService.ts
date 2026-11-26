@@ -6,6 +6,7 @@ import { tenantIsolationService } from './tenantIsolationService';
 import { networkStatusService } from './networkStatusService';
 import { landsApi } from './landsApi';
 import { schedulesApi } from './schedulesApi';
+import { farmerAuthService } from './farmerAuthService';
 
 interface SyncResult {
   success: boolean;
@@ -250,7 +251,7 @@ class SyncService {
       
       if (pendingChanges.farmers.length > 0) {
         console.log('📤 [Sync] Uploading farmers...');
-        await this.syncFarmers(pendingChanges.farmers, result, tenantId);
+        await this.syncFarmers(pendingChanges.farmers, result);
       }
 
       if (pendingChanges.lands.length > 0) {
@@ -347,71 +348,60 @@ class SyncService {
     result: SyncResult,
     tenantId: string
   ): Promise<void> {
-    if (pendingChanges.farmers.length > 0) await this.syncFarmers(pendingChanges.farmers, result, tenantId);
+    if (pendingChanges.farmers.length > 0) await this.syncFarmers(pendingChanges.farmers, result);
     if (pendingChanges.lands.length > 0) await this.syncLands(pendingChanges.lands, result, tenantId);
     if (pendingChanges.schedules.length > 0) await this.syncSchedules(pendingChanges.schedules, result);
     if (pendingChanges.messages.length > 0) await this.syncChatMessages(pendingChanges.messages, result);
   }
 
-  private async syncFarmers(farmers: any[], result: SyncResult, tenantId: string): Promise<void> {
+  private async syncFarmers(farmers: any[], result: SyncResult): Promise<void> {
     const syncedIds: string[] = [];
-    
+    const authUser = useAuthStore.getState().user;
+
     for (const farmer of farmers) {
       try {
-        // Check for existing farmer on server
-        const { data: existing } = await supabase
-          .from('farmers')
-          .select('*')
-          .eq('id', farmer.id)
-          .maybeSingle();
-
-        if (existing) {
-          // Conflict resolution: Compare timestamps
-          if (existing.updated_at && new Date(existing.updated_at).getTime() > farmer.lastModified) {
-            // Server version is newer - keep server version
-            result.conflicts?.push({
-              type: 'farmer',
-              id: farmer.id,
-              resolution: 'server_win',
-            });
-          } else {
-            // Local version is newer - update server
-            const { lastModified, syncStatus, ...uploadData } = farmer;
-            await supabase
-              .from('farmers')
-              .update({
-                ...uploadData,
-                updated_at: new Date(farmer.lastModified).toISOString(),
-              })
-              .eq('id', farmer.id);
-            
-            syncedIds.push(farmer.id);
-          }
-        } else {
-          // New farmer - insert to server
-          const { lastModified, syncStatus, ...uploadData } = farmer;
-          await supabase
-            .from('farmers')
-            .insert({
-              ...uploadData,
-              tenant_id: tenantId,
-              created_at: new Date(farmer.lastModified).toISOString(),
-            });
-          
-          syncedIds.push(farmer.id);
+        // A queued record cannot authorize another farmer or a new account.
+        // The server derives identity from the same verified session as login.
+        if (!authUser?.id || authUser.id !== farmer.id) {
+          throw new Error('Profile sync requires the matching verified farmer session');
         }
+
+        const { farmer: existing } = await farmerAuthService.getFarmerProfile();
+        if (existing.updated_at && new Date(existing.updated_at).getTime() > farmer.lastModified) {
+          result.conflicts?.push({ type: 'farmer', id: farmer.id, resolution: 'server_win' });
+          continue;
+        }
+
+        // Allowlisted profile fields only. Never upload the locally cached PIN,
+        // verification, subscription, seller or tenant columns as a mass patch.
+        await farmerAuthService.updateFarmerProfile({
+          fullName: farmer.farmer_name || undefined,
+          aadhaarNumber: farmer.aadhaar_number || undefined,
+          farmingExperienceYears: farmer.farming_experience_years ?? undefined,
+          farmType: farmer.farm_type || undefined,
+          totalLandAcres: farmer.total_land_acres ?? undefined,
+          primaryCrops: farmer.primary_crops ?? undefined,
+          annualIncomeRange: farmer.annual_income_range || undefined,
+          hasLoan: farmer.has_loan ?? undefined,
+          loanAmount: farmer.loan_amount ?? undefined,
+          hasTractor: farmer.has_tractor ?? undefined,
+          hasIrrigation: farmer.has_irrigation ?? undefined,
+          irrigationType: farmer.irrigation_type || undefined,
+          hasStorage: farmer.has_storage ?? undefined,
+          preferredLanguage: farmer.language_preference || undefined,
+          preferredContactMethod: farmer.preferred_contact_method || undefined,
+          notes: farmer.notes || undefined,
+        });
+        syncedIds.push(farmer.id);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Failed to sync farmer ${farmer.id}:`, error);
-        result.errors?.push(`Farmer "${farmer.name}": ${errorMsg}`);
+        console.error('Failed to sync farmer profile:', error);
+        result.errors?.push(`Farmer "${farmer.farmer_name || farmer.id}": ${errorMsg}`);
         result.success = false;
       }
     }
 
-    // Mark synced items
-    for (const id of syncedIds) {
-      await localDB.markAsSynced('farmer', id);
-    }
+    for (const id of syncedIds) await localDB.markAsSynced('farmer', id);
   }
 
   private async syncLands(lands: any[], result: SyncResult, tenantId: string): Promise<void> {
@@ -611,24 +601,17 @@ class SyncService {
         throw new Error('Missing or invalid authentication data for sync');
       }
       
-      // Test database access with a simple, non-failing query
-      console.log('🔍 [Sync] Testing database access...');
+      // The browser has no grant on the farmers table (the farmer's own row
+      // comes through the verified-session service below), so the only
+      // access check that means anything is the session itself.
       const client = supabaseWithAuth(userId, tenant);
-      
-      // Fixed: Use a query that won't fail if farmer doesn't exist
-      // Just test we can access the farmers table at all
-      const testQuery = await client
-        .from('farmers')
-        .select('id')
-        .eq('tenant_id', tenant)
-        .limit(1);
-      
-      if (testQuery.error) {
-        console.error('❌ [Sync] Database access test failed:', testQuery.error);
-        throw new Error(`Database access failed: ${testQuery.error.message}. Your authentication may have expired.`);
+      try {
+        await farmerAuthService.sessionInfo();
+      } catch (probeError) {
+        console.error('❌ [Sync] Session check failed:', probeError);
+        throw new Error(`Session check failed: ${probeError instanceof Error ? probeError.message : String(probeError)}. Please sign in again.`);
       }
-      
-      console.log('✅ [Sync] Database access verified, proceeding with download');
+      console.log('✅ [Sync] Session verified, proceeding with download');
 
       // ====================================================================
       // STEP 0: Download subscription data FIRST (gating depends on it)
@@ -646,28 +629,24 @@ class SyncService {
       const phaseStart = Date.now();
 
       const downloadFarmers = async () => {
-        console.log('📥 [Sync] Fetching farmers from server...');
-        const { data: farmers, error: farmersError } = await client
-          .from('farmers')
-          .select('*')
-          .eq('tenant_id', tenant)
-          .eq('id', userId);
-
-        if (farmersError) {
-          console.error('❌ [Sync] Failed to fetch farmers:', farmersError);
-          return;
-        }
-        console.log(`✅ [Sync] Fetched ${farmers?.length || 0} farmers from server`);
-
-        if (farmers && farmers.length > 0) {
-          await localDB.bulkSave({
-            farmers: farmers.map(f => ({
-              ...f,
-              tenant_id: tenantId,
-              lastModified: new Date(f.updated_at || f.created_at || Date.now()).getTime(),
-              syncStatus: 'synced' as const,
-            })),
-          });
+        console.log('📥 [Sync] Fetching the farmer row through the verified session...');
+        try {
+          // The farmers table is not readable from the browser; the service
+          // returns only the row behind this session.
+          const { farmer } = await farmerAuthService.getFarmerProfile();
+          if (farmer) {
+            await localDB.bulkSave({
+              farmers: [{
+                ...farmer,
+                tenant_id: tenantId,
+                lastModified: new Date(farmer.updated_at || farmer.created_at || Date.now()).getTime(),
+                syncStatus: 'synced' as const,
+              }],
+            });
+            console.log('✅ [Sync] Fetched the farmer row');
+          }
+        } catch (farmersError) {
+          console.error('❌ [Sync] Failed to fetch the farmer row:', farmersError);
         }
       };
 

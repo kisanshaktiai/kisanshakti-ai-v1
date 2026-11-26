@@ -3,7 +3,7 @@
     "page": "sky",
     "version": "1.0",
     "updated_by": "AI drafting in plain spoken register",
-    "last_updated": "2026-09-21",
+    "last_updated": "2026-11-19",
     "translation_status": "SOURCE",
     "note": "Source language."
   },
@@ -26,7 +26,12 @@
       "need_sowing": "Tell us when you sowed, and we can compare with how the crop should look now.",
       "stage_line": "Day {{das}} · {{stage}}",
       "open_map": "Open this picture on the map",
-      "above_band": "{{land}} looks greener than expected for this stage."
+      "above_band": "{{land}} looks greener than expected for this stage.",
+      "crop_on_hold": "No crop is registered on {{land}} now, so crop health is not checked.",
+      "stage_unverified": "The satellite saw {{land}}, but we cannot yet say if the crop is on track for its stage.",
+      "on_hold_detail": "Crop alerts are paused. They start again when you add your next crop.",
+      "on_hold_picture": "The picture shows plant cover only. The satellite cannot tell a crop from weeds or grass.",
+      "weak_reading": "This field is too small for the satellite to measure clearly."
     },
     "sky": {
       "clear": "Clear view {{days}} days ago",
@@ -53,7 +58,8 @@
       "behind": "Your field is a little behind the crop around it.",
       "with": "Your field is keeping pace with the crop around it.",
       "ahead": "Your field is doing better than the crop around it.",
-      "unknown": "Not enough crop nearby was seen clearly to compare yet."
+      "unknown": "Not enough crop nearby was seen clearly to compare yet.",
+      "on_hold": "No crop is registered on this field, so it is not compared with the crop around it."
     },
     "water": {
       "title": "Water in the field",
@@ -68,7 +74,8 @@
       "chip_soil": "soil water",
       "chip_rain": "no recent rain",
       "chip_standing": "standing water seen",
-      "chip_no_standing": "no standing water seen"
+      "chip_no_standing": "no standing water seen",
+      "on_hold": "No crop is registered, so the water check is paused."
     },
     "ask": {
       "title": "What to check",
@@ -105,12 +112,15 @@
       "figure_heat_critical": "Heat can harm the crop at this stage",
       "figure_water_legend": "stages where water matters most",
       "figure_heat_legend": "stages where heat can harm the crop",
-      "figure_greenness": "Greenness today"
+      "figure_greenness": "Greenness today",
+      "no_crop": "No crop is registered now. The line shows plant cover the satellite saw on this field."
     },
     "layer": {
       "vigour": "Crop growth",
       "moisture": "Crop moisture",
-      "standing": "Standing water"
+      "standing": "Standing water",
+      "vigour_cover": "Plant cover",
+      "moisture_cover": "Plant moisture"
     },
     "legend": {
       "weak": "weak",
@@ -122,9 +132,9 @@
       "none": "none",
       "some": "some",
       "water": "water",
-      "lower": "weaker than the rest",
+      "lower": "less green than the rest",
       "normal": "like the rest",
-      "higher": "better than the rest"
+      "higher": "greener than the rest"
     },
     "map": {
       "blocks": "10 m blocks · nothing smoothed",

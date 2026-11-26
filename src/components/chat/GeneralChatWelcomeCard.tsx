@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Volume2, Sparkles, Leaf, CloudSun, Bug, Droplets } from 'lucide-react';
@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useLanguageStore } from '@/stores/languageStore';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { motion } from 'framer-motion';
 
@@ -25,28 +24,12 @@ export function GeneralChatWelcomeCard({ onQuickAction }: GeneralChatWelcomeCard
   const { t } = useTranslation();
   const langStore = useLanguageStore();
   const language = (langStore as any).selectedLanguage || 'en';
-  const { session } = useAuthStore();
-  const [farmerName, setFarmerName] = useState<string>('');
-  
+  const { user } = useAuthStore();
+  // The verified profile save updates this store immediately, so the greeting
+  // cannot show a stale name or depend on a second direct table read.
+  const farmerName = user?.fullName || user?.name || '';
+
   const { speak, isSpeaking, stop } = useTextToSpeech({ language });
-
-  useEffect(() => {
-    const fetchFarmerName = async () => {
-      if (!session?.farmerId) return;
-      
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('full_name')
-        .eq('farmer_id', session.farmerId)
-        .single();
-      
-      if (data && data.full_name) {
-        setFarmerName(data.full_name);
-      }
-    };
-
-    fetchFarmerName();
-  }, [session?.farmerId]);
 
   const handleReadAloud = () => {
     if (isSpeaking) {

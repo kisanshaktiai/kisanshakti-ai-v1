@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/stores/authStore';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { farmerAuthService, isMultiRoleEnabled } from '@/services/farmerAuthService';
 import { 
   User, 
   Phone, 
@@ -21,7 +21,8 @@ import {
   Package,
   Activity,
   BarChart3,
-  Clock
+  Clock,
+  Users
 } from 'lucide-react';
 import { TTSSettingsPanel } from '@/components/tts';
 import { PageShell } from '@/components/layout/PageShell';
@@ -59,25 +60,19 @@ export default function Profile() {
   // Fetch analytics data
   useEffect(() => {
     const fetchAnalytics = async () => {
-      if (!user?.id || !user?.tenantId) return;
-      
-      // Create authenticated client with custom headers
-      const authClient = supabaseWithAuth(user.id, user.tenantId);
-      console.log('🔐 Fetching analytics with authenticated client:', { userId: user.id, tenantId: user.tenantId });
-      
-      const { data, error } = await authClient
-        .from('farmers')
-        .select('app_install_date, last_app_open, total_app_opens, total_queries, created_at, last_login_at')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      if (!error && data) {
-        setAnalyticsData(data);
+      if (!user?.id) return;
+      // The farmers table is not readable from the browser; the service
+      // returns only the row behind this session.
+      try {
+        const { farmer } = await farmerAuthService.getFarmerProfile();
+        if (farmer) setAnalyticsData(farmer);
+      } catch (error) {
+        console.warn('Profile analytics unavailable:', error);
       }
     };
     
     fetchAnalytics();
-  }, [user?.id, user?.tenantId]);
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await logout();
@@ -472,7 +467,7 @@ export default function Profile() {
       {/* Crops Section */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-base">Primary Crops</CardTitle>
+          <CardTitle className="text-base">{t('profile.primary_crops')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
@@ -492,7 +487,7 @@ export default function Profile() {
       {/* Location Card */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-base">Location Details</CardTitle>
+          <CardTitle className="text-base">{t('profile.location_details')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-start gap-3">
@@ -521,6 +516,20 @@ export default function Profile() {
           Edit Profile
         </Button>
         
+        {/* Multi-role identity: the farmer's way to the Roles page, where the same
+            person adds the Service Provider or Customer role (no new number, no
+            new PIN) and opens that workspace. Shown only while the flag is on. */}
+        {isMultiRoleEnabled() && (
+          <Button
+            onClick={() => navigate('/roles')}
+            variant="outline"
+            className="w-full border-primary/20 hover:bg-primary/5"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            {t('identity.profile.addRoleEntry')}
+          </Button>
+        )}
+
         <Button 
           onClick={handleLogout} 
           variant="destructive" 

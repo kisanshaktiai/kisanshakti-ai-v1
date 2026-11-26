@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { 
   Plus, Grid3x3, List, Search, Filter, Download, Share2,
   MapPin, Sprout, Calendar, Camera, Activity, AlertCircle,
@@ -42,6 +43,7 @@ interface Land {
   irrigation_source?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
+  soil_data_source?: string | null;
   survey_number?: string;
   ownership_type?: string;
   last_soil_test_date?: string;
@@ -55,6 +57,7 @@ interface Land {
 
 export default function LandManagement() {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -75,7 +78,9 @@ export default function LandManagement() {
   }, [fetchedLands]);
 
   // PERFORMANCE: Memoize helper functions
-  const getSoilHealthColor = useCallback((ph?: number, organic?: number) => {
+  const getSoilHealthColor = useCallback((ph?: number, organic?: number, source?: string | null) => {
+    // A satellite soil-map estimate is not a soil test, so it gets no health colour.
+    if (source === 'soilgrid') return 'bg-muted';
     if (!ph && !organic) return 'bg-muted';
     
     const phScore = ph ? (ph >= 6.0 && ph <= 7.5 ? 3 : ph >= 5.5 && ph <= 8.0 ? 2 : 1) : 0;
@@ -173,7 +178,7 @@ export default function LandManagement() {
               
               {land.current_crop && (
                 <div className="text-right">
-                  <p className="text-sm font-medium truncate max-w-[100px]">{land.current_crop}</p>
+                  <p className="text-sm font-medium truncate max-w-[100px]">{cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id)}</p>
                   {land.crop_stage && (
                     <Badge className={`${getCropStageColor(land.crop_stage)} text-primary-foreground text-xs`}>
                       {land.crop_stage}
@@ -183,8 +188,8 @@ export default function LandManagement() {
               )}
               
               <div className="flex items-center">
-                <div className={`h-8 w-8 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent)} opacity-20`} />
-                <div className={`h-4 w-4 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent)} -ml-6`} />
+                <div className={`h-8 w-8 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent, land.soil_data_source)} opacity-20`} />
+                <div className={`h-4 w-4 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent, land.soil_data_source)} -ml-6`} />
               </div>
             </div>
           </div>

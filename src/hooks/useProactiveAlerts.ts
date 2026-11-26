@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from '@/hooks/use-toast';
+import { shareAlertAction } from '@/components/alerts/ShareAlertAction';
 import { useTranslation } from 'react-i18next';
 import { localDB } from '@/services/localDB';
 import { landsApi } from '@/services/landsApi';
@@ -229,22 +230,18 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
             const priorityEmoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
             const emoji = priorityEmoji[newAlert.priority] || '📢';
 
+            // A critical alert carries a "share" button on the toast itself
+            // instead of a browser confirm() dialog a second later.
+            const landName = newAlert.land_name ? ` (${newAlert.land_name})` : '';
+            const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(`${title}${landName}\n\n${message}`)}`;
             toast({
               title: `${emoji} ${title}`,
               description: message?.substring(0, 100) || '',
               variant: newAlert.priority === 'CRITICAL' ? 'destructive' : 'default',
+              action: newAlert.priority === 'CRITICAL'
+                ? shareAlertAction(t('alerts.share', 'Share'), t('alerts.share_critical_confirm', 'Important alert. Share it on WhatsApp?'), waUrl)
+                : undefined,
             });
-
-            if (newAlert.priority === 'CRITICAL') {
-              const landName = newAlert.land_name ? ` (${newAlert.land_name})` : '';
-              const msg = `🌾 *KisanShakti AI*${landName}\n\n🔴 *${title}*\n\n${message}`;
-              const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-              setTimeout(() => {
-                if (window.confirm(t('alerts.share_critical_confirm', 'Important alert. Share it on WhatsApp?'))) {
-                  window.open(waUrl, '_blank');
-                }
-              }, 1500);
-            }
           }
         )
         .subscribe((status) => {

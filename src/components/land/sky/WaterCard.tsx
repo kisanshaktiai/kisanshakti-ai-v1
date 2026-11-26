@@ -11,11 +11,27 @@ import { formatSkyDay, type FieldSky } from '@/hooks/useFieldSky';
  * satellite moisture signal (NDMI).
  * The sentence strengthens only as independent sources agree: water.agreeing counts the satellite and
  * the FAO-56 balance once each, so "warn" means both say the field is drying.
+ * 2026-11-19: the balance is a crop's water need. With no crop in the field (sky.cropActive false)
+ * the card says the water check is paused and lights no sign — irrigating a fallow field is not advice.
  */
 export function WaterCard({ sky }: { sky: FieldSky }) {
   const { t, i18n } = useTranslation();
   const w = sky.water;
   const level: 'ok' | 'watch' | 'warn' = w.agreeing >= 2 ? 'warn' : w.agreeing >= 1 ? 'watch' : 'ok';
+
+  if (!sky.cropActive) {
+    return (
+      <Card className="rounded-3xl border border-border/40">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Droplets className="h-4 w-4 text-muted-foreground" />
+            <p className="text-[13px] font-semibold text-muted-foreground">{t('sky.water.title', 'Water in the field')}</p>
+          </div>
+          <p className="text-sm font-medium leading-snug">{t('sky.water.on_hold', 'No crop is registered, so the water check is paused.')}</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const sentence = (() => {
     if (level === 'warn') return t('sky.water.warn', 'Soil water is running low and the crop\'s moisture signal has fallen since the last view. Check for wilting and irrigate if you can.');

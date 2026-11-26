@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import {
   MapPin,
   Calendar,
@@ -33,8 +34,10 @@ import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
+import { FarmServicesHomeBlock } from '@/components/home/FarmServicesHomeBlock';
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
+import { useFarmServicesFlag } from '@/hooks/useFarmServicesFlag';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useFeatures } from '@/hooks/useFeatures';
 import { Button } from '@/components/ui/button';
@@ -48,6 +51,7 @@ const VideoHelpCard = lazy(() =>
 
 export default function Home() {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const { lands, isLoading: loading } = useLands();
@@ -146,8 +150,11 @@ export default function Home() {
 
   // Get next crop from lands
   const nextCrop = useMemo(
-    () => lands.find((land: any) => land.current_crop)?.current_crop || 'Not planned',
-    [lands],
+    () => {
+      const land = lands.find((land: any) => land.current_crop);
+      return land ? cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id) : t('home.no_crop');
+    },
+    [lands, cropNameOf, t],
   );
 
   // Calculate NDVI average from actual land data
@@ -165,6 +172,8 @@ export default function Home() {
 
   // Plan-gated locked-paths set (SSOT: useFeatures + resolve_farmer_entitlements)
   const { features: planFeatures } = useFeatures();
+  // "Services near me" shows only while its flag is on for this tenant.
+  const farmServicesOn = useFarmServicesFlag();
   const lockedPaths = useMemo(
     () => new Set(planFeatures.filter((f) => f.locked).map((f) => f.path)),
     [planFeatures],
@@ -681,6 +690,9 @@ export default function Home() {
 
         {/* Main Features Grid (memoized) */}
         <HomeFeaturesGrid features={mainFeatures} variant="main" reduceMotion={reduceMotion} />
+
+        {/* Services near me: nearby kinds of work and the farmer's requests (flag-gated) */}
+        {farmServicesOn && <FarmServicesHomeBlock />}
 
         {/* Secondary Features (memoized) */}
         <HomeFeaturesGrid features={secondaryFeatures} variant="secondary" reduceMotion={reduceMotion} />

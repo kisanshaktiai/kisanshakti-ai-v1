@@ -1,21 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Droplets, Leaf, TestTube, Activity } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
+import { FlaskConical } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { Card, CardContent } from '@/components/ui/card';
 import { getSessionToken } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { loadSoilState, soilNumber } from '@/services/soil/soilReport';
+import { loadSoilState, resolveSoilSources, type SoilSourceKey } from '@/services/soil/soilReport';
 import { useToast } from '@/hooks/use-toast';
 import { SoilFetchPanel } from '@/components/soil/SoilFetchPanel';
 import { SoilReportHeader } from '@/components/soil/SoilReportHeader';
-import { SoilReportBanner } from '@/components/soil/SoilReportBanner';
-import { NutrientCard } from '@/components/soil/NutrientCard';
+import { SoilRecordView } from '@/components/soil/SoilRecordView';
+import { SOIL_SOURCE_ICON, SOIL_SOURCE_ORDER } from '@/components/soil/soilSourceMeta';
 import { SoilHealthSkeleton } from '@/components/skeletons';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -27,12 +27,16 @@ export default function SoilHealthReport() {
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
   
-  const { t } = useTranslation();
-  const { session, user, isLoading: authLoading } = useAuthStore();
+  const { t, i18n } = useTranslation();
+  const { session, isLoading: authLoading } = useAuthStore();
+  const reduceMotion = useReducedMotion();
+  const { speak, stop, isSpeaking } = useTextToSpeech();
+  const onSpeak = (text: string) => { if (isSpeaking) { stop(); return; } speak(text); };
   const farmerId = session?.farmerId;
   const tenantId = session?.tenantId;
   const authenticated = !!farmerId && !!tenantId && !!getSessionToken();
   const [exporting, setExporting] = useState(false);
+  const [tab, setTab] = useState<SoilSourceKey | null>(null);
   const queryClient = useQueryClient();
   const report = useQuery({
     queryKey: ['soil-report', id, farmerId, tenantId, session?.createdAt],
@@ -44,22 +48,20 @@ export default function SoilHealthReport() {
     gcTime: 0,
   });
   const state = authenticated ? report.data : null;
-  const data = state?.legacy && (!state.model || state.legacy.source !== 'soilgrid') ? {...state.legacy, lands:state.land, user_profiles:state.profile} : null;
+  // Three report types side by side; open on the most reliable one the land has.
+  const sources = resolveSoilSources(state);
+  const activeTab: SoilSourceKey = tab ?? (sources.lab ? 'lab' : sources.device ? 'device' : 'satellite');
   const fetchSoil = useMutation({
     mutationFn: () => loadSoilState(id!, farmerId!, tenantId!, true),
     onSuccess: () => report.refetch(),
   });
   const resetFetchSoil = fetchSoil.reset;
-  useEffect(() => { resetFetchSoil(); }, [id, farmerId, tenantId, resetFetchSoil]);
+  useEffect(() => { resetFetchSoil(); setTab(null); }, [id, farmerId, tenantId, resetFetchSoil]);
   useEffect(() => {
     if (state?.model?.id) {
-      for (const key of ['lands','analytics-data','land-chat-context','land-details']) queryClient.invalidateQueries({queryKey:[key]});
+      for (const key of ['lands','analytics-data','land-chat-context','land-details','land-soil-summary']) queryClient.invalidateQueries({queryKey:[key]});
     }
   }, [state?.model?.id, queryClient]);
-  const panel = state ? <SoilFetchPanel state={state} requesting={fetchSoil.isPending}
-    error={fetchSoil.error?.message || null} onFetch={() => fetchSoil.mutate()}/> : null;
-  const ph = soilNumber(data?.ph_level);
-  const organicCarbon = soilNumber(data?.organic_carbon);
   const backToLand = () => navigate(id ? `/app/lands/${id}` : '/app/lands');
 
   const downloadAsPDF = async () => {
@@ -95,9 +97,9 @@ export default function SoilHealthReport() {
       }
       
       pdf.save(`soil-health-report-${state?.land.name || 'report'}.pdf`);
-      toast({ title: 'Success', description: 'PDF downloaded successfully' });
+      toast({ title: t('soil.pdfDone') });
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to generate PDF', variant: 'destructive' });
+      toast({ title: t('soil.exportFailed'), variant: 'destructive' });
     } finally {
       setExporting(false);
     }
@@ -123,11 +125,11 @@ export default function SoilHealthReport() {
           link.download = `soil-health-report-${state?.land.name || 'report'}.jpg`;
           link.click();
           URL.revokeObjectURL(url);
-          toast({ title: 'Success', description: 'Image downloaded successfully' });
+          toast({ title: t('soil.imageDone') });
         }
       }, 'image/jpeg', 0.95);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to generate image', variant: 'destructive' });
+      toast({ title: t('soil.exportFailed'), variant: 'destructive' });
     } finally {
       setExporting(false);
     }
@@ -145,36 +147,24 @@ export default function SoilHealthReport() {
         if (blob && navigator.share) {
           const file = new File([blob], 'soil-report.jpg', { type: 'image/jpeg' });
           await navigator.share({
-            title: 'Soil Health Report',
-            text: `Soil Health Report for ${state?.land.name}`,
+            title: t('soil.report'),
+            text: `${t('soil.report')} — ${state?.land.name ?? ''}`,
             files: [file]
           });
         } else {
-          toast({ title: 'Info', description: 'Sharing not supported. Use download instead.' });
+          toast({ title: t('soil.shareUnsupported') });
         }
       }, 'image/jpeg');
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to share', variant: 'destructive' });
+      toast({ title: t('soil.shareFailed'), variant: 'destructive' });
     }
-  };
-
-  const getNutrientProgress = (value: number | null, max = 100) => {
-    if (!value) return 0;
-    return Math.min((value / max) * 100, 100);
   };
 
   if (authLoading || (authenticated && !!id && report.isPending)) {
     return <SoilHealthSkeleton />;
   }
 
-  if (state && !data) return <main className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
-    {state.model ? <SoilReportHeader landName={state.land.name} exporting={exporting} onBack={backToLand}
-      onDownloadPDF={downloadAsPDF} onDownloadImage={downloadAsImage} onShare={shareReport}/> :
-      <Button variant="outline" onClick={backToLand}>{t('soil.backToLand')}</Button>}
-    <div ref={reportRef}>{panel}</div>
-  </main>;
-
-  if (!data) {
+  if (!state) {
     const failed = report.isError || !authenticated || !id;
     return (
       <div className="min-h-full p-4">
@@ -196,10 +186,18 @@ export default function SoilHealthReport() {
     );
   }
 
+  const tabStatus = (key: SoilSourceKey) => {
+    const row = sources[key];
+    if (key === 'satellite' && state.model) return t('soil.saved');
+    if (row?.test_date) return new Date(row.test_date).toLocaleDateString(i18n.language, { day: 'numeric', month: 'short', year: '2-digit' });
+    if (row) return t('soil.saved');
+    return t(key === 'device' ? 'soil.comingSoon' : 'soil.notAdded');
+  };
+
   return (
-    <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-full bg-background">
       <SoilReportHeader
-        landName={state?.land.name}
+        landName={state.land.name}
         exporting={exporting}
         onBack={backToLand}
         onDownloadPDF={downloadAsPDF}
@@ -207,200 +205,68 @@ export default function SoilHealthReport() {
         onShare={shareReport}
       />
 
-      <div className="max-w-4xl mx-auto space-y-5 p-4 pb-24" ref={reportRef}>
-        {panel}
-        <h2 className="text-lg font-semibold">{t('soil.savedReport')}</h2>
-        {data.source === 'soilgrid' && <p className="mb-4 text-sm text-muted-foreground" role="note">
-          {t('soil.modelledNotice')}
-        </p>}
-        <SoilReportBanner
-          farmerName={data.user_profiles?.full_name || user?.fullName || user?.name}
-          farmerCode={data.user_profiles?.farmer_code || user?.farmerCode}
-          landName={state?.land.name}
-          fertilityClass={data.fertility_class}
-          testDate={data.test_date}
-          fieldArea={data.field_area_ha}
-          soilType={data.soil_type}
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <Card className="border-2 hover:shadow-lg transition-shadow">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <div className="p-2 bg-info/10 rounded-lg">
-                  <Droplets className="h-4 w-4 text-info" />
-                </div>
-                pH Level
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold mb-2 text-info">
-                {ph === null ? 'N/A' : ph.toFixed(1)}
-              </div>
-              {data.ph_text && <p className="text-sm text-muted-foreground">{data.ph_text}</p>}
-              {ph !== null && <Progress value={getNutrientProgress(ph, 14)} className="mt-3 h-2" />}
-            </CardContent>
-          </Card>
-
-          <Card className="border-2 hover:shadow-lg transition-shadow">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <div className="p-2 bg-success/10 rounded-lg">
-                  <Leaf className="h-4 w-4 text-success" />
-                </div>
-                Organic Carbon
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold mb-2 text-success">
-                {organicCarbon === null ? 'N/A' : `${organicCarbon.toFixed(2)}%`}
-              </div>
-              {data.organic_carbon_text && <p className="text-sm text-muted-foreground">{data.organic_carbon_text}</p>}
-              {organicCarbon !== null && <Progress value={getNutrientProgress(organicCarbon, 5)} className="mt-3 h-2" />}
-            </CardContent>
-          </Card>
+      <div className="sticky top-[61px] z-30 bg-background/90 px-4 pb-2 pt-3 backdrop-blur-xl">
+        <div role="tablist" aria-label={t('soil.reportTypes')} className="mx-auto grid max-w-4xl grid-cols-3 gap-1 rounded-2xl bg-muted p-1">
+          {SOIL_SOURCE_ORDER.map((key) => {
+            const Icon = SOIL_SOURCE_ICON[key];
+            const selected = activeTab === key;
+            const has = !!sources[key] || (key === 'satellite' && !!state.model);
+            return (
+              <button key={key} type="button" role="tab" aria-selected={selected} onClick={() => setTab(key)}
+                className={cn('relative flex min-h-[60px] flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors',
+                  selected ? 'text-foreground' : 'text-muted-foreground')}>
+                {selected && <motion.span layoutId="soil-tab" className="absolute inset-0 rounded-xl bg-background shadow-sm" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+                <span className="relative flex items-center gap-1.5">
+                  <Icon className={cn('h-4 w-4', has ? 'text-primary' : 'text-muted-foreground')} />
+                  <span className={cn('h-1.5 w-1.5 rounded-full', has ? 'bg-success' : 'bg-muted-foreground/30')} aria-hidden />
+                </span>
+                <span className="relative text-xs font-semibold leading-tight">{t(`soil.sourceTypes.${key}`)}</span>
+                <span className="relative text-[10px] leading-tight text-muted-foreground">{tabStatus(key)}</span>
+              </button>
+            );
+          })}
         </div>
-
-        <Card className="mb-4 border-2 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TestTube className="h-5 w-5 text-primary" />
-              Primary Nutrients (NPK)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <NutrientCard
-              icon={TestTube}
-              title="Nitrogen"
-              description="Essential for leaf growth"
-              letter="N"
-              letterColor="bg-info/10 text-info"
-              level={data.nitrogen_level}
-              kgPerHa={data.nitrogen_kg_per_ha}
-              totalKg={data.nitrogen_total_kg}
-              text={data.nitrogen_text}
-              maxValue={500}
-            />
-            <Separator />
-            <NutrientCard
-              icon={TestTube}
-              title="Phosphorus"
-              description="Important for root development"
-              letter="P"
-              letterColor="bg-warning/10 text-warning"
-              level={data.phosphorus_level}
-              kgPerHa={data.phosphorus_kg_per_ha}
-              totalKg={data.phosphorus_total_kg}
-              text={data.phosphorus_text}
-              maxValue={100}
-            />
-            <Separator />
-            <NutrientCard
-              icon={TestTube}
-              title="Potassium"
-              description="Vital for overall plant health"
-              letter="K"
-              letterColor="bg-primary/10 text-primary"
-              level={data.potassium_level}
-              kgPerHa={data.potassium_kg_per_ha}
-              totalKg={data.potassium_total_kg}
-              text={data.potassium_text}
-              maxValue={500}
-            />
-          </CardContent>
-        </Card>
-
-        {(data.sand_percent || data.silt_percent || data.clay_percent || data.texture) && (
-          <Card className="mb-4 border-2 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" />
-                Soil Composition
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {data.texture && (
-                  <div className="col-span-2 md:col-span-3 mb-2">
-                    <p className="text-sm text-muted-foreground mb-1">Texture</p>
-                    <p className="text-lg font-semibold">{data.texture}</p>
-                  </div>
-                )}
-                {data.sand_percent !== null && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Sand</p>
-                    <p className="text-2xl font-bold text-warning">{data.sand_percent}%</p>
-                    <Progress value={data.sand_percent} className="mt-2 h-2" />
-                  </div>
-                )}
-                {data.silt_percent !== null && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Silt</p>
-                    <p className="text-2xl font-bold text-warning">{data.silt_percent}%</p>
-                    <Progress value={data.silt_percent} className="mt-2 h-2" />
-                  </div>
-                )}
-                {data.clay_percent !== null && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Clay</p>
-                    <p className="text-2xl font-bold text-destructive">{data.clay_percent}%</p>
-                    <Progress value={data.clay_percent} className="mt-2 h-2" />
-                  </div>
-                )}
-                {data.bulk_density !== null && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Bulk Density</p>
-                    <p className="text-xl font-semibold">{data.bulk_density} g/cm³</p>
-                  </div>
-                )}
-                {data.cec !== null && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">CEC</p>
-                    <p className="text-xl font-semibold">{data.cec} meq/100g</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {(data.note || data.source || data.confidence_level) && (
-          <Card className="border-2 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-base">Additional Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.note && (
-                <div>
-                  <p className="text-sm font-medium mb-1">Notes</p>
-                  <p className="text-sm text-muted-foreground">{data.note}</p>
-                </div>
-              )}
-              {data.source && (
-                <div>
-                  <p className="text-sm font-medium mb-1">Data Source</p>
-                  <Badge variant="outline">{data.source}</Badge>
-                </div>
-              )}
-              {data.confidence_level && (
-                <div>
-                  <p className="text-sm font-medium mb-1">Confidence Level</p>
-                  <Badge variant="secondary">{data.confidence_level}</Badge>
-                </div>
-              )}
-              {data.data_completeness && (
-                <div>
-                  <p className="text-sm font-medium mb-1">Data Completeness</p>
-                  <div className="flex items-center gap-3">
-                    <Progress value={data.data_completeness} className="flex-1 h-2" />
-                    <span className="text-sm font-semibold">{data.data_completeness}%</span>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
       </div>
+
+      <main className="mx-auto max-w-4xl px-4 pb-28 pt-2">
+        <AnimatePresence mode="wait">
+          <motion.div key={activeTab} ref={reportRef} role="tabpanel" className="space-y-4"
+            initial={{ opacity: 0, y: reduceMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            {activeTab === 'lab' && (sources.lab
+              ? <SoilRecordView row={sources.lab} kind="lab" landName={state.land.name} ratings={state.ratings} onSpeak={onSpeak} isSpeaking={isSpeaking} />
+              : <SourceEmpty icon={SOIL_SOURCE_ICON.lab} title={t('soil.noLabTitle')} help={t('soil.noLabHelp')}
+                  steps={[t('soil.labStep.sample'), t('soil.labStep.lab'), t('soil.labStep.card')]} />)}
+            {activeTab === 'satellite' && (
+              <SoilFetchPanel state={state} savedEstimate={sources.satellite} requesting={fetchSoil.isPending}
+                error={fetchSoil.error?.message || null} onFetch={() => fetchSoil.mutate()} onSpeak={onSpeak} isSpeaking={isSpeaking} />
+            )}
+            {activeTab === 'device' && (sources.device
+              ? <SoilRecordView row={sources.device} kind="device" landName={state.land.name} ratings={state.ratings} onSpeak={onSpeak} isSpeaking={isSpeaking} />
+              : <SourceEmpty icon={SOIL_SOURCE_ICON.device} title={t('soil.deviceSoonTitle')} help={t('soil.deviceSoonHelp')} />)}
+          </motion.div>
+        </AnimatePresence>
+      </main>
     </div>
+  );
+}
+
+/** A report type with nothing saved yet: what it is and, for a lab test, how to get one. */
+function SourceEmpty({ icon: Icon, title, help, steps }: { icon: typeof FlaskConical; title: string; help: string; steps?: string[] }) {
+  return (
+    <section className="rounded-3xl border border-dashed border-border bg-card p-6" role="status">
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-primary/10"><Icon className="h-8 w-8 text-primary" /></div>
+      <h2 className="mt-4 text-center text-lg font-bold text-foreground">{title}</h2>
+      <p className="mx-auto mt-2 max-w-md text-center text-sm text-muted-foreground">{help}</p>
+      {steps && (
+        <ol className="mx-auto mt-5 max-w-md space-y-2">
+          {steps.map((step, i) => (
+            <li key={step} className="flex items-center gap-3 rounded-2xl bg-muted/50 p-3">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground">{i + 1}</span>
+              <span className="text-sm text-foreground">{step}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

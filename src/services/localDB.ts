@@ -1947,11 +1947,13 @@ class LocalDatabase {
     console.log('🗑️ [LocalDB] Clearing all data stores...');
     
     // List of all object stores that may exist
-    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig' | 'farmerSubscriptions' | 'subscriptionPlans' | 'subscriptionUsageLogs' | 'paymentRecords'> = [
+    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig' | 'farmerSubscriptions' | 'subscriptionPlans' | 'subscriptionUsageLogs' | 'paymentRecords' | 'proactiveAlerts' | 'syncMetadata'> = [
       'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
       'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
       'farmerAlerts', 'tenantConfig',
-      'farmerSubscriptions', 'subscriptionPlans', 'subscriptionUsageLogs', 'paymentRecords'
+      'farmerSubscriptions', 'subscriptionPlans', 'subscriptionUsageLogs', 'paymentRecords',
+      // syncMetadata holds the IndexedDB copy of the offline PIN cache.
+      'proactiveAlerts', 'syncMetadata'
     ];
     
     // Get list of existing stores from the database

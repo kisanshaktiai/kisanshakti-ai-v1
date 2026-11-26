@@ -41,8 +41,8 @@ export function BrandBlock() {
         <h1 className="text-[15px] font-bold text-primary leading-tight truncate">
           {companyName}
         </h1>
-        <p className="text-[10px] text-muted-foreground leading-tight truncate">
-          {firstName ? `Hi, ${firstName} 👋` : tagline}
+        <p className="text-xs text-muted-foreground leading-tight truncate">
+          {firstName ? t('common.greeting', { name: firstName }) : tagline}
         </p>
       </div>
     </div>

@@ -39,77 +39,27 @@ export async function checkRateLimit(
       }
     })();
 
-    // Check current rate limit
-    const { data: existing, error: fetchError } = await supabase
-      .from('rate_limit_tracking')
-      .select('*')
-      .eq('identifier', identifier)
-      .eq('endpoint', endpoint)
-      .gte('window_end', now.toISOString())
-      .order('window_start', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Count this request. The database does it under a lock for this
+    // (identifier, endpoint) pair, so the limit also holds when many requests
+    // arrive at the same moment (a read-then-write here let all of them pass).
+    const { data, error: hitError } = await supabase.rpc('rate_limit_hit', {
+      p_identifier: identifier,
+      p_endpoint: endpoint,
+      p_max: config.maxRequests,
+      p_window_ms: config.windowMs,
+    });
 
-    if (fetchError) {
-      console.error('Rate limiter fetch error:', fetchError);
+    if (hitError || !data) {
+      console.error('Rate limiter hit error:', hitError);
       // Fail open on error
       return { allowed: true, remaining: config.maxRequests, resetTime: windowEnd.getTime() };
     }
 
-    if (!existing) {
-      // Create new entry
-      const { error: insertError } = await supabase
-        .from('rate_limit_tracking')
-        .insert({
-          identifier,
-          endpoint,
-          request_count: 1,
-          window_start: now.toISOString(),
-          window_end: windowEnd.toISOString()
-        });
-
-      if (insertError) {
-        console.error('Rate limiter insert error:', insertError);
-        // Fail open on error
-        return { allowed: true, remaining: config.maxRequests - 1, resetTime: windowEnd.getTime() };
-      }
-
-      return { 
-        allowed: true, 
-        remaining: config.maxRequests - 1, 
-        resetTime: windowEnd.getTime() 
-      };
-    }
-
-    // Check if limit exceeded
-    if (existing.request_count >= config.maxRequests) {
-      return { 
-        allowed: false, 
-        remaining: 0, 
-        resetTime: new Date(existing.window_end).getTime() 
-      };
-    }
-
-    // Increment count
-    const { error: updateError } = await supabase
-      .from('rate_limit_tracking')
-      .update({ request_count: existing.request_count + 1 })
-      .eq('id', existing.id);
-
-    if (updateError) {
-      console.error('Rate limiter update error:', updateError);
-      // Fail open on error
-      return { 
-        allowed: true, 
-        remaining: config.maxRequests - existing.request_count - 1, 
-        resetTime: new Date(existing.window_end).getTime() 
-      };
-    }
-
-    return { 
-      allowed: true, 
-      remaining: config.maxRequests - existing.request_count - 1, 
-      resetTime: new Date(existing.window_end).getTime() 
+    const resetAt = new Date((data as any).reset_at).getTime();
+    return {
+      allowed: (data as any).allowed === true,
+      remaining: Number((data as any).remaining ?? 0),
+      resetTime: Number.isFinite(resetAt) ? resetAt : windowEnd.getTime(),
     };
 
   } catch (error) {
