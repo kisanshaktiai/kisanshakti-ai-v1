@@ -23,7 +23,7 @@ import { ProviderFlagGate } from "@/components/provider/ProviderFlagGate";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
-import { AppLoadingProgress } from "@/components/AppLoadingProgress";
+import { cacheShellText, shellDone, shellStage } from "@/lib/startupShell";
 
 // Extend Window interface for PWA prompt
 declare global {
@@ -134,7 +134,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
   const [isInitializing, setIsInitializing] = useState(true);
-  const [currentStep, setCurrentStep] = useState('Initializing...');
   
   // Initialize global real-time sync
   useGlobalRealtimeSync();
@@ -202,7 +201,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         console.log('📱 [Manifest] Using static /manifest.json (no API calls)');
         
         // STEP 1: Set tenant isolation context (fast, synchronous)
-        setCurrentStep('Preparing your workspace...');
+        shellStage('connecting');
         tenantIsolationService.setTenantContext(activeTenant.id, currentDomain);
         
         // Cache tenant primary color for initial loader (non-blocking)
@@ -219,7 +218,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         }, 100);
         
         // STEP 3: Check authentication (critical path - must be sync)
-        setCurrentStep('Verifying credentials...');
+        shellStage('signing_in');
         await checkAuth();
         
         // Validate auth tenant matches current tenant
@@ -242,7 +241,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         }
         
         // STEP 4: Start location service in background (non-blocking, delayed)
-        setCurrentStep('Almost ready...');
+        shellStage('opening');
         runInBackground(async () => {
           const LocationService = (await import("@/services/LocationService")).default;
           LocationService.getCurrentLocation(true).catch(() => null);
@@ -258,8 +257,8 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error('🚨 [Security] App initialization failed:', error);
         toast({
-          title: "Initialization Error",
-          description: "Failed to initialize application. Please refresh.",
+          title: i18n.t('common.loader.error_title'),
+          description: i18n.t('common.loader.error_body'),
           variant: "destructive"
         });
       } finally {
@@ -310,6 +309,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   // Note: Theme is now applied by TenantProvider automatically
 
+  // The start shell (index.html) stays until the app is ready; this is the
+  // one place that tells it. While still initializing, farmers see the shell,
+  // not a second loading screen.
+  useEffect(() => {
+    if (!isInitializing) shellDone();
+  }, [isInitializing]);
+
   // Apply language changes - only if different from current i18n language
   useEffect(() => {
     if (currentLanguage && i18n.language !== currentLanguage) {
@@ -319,9 +325,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       });
       i18n.changeLanguage(currentLanguage).then(() => {
         console.log('✅ [AppInitializer] Language synced successfully');
+        cacheShellText(i18n.t.bind(i18n), currentLanguage);
       });
     } else if (currentLanguage) {
       console.log('✅ [AppInitializer] Language already in sync:', currentLanguage);
+      cacheShellText(i18n.t.bind(i18n), currentLanguage);
     }
   }, [currentLanguage]);
 
@@ -331,7 +339,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <AppLoadingProgress isLoading={isInitializing} currentStep={currentStep} />
       <OfflineIndicator />
       <PWAUpdatePrompt />
       {/* Onboarding popups removed — see PermissionOnboarding page + FeatureWalkthrough overlay */}

@@ -95,6 +95,16 @@
     "listen": "Listen",
     "loadingFeatures": "Loading features...",
     "rateLimitError": "Too many requests. Please wait a moment and try again.",
-    "greeting": "Hello, {{name}}"
+    "greeting": "Hello, {{name}}",
+    "loader": {
+      "starting": "Starting",
+      "connecting": "Connecting",
+      "signing_in": "Signing you in",
+      "opening": "Opening your farm",
+      "slow": "Taking longer than usual. Check the connection.",
+      "retry": "Try again",
+      "error_title": "Could not start the app",
+      "error_body": "Please close and open the app again."
+    }
   }
 }

@@ -6,7 +6,10 @@
  * - background update checks
  * - newly installed workers wait for explicit activation
  * - first installation activates without a page reload
- * - subsequent updates activate automatically only at a safe/idle point
+ * - subsequent updates activate automatically only while the app is in the
+ *   background (30 s after the farmer switched away) or at the next cold
+ *   start; never while a screen is in view, so the app never seems to
+ *   restart on its own
  * - controllerchange reloads only when this coordinator explicitly approved the update
  *
  * IMPORTANT:
@@ -23,6 +26,9 @@ const RELOAD_SCHEDULED_KEY = '__ksai_sw_reload_scheduled__';
 const INITIAL_UPDATE_CHECK_MS = 30_000;
 const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const SAFE_IDLE_MS = 20_000;
+// A new build is applied only while the app is in the background (the farmer
+// switched away) or at the next cold start; never while a screen is in view.
+const BACKGROUND_BEFORE_UPDATE_MS = 30_000;
 const ACTIVATION_RETRY_MS = 5_000;
 const ACTIVATION_REQUEST_TIMEOUT_MS = 15_000;
 
@@ -43,13 +49,17 @@ export function PWAUpdatePrompt() {
 
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const lastActivityRef = useRef(Date.now());
+  const hiddenSinceRef = useRef(Number.POSITIVE_INFINITY);
   const pendingUpdateRef = useRef(false);
   const activationRequestedRef = useRef(false);
   const reloadScheduledRef = useRef(false);
   const reloadPendingRef = useRef(false);
 
   const isSafeToActivate = useCallback(() => {
-    if (document.visibilityState !== 'visible') return false;
+    // Only in the background: a reload while a screen is in view looks like
+    // the app restarting on its own, which is what farmers were seeing.
+    if (document.visibilityState !== 'hidden') return false;
+    if (Date.now() - hiddenSinceRef.current < BACKGROUND_BEFORE_UPDATE_MS) return false;
     if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0) return false;
     if (!isPwaReloadSafe()) return false;
 
@@ -167,7 +177,10 @@ export function PWAUpdatePrompt() {
 
       if (!approved || alreadyScheduled || !reloadPendingRef.current) return;
 
-      if (!isSafeToActivate()) {
+      // The activation was approved in the background; the reload that
+      // follows it may run even if the app has come back into view, because a
+      // half-updated worker is worse than one quick restart.
+      if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0 || !isPwaReloadSafe()) {
         console.log('[PWA] Controller changed, but reload is deferred until work is complete');
         return;
       }
@@ -187,7 +200,7 @@ export function PWAUpdatePrompt() {
 
         // Final safety gate: work can start in the small window between the
         // first safety check and this reload timer.
-        if (!isSafeToActivate()) {
+        if (activeFetchesRef.current > 0 || activeMutationsRef.current > 0 || !isPwaReloadSafe()) {
           reloadScheduledRef.current = false;
           sessionStorage.removeItem(RELOAD_SCHEDULED_KEY);
           reloadPendingRef.current = true;
@@ -279,6 +292,18 @@ export function PWAUpdatePrompt() {
         }, ACTIVATION_RETRY_MS);
 
         const handleVisibilityChange = () => {
+          if (document.visibilityState === 'hidden') {
+            // In the background: after a short while a waiting build may be
+            // applied, so the farmer comes back to the new one.
+            hiddenSinceRef.current = Date.now();
+            window.setTimeout(() => {
+              if (disposed) return;
+              if (pendingUpdateRef.current) tryActivatePendingUpdate();
+              tryReloadWhenSafe();
+            }, BACKGROUND_BEFORE_UPDATE_MS + 50);
+            return;
+          }
+          hiddenSinceRef.current = Number.POSITIVE_INFINITY;
           if (document.visibilityState === 'visible') {
             if (pendingUpdateRef.current) {
               lastActivityRef.current = Date.now();

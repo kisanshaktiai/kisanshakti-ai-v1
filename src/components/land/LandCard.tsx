@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,7 @@ interface LandCardProps {
 }
 
 export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const { apiKey, isLoaded } = useGoogleMapsApi();
@@ -87,8 +89,8 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const mapUrl = getStaticMapUrl();
 
   const handleCropSuccess = () => {
-    // Refresh the land data if needed
-    window.location.reload();
+    // Re-read the lands; a full reload restarted the whole app.
+    void queryClient.invalidateQueries({ queryKey: ['lands'] });
   };
 
   return (
