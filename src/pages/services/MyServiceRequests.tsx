@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/layout/EmptyState';
 import { Panel, ProviderPage, SaveError, StatusBadge, type Tone } from '@/components/provider/ProviderUi';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { farmServicesService, type FarmRequest, type FarmRequestStatus, type RequestOffer } from '@/services/farmServicesService';
 import { nurseryPhotoUrl } from '@/services/nurseryPhotoService';
 import { localName, providerWorkspaceService, type LocalNames } from '@/services/providerWorkspaceService';
@@ -17,7 +18,6 @@ import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
 import {
   amountText, distanceText, estimateText, farmServicesErrorMessage, phoneLink, plantVarietyText, rateText,
 } from '@/lib/farmServicesText';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel, formatDay } from '@/lib/providerText';
 import { cn } from '@/lib/utils';
 
@@ -79,6 +79,7 @@ export default function MyServiceRequests() {
   const location = useLocation();
   const isOnline = useOfflineStatus();
   const { catalogue } = useServiceCatalogue();
+  const iconFor = useServiceIcons();
   const [requests, setRequests] = useState<FarmRequest[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -215,7 +216,7 @@ export default function MyServiceRequests() {
           )}
 
           {requests.map((r) => {
-            const FamilyIcon = familyIcon(r.family_code);
+            const FamilyIcon = iconFor(r.category_code ?? r.family_code, r.family_code);
             const ended = ENDED_TONE[r.status];
             const open = unitIsOpen(r.quantity_unit);
             const amount = amountText(r.quantity, r.quantity_unit, open);

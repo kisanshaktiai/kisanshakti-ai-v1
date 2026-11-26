@@ -12,13 +12,13 @@ import {
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useProviderRequestsInbox } from '@/hooks/useProviderRequestsInbox';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import {
   providerRequestsService, type ProviderInbox, type ProviderRequestCard,
 } from '@/services/providerRequestsService';
 import { nurseryPhotoUrl } from '@/services/nurseryPhotoService';
 import { localName, providerWorkspaceService, type LocalNames } from '@/services/providerWorkspaceService';
 import { amountText, dayValue, estimateText, phoneLink, plantVarietyText, rateText } from '@/lib/farmServicesText';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel, formatDay, numberOrNull, providerErrorMessage } from '@/lib/providerText';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +60,7 @@ export default function ProviderRequests() {
   const { t, i18n } = useTranslation();
   const isOnline = useOfflineStatus();
   const { catalogue } = useServiceCatalogue();
+  const iconFor = useServiceIcons();
   // The workspace shell reads the inbox every minute; this screen reads it once more on opening.
   const { inbox, error: loadFailure, reload } = useProviderRequestsInbox(false);
   useEffect(() => { if (isOnline) void reload(); }, [isOnline, reload]);
@@ -112,7 +113,7 @@ export default function ProviderRequests() {
 
   /** Top of every card: picture, the work, how much, which day, how far. */
   const head = (r: ProviderRequestCard, day: string) => {
-    const FamilyIcon = familyIcon(r.family_code);
+    const FamilyIcon = iconFor(r.category_code ?? r.family_code, r.family_code);
     const amount = amountText(r.quantity, r.quantity_unit, unitIsOpen(r.quantity_unit));
     return (
       <div className="flex items-start gap-3">

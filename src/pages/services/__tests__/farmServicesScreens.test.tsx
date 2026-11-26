@@ -46,9 +46,9 @@ import { FarmServicesError } from '@/services/farmServicesService';
 
 const catalogue = {
   categories: [
-    { code: 'LAND_PREP', parent_code: null, label_en: 'Land preparation', sort_order: 1 },
+    { code: 'LAND_PREP', parent_code: null, label_en: 'Land preparation', sort_order: 1, icon_path: 'M2 21h20' },
     { code: 'NURSERY', parent_code: null, label_en: 'Nursery', sort_order: 2 },
-    { code: 'PLOUGHING', parent_code: 'LAND_PREP', label_en: 'Ploughing', sort_order: 1 },
+    { code: 'PLOUGHING', parent_code: 'LAND_PREP', label_en: 'Ploughing', sort_order: 1, icon_path: 'M3 6h11' },
   ],
   pricingUnits: [
     { code: 'PER_ACRE', label_en: 'Per acre', is_per_area: true, is_negotiable: false, area_sqm: 4046.8564224 },
@@ -105,9 +105,13 @@ describe('Services near me (farmer side)', () => {
 
   it('shows each kind of work with how many providers are near, and opens the kind that is tapped', async () => {
     mocks.farm.nearby.mockResolvedValue({ located: true, families: [{ code: 'LAND_PREP', count: 1 }, { code: 'NURSERY', count: 0 }] });
-    renderAt('/app/services-near-me', <ServicesNearMe />);
+    const { container } = renderAt('/app/services-near-me', <ServicesNearMe />);
     expect(await screen.findByText('Land preparation')).not.toBeNull();
     expect(screen.getAllByText('farmServices.nearCount')).toHaveLength(2);
+    // the picture stored in the catalogue is the one drawn; a kind without one keeps the built-in picture
+    expect(screen.getByText('Land preparation').closest('button')!.querySelector('path[d="M2 21h20"]')).not.toBeNull();
+    expect(screen.getByText('Nursery').closest('button')!.querySelector('svg')).not.toBeNull();
+    expect(container.querySelectorAll('path[d="M2 21h20"]')).toHaveLength(1);
     expect(screen.queryByText('farmServices.notLocatedTitle')).toBeNull();
     fireEvent.click(screen.getByText('Land preparation'));
     expect(await screen.findByText('other-screen')).not.toBeNull();
@@ -130,6 +134,7 @@ describe('Services near me (farmer side)', () => {
     renderAt('/app/services-near-me/LAND_PREP', <ServiceProviders />, '/app/services-near-me/:family');
     expect(await screen.findByText('Test Tractor Service')).not.toBeNull();
     expect(mocks.farm.providers).toHaveBeenCalledWith('LAND_PREP');
+    expect(document.querySelector('path[d="M2 21h20"]')).not.toBeNull();
     expect(screen.queryByText('farmServices.state.AVAILABLE')).not.toBeNull();
     expect(screen.queryByText('farmServices.distance')).not.toBeNull();
     expect(screen.queryByText('Ploughing')).not.toBeNull();

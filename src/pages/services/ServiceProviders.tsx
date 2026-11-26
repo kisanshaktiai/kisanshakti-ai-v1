@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Bookmark, Check, ChevronRight, SearchX, Send, Star } from 'lucide-react';
+import { ArrowRight, Bookmark, Check, ChevronRight, SearchX, Send, Star, type LucideIcon } from 'lucide-react';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { Panel, PrimaryAction, ProviderPage, SaveError, StatusBadge, type Tone } from '@/components/provider/ProviderUi';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { farmServicesService, type NearbyProvider, type NearbyService } from '@/services/farmServicesService';
 import { nurseryPhotoUrl } from '@/services/nurseryPhotoService';
 import { localName, providerWorkspaceService, type LocalNames } from '@/services/providerWorkspaceService';
@@ -13,7 +14,6 @@ import { useFarmServicesStore } from '@/stores/farmServicesStore';
 import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
 import { distanceText, farmServicesErrorMessage } from '@/lib/farmServicesText';
 import { hapticFeedback } from '@/lib/haptics';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel, formatDay, serviceRateText } from '@/lib/providerText';
 import { cn } from '@/lib/utils';
 
@@ -45,7 +45,7 @@ function lowestRate(services: NearbyService[]): number | null {
 /** A row of pills that scrolls sideways; exactly one is on. */
 function PillRow({ label, options, value, onChange }: {
   label: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; icon?: LucideIcon }[];
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -60,10 +60,11 @@ function PillRow({ label, options, value, onChange }: {
             aria-pressed={isOn}
             onClick={() => { hapticFeedback('light'); onChange(option.value); }}
             className={cn(
-              'min-h-[44px] shrink-0 whitespace-nowrap rounded-full px-4 text-base transition-colors',
+              'flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 text-base transition-colors',
               isOn ? 'bg-primary text-primary-foreground font-bold' : 'bg-card text-foreground font-medium shadow-sm',
             )}
           >
+            {option.icon && <option.icon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
             {option.label}
           </button>
         );
@@ -85,6 +86,7 @@ export default function ServiceProviders() {
   const { family = '' } = useParams<{ family: string }>();
   const isOnline = useOfflineStatus();
   const { catalogue, error: catalogueError } = useServiceCatalogue();
+  const iconFor = useServiceIcons();
   const setDraft = useFarmServicesStore((s) => s.setDraft);
   const [providers, setProviders] = useState<NearbyProvider[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export default function ServiceProviders() {
   }, [cropIdsKey]);
 
   const familyRow = catalogue?.categories.find((c) => c.code === family && c.parent_code === null);
-  const FamilyIcon = familyIcon(family);
+  const FamilyIcon = iconFor(work || family, family);
   const isNursery = family === NURSERY_FAMILY;
   const units = catalogue?.pricingUnits;
   const categoryLabel = useCallback(
@@ -244,7 +246,7 @@ export default function ServiceProviders() {
                   label={t('farmServices.whichWork')}
                   value={work}
                   onChange={setWork}
-                  options={[{ value: '', label: t('farmServices.allWork') }, ...works.map((w) => ({ value: w.code, label: categoryLabel(w.code) }))]}
+                  options={[{ value: '', label: t('farmServices.allWork') }, ...works.map((w) => ({ value: w.code, label: categoryLabel(w.code), icon: iconFor(w.code, family) }))]}
                 />
               )}
               {providers.length > 1 && (

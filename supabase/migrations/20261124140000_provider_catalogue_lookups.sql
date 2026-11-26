@@ -386,10 +386,11 @@ GRANT ALL ON public.provider_availability_states TO service_role;
 
 
 -- Verification (read-only) ────────────────────────────────────────────────────
-SELECT 'catalogue rows' AS check_name,
-       (SELECT count(*) FROM public.service_categories WHERE parent_code IS NULL) || ' families, ' ||
-       (SELECT count(*) FROM public.service_categories WHERE parent_code IS NOT NULL) || ' services' AS actual,
-       '16 families, 119 services' AS expected;
+-- "at least": later files add services (20261126130000 adds 35) and this file may be run again after them
+SELECT 'catalogue rows: 16 families and at least the 119 starter services' AS check_name,
+       ((SELECT count(*) FROM public.service_categories WHERE parent_code IS NULL) = 16
+        AND (SELECT count(*) FROM public.service_categories WHERE parent_code IS NOT NULL) >= 119)::text AS actual,
+       'true' AS expected;
 SELECT 'client write privileges on lookups' AS check_name, count(*)::text AS actual, '0' AS expected
   FROM information_schema.role_table_grants
  WHERE table_schema = 'public' AND table_name IN ('service_categories', 'pricing_units', 'equipment_types', 'provider_types', 'skill_tiers', 'nursery_item_kinds', 'provider_payment_methods', 'provider_availability_states')

@@ -6,11 +6,11 @@ import { EmptyState } from '@/components/layout/EmptyState';
 import { NavRow, ProviderPage, Question, StatusBadge, TileGrid } from '@/components/provider/ProviderUi';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { farmServicesService, type NearbyFamilies } from '@/services/farmServicesService';
 import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
 import { farmServicesErrorMessage, requestsSummary } from '@/lib/farmServicesText';
 import { useFarmServicesStore } from '@/stores/farmServicesStore';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel } from '@/lib/providerText';
 
 /** Kinds of work shown before "see all". */
@@ -26,6 +26,7 @@ export default function ServicesNearMe() {
   const navigate = useNavigate();
   const isOnline = useOfflineStatus();
   const { catalogue, error: catalogueError } = useServiceCatalogue();
+  const iconFor = useServiceIcons();
   const [nearby, setNearby] = useState<NearbyFamilies | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -84,7 +85,7 @@ export default function ServicesNearMe() {
               value: c.code,
               label: catalogueLabel('category', c.code, c.label_en),
               detail: t('farmServices.nearCount', { count: c.count }),
-              icon: familyIcon(c.code),
+              icon: iconFor(c.code),
             }))}
             selected={[]}
             onToggle={(code) => navigate(FARM_SERVICES_ROUTES.family(code))}

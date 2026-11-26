@@ -6,13 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
-  BigNumber, ChoiceChips, Field, INPUT_CLASS, NativeSelect, Panel, PrimaryAction, ProviderPage, Question, SaveError, TileGrid,
+  BigNumber, Field, INPUT_CLASS, NativeSelect, Panel, PrimaryAction, ProviderPage, Question, SaveError, TileGrid,
 } from '@/components/provider/ProviderUi';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { providerWorkspaceService, type ServiceInput } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
-import { familyIcon, paymentIcon } from '@/lib/providerIcons';
+import { paymentIcon } from '@/lib/providerIcons';
 import { catalogueLabel, clockValue, monthName, numberOrNull } from '@/lib/providerText';
 
 // Same bounds as the table (20261124140100_provider_workspace_tables.sql).
@@ -77,6 +78,7 @@ export default function ProviderServiceForm() {
   const { serviceId } = useParams<{ serviceId: string }>();
   const { currentLanguage } = useLanguageStore();
   const { workspace, catalogue, loading, loadError, isOnline, saving, saveError, run, reload } = useProviderWorkspace();
+  const iconFor = useServiceIcons();
 
   const [form, setForm] = useState<FormState>(EMPTY);
   const [filled, setFilled] = useState(false);
@@ -246,7 +248,7 @@ export default function ProviderServiceForm() {
               <Question>{t('provider.services.familyQuestion')}</Question>
               <TileGrid
                 label={t('provider.services.familyLabel')}
-                options={shownFamilies.map((c) => ({ value: c.code, label: label(c.code), icon: familyIcon(c.code) }))}
+                options={shownFamilies.map((c) => ({ value: c.code, label: label(c.code), icon: iconFor(c.code) }))}
                 selected={form.family ? [form.family] : []}
                 onToggle={chooseFamily}
                 disabled={saving}
@@ -264,9 +266,9 @@ export default function ProviderServiceForm() {
               {form.family && (
                 <>
                   <Question>{t('provider.services.categoryQuestion')}</Question>
-                  <ChoiceChips
+                  <TileGrid
                     label={t('provider.services.categoryLabel')}
-                    options={servicesOfFamily.map((c) => ({ value: c.code, label: label(c.code) }))}
+                    options={servicesOfFamily.map((c) => ({ value: c.code, label: label(c.code), icon: iconFor(c.code, form.family) }))}
                     selected={form.category ? [form.category] : []}
                     onToggle={chooseCategory}
                     disabled={saving}
@@ -280,7 +282,7 @@ export default function ProviderServiceForm() {
             <>
               <Panel className="flex items-center gap-3">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-                  {(() => { const Icon = familyIcon(form.family); return <Icon className="h-6 w-6" aria-hidden="true" />; })()}
+                  {(() => { const Icon = iconFor(form.category, form.family); return <Icon className="h-6 w-6" aria-hidden="true" />; })()}
                 </span>
                 <span className="flex-1 text-lg font-bold text-foreground break-words">{label(form.category)}</span>
               </Panel>

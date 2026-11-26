@@ -43,6 +43,8 @@ PROVIDER_FILES=(
   20261124140500_nursery_store_and_farm_services_search.sql
   20261124140600_farm_service_requests.sql
   20261126110000_provider_listing_go_live.sql
+  20261126130000_service_catalogue_india_additions.sql
+  20261126140000_service_category_icons.sql
 )
 CUTOVER="20261124091000_identity_cutover_verified_session_context.sql"
 SECRET="identity-it-local-only-jwt-secret-0123456789"

@@ -10,12 +10,12 @@ import {
 import { useLands } from '@/hooks/useLands';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { useFarmServicesStore } from '@/stores/farmServicesStore';
 import { farmServicesService, type FarmRequestInput } from '@/services/farmServicesService';
 import { nurseryPhotoUrl } from '@/services/nurseryPhotoService';
 import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
 import { amountText, dayValue, estimateText, farmServicesErrorMessage, rateText } from '@/lib/farmServicesText';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel, formatDay } from '@/lib/providerText';
 
 /** The land unit a land's own size is kept in. */
@@ -38,6 +38,7 @@ export default function AskForWork() {
   const draft = useFarmServicesStore((s) => s.draft);
   const { lands, isLoading } = useLands();
   const { catalogue, error: catalogueError } = useServiceCatalogue();
+  const iconFor = useServiceIcons();
 
   const landOptions: LandOption[] = useMemo(
     () => (lands ?? [])
@@ -104,7 +105,7 @@ export default function AskForWork() {
   const dateValid = !!neededDate && neededDate >= dayValue(0);
   const canSend = !!landId && !!unit && amountValid && dateValid && (draft.kind === 'NURSERY' || !!category) && !sending && isOnline;
   const estimate = amountValid && !openRate ? estimateText(amount, unit, rate, unit, currency) : null;
-  const FamilyIcon = familyIcon(draft.familyCode);
+  const FamilyIcon = iconFor(category || draft.familyCode, draft.familyCode);
   const backTo = draft.kind === 'NURSERY' && draft.provider
     ? FARM_SERVICES_ROUTES.store(draft.provider.accountId)
     : FARM_SERVICES_ROUTES.family(draft.familyCode);

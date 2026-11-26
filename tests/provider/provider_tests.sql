@@ -330,6 +330,20 @@ SELECT chk('T03 lookups: anyone reads active rows, nobody in the browser writes 
 SELECT chk('C01 every service has an active family, and no family is offered as a service',
   (SELECT count(*) FILTER (WHERE c.parent_code IS NOT NULL AND p.code IS NULL) || ' orphans, ' || count(*) FILTER (WHERE p.parent_code IS NOT NULL) || ' three-level rows'
      FROM service_categories c LEFT JOIN service_categories p ON p.code = c.parent_code), '0 orphans, 0 three-level rows');
+SELECT chk('C01b the services added for the rest of India are readable by the app, and the two relabelled ones keep their codes',
+  call_as('anon', NULL, $$SELECT count(*)::text FROM service_categories WHERE code IN ('MOTOR_REWINDING', 'SOLAR_REPAIR', 'PALM_CLIMBING', 'PUDDLING', 'BOREWELL_RECHARGE')$$) || ' ' ||
+  (SELECT count(*)::text FROM service_categories WHERE parent_code IS NOT NULL) || ' ' ||
+  (SELECT string_agg(label_en, ' | ' ORDER BY code) FROM service_categories WHERE code IN ('ELECTRICAL_WORK', 'PUMP_INSTALL_REPAIR')),
+  '5 154 Farm and pump-motor electrician (starter, panel, cable, wiring) | Pump set installation and repair');
+SELECT chk('C01c every family and service has a picture the app can read, and no two services of one family share one',
+  call_as('anon', NULL, $$SELECT count(*) FILTER (WHERE icon_path IS NOT NULL) || ' of ' || count(*) FROM service_categories$$) || ', ' ||
+  (SELECT count(*)::text FROM (SELECT 1 FROM service_categories WHERE parent_code IS NOT NULL GROUP BY parent_code, icon_path HAVING count(*) > 1) d) || ' shared',
+  '170 of 170, 0 shared');
+SELECT chk('C01d the picture column takes path data only, and the browser cannot write it',
+  call_as('service_role', NULL, $$UPDATE service_categories SET icon_path = '<svg onload=x>' WHERE code = 'REPAIR' RETURNING code$$) || ' | ' ||
+  call_as('anon', NULL, $$UPDATE service_categories SET icon_path = 'M0 0h1' WHERE code = 'REPAIR' RETURNING code$$) || ' | ' ||
+  (SELECT (icon_path IS NOT NULL AND icon_path <> 'M0 0h1')::text FROM service_categories WHERE code = 'REPAIR'),
+  'ERR 23514 new row for relation "service_categories" violates check constraint "service_categories_icon_path_chk" | ERR 42501 permission denied for table service_categories | true');
 SELECT chk('C02 the Service Map lists exactly the activity codes the schedule_tasks constraint allows',
   (SELECT coalesce(string_agg(x, ',' ORDER BY x), '(same)') FROM (
      (SELECT m[1] AS x FROM regexp_matches((SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'schedule_tasks_task_type_check'), '''([a-z_]+)''::text', 'g') m

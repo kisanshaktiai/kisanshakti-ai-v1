@@ -149,6 +149,8 @@ export interface CatalogueRow {
 }
 export interface ServiceCategory extends CatalogueRow {
   parent_code: string | null;
+  /** The picture: one SVG path on a 24 x 24 grid (see src/lib/providerIcons.ts). */
+  icon_path?: string | null;
 }
 export interface PricingUnit extends CatalogueRow {
   is_per_area: boolean;
@@ -338,7 +340,8 @@ export const providerWorkspaceService = {
     if (cached) return cached;
     const [categories, pricingUnits, equipmentTypes, providerTypes, skillTiers, nurseryItemKinds, paymentMethods] =
       await Promise.all([
-        lookup('service_categories', 'code, parent_code, label_en, sort_order'),
+        // every column, so the picture column is read where the database has it and is not asked for where it does not
+        lookup('service_categories', '*'),
         lookup('pricing_units', 'code, label_en, is_per_area, is_negotiable, area_sqm, sort_order'),
         lookup('equipment_types', 'code, label_en, attribute_definitions, sort_order'),
         lookup('provider_types', 'code, label_en, sort_order'),

@@ -9,9 +9,9 @@ import {
 import { EmptyState } from '@/components/layout/EmptyState';
 import { Panel, PrimaryAction, ProviderPage, SaveError, StatusBadge } from '@/components/provider/ProviderUi';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { providerWorkspaceService } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel, serviceRateText } from '@/lib/providerText';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +24,7 @@ export default function ProviderServices() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { workspace, catalogue, loading, loadError, isOnline, saving, saveError, run, reload } = useProviderWorkspace();
+  const iconFor = useServiceIcons();
 
   const services = workspace?.services ?? [];
   const limitReached = !!workspace && services.length >= workspace.policy.max_services;
@@ -62,7 +63,7 @@ export default function ProviderServices() {
 
           {services.map((service) => {
             const category = catalogue.categories.find((c) => c.code === service.category_code);
-            const Icon = familyIcon(category?.parent_code);
+            const Icon = iconFor(service.category_code, category?.parent_code);
             const paused = service.status === 'PAUSED';
             return (
               <Panel key={service.id} className={cn('space-y-3', paused && 'opacity-80')}>
