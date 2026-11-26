@@ -19,6 +19,14 @@
  * Admin/ops-triggered function (service context). Not farmer-facing.
  *
  * CHANGE LOG
+ * 2026-11-26 — SERVICE-ONLY GUARD (security audit KS-005). The header above
+ *   always said "service context", but nothing enforced it: verify_jwt is
+ *   false and the handler never looked at the caller, so any request could
+ *   register a document or spend embedding quota. The handler now refuses
+ *   every call whose bearer token is not the service-role key — the same
+ *   check rag-eval uses. The admin `rag-admin` function already calls this
+ *   function server-side with that key, so the Knowledge Sources panel is
+ *   unaffected. No ingestion, chunking or embedding logic is changed.
  * 2026-09-21 — RAG PHASE 0 (design v2 S6, R3, R4):
  *   S6  Dedupe predicate is the unique index (source_id, doc_version,
  *       content_hash). Deduping on content_hash alone mapped the same file
@@ -402,6 +410,11 @@ function tagChunk(
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   const traceId = crypto.randomUUID().slice(0, 8);
+
+  // ── Auth: service role only (ops / the admin rag-admin function). Same check as rag-eval.
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!serviceRoleKey || bearer !== serviceRoleKey) return json(401, { error: 'Unauthorized' });
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
