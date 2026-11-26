@@ -14404,6 +14404,52 @@ export type Database = {
           },
         ]
       }
+      farmer_saved_providers: {
+        Row: {
+          account_id: string
+          created_at: string
+          farmer_id: string
+          is_saved: boolean
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          farmer_id: string
+          is_saved?: boolean
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          farmer_id?: string
+          is_saved?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "farmer_saved_providers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "farmer_saved_providers_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "farmer_saved_providers_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+        ]
+      }
       farmer_segments: {
         Row: {
           color: string | null
@@ -33200,6 +33246,342 @@ export type Database = {
           },
         ]
       }
+      service_request_events: {
+        Row: {
+          actor: string
+          actor_id: string
+          created_at: string
+          details: Json
+          event: string
+          id: number
+          request_id: string
+        }
+        Insert: {
+          actor: string
+          actor_id: string
+          created_at?: string
+          details?: Json
+          event: string
+          id?: never
+          request_id: string
+        }
+        Update: {
+          actor?: string
+          actor_id?: string
+          created_at?: string
+          details?: Json
+          event?: string
+          id?: never
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_request_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "service_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_request_offers: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          offer_date: string
+          pricing_unit: string | null
+          rate: number | null
+          request_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          offer_date: string
+          pricing_unit?: string | null
+          rate?: number | null
+          request_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          offer_date?: string
+          pricing_unit?: string | null
+          rate?: number | null
+          request_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_request_offers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "service_request_offers_pricing_unit_fkey"
+            columns: ["pricing_unit"]
+            isOneToOne: false
+            referencedRelation: "pricing_units"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "service_request_offers_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "service_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_requests: {
+        Row: {
+          accepted_offer_id: string | null
+          agreed_date: string | null
+          agreed_rate: number | null
+          agreed_unit: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          category_code: string | null
+          confirmed_at: string | null
+          created_at: string
+          currency: string
+          done_at: string | null
+          family_code: string
+          farmer_id: string
+          farmer_rating: number | null
+          farmer_tenant_id: string
+          id: string
+          kind: string
+          land_id: string
+          needed_date: string
+          nursery_batch_id: string | null
+          nursery_product_id: string | null
+          provider_account_id: string | null
+          provider_service_id: string | null
+          quantity: number
+          quantity_unit: string
+          quoted_rate: number | null
+          rated_at: string | null
+          status: string
+          target_account_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          accepted_offer_id?: string | null
+          agreed_date?: string | null
+          agreed_rate?: number | null
+          agreed_unit?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          category_code?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          currency?: string
+          done_at?: string | null
+          family_code: string
+          farmer_id: string
+          farmer_rating?: number | null
+          farmer_tenant_id: string
+          id?: string
+          kind: string
+          land_id: string
+          needed_date: string
+          nursery_batch_id?: string | null
+          nursery_product_id?: string | null
+          provider_account_id?: string | null
+          provider_service_id?: string | null
+          quantity: number
+          quantity_unit: string
+          quoted_rate?: number | null
+          rated_at?: string | null
+          status?: string
+          target_account_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accepted_offer_id?: string | null
+          agreed_date?: string | null
+          agreed_rate?: number | null
+          agreed_unit?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          category_code?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          currency?: string
+          done_at?: string | null
+          family_code?: string
+          farmer_id?: string
+          farmer_rating?: number | null
+          farmer_tenant_id?: string
+          id?: string
+          kind?: string
+          land_id?: string
+          needed_date?: string
+          nursery_batch_id?: string | null
+          nursery_product_id?: string | null
+          provider_account_id?: string | null
+          provider_service_id?: string | null
+          quantity?: number
+          quantity_unit?: string
+          quoted_rate?: number | null
+          rated_at?: string | null
+          status?: string
+          target_account_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_requests_agreed_unit_fkey"
+            columns: ["agreed_unit"]
+            isOneToOne: false
+            referencedRelation: "pricing_units"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "service_requests_category_code_fkey"
+            columns: ["category_code"]
+            isOneToOne: false
+            referencedRelation: "service_categories"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "service_requests_family_code_fkey"
+            columns: ["family_code"]
+            isOneToOne: false
+            referencedRelation: "service_categories"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "service_requests_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_gdd_pipeline_health"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_economics"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "v_land_region"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "service_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "service_requests_nursery_batch_id_fkey"
+            columns: ["nursery_batch_id"]
+            isOneToOne: false
+            referencedRelation: "nursery_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_nursery_product_id_fkey"
+            columns: ["nursery_product_id"]
+            isOneToOne: false
+            referencedRelation: "nursery_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_provider_account_id_fkey"
+            columns: ["provider_account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "service_requests_provider_service_id_fkey"
+            columns: ["provider_service_id"]
+            isOneToOne: false
+            referencedRelation: "provider_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_requests_quantity_unit_fkey"
+            columns: ["quantity_unit"]
+            isOneToOne: false
+            referencedRelation: "pricing_units"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "service_requests_target_account_id_fkey"
+            columns: ["target_account_id"]
+            isOneToOne: false
+            referencedRelation: "service_provider_profiles"
+            referencedColumns: ["account_id"]
+          },
+        ]
+      }
       shopping_carts: {
         Row: {
           cart_status: string
@@ -45281,6 +45663,15 @@ export type Database = {
         Args: { p_batch_id?: string; p_code_ids?: string[]; p_reason?: string }
         Returns: Json
       }
+      activation_admin_set_entitlement: {
+        Args: {
+          p_licences: number
+          p_reason: string
+          p_tenant_id: string
+          p_valid_until: string
+        }
+        Returns: Json
+      }
       activation_enforcement_status: { Args: never; Returns: Json }
       activation_expire_due: { Args: never; Returns: number }
       activation_redeem: {
@@ -45906,8 +46297,56 @@ export type Database = {
         Args: { resources: Json; task_type: string }
         Returns: number
       }
+      farm_service_confirm: {
+        Args: {
+          p_actor: string
+          p_actor_id: string
+          p_offer_id: string
+          p_request_id: string
+        }
+        Returns: undefined
+      }
+      farm_service_land_distance: {
+        Args: { p_account_id: string; p_land_id: string }
+        Returns: number
+      }
+      farm_service_log: {
+        Args: {
+          p_actor: string
+          p_actor_id: string
+          p_details?: Json
+          p_event: string
+          p_request_id: string
+        }
+        Returns: undefined
+      }
+      farm_service_offer_accept: { Args: { p_offer_id: string }; Returns: Json }
+      farm_service_offer_decline: {
+        Args: { p_offer_id: string }
+        Returns: Json
+      }
+      farm_service_refresh_provider_stats: {
+        Args: { p_account_id: string }
+        Returns: undefined
+      }
+      farm_service_release_stock: {
+        Args: { p_request_id: string }
+        Returns: undefined
+      }
+      farm_service_request_cancel: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      farm_service_request_create: { Args: { p: Json }; Returns: Json }
+      farm_service_request_rate: {
+        Args: { p_request_id: string; p_stars: number }
+        Returns: Json
+      }
+      farm_service_requests_mine: { Args: never; Returns: Json }
       farm_services_enabled: { Args: never; Returns: boolean }
+      farm_services_farmer: { Args: never; Returns: string }
       farm_services_nearby: { Args: never; Returns: Json }
+      farm_services_policy: { Args: never; Returns: Json }
       farm_services_provider_card: {
         Args: {
           p_account_id: string
@@ -45927,6 +46366,11 @@ export type Database = {
           distance_km: number
         }[]
       }
+      farm_services_save_provider: {
+        Args: { p_account_id: string; p_saved: boolean }
+        Returns: boolean
+      }
+      farm_services_today: { Args: never; Returns: string }
       finalize_payment: { Args: { p_intent_id: string }; Returns: Json }
       find_intersecting_districts: {
         Args: { tile_geom: unknown }
@@ -47023,10 +47467,25 @@ export type Database = {
         Args: { p_blackout_id: string }
         Returns: Json
       }
+      provider_job_done: { Args: { p_request_id: string }; Returns: Json }
       provider_remove_equipment: {
         Args: { p_equipment_id: string }
         Returns: Json
       }
+      provider_request_cancel: { Args: { p_request_id: string }; Returns: Json }
+      provider_request_card: {
+        Args: { p_account_id: string; p_request_id: string }
+        Returns: Json
+      }
+      provider_request_respond: {
+        Args: { p: Json; p_request_id: string }
+        Returns: Json
+      }
+      provider_request_visible: {
+        Args: { p_account_id: string; p_request_id: string }
+        Returns: boolean
+      }
+      provider_requests_inbox: { Args: never; Returns: Json }
       provider_review_listing: {
         Args: { p_account_id: string; p_decision: string; p_note_code?: string }
         Returns: string
