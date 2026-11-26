@@ -7,11 +7,11 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { ScrollContext } from '@/components/layout/ScrollContext';
 import { WorkspaceSwitcher } from '@/components/identity/WorkspaceSwitcher';
+import { RolePicture } from '@/components/identity/RoleOptionList';
 import { ReachHeaderButton } from '@/components/identity/ReachCard';
 import { useAccountReach } from '@/hooks/useAccountReach';
 import { useProviderFlag } from '@/hooks/useProviderFlag';
 import { useProviderRequestsInbox } from '@/hooks/useProviderRequestsInbox';
-import { ROLE_ICONS } from '@/components/identity/RoleOptionList';
 import { useAccountStore } from '@/stores/accountStore';
 import { WORKSPACE_HOME, activeRolesOf, type AccountRole } from '@/lib/accountRoles';
 
@@ -20,7 +20,7 @@ interface WorkspaceLayoutProps {
 }
 
 /**
- * Shell of the Provider and Customer workspaces: header with the role chip, the
+ * Shell of the Provider and Customer workspaces: header with the round picture of the workspace (a tap on it changes workspace, for people with several roles), the
  * base village with radius as a button, the read-aloud button and the language, one scroll container, and a bottom navigation with Home and
  * Profile — plus "Requests" (with the number of new ones) and "My business"
  * in the Provider workspace while the provider_workspace flag is on. Built beside AppLayout with the same layout utilities; it mounts no
@@ -32,7 +32,6 @@ export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
   const mainRef = useRef<HTMLElement>(null);
   const account = useAccountStore((s) => s.account);
   const hasSeveralRoles = activeRolesOf(account).length > 1;
-  const RoleIcon = ROLE_ICONS[role];
   const home = WORKSPACE_HOME[role];
 
   // One refresh of this workspace's Reach; the header button and the home
@@ -67,11 +66,12 @@ export function WorkspaceLayout({ role }: WorkspaceLayoutProps) {
             {hasSeveralRoles ? (
               <WorkspaceSwitcher variant="header" />
             ) : (
-              <span className="inline-flex h-11 items-center gap-1.5 rounded-full border border-primary/30 bg-card pl-2 pr-3 text-sm font-semibold text-foreground">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">
-                  <RoleIcon className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <span className="max-w-[6.5rem] truncate">{t(`identity.roles.${role}.name`)}</span>
+              <span
+                role="img"
+                aria-label={t(`identity.roles.${role}.name`)}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/30 bg-card"
+              >
+                <RolePicture role={role} />
               </span>
             )}
           </div>

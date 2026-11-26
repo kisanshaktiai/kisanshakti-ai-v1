@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Check, ChevronsUpDown, Loader2, Plus } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { hapticFeedback } from '@/lib/haptics';
 import { useAccountStore } from '@/stores/accountStore';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { accountSessionService } from '@/services/accountSessionService';
-import { FarmerAuthError } from '@/services/farmerAuthService';
+import { FarmerAuthError, farmerAuthService } from '@/services/farmerAuthService';
 import { accountErrorMessage } from '@/lib/accountErrors';
-import { ROLE_ICONS } from '@/components/identity/RoleOptionList';
-import { ROUTE_ROLES, activeRolesOf, workspaceRoleOf, type AccountRole } from '@/lib/accountRoles';
+import { preloadWorkspaces } from '@/lib/workspacePreload';
+import { ROLE_ICONS, RolePicture } from '@/components/identity/RoleOptionList';
+import { ACCOUNT_ROLES, ROUTE_ROLES, activeRolesOf, workspaceRoleOf, type AccountRole } from '@/lib/accountRoles';
 
 interface WorkspaceSwitcherProps {
   /** 'header' sits inside a workspace header; 'floating' is laid over the farmer app. */
@@ -26,10 +27,14 @@ const isFarmerFullScreen = (path: string) =>
   path === '/app/lands/add' ||
   /^\/app\/lands\/[^/]+\/edit$/.test(path);
 
+/** Side of the round button, in px, per variant: the card opens exactly over it. */
+const BUTTON_PX = { header: 44, floating: 48 } as const;
+
 /**
- * Workspace Switcher — a chip showing the open workspace and a sheet listing
- * the workspaces the person holds. Rendered only for people with more than one
- * active role; everyone else never sees it.
+ * Workspace Switcher — one round picture of the open workspace. A tap opens,
+ * in the same place, the pictures of the workspaces the person holds; a tap on
+ * one of them opens that workspace. No second screen and no bottom sheet.
+ * Rendered only for people with more than one active role.
  */
 export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
   const { t } = useTranslation();
@@ -47,10 +52,22 @@ export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
   if (!account || !current || held.length < 2) return null;
   if (variant === 'floating' && isFarmerFullScreen(location.pathname)) return null;
 
-  const CurrentIcon = ROLE_ICONS[current];
+  const handleOpenChange = (next: boolean) => {
+    if (switchingTo) return; // the card stays until the workspace has opened or the server has refused
+    setError(null);
+    setOpen(next);
+    if (next && isOnline) {
+      // While the person looks at the choices: load the screens they may open,
+      // and wake the server so the switch itself does not wait for it to start.
+      preloadWorkspaces(held.filter((role) => role !== current));
+      farmerAuthService.sessionInfo().catch(() => { /* only a wake-up call; the switch reports real failures */ });
+    }
+  };
 
   const handleSwitch = async (role: AccountRole) => {
-    if (role === current || switchingTo) return;
+    if (switchingTo) return;
+    if (role === current) { setOpen(false); return; }
+    hapticFeedback('light');
     setError(null);
     if (!isOnline) {
       setError(t('identity.switcher.offline'));
@@ -58,12 +75,19 @@ export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
     }
     setSwitchingTo(role);
     try {
+      // Requests still on their way belong to the workspace being left.
+      await queryClient.cancelQueries();
       const destination = await accountSessionService.switchWorkspace(role);
-      // Nothing cached for one workspace may be shown in another.
-      queryClient.clear();
+      // Every workspace on this device belongs to the same person, and only
+      // farmer screens read this cache: what is already read is kept and marked
+      // as old, so a farmer screen shows at once when the person comes back and
+      // refreshes itself then (nothing is asked for from the workspace being left).
+      void queryClient.invalidateQueries({ refetchType: 'none' });
       setOpen(false);
       navigate(destination, { replace: true });
     } catch (err) {
+      // Still in the same workspace: read again what was stopped.
+      void queryClient.invalidateQueries();
       setError(
         err instanceof FarmerAuthError && err.code === 'transport_unavailable'
           ? t('identity.switcher.offline')
@@ -76,91 +100,88 @@ export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
     }
   };
 
+  const tile = 'flex w-[5.25rem] min-h-[92px] flex-col items-center gap-1.5 rounded-2xl px-1 py-2 text-center transition-colors active:scale-[0.97] disabled:opacity-60';
+
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => { setError(null); setOpen(true); }}
-        aria-haspopup="dialog"
-        aria-label={t('identity.switcher.open', { role: t(`identity.roles.${current}.name`) })}
-        className={cn(
-          'flex items-center gap-1.5 rounded-full border border-primary/30 bg-card text-foreground shadow-sm',
-          'h-11 pl-2 pr-3 text-sm font-semibold active:scale-[0.98] transition-transform',
-          variant === 'floating' && 'fixed left-3 bottom-24 z-40 shadow-lg',
-        )}
-      >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">
-          <CurrentIcon className="h-4 w-4" aria-hidden="true" />
-        </span>
-        <span className="max-w-[6.5rem] truncate">{t(`identity.roles.${current}.name`)}</span>
-        <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-      </button>
-
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="bottom" className="rounded-t-3xl pb-safe">
-          <SheetHeader className="text-left">
-            <SheetTitle>{t('identity.switcher.title')}</SheetTitle>
-            <SheetDescription>{t('identity.switcher.description')}</SheetDescription>
-          </SheetHeader>
-
-          {error && (
-            <Alert variant="destructive" className="mt-3">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={t('identity.switcher.open', { role: t(`identity.roles.${current}.name`) })}
+          className={cn(
+            'relative flex shrink-0 items-center justify-center rounded-full border border-primary/30 bg-card shadow-sm transition-transform active:scale-95',
+            variant === 'header' ? 'h-11 w-11' : 'fixed left-3 bottom-40 z-40 h-12 w-12 shadow-lg',
           )}
+        >
+          <RolePicture role={current} className={variant === 'floating' ? 'h-9 w-9' : undefined} />
+          <span className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
+            <ChevronsUpDown className="h-3 w-3" aria-hidden="true" />
+          </span>
+        </button>
+      </PopoverTrigger>
 
-          <ul className="mt-4 space-y-2">
-            {held.map((role) => {
-              const Icon = ROLE_ICONS[role];
-              const isCurrent = role === current;
-              return (
-                <li key={role}>
-                  <button
-                    type="button"
-                    onClick={() => handleSwitch(role)}
-                    disabled={!!switchingTo}
-                    aria-current={isCurrent ? 'true' : undefined}
-                    className={cn(
-                      'w-full min-h-[64px] flex items-center gap-3 rounded-2xl border-2 p-3 text-left',
-                      isCurrent ? 'border-primary bg-primary/10' : 'border-border bg-card',
-                    )}
-                  >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                      <Icon className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-base font-semibold text-foreground">
-                        {t(`identity.roles.${role}.name`)}
-                      </span>
-                      {isCurrent && (
-                        <span className="block text-xs text-primary">{t('identity.switcher.current')}</span>
-                      )}
-                    </span>
-                    {switchingTo === role ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden="true" />
-                    ) : (
-                      isCurrent && <Check className="h-5 w-5 text-primary" aria-hidden="true" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-            <li>
+      <PopoverContent
+        side={variant === 'header' ? 'bottom' : 'top'}
+        align="start"
+        sideOffset={-BUTTON_PX[variant]}
+        collisionPadding={8}
+        className="w-auto max-w-[calc(100vw-1rem)] rounded-3xl border-border p-2 shadow-xl"
+      >
+        <div role="radiogroup" aria-label={t('identity.switcher.title')} aria-busy={!!switchingTo} className="flex items-stretch gap-1">
+          {held.map((role) => {
+            const Icon = ROLE_ICONS[role];
+            const isCurrent = role === current;
+            const isOpening = switchingTo === role;
+            return (
               <button
+                key={role}
                 type="button"
-                onClick={() => { setOpen(false); navigate(ROUTE_ROLES); }}
-                disabled={!!switchingTo}
-                className="w-full min-h-[56px] flex items-center gap-3 rounded-2xl border-2 border-dashed border-border p-3 text-left"
+                role="radio"
+                aria-checked={isCurrent}
+                disabled={!!switchingTo && !isOpening}
+                onClick={() => handleSwitch(role)}
+                className={cn(tile, isCurrent ? 'bg-primary/10' : 'hover:bg-muted/60')}
               >
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                  <Plus className="h-5 w-5" aria-hidden="true" />
+                <span
+                  className={cn(
+                    'relative flex h-14 w-14 items-center justify-center rounded-full',
+                    isCurrent || isOpening ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary',
+                  )}
+                >
+                  {isOpening
+                    ? <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+                    : <Icon className="h-7 w-7" strokeWidth={1.75} aria-hidden="true" />}
+                  {isCurrent && (
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-popover bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
+                    </span>
+                  )}
                 </span>
-                <span className="text-base font-semibold text-foreground">{t('identity.switcher.addRole')}</span>
+                <span className={cn('text-xs leading-tight text-foreground break-words', isCurrent ? 'font-bold' : 'font-semibold')}>
+                  {t(`identity.roles.${role}.name`)}
+                </span>
+                {isCurrent && <span className="sr-only">{t('identity.switcher.current')}</span>}
               </button>
-            </li>
-          </ul>
-        </SheetContent>
-      </Sheet>
-    </>
+            );
+          })}
+          {held.length < ACCOUNT_ROLES.length && (
+            <button
+              type="button"
+              disabled={!!switchingTo}
+              onClick={() => { setOpen(false); navigate(ROUTE_ROLES); }}
+              className={cn(tile, 'hover:bg-muted/60')}
+            >
+              <span className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-dashed border-border text-muted-foreground">
+                <Plus className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <span className="text-xs font-semibold leading-tight text-muted-foreground break-words">{t('identity.switcher.addRole')}</span>
+            </button>
+          )}
+        </div>
+        {error && (
+          <p role="alert" className="mt-1 max-w-[17rem] px-2 pb-1 text-sm font-medium leading-snug text-destructive">{error}</p>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

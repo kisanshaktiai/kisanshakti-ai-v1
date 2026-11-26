@@ -9,6 +9,19 @@ export const ROLE_ICONS: Record<AccountRole, LucideIcon> = {
   CUSTOMER: ShoppingBasket,
 };
 
+/**
+ * The round picture of a workspace. Used as the switcher's button and, for a
+ * person with one role, as the plain mark of the workspace in its header.
+ */
+export function RolePicture({ role, className }: { role: AccountRole; className?: string }) {
+  const Icon = ROLE_ICONS[role];
+  return (
+    <span className={cn('flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground', className)}>
+      <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+    </span>
+  );
+}
+
 interface RoleOptionListProps {
   selected: AccountRole[];
   onToggle: (role: AccountRole) => void;

@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, ClipboardList, Tractor } from 'lucide-react';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { useServiceIcons } from '@/hooks/useServiceIcons';
 import { farmServicesService } from '@/services/farmServicesService';
 import { useFarmServicesStore } from '@/stores/farmServicesStore';
 import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
 import { requestsSummary } from '@/lib/farmServicesText';
-import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel } from '@/lib/providerText';
 
 /** Kinds of work shown on the home screen: the ones with the most providers near the farmer. */
@@ -22,6 +22,7 @@ const TILES = 4;
 export function FarmServicesHomeBlock() {
   const { t } = useTranslation();
   const isOnline = useOfflineStatus();
+  const iconFor = useServiceIcons();
   const nearby = useFarmServicesStore((s) => s.nearby);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function FarmServicesHomeBlock() {
       {tiles.length > 0 && (
         <div className="mt-3 grid grid-cols-4 gap-2">
           {tiles.map((f) => {
-            const Icon = familyIcon(f.code);
+            const Icon = iconFor(f.code);
             return (
               <Link
                 key={f.code}
