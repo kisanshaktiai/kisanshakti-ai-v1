@@ -260,7 +260,9 @@ SELECT chk('L02 a provider with no active service, or no working day, cannot ask
   w('tok-p3', $$provider_save_service('{"category_code":"SEEDLING_SUPPLY","title":"Test seedlings","pricing_unit":"PER_PIECE","base_rate":2}')$$) || ' ' || w('tok-p3', 'provider_submit_for_review()'),
   'ERR PROVIDER_NO_ACTIVE_SERVICE | OK ERR PROVIDER_HOURS_NOT_SET');
 SELECT call_as('anon', 'tok-p1', $$SELECT set_account_reach('SERVICE_PROVIDER', '71000000-0000-0000-0000-000000000001', 25) ->> 'is_set'$$) AS setup \gset
-SELECT chk('L03 with profile, service, hours and area the listing goes to PENDING_REVIEW, and asking twice changes nothing',
+-- L03–L06 run with the review step switched on (the path kept for an admin queue)
+UPDATE system_config SET config_value = config_value || '{"listing_review_required": true}' WHERE config_key = 'provider_workspace_policy';
+SELECT chk('L03 review on: with profile, service, hours and area the listing goes to PENDING_REVIEW, and asking twice changes nothing',
   w('tok-p1', 'provider_submit_for_review()') || ' ' || g('tok-p1', '{profile,listing_status}') || ' ' || w('tok-p1', 'provider_submit_for_review()') || ' ' || g('tok-p1', '{profile,listing_status}'),
   'OK PENDING_REVIEW OK PENDING_REVIEW');
 SELECT chk('L04 no browser role can run the reviewer function or the internal ones',
@@ -280,6 +282,27 @@ SELECT chk('L05 the reviewer lists, suspends and re-lists; moves that are not al
 SELECT chk('L06 a listed provider saving their profile again stays LISTED and cannot change it themselves',
   w('tok-p1', $$provider_save_profile('{"provider_type":"BUSINESS","public_name":"Test Tractor Service","listing_status":"DRAFT"}')$$) || ' ' ||
   g('tok-p1', '{profile,listing_status}') || ' ' || g('tok-p1', '{profile,provider_type}'), 'OK LISTED BUSINESS');
+
+-- the rest of the file runs as production does: no review step
+UPDATE system_config SET config_value = config_value || '{"listing_review_required": false}' WHERE config_key = 'provider_workspace_policy';
+UPDATE service_provider_profiles SET listing_status = 'DRAFT', submitted_at = NULL, listed_at = NULL WHERE account_id = '9a000000-0000-0000-0000-000000000001';
+SELECT chk('L07 review off: a provider who finished setup is LISTED the moment he asks; asking again changes nothing',
+  w('tok-p1', 'provider_submit_for_review()') || ' ' || g('tok-p1', '{profile,listing_status}') || ' ' ||
+  w('tok-p1', 'provider_submit_for_review()') || ' ' || g('tok-p1', '{profile,listing_status}'),
+  'OK LISTED OK LISTED');
+SELECT chk('L07b going live records when he asked and when he was listed',
+  (SELECT (listed_at IS NOT NULL AND submitted_at IS NOT NULL AND review_note_code IS NULL)::text
+     FROM service_provider_profiles WHERE account_id = '9a000000-0000-0000-0000-000000000001'), 'true');
+UPDATE service_provider_profiles SET listing_status = 'PENDING_REVIEW' WHERE account_id = '9a000000-0000-0000-0000-000000000001';
+SELECT chk('L08 review off: a listing left waiting goes LISTED on the next ask',
+  w('tok-p1', 'provider_submit_for_review()') || ' ' || g('tok-p1', '{profile,listing_status}'), 'OK LISTED');
+UPDATE service_provider_profiles SET listing_status = 'SUSPENDED' WHERE account_id = '9a000000-0000-0000-0000-000000000001';
+SELECT chk('L09 a provider the platform suspended cannot list himself again; the reviewer can',
+  w('tok-p1', 'provider_submit_for_review()') || ' ' || g('tok-p1', '{profile,listing_status}') || ' ' ||
+  call_as('service_role', NULL, $$SELECT provider_review_listing('9a000000-0000-0000-0000-000000000001', 'LIST')$$),
+  'OK SUSPENDED LISTED');
+SELECT chk('L10 review off still needs the setup: no working day, no listing',
+  w('tok-p3', 'provider_submit_for_review()') || ' ' || g('tok-p3', '{profile,listing_status}'), 'ERR PROVIDER_HOURS_NOT_SET DRAFT');
 
 \echo '=== the tables are closed to the browser (P4.9) ==='
 SELECT chk('T01 anon and authenticated, with a valid provider token, can do nothing directly on the seven tables',

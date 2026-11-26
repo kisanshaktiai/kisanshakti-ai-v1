@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, CalendarOff, Check, ChevronRight, Inbox, MapPin, Store, Wrench, TreePine } from 'lucide-react';
@@ -41,6 +41,8 @@ const STATE_CARD: Record<AvailabilityState, string> = {
  * Home of the Provider Workspace: how farmers see the provider right now
  * (worked out by the server from working hours, busy days and the accepting
  * switch), the four steps to get listed, and shortcuts into the business.
+ * The fourth step done is the provider's yes: the listing is asked for at
+ * once, so nobody is left set up but unseen because of a button not pressed.
  */
 export default function ProviderHome() {
   const { t } = useTranslation();
@@ -61,6 +63,17 @@ export default function ProviderHome() {
   const allDone = steps.length > 0 && doneCount === steps.length;
   const nextStep = steps.find((s) => !s.done);
   const listing = profile?.listing_status ?? 'DRAFT';
+
+  // Asks for the listing once, as soon as every step is done. A listing a
+  // reviewer sent back waits for the provider's own tap; a refusal leaves the
+  // button below for another try.
+  const askedForListing = useRef(false);
+  const sentBack = !!profile?.review_note_code;
+  useEffect(() => {
+    if (!allDone || listing !== 'DRAFT' || sentBack || !isOnline || saving || askedForListing.current) return;
+    askedForListing.current = true;
+    void run(() => providerWorkspaceService.submitForReview());
+  }, [allDone, listing, sentBack, isOnline, saving, run]);
 
   const openStep = (key: StepKey) => {
     if (key === 'reach') { setReachOpen(true); return; }

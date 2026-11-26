@@ -74,8 +74,8 @@
           "done": "Set"
         }
       },
-      "submit": "Send for review",
-      "submitHint": "Finish all four steps to send your listing.",
+      "submit": "Show my business to farmers",
+      "submitHint": "Finish all four steps and farmers near you will see your business.",
       "progress": "{{done}} of {{total}} done",
       "next": "Next: {{step}}"
     },

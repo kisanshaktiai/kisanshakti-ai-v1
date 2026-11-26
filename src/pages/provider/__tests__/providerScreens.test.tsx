@@ -152,18 +152,52 @@ describe('Provider Workspace screens', () => {
       expect(screen.getAllByLabelText('provider.setup.steps.service.title: provider.setup.steps.service.todo')).toHaveLength(1);
     });
 
-    it('sends the listing for review once every step is done', async () => {
-      const ready = workspace({
-        profile, reach_set: true,
-        services: [{ id: 's1', status: 'ACTIVE' }],
-        working_hours: [{ weekday: 1, is_working: true, start_time: '07:00', end_time: '18:00' }],
-        availability: { state: 'AVAILABLE', next_free_date: '2027-01-10' },
-      });
+    const readySetup = {
+      reach_set: true,
+      services: [{ id: 's1', status: 'ACTIVE' }],
+      working_hours: [{ weekday: 1, is_working: true, start_time: '07:00', end_time: '18:00' }],
+      availability: { state: 'AVAILABLE', next_free_date: '2027-01-10' },
+    };
+
+    it('asks for the listing by itself, once, as soon as every step is done', async () => {
+      const ready = workspace({ profile, ...readySetup });
       serverHolds(ready);
-      mocks.service.submitForReview.mockResolvedValue(ready);
+      // the real service keeps the store current with what the server answers; the mock does the same
+      mocks.service.submitForReview.mockImplementation(async () => {
+        const listed = workspace({ profile: { ...profile, listing_status: 'LISTED' }, ...readySetup });
+        useProviderStore.getState().setWorkspace(listed as never);
+        return listed;
+      });
+      renderAt('/provider', <ProviderHome />);
+      await waitFor(() => expect(mocks.service.submitForReview).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText('provider.listing.LISTED.name')).not.toBeNull();
+      expect(screen.queryByText('provider.setup.submit')).toBeNull();
+      expect(mocks.service.submitForReview).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask while a step is missing, and a refusal leaves the button for another try', async () => {
+      serverHolds(workspace({ profile, ...readySetup, working_hours: [] }));
+      renderAt('/provider', <ProviderHome />);
+      await screen.findByText('provider.setup.submitHint');
+      expect(mocks.service.submitForReview).not.toHaveBeenCalled();
+      cleanup();
+
+      serverHolds(workspace({ profile, ...readySetup }));
+      mocks.service.submitForReview.mockRejectedValue({ code: 'PROVIDER_HOURS_NOT_SET' });
+      renderAt('/provider', <ProviderHome />);
+      expect(await screen.findByText('provider.errors.PROVIDER_HOURS_NOT_SET')).not.toBeNull();
+      expect(mocks.service.submitForReview).toHaveBeenCalledTimes(1);
+      const submit = screen.getByText('provider.setup.submit').closest('button') as HTMLButtonElement;
+      expect(submit.disabled).toBe(false);
+      fireEvent.click(submit);
+      await waitFor(() => expect(mocks.service.submitForReview).toHaveBeenCalledTimes(2));
+    });
+
+    it('leaves a listing the reviewer sent back for the provider to send himself', async () => {
+      serverHolds(workspace({ profile: { ...profile, review_note_code: 'DETAILS_UNCLEAR' }, ...readySetup }));
       renderAt('/provider', <ProviderHome />);
       const submit = (await screen.findByText('provider.setup.submit')).closest('button') as HTMLButtonElement;
-      expect(submit.disabled).toBe(false);
+      expect(mocks.service.submitForReview).not.toHaveBeenCalled();
       fireEvent.click(submit);
       await waitFor(() => expect(mocks.service.submitForReview).toHaveBeenCalledTimes(1));
     });
