@@ -31,6 +31,15 @@ Deno.test("S1: ragRetrieve surfaces mode 'error' and logs it instead of throwing
   assert(src.includes("retrieval_mode: 'error'"), "error retrievals must be logged with retrieval_mode 'error'");
   assert(src.includes("mode: 'error', belowThreshold: true"), "error result must be belowThreshold");
   assert(src.includes("NO_RETRIEVAL_LEG_RAN"), "no leg ran must be an error, not a corpus gap");
+  // supabase-js reports insert failures in `error` without throwing; a dropped log row must be visible.
+  const logCalls = src.match(/const \{ error: logErr \} = await logRow\(/g) || [];
+  assertEquals(logCalls.length, 2, "both audit-log inserts (success and error path) must inspect the returned error");
+});
+
+Deno.test("rag_retrieval_logs admits the outcomes Phase 0 writes (mode 'error', purpose GOLDEN_EVAL)", async () => {
+  const mig = await Deno.readTextFile("../kisan-command-center-nexus/supabase/migrations/20260921120300_rag_retrieval_logs_outcomes.sql").catch(() => "");
+  if (!mig) return; // admin repo not checked out beside this one
+  assert(mig.includes("'error'::text") && mig.includes("'GOLDEN_EVAL'::text"), "live CHECK constraints must admit the new outcomes");
 });
 
 Deno.test("S1: fallbacks A and B never run after a retrieval error", async () => {

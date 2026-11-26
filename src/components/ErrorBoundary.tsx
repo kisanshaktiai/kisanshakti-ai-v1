@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { shellDone } from '@/lib/startupShell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
@@ -25,6 +26,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    shellDone(); // the start shell must not hide the error screen
     console.error('❌ [ErrorBoundary] Caught error:', error);
     console.error('❌ [ErrorBoundary] Component stack:', errorInfo.componentStack);
     this.setState({ errorInfo });

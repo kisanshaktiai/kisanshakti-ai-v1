@@ -219,11 +219,7 @@ export function AvatarUpload({
       setShowCropDialog(false);
       setImageSrc(null);
       setZoom(1);
-      
-      // Refresh the page to show updated avatar
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      // The new picture is shown through onAvatarUpdate; a full reload restarted the whole app.
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       

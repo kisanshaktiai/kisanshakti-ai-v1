@@ -7,18 +7,36 @@
  *
  * Idempotent: the same file under the same source and version is never
  * ingested twice (§10). Extraction failure marks processing_status='failed' —
- * never silent empty chunks (§11). Scanned PDFs are detected and marked
- * 'failed' with an OCR note; OCR is NOT implemented (honest limitation, §11).
+ * never silent empty chunks (§11). Pages without a text layer are read by OCR
+ * when an engine is configured; without one a scanned file is marked 'failed'.
  *
  * Actions (POST JSON body):
  *  { action: 'ingest', storagePath, sourceCode, title, docVersion?,
  *    language?, stateCodes?, cropCodes?, docType?, validFrom?, validUntil?,
  *    publicationDate?, tenantId?, embed? }
+ *  { action: 'ocr_continue', documentId, retry?, embed? }
  *  { action: 'backfill_embeddings', documentId? , maxChunks? }
  *
  * Admin/ops-triggered function (service context). Not farmer-facing.
  *
  * CHANGE LOG
+ * 2026-11-26 — OCR: scanned pages and images are read, not rejected.
+ *   - Native text first, per page; a page with under MIN_PAGE_TEXT_CHARS of
+ *     text is queued for OCR (ocrPipeline.ts, engine behind
+ *     _shared/ocrProvider.ts). A mixed PDF keeps its digital pages as they
+ *     are and only its image pages are recognised.
+ *   - png / jpg / jpeg / tif / tiff are accepted as one-page documents.
+ *   - Page state lives in rag_pages; OCR runs in batches and the new action
+ *     { action: 'ocr_continue', documentId, retry?, embed? } resumes it, so a
+ *     long scan never has to fit one request. Re-uploading a file that is
+ *     mid-OCR reports its progress instead of starting again.
+ *   - OCR text goes through the SAME chunker, tagger, embedder and tables as
+ *     native text (finalizeDocument); every chunk records its extraction
+ *     method, engine, confidence and source file in entity_meta.
+ *   - Pages that fail after MAX_ATTEMPTS or are read below
+ *     MIN_OCR_CONFIDENCE are named in processing_error; they are never
+ *     indexed and never filled in. A fully digital PDF takes the previous
+ *     path unchanged and does not need an OCR key.
  * 2026-11-26 — SERVICE-ONLY GUARD (security audit KS-005). The header above
  *   always said "service context", but nothing enforced it: verify_jwt is
  *   false and the handler never looked at the caller, so any request could
@@ -73,6 +91,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { extractText, getDocumentProxy } from 'npm:unpdf';
 import { getEmbeddingProvider } from '../_shared/embeddingProvider.ts';
+import { getOcrProvider } from '../_shared/ocrProvider.ts';
+import {
+  classifyPages, fileKind, loadProgress, registerPages, runOcr, summarize,
+  INGESTABLE_EXTENSIONS, MAX_ATTEMPTS, MIN_OCR_CONFIDENCE,
+  type ExtractionMethod, type OcrProgress,
+} from './ocrPipeline.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -94,6 +118,7 @@ const PAGE_EDGE_TOKENS = 40;
 // ── Heading heuristics: numbered ("4.2 ..."), SHORT ALL-CAPS, or Devanagari-short lines
 const NUMBERED_HEADING = /^\s*(\d+(?:\.\d+)*)[.)]?\s+(.{3,80})$/;
 const CAPS_HEADING = /^[A-Z][A-Z0-9 \-:&()]{4,60}$/;
+const MARKDOWN_HEADING = /^#{1,6}\s+(\S.{1,118})$/;
 // ── Card titles. An identifier code is a short letter group joined to digits.
 //    Either a serial precedes the code ("8 AB 12345"), or a parenthesised name
 //    follows it ("AB 12345 (Sample Name)"). A bare "Word 12" is neither.
@@ -307,6 +332,15 @@ function chunkPages(pages: PageText[]): RawChunk[] {
       if (bufIsRow && !(unbalancedOpen(buf) || /[,;]$/.test(buf) || continuesPrevious(line)) ) flush();
       if (bufIsRow && buf.length >= CHUNK_MAX_CHARS) flush();
 
+      // OCR engines return headings in markdown form ("## Title"): a heading by
+      // declaration, with the marks removed from the section path.
+      const mdHeading = !bufIsRow ? line.match(MARKDOWN_HEADING) : null;
+      if (mdHeading) {
+        flush();
+        currentSection = mdHeading[1].trim();
+        bufPage = page;
+        continue;
+      }
       const numbered = line.match(NUMBERED_HEADING);
       const titlePart = numbered ? numbered[2] : line;
       const letters = (titlePart.match(/[\p{L}]/gu) || []).length;
@@ -407,9 +441,177 @@ function tagChunk(
   return { cropCodes: [...cropCodes].slice(0, 12), chemicalNames: [...chemicalNames].slice(0, 12) };
 }
 
+// ── Document finalisation: pages → chunks → index. One path for every
+//    extraction method, so OCR text is chunked, tagged, embedded and searched
+//    exactly like native text.
+const OCR_TIME_BUDGET_MS = 100_000; // under the 150 s request limit, leaving room to chunk and embed
+
+interface DocContext {
+  id: string;
+  tenant_id: string | null;
+  language: string;
+  crop_codes: string[] | null;
+  topic_codes: string[] | null;
+  storagePath: string;
+}
+interface PageMeta { method: ExtractionMethod; confidence: number | null; engine: string | null }
+
+function compactPages(nums: number[]): string {
+  const shown = nums.slice(0, 20).join(', ');
+  return nums.length > 20 ? `${shown}, … (+${nums.length - 20})` : shown;
+}
+
+async function failDocument(supabase: SupabaseClient, documentId: string, msg: string, traceId: string): Promise<Response> {
+  await supabase.from('rag_documents')
+    .update({ processing_status: 'failed', processing_error: msg }).eq('id', documentId);
+  console.error(`❌ [${traceId}] ingest failed doc=${documentId}: ${msg}`);
+  return json(422, { error: msg, documentId, processing_status: 'failed' });
+}
+
+/** Steps 6–10 of ingestion for a set of page texts. */
+async function finalizeDocument(
+  supabase: SupabaseClient,
+  doc: DocContext,
+  pages: PageText[],
+  pageMeta: Map<number, PageMeta>,
+  opts: { embed: boolean; traceId: string; pageCount: number; notes: string[]; ocr?: OcrProgress },
+): Promise<Response> {
+  const { traceId } = opts;
+  // Exactly one invocation may chunk a document: the status predicate is the lock.
+  const { data: locked, error: lockErr } = await supabase.from('rag_documents')
+    .update({ processing_status: 'chunking' }).eq('id', doc.id).eq('processing_status', 'parsing').select('id');
+  if (lockErr) return json(500, { error: lockErr.message, documentId: doc.id });
+  if (!locked?.length) {
+    const { data: cur } = await supabase.from('rag_documents').select('processing_status').eq('id', doc.id).maybeSingle();
+    return json(200, { documentId: doc.id, processing_status: cur?.processing_status ?? 'unknown', message: 'Document is being finalised by another request', ocr: opts.ocr });
+  }
+
+  // 6) Chunk (§12) + validate
+  const cleanedPages = stripRunningShingles(stripRunningLines(pages));
+  const rawChunks = chunkPages(cleanedPages);
+  if (rawChunks.length === 0) return await failDocument(supabase, doc.id, 'CHUNKING_PRODUCED_ZERO_CHUNKS', traceId);
+
+  // 7) Entity tagging from SSOT tables (§13), constrained by the declared crops
+  const dict = await loadEntityDictionaries(supabase);
+  const sourceFile = doc.storagePath.split('/').pop() || doc.storagePath;
+  const chunkRows = rawChunks.map((c, i) => {
+    const tags = tagChunk(c.text, dict, doc.crop_codes);
+    const meta = pageMeta.get(c.pageNumber);
+    return {
+      document_id: doc.id,
+      tenant_id: doc.tenant_id,
+      chunk_index: i,
+      chunk_text: c.text,
+      section_path: c.sectionPath,
+      page_number: c.pageNumber,
+      language: doc.language,
+      crop_codes: tags.cropCodes.length ? tags.cropCodes : null,
+      chemical_names: tags.chemicalNames.length ? tags.chemicalNames : null,
+      topic_codes: doc.topic_codes?.length ? doc.topic_codes : null,
+      token_count: Math.round(c.text.length / 4),
+      is_table: c.isTable,
+      // Traceability: how this text was obtained, and from which stored file.
+      entity_meta: {
+        extraction_method: meta?.method ?? 'text',
+        ocr_confidence: meta?.confidence ?? null,
+        ocr_engine: meta?.engine ?? null,
+        source_file: sourceFile,
+        storage_path: `${BUCKET}/${doc.storagePath}`,
+      },
+    };
+  });
+
+  // 8) Store chunks (batched inserts). A resumed document may carry chunks of
+  //    an earlier, interrupted run: they are derived rows and are replaced.
+  await supabase.from('rag_chunks').delete().eq('document_id', doc.id);
+  for (let i = 0; i < chunkRows.length; i += 200) {
+    const { error: cErr } = await supabase.from('rag_chunks').insert(chunkRows.slice(i, i + 200));
+    if (cErr) return await failDocument(supabase, doc.id, `CHUNK_INSERT_FAILED: ${cErr.message}`, traceId);
+  }
+
+  // 9) Optional inline embedding (Stage 2). Failure here does NOT fail the
+  //    document — fulltext retrieval already works; embeddings can backfill.
+  let embeddedCount = 0;
+  let embedNote = 'skipped';
+  if (opts.embed) {
+    const provider = getEmbeddingProvider();
+    if (provider.available()) {
+      try {
+        await supabase.from('rag_documents').update({ processing_status: 'embedding' }).eq('id', doc.id);
+        const vectors = await provider.embedDocuments(chunkRows.map((c) => c.chunk_text));
+        const { data: inserted } = await supabase
+          .from('rag_chunks').select('id, chunk_index').eq('document_id', doc.id).order('chunk_index');
+        for (const row of inserted || []) {
+          const v = vectors[(row as any).chunk_index];
+          if (v) {
+            const { error: eErr } = await supabase
+              .from('rag_chunks').update({ embedding: JSON.stringify(v) }).eq('id', (row as any).id);
+            if (!eErr) embeddedCount++;
+          }
+        }
+        await supabase.from('rag_documents').update({ embedding_model: provider.version() }).eq('id', doc.id);
+        embedNote = `embedded=${embeddedCount} model=${provider.version()}`;
+      } catch (e) {
+        embedNote = `embed_deferred:${(e as Error).message}`; // backfill later
+      }
+    } else {
+      embedNote = 'provider_unconfigured — fulltext-only (Stage 1)';
+    }
+  }
+
+  // 10) Complete + audit summary. Pages that could not be read are named in
+  //     processing_error even though the readable pages are indexed.
+  const note = opts.notes.length ? opts.notes.join(' ') : null;
+  await supabase.from('rag_documents')
+    .update({ processing_status: 'completed', chunk_count: chunkRows.length, processing_error: note }).eq('id', doc.id);
+
+  const sections = new Set(chunkRows.map((c) => c.section_path).filter(Boolean)).size;
+  console.log(`✅ [${traceId}] ingested doc=${doc.id} pages=${opts.pageCount} chunks=${chunkRows.length} sections=${sections} ${embedNote}${note ? ` note=${note}` : ''}`);
+  return json(200, {
+    documentId: doc.id,
+    pages: opts.pageCount,
+    chunks: chunkRows.length,
+    sectionsDetected: sections,
+    tables: chunkRows.filter((c) => c.is_table).length,
+    embedding: embedNote,
+    processing_status: 'completed',
+    processing_error: note,
+    ...(opts.ocr ? { ocr: opts.ocr } : {}),
+  });
+}
+
+/** Finalise a document whose pages were recorded in rag_pages (native + OCR). */
+async function finalizeFromPages(supabase: SupabaseClient, doc: DocContext, embed: boolean, traceId: string): Promise<Response> {
+  const { data, error } = await supabase
+    .from('rag_pages')
+    .select('page_number, status, extraction_method, page_text, ocr_confidence, ocr_engine, error')
+    .eq('document_id', doc.id).order('page_number');
+  if (error) return json(500, { error: `rag_pages read failed: ${error.message}`, documentId: doc.id });
+  const rows = (data || []) as Array<{ page_number: number; status: string; extraction_method: ExtractionMethod | null; page_text: string | null; ocr_confidence: number | null; ocr_engine: string | null; error: string | null }>;
+  const progress = summarize(rows as any);
+  const readable = rows.filter((r) => r.status === 'done' && r.page_text);
+  const notes: string[] = [];
+  if (progress.failed) {
+    const reason = rows.find((r) => r.status === 'failed')?.error || 'unknown';
+    notes.push(`OCR_PARTIAL: ${progress.failed} page(s) could not be read after ${MAX_ATTEMPTS} attempts (pages ${compactPages(progress.failed_pages)}; last error ${reason}).`);
+  }
+  if (progress.low_confidence) {
+    notes.push(`OCR_LOW_CONFIDENCE: ${progress.low_confidence} page(s) were read below confidence ${MIN_OCR_CONFIDENCE} and are not indexed (pages ${compactPages(progress.low_confidence_pages)}).`);
+  }
+  if (!readable.length) {
+    return await failDocument(supabase, doc.id, `OCR_NO_TEXT: no readable text on any of ${rows.length} page(s). ${notes.join(' ')}`.trim(), traceId);
+  }
+  const pages: PageText[] = readable.map((r) => ({ page: r.page_number, text: String(r.page_text) }));
+  const meta = new Map<number, PageMeta>(readable.map((r) => [r.page_number, {
+    method: r.extraction_method ?? 'text', confidence: r.ocr_confidence == null ? null : Number(r.ocr_confidence), engine: r.ocr_engine,
+  }]));
+  return await finalizeDocument(supabase, doc, pages, meta, { embed, traceId, pageCount: rows.length, notes, ocr: progress });
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   const traceId = crypto.randomUUID().slice(0, 8);
+  const startedAt = Date.now();
 
   // ── Auth: service role only (ops / the admin rag-admin function). Same check as rag-eval.
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -460,6 +662,45 @@ serve(async (req: Request) => {
       return json(200, { embedded, model: provider.version(), remainingHint: rows.length === maxChunks });
     }
 
+    // ─────────────────────────────── ocr_continue ────────────────────────────
+    // Resume OCR for a document whose pages are still queued, or retry the
+    // pages that failed ({ retry: true }). Called repeatedly until the document
+    // leaves 'parsing'; each call does a bounded amount of work.
+    if (action === 'ocr_continue') {
+      const documentId = String(body.documentId || '');
+      if (!documentId) return json(400, { error: 'documentId is required' });
+      const { data: doc, error: docErr } = await supabase
+        .from('rag_documents')
+        .select('id, tenant_id, language, crop_codes, topic_codes, file_url, processing_status')
+        .eq('id', documentId).maybeSingle();
+      if (docErr || !doc) return json(404, { error: 'Document not found' });
+      if (doc.processing_status === 'completed') {
+        return json(200, { documentId, processing_status: 'completed', ocr: await loadProgress(supabase, documentId) });
+      }
+      const before = await loadProgress(supabase, documentId);
+      if (before.total === 0) return json(400, { error: `Document is '${doc.processing_status}' and has no page records — re-run ingest for it`, documentId });
+      if (body.retry === true && before.failed > 0) {
+        await supabase.from('rag_pages')
+          .update({ status: 'pending', attempts: 0, error: null, updated_at: new Date().toISOString() })
+          .eq('document_id', documentId).eq('status', 'failed');
+      }
+      if (doc.processing_status === 'failed') {
+        const { error: reopenErr } = await supabase.from('rag_documents')
+          .update({ processing_status: 'parsing', processing_error: null }).eq('id', documentId).eq('processing_status', 'failed');
+        if (reopenErr) return json(500, { error: reopenErr.message });
+      }
+      const storagePath = String(doc.file_url || '').replace(new RegExp(`^${BUCKET}/`), '');
+      const ocr = getOcrProvider();
+      if (!ocr.available()) return json(400, { error: 'OCR_PROVIDER_UNCONFIGURED: set RAG_OCR_API_KEY for rag-ingest', documentId });
+      const run = await runOcr(supabase, ocr, { id: documentId, storagePath, bucket: BUCKET }, startedAt + OCR_TIME_BUDGET_MS);
+      const progress = await loadProgress(supabase, documentId);
+      if (progress.pending > 0) {
+        console.log(`🔎 [${traceId}] ocr doc=${documentId} recognised=${run.recognised} pending=${progress.pending} failed=${progress.failed}`);
+        return json(200, { documentId, processing_status: 'parsing', ocr: progress, ocr_error: run.lastError });
+      }
+      return await finalizeFromPages(supabase, { ...doc, storagePath }, body.embed !== false, traceId);
+    }
+
     // ────────────────────────────────── ingest ───────────────────────────────
     if (action !== 'ingest') return json(400, { error: `Unknown action: ${action}` });
 
@@ -473,6 +714,8 @@ serve(async (req: Request) => {
     if (!storagePath || !sourceCode || !title) {
       return json(400, { error: 'storagePath, sourceCode and title are required' });
     }
+    const { ext, kind } = fileKind(String(storagePath));
+    if (!kind) return json(400, { error: `Unsupported file type '.${ext}' — accepted: ${INGESTABLE_EXTENSIONS.join(', ')}` });
 
     // 1) Source must exist in the governed registry (§8/§9 — no ungoverned corpus)
     const { data: source, error: srcErr } = await supabase
@@ -501,6 +744,14 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (dup && dup.processing_status === 'completed') {
       return json(200, { message: 'Duplicate — already ingested', documentId: dup.id, deduplicated: true });
+    }
+    // The same file is already being read page by page: report where it is
+    // instead of starting a second run over the same pages.
+    if (dup && dup.processing_status === 'parsing') {
+      const inFlight = await loadProgress(supabase, dup.id);
+      if (inFlight.total > 0) {
+        return json(200, { message: 'Already processing — OCR in progress', documentId: dup.id, processing_status: 'parsing', ocr: inFlight, in_progress: true });
+      }
     }
 
     // 4) Register document row (status machine per §28)
@@ -531,103 +782,60 @@ serve(async (req: Request) => {
       if (insErr || !created) return json(500, { error: `Document registration failed: ${insErr?.message}` });
       documentId = created.id;
     }
-
-    const fail = async (msg: string) => {
-      await supabase.from('rag_documents')
-        .update({ processing_status: 'failed', processing_error: msg }).eq('id', documentId);
-      console.error(`❌ [${traceId}] ingest failed doc=${documentId}: ${msg}`);
-      return json(422, { error: msg, documentId, processing_status: 'failed' });
+    const doc: DocContext = {
+      id: documentId, tenant_id: tenantId, language: docFields.language,
+      crop_codes: Array.isArray(cropCodes) && cropCodes.length ? cropCodes.map(String) : null,
+      topic_codes: null, storagePath: String(storagePath),
     };
 
-    // 5) Extract text per page (§11)
+    // 5) Extract text per page (§11) — native text layer first. An image has
+    //    no text layer: its single page goes straight to OCR.
     let pages: PageText[];
-    try {
-      pages = await extractPdfPages(buf);
-    } catch (e) {
-      return await fail(`PDF_EXTRACTION_ERROR: ${(e as Error).message}`);
-    }
-    const totalChars = pages.reduce((n, p) => n + p.text.length, 0);
-    if (totalChars < MIN_DOC_TEXT_CHARS) {
-      return await fail('SCANNED_OR_EMPTY_PDF: no extractable text layer. OCR required — not implemented; mark for manual handling.');
-    }
-
-    // 6) Chunk (§12) + validate
-    await supabase.from('rag_documents').update({ processing_status: 'chunking' }).eq('id', documentId);
-    const cleanedPages = stripRunningShingles(stripRunningLines(pages));
-    const rawChunks = chunkPages(cleanedPages);
-    if (rawChunks.length === 0) return await fail('CHUNKING_PRODUCED_ZERO_CHUNKS');
-
-    // 7) Entity tagging from SSOT tables (§13), constrained by the declared crops
-    const dict = await loadEntityDictionaries(supabase);
-    const declaredCrops: string[] | null = Array.isArray(cropCodes) && cropCodes.length ? cropCodes.map(String) : null;
-    const chunkRows = rawChunks.map((c, i) => {
-      const tags = tagChunk(c.text, dict, declaredCrops);
-      return {
-        document_id: documentId,
-        tenant_id: tenantId,
-        chunk_index: i,
-        chunk_text: c.text,
-        section_path: c.sectionPath,
-        page_number: c.pageNumber,
-        language: language || source.default_language,
-        crop_codes: tags.cropCodes.length ? tags.cropCodes : null,
-        chemical_names: tags.chemicalNames.length ? tags.chemicalNames : null,
-        token_count: Math.round(c.text.length / 4),
-        is_table: c.isTable,
-      };
-    });
-
-    // 8) Store chunks (batched inserts)
-    for (let i = 0; i < chunkRows.length; i += 200) {
-      const { error: cErr } = await supabase.from('rag_chunks').insert(chunkRows.slice(i, i + 200));
-      if (cErr) return await fail(`CHUNK_INSERT_FAILED: ${cErr.message}`);
-    }
-
-    // 9) Optional inline embedding (Stage 2). Failure here does NOT fail the
-    //    document — fulltext retrieval already works; embeddings can backfill.
-    let embeddedCount = 0;
-    let embedNote = 'skipped';
-    if (embed) {
-      const provider = getEmbeddingProvider();
-      if (provider.available()) {
-        try {
-          await supabase.from('rag_documents').update({ processing_status: 'embedding' }).eq('id', documentId);
-          const vectors = await provider.embedDocuments(chunkRows.map((c) => c.chunk_text));
-          const { data: inserted } = await supabase
-            .from('rag_chunks').select('id, chunk_index').eq('document_id', documentId).order('chunk_index');
-          for (const row of inserted || []) {
-            const v = vectors[(row as any).chunk_index];
-            if (v) {
-              const { error: eErr } = await supabase
-                .from('rag_chunks').update({ embedding: JSON.stringify(v) }).eq('id', (row as any).id);
-              if (!eErr) embeddedCount++;
-            }
-          }
-          await supabase.from('rag_documents').update({ embedding_model: provider.version() }).eq('id', documentId);
-          embedNote = `embedded=${embeddedCount} model=${provider.version()}`;
-        } catch (e) {
-          embedNote = `embed_deferred:${(e as Error).message}`; // backfill later
-        }
-      } else {
-        embedNote = 'provider_unconfigured — fulltext-only (Stage 1)';
+    if (kind === 'image') {
+      pages = [{ page: 1, text: '' }];
+    } else {
+      try {
+        pages = await extractPdfPages(buf);
+      } catch (e) {
+        return await failDocument(supabase, documentId, `PDF_EXTRACTION_ERROR: ${(e as Error).message}`, traceId);
       }
     }
+    const { textPages, ocrPages } = classifyPages(pages);
+    const nativeChars = pages.reduce((n, p) => n + p.text.length, 0);
 
-    // 10) Complete + audit summary
-    await supabase.from('rag_documents')
-      .update({ processing_status: 'completed', chunk_count: chunkRows.length }).eq('id', documentId);
+    // 5a) Every page has a text layer: the document is chunked now, as before.
+    if (ocrPages.length === 0) {
+      if (nativeChars < MIN_DOC_TEXT_CHARS) return await failDocument(supabase, documentId, 'EMPTY_DOCUMENT: the file has a text layer but almost no text in it.', traceId);
+      return await finalizeDocument(supabase, doc, pages, new Map(), { embed, traceId, pageCount: pages.length, notes: [] });
+    }
 
-    const sections = new Set(chunkRows.map((c) => c.section_path).filter(Boolean)).size;
-    console.log(`✅ [${traceId}] ingested doc=${documentId} pages=${pages.length} chunks=${chunkRows.length} sections=${sections} ${embedNote}`);
-    return json(200, {
-      documentId,
-      pages: pages.length,
-      chunks: chunkRows.length,
-      sectionsDetected: sections,
-      tables: chunkRows.filter((c) => c.is_table).length,
-      embedding: embedNote,
-      processing_status: 'completed',
-    });
+    // 5b) Some or all pages are images. Without an OCR engine a mostly-digital
+    //     document is still ingested from its text pages (and says so); a
+    //     scanned one cannot be read.
+    const ocr = getOcrProvider();
+    if (!ocr.available()) {
+      if (nativeChars < MIN_DOC_TEXT_CHARS) {
+        return await failDocument(supabase, documentId, `SCANNED_OR_EMPTY_PDF: ${ocrPages.length} of ${pages.length} page(s) have no text layer and OCR is not configured (RAG_OCR_API_KEY).`, traceId);
+      }
+      return await finalizeDocument(supabase, doc, pages.filter((p) => textPages.includes(p.page)), new Map(), {
+        embed, traceId, pageCount: pages.length,
+        notes: [`OCR_NOT_CONFIGURED: ${ocrPages.length} page(s) without a text layer were not read (pages ${compactPages(ocrPages)}).`],
+      });
+    }
+
+    // 5c) Queue the image pages and read as many as this request has time for.
+    try {
+      await registerPages(supabase, { id: documentId, tenant_id: tenantId }, pages);
+    } catch (e) {
+      return await failDocument(supabase, documentId, `PAGE_REGISTRATION_FAILED: ${(e as Error).message}`, traceId);
+    }
+    const run = await runOcr(supabase, ocr, { id: documentId, storagePath: String(storagePath), bucket: BUCKET }, startedAt + OCR_TIME_BUDGET_MS);
+    const progress = await loadProgress(supabase, documentId);
+    if (progress.pending > 0) {
+      console.log(`🔎 [${traceId}] ocr doc=${documentId} pages=${pages.length} recognised=${run.recognised} pending=${progress.pending}`);
+      return json(200, { documentId, pages: pages.length, processing_status: 'parsing', ocr: progress, ocr_error: run.lastError });
+    }
+    return await finalizeFromPages(supabase, doc, embed, traceId);
   } catch (e) {
     console.error(`[${traceId}] fatal`, (e as Error).message);
     return json(500, { error: 'Internal error', detail: (e as Error).message, trace_id: traceId });
