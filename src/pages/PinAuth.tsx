@@ -13,6 +13,11 @@ import { useTenant } from '@/contexts/TenantContext';
 import { offlineAuthService } from '@/services/offlineAuthService';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { toast } from '@/hooks/use-toast';
+import { FarmerAuthError } from '@/services/farmerAuthService';
+
+const MAX_ATTEMPTS = 5;
+const LOCK_MS = 5 * 60_000;
+const lockKey = (m: string | null) => `ks_pin_lock_${m ?? ''}`;
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function PinAuth() {
@@ -26,12 +31,38 @@ export default function PinAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number>(0);
+  const [now, setNow] = useState(Date.now());
   const isOnline = useOfflineStatus();
   const [isOffline, setIsOffline] = useState(false);
   
   const mobile = localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
   const tenantId = localStorage.getItem('tenantId');
+  useEffect(() => {
+    const saved = Number(localStorage.getItem(lockKey(mobile)) || 0);
+    if (saved > Date.now()) setLockedUntil(saved);
+  }, [mobile]);
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const id = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() >= lockedUntil) {
+        setLockedUntil(0); setAttempts(0); setError(null);
+        localStorage.removeItem(lockKey(mobile));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil, mobile]);
+  const isLocked = lockedUntil > now;
+  const lockLeft = Math.max(0, Math.ceil((lockedUntil - now) / 1000));
+  const lockText = `${Math.floor(lockLeft / 60)}:${String(lockLeft % 60).padStart(2, '0')}`;
+  const startLock = (ms: number) => {
+    const until = Date.now() + ms;
+    localStorage.setItem(lockKey(mobile), String(until));
+    setLockedUntil(until); setNow(Date.now());
+  };
+
   const maskedMobile = mobile ? `${mobile.slice(0, 2)}****${mobile.slice(-2)}` : '';
   
   // Ensure we have all required data (but allow if cached auth exists for offline)
@@ -54,7 +85,7 @@ export default function PinAuth() {
   }, [mobile, farmerId, navigate]);
 
   const handlePinComplete = async (value: string) => {
-    if (value.length !== 4) return;
+    if (value.length !== 4 || isLocked) return;
     
     setIsLoading(true);
     setError(null);
@@ -70,7 +101,7 @@ export default function PinAuth() {
       );
 
       if (!authResult.success) {
-        throw new Error(authResult.error || 'Authentication failed');
+        throw Object.assign(new Error((authResult as any).code ?? authResult.error ?? 'Authentication failed'), { retryAfterSeconds: (authResult as any).retryAfterSeconds });
       }
 
       // Multi-role identity: the session opened in the Provider or Customer
@@ -206,17 +237,28 @@ export default function PinAuth() {
       navigate('/app', { replace: true });
     } catch (err: any) {
       console.error('Error verifying PIN:', err);
-      setError(err.message || 'Authentication failed. Please try again.');
       setPin('');
-      
-      // Increment attempts
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-      
-      if (newAttempts >= 3) {
-        setError(t('auth.tooManyAttempts') || 'Too many failed attempts. Please try again later.');
-        setTimeout(() => navigate('/auth'), 3000);
+      const msg: string = err?.message || '';
+      const code = err instanceof FarmerAuthError ? err.code : msg;
+      if (code === 'locked_out' || /too many failed/i.test(msg)) {
+        const secs = Number(err?.retryAfterSeconds) || LOCK_MS / 1000;
+        startLock(secs * 1000);
+        setAttempts(MAX_ATTEMPTS);
+        setError(t('auth.pinLocked', 'Too many wrong PINs. Login is locked for 5 minutes.'));
+        return;
       }
+      if (code === 'invalid_credentials' || /incorrect pin|invalid pin/i.test(msg)) {
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        if (newAttempts >= MAX_ATTEMPTS) {
+          startLock(LOCK_MS);
+          setError(t('auth.pinLocked', 'Too many wrong PINs. Login is locked for 5 minutes.'));
+        } else {
+          setError(t('auth.wrongPinTryAgain', 'You entered a wrong PIN. Please try again.'));
+        }
+        return;
+      }
+      setError(msg || t('auth.loginFailedRetry', 'Could not sign in. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -278,7 +320,7 @@ export default function PinAuth() {
                   handlePinComplete(value);
                 }
               }}
-              disabled={isLoading || attempts >= 3}
+              disabled={isLoading || isLocked}
               autoFocus
             >
               <InputOTPGroup>
@@ -302,14 +344,18 @@ export default function PinAuth() {
               variant="link"
               onClick={() => navigate('/forgot-pin')}
               className="text-sm"
-              disabled={attempts >= 3}
+              disabled={isLocked}
             >
               {t('auth.forgotPin')}
             </Button>
             
-            {attempts > 0 && attempts < 3 && (
+            {isLocked ? (
+              <p className="text-sm font-medium text-destructive" role="status" aria-live="polite">
+                {t('auth.pinLockedCountdown', { time: lockText, defaultValue: 'Try again in {{time}}' })}
+              </p>
+            ) : attempts > 0 && attempts < MAX_ATTEMPTS && (
               <p className="text-xs text-muted-foreground">
-                {t('auth.attemptsRemaining', { count: 3 - attempts })}
+                {t('auth.attemptsRemaining', { count: MAX_ATTEMPTS - attempts })}
               </p>
             )}
           </div>

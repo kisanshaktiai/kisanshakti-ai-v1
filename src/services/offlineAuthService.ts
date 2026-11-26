@@ -315,7 +315,7 @@ class OfflineAuthService {
         // fallback path runs. Only genuine credential failures are terminal.
         if (error.code === 'transport_unavailable') throw error;
         // Credential failures must not be retried or masked by offline fallback.
-        return { success: false, isOffline: false, error: error.message };
+        return { success: false, isOffline: false, error: error.message, code: error.code, retryAfterSeconds: error.retryAfterSeconds } as any;
       }
       throw error;
     }

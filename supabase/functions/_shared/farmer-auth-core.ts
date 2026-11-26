@@ -97,7 +97,7 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PIN_SALT = "kisan_shakti_2024";
 const SESSION_TTL_DAYS = 7;
 const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_MINUTES = 15;
+const LOCKOUT_MINUTES = 5;
 
 // --- PIN reset (forgot-PIN) policy -----------------------------------------
 const RESET_CODE_TTL_MS = 10 * 60_000;
