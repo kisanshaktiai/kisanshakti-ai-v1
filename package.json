@@ -76,6 +76,7 @@
     "idb": "^8.0.3",
     "input-otp": "^1.4.2",
     "jspdf": "^3.0.3",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.462.0",
     "maplibre-gl": "^5.24.0",
     "next-themes": "^0.3.0",
