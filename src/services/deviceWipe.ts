@@ -23,6 +23,8 @@ const PERSONAL_KEYS = [
   'userLocation',
   'scheduledReminders',
   'voice_dialog_context',
+  // Same key as lib/activationState.ACTIVATION_REQUIRED_KEY (farmer activation, 2026-11-25).
+  'ks_activation_required',
 ];
 
 /** Runtime caches named in vite.config.ts (workbox runtimeCaching). */

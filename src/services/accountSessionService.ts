@@ -17,7 +17,9 @@ import {
 } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useAccountStore } from '@/stores/accountStore';
-import { farmerAuthService, FarmerAuthError, type FarmerAuthResult } from '@/services/farmerAuthService';
+import {
+  farmerAuthService, FarmerAuthError, type ActivationResult, type FarmerAuthResult,
+} from '@/services/farmerAuthService';
 import {
   WORKSPACE_HOME,
   landingRouteFor,
@@ -170,6 +172,36 @@ export const accountSessionService = {
     const res = await farmerAuthService.updateAccount(fields);
     useAccountStore.getState().setAccount(res.account);
     return res.account;
+  },
+
+  /**
+   * Farmer activation: call right after farmerAuthService.activate() succeeded.
+   *
+   * Redeeming a code moves the farmer to the tenant that issued it, so the
+   * farmer state on the device (authStore, the request headers, the offline
+   * sign-in copy and the account) is re-opened from the rows the server sent
+   * back. The session token is the same one: the server keeps it valid.
+   * Returns false when there is nothing to apply (no farmer in the reply, or no
+   * session on the device).
+   */
+  async applyActivation(result: Pick<ActivationResult, 'farmer' | 'profile'>): Promise<boolean> {
+    const auth = useAuthStore.getState();
+    const account = useAccountStore.getState();
+    const token = auth.session?.token ?? account.token ?? getSessionToken();
+    if (!result?.farmer?.id || !token) return false;
+
+    openFarmerState(result.farmer, result.profile, token, auth.session?.expiresAt ?? account.expiresAt);
+    try { localStorage.setItem('tenantId', result.farmer.tenant_id); } catch { /* storage unavailable */ }
+
+    try {
+      const { offlineAuthService } = await import('@/services/offlineAuthService');
+      await offlineAuthService.updateCachedFarmer(result.farmer, result.profile);
+    } catch { /* no offline copy on this device */ }
+
+    // The account carries the tenant too; only people on the multi-role
+    // identity have one on the device.
+    if (account.account) await accountSessionService.refresh();
+    return true;
   },
 
   /**

@@ -1,0 +1,55 @@
+{
+  "__meta": {
+    "page": "activation",
+    "version": "1.0",
+    "last_updated": "2026-11-25"
+  },
+  "activation": {
+    "title": "Activate your app",
+    "description": "Enter the activation code you received, or scan its QR code.",
+    "mobile": "Mobile: +91 {{mobile}}",
+    "scan": "Scan QR code",
+    "scanPhoto": "Take a photo of the QR code",
+    "or": "or type the code",
+    "codeLabel": "Activation code",
+    "codeHint": "12 letters and numbers, printed below the QR code.",
+    "submit": "Activate",
+    "submitting": "Activating…",
+    "checking": "Checking…",
+    "noCode": "No code? Ask the company or dealer who gave you this app.",
+    "signOut": "Sign out",
+    "offline": "You are offline. Turn on the internet to activate the app.",
+    "success": {
+      "title": "App activated",
+      "withTenant": "You are now connected to {{tenant}}.",
+      "generic": "Your app is ready to use.",
+      "validUntil": "Your plan is valid until {{date}}.",
+      "continue": "Start using the app"
+    },
+    "scanner": {
+      "title": "Scan the QR code",
+      "hint": "Hold the QR code inside the frame.",
+      "starting": "Starting camera…",
+      "notActivationQr": "This is not an activation QR code.",
+      "typeInstead": "Type the code instead",
+      "close": "Close",
+      "cameraUnavailable": "The camera could not be opened. Type the code, or take a photo of the QR code.",
+      "photoNotRead": "No activation QR code was found in the photo. Try again, or type the code."
+    },
+    "errors": {
+      "activation_invalid": "This code is not correct. Check it and enter it again.",
+      "activation_used": "This code has already been used. Ask for a new code.",
+      "activation_revoked": "This code has been cancelled. Ask for a new code.",
+      "activation_expired": "This code has expired. Ask for a new code.",
+      "activation_tenant_inactive": "This code cannot be used right now. Contact the company that gave you the code.",
+      "activation_subscription_inactive": "The company's plan is not active right now. Contact the company that gave you the code.",
+      "activation_capacity_full": "All licences of this company are in use. Contact the company that gave you the code.",
+      "activation_farmer_invalid": "This account cannot be activated. Please sign in again.",
+      "activation_failed": "The app could not be activated. Please try again.",
+      "rate_limited": "Too many wrong codes. Try again after {{minutes}} minutes.",
+      "session_required": "Please sign in again.",
+      "transport_unavailable": "Network connection is weak. Please try again.",
+      "generic": "Something went wrong. Please try again."
+    }
+  }
+}

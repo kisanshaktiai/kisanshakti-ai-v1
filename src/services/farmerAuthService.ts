@@ -2,6 +2,7 @@
 import { supabase, setSessionToken, getSessionToken } from '@/integrations/supabase/client';
 import i18n from '@/i18n/config';
 import type { AccountRole, AccountRoleStatus, AccountSummary } from '@/lib/accountRoles';
+import { rememberActivation } from '@/lib/activationState';
 
 const FUNCTION_NAME = 'farmer-auth';
 export interface FarmerSession { token: string; expiresAt: string; }
@@ -11,6 +12,16 @@ export interface FarmerSession { token: string; expiresAt: string; }
  */
 export interface FarmerAuthResult { session: FarmerSession; farmer: any; profile: any; account?: AccountSummary | null; }
 export interface AccountSessionInfo { account: AccountSummary; multiRole: boolean; }
+/** Farmer activation: what the server answers to a redeemed code. */
+export interface ActivationResult {
+  activated: boolean;
+  /** true = the farmer was activated before this call (a repeated tap, a lost reply). */
+  already: boolean;
+  tenant: { id: string; name: string | null; slug: string | null } | null;
+  subscriptionEnd: string | null;
+  farmer: any;
+  profile: any;
+}
 export interface RegisterOptions { roles?: AccountRole[]; displayName?: string; }
 
 class FarmerAuthError extends Error {
@@ -54,6 +65,14 @@ function rememberMultiRole(value: unknown) {
     if (value === true) localStorage.setItem(MULTI_ROLE_KEY, 'true');
     else localStorage.removeItem(MULTI_ROLE_KEY);
   } catch { /* storage unavailable */ }
+}
+
+// Farmer activation. The server marks every farmer row it returns with
+// `activation_required`; the answer is remembered for the route guard
+// (lib/activationState). A reply without a farmer (Provider or Customer
+// workspace) changes nothing.
+function rememberFarmerActivation(farmer: { activation_required?: unknown } | null | undefined) {
+  if (farmer) rememberActivation(farmer.activation_required);
 }
 
 // tenant-config is already live and mounts the same auth core. Prefer it so
@@ -140,6 +159,7 @@ export const farmerAuthService = {
       ...(options?.displayName ? { displayName: options.displayName } : {}),
     });
     setSessionToken(result.session.token);
+    rememberFarmerActivation(result.farmer);
     return result;
   },
   async verifyPin(mobile: string, tenantId: string | null, pin: string) {
@@ -149,6 +169,7 @@ export const farmerAuthService = {
       ...(isMultiRoleEnabled() ? { role: 'AUTO' } : {}),
     });
     setSessionToken(result.session.token);
+    rememberFarmerActivation(result.farmer);
     return result;
   },
   async changePin(
@@ -158,6 +179,7 @@ export const farmerAuthService = {
       action: 'changePin', mobile, tenantId: tenantId ?? undefined, newPin, currentPin,
     });
     setSessionToken(result.session.token);
+    rememberFarmerActivation(result.farmer);
     return result;
   },
   /** Forgot-PIN step 1 — sends a one-time code by SMS. */
@@ -174,6 +196,7 @@ export const farmerAuthService = {
       action: 'verifyPinReset', mobile, tenantId: tenantId ?? undefined, code, newPin,
     });
     setSessionToken(result.session.token);
+    rememberFarmerActivation(result.farmer);
     return result;
   },
   // ── Multi-role identity: actions authenticated by the session token ──────
@@ -187,9 +210,11 @@ export const farmerAuthService = {
   },
   /** Moves the session to another held workspace. Farmer data comes back for FARMER. */
   async switchRole(role: AccountRole) {
-    return call<{ account: AccountSummary; farmer: any; profile: any }>({
+    const result = await call<{ account: AccountSummary; farmer: any; profile: any }>({
       action: 'switchRole', role, sessionToken: getSessionToken() ?? undefined,
     });
+    rememberFarmerActivation(result.farmer);
+    return result;
   },
   /** Adds a role to the signed-in person. No new credential is asked for. */
   async addRole(role: AccountRole) {
@@ -202,11 +227,33 @@ export const farmerAuthService = {
       action: 'updateAccount', ...fields, sessionToken: getSessionToken() ?? undefined,
     });
   },
+  // ── Farmer activation: actions authenticated by the session token ────────
+  /** Asks the server whether the signed-in farmer still has to redeem a code. */
+  async activationStatus() {
+    const result = await call<{ required: boolean; tenantId: string | null }>({
+      action: 'activationStatus', sessionToken: getSessionToken() ?? undefined,
+    });
+    rememberActivation(result?.required === true);
+    return result;
+  },
+  /**
+   * Redeems a code for the signed-in farmer. `code` is what the farmer typed or
+   * the text of the scanned QR; the server validates it and assigns the tenant.
+   * A refusal throws FarmerAuthError with the server's result code.
+   */
+  async activate(code: string) {
+    const result = await call<ActivationResult>({
+      action: 'activate', code, sessionToken: getSessionToken() ?? undefined,
+    });
+    rememberFarmerActivation(result.farmer);
+    return result;
+  },
   async logout(token?: string | null) {
     try {
       if (token) await call({ action: 'logout', sessionToken: token });
     } finally {
       setSessionToken(null);
+      rememberActivation(false);
     }
   },
 };

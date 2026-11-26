@@ -184,3 +184,72 @@ INSERT INTO public.user_tenants(user_id, tenant_id, role) VALUES
  ('50000000-0000-0000-0000-000000000001','d0000000-0000-0000-0000-000000000000','super_admin');
 -- 3 farmers that exist before the feature, like today's 28
 INSERT INTO public.farmers(tenant_id, mobile_number) SELECT 'd0000000-0000-0000-0000-000000000000', '90000000' || lpad(g::text,2,'0') FROM generate_series(1,3) g;
+
+-- ── app gate (20261125230000): the farmer session machinery ─────────────────
+-- user_sessions reduced to the columns the two context functions read. The two
+-- functions are the live bodies as audited on 2026-11-25, byte for byte: the
+-- migration's pre-flight compares their md5, and run.sh proves it passes here.
+CREATE TABLE public.user_sessions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, session_id text NOT NULL DEFAULT gen_random_uuid()::text,
+  access_token_hash text, expires_at timestamptz NOT NULL, is_active bool DEFAULT true, active_role text);
+GRANT ALL ON public.user_sessions TO service_role;
+REVOKE ALL ON public.user_sessions FROM anon, authenticated;
+CREATE FUNCTION public.hash_session_token(_token text) RETURNS text LANGUAGE sql IMMUTABLE SET search_path TO 'public' AS $function$
+  SELECT CASE WHEN _token IS NULL OR _token = '' THEN NULL
+              ELSE encode(sha256(convert_to(_token, 'UTF8')), 'hex') END
+$function$;
+CREATE FUNCTION public.verified_session_context()
+ RETURNS TABLE(session_id uuid, farmer_id uuid, tenant_id uuid)
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+  SELECT s.id, f.id, f.tenant_id
+  FROM public.user_sessions s
+  JOIN public.farmers f ON f.id = s.user_id
+  JOIN public.accounts a
+    ON a.id = f.id
+   AND a.status = 'ACTIVE'
+  JOIN public.account_roles r
+    ON r.account_id = a.id
+   AND r.role = 'FARMER'
+   AND r.status = 'ACTIVE'
+  WHERE s.access_token_hash = public.hash_session_token(
+          current_setting('request.headers', true)::json ->> 'x-session-token')
+    AND s.is_active = true
+    AND s.expires_at > now()
+    AND f.is_active = true
+    AND (s.active_role IS NULL OR s.active_role = 'FARMER')
+  LIMIT 1
+$function$;
+CREATE FUNCTION public.verified_account_context()
+ RETURNS TABLE(session_id uuid, account_id uuid, tenant_id uuid, active_role text)
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+  SELECT s.id, a.id, a.tenant_id, r.role
+  FROM public.user_sessions s
+  JOIN public.accounts a
+    ON a.id = s.user_id
+   AND a.status = 'ACTIVE'
+  JOIN public.account_roles r
+    ON r.account_id = a.id
+   AND r.tenant_id = a.tenant_id
+   AND r.role = COALESCE(s.active_role, 'FARMER')
+   AND r.status = 'ACTIVE'
+  WHERE s.access_token_hash = public.hash_session_token(
+          current_setting('request.headers', true)::json ->> 'x-session-token')
+    AND s.is_active = true
+    AND s.expires_at > now()
+    AND (r.role <> 'FARMER'
+         OR EXISTS (SELECT 1 FROM public.farmers f WHERE f.id = a.id AND f.is_active = true))
+  LIMIT 1
+$function$;
+CREATE FUNCTION public.get_current_farmer_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT farmer_id FROM public.verified_session_context()
+$function$;
+CREATE FUNCTION public.get_current_tenant_id() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $function$
+  SELECT tenant_id FROM public.verified_session_context()
+$function$;
+-- a farmer-owned table behind the same kind of RLS policy the live app uses
+ALTER TABLE public.lands ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.lands TO anon, authenticated;
+CREATE POLICY lands_farmer_own ON public.lands FOR ALL TO anon, authenticated
+  USING (farmer_id = public.get_current_farmer_id() AND tenant_id = public.get_current_tenant_id())
+  WITH CHECK (farmer_id = public.get_current_farmer_id() AND tenant_id = public.get_current_tenant_id());

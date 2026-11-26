@@ -50,6 +50,7 @@ const LanguageSelection = lazy(() => import("./pages/LanguageSelection"));
 const AuthScreen = lazy(() => import("./pages/AuthScreen"));
 const PinAuth = lazy(() => import("./pages/PinAuth"));
 const SetPin = lazy(() => import("./pages/SetPin"));
+const Activate = lazy(() => import("./pages/Activate"));
 const ForgotPin = lazy(() => import("./pages/ForgotPin"));
 const LandManagement = lazy(() => import("./pages/LandManagement"));
 const AddLand = lazy(() => import("./pages/AddLand"));
@@ -226,14 +227,16 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           tenantIsolationService.setUserId(user.id);
         }
         
+        // Farmer activation (2026-11-25): a farmer belongs to the tenant whose
+        // activation code they redeemed, and that is not always the tenant this
+        // domain resolves to. Until now a difference here signed the farmer out,
+        // which would sign out every activated farmer at the next app start.
+        // The farmer's tenant is decided by the server and enforced by the
+        // database on every request (the session token). TenantProvider follows
+        // the signed-in farmer and loads that tenant; this effect then runs
+        // again with it and sets the tenant context and local database above.
         if (session && user?.tenantId && user.tenantId !== activeTenant.id) {
-          console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.');
-          useAuthStore.getState().logout();
-          tenantIsolationService.clearContext();
-          runInBackground(async () => {
-            const { localDB } = await import("@/services/localDB");
-            await localDB.clearAll();
-          });
+          console.warn('[AppInit] Signed-in farmer belongs to another tenant than the one loaded; TenantProvider is loading it.');
         }
         
         // STEP 4: Start location service in background (non-blocking, delayed)
@@ -387,6 +390,12 @@ const router = createBrowserRouter([
   {
     path: "/forgot-pin",
     element: <Suspense fallback={<PageLoader />}><ForgotPin /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
+  // Farmer activation: where ProtectedRoute sends a farmer who has not redeemed a code.
+  {
+    path: "/activate",
+    element: <Suspense fallback={<PageLoader />}><Activate /></Suspense>,
     errorElement: <RouteErrorBoundary />,
   },
   {

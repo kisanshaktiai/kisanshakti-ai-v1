@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Security, isolation and concurrency tests for the farmer activation database part
-# (supabase/migrations/20261124160000_farmer_activation_core.sql and
-#  supabase/migrations/20261125100000_farmer_activation_licence_lock.sql).
+# (supabase/migrations/20261124160000_farmer_activation_core.sql,
+#  supabase/migrations/20261125100000_farmer_activation_licence_lock.sql and
+#  supabase/migrations/20261125230000_farmer_activation_app_gate.sql).
 #
 # Needs a local PostgreSQL 15+ with pgcrypto that you can connect to as a
 # superuser. It creates and drops its OWN database (acttest) and the three API
@@ -11,6 +12,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 MIGRATION="${MIGRATION:-$ROOT/supabase/migrations/20261124160000_farmer_activation_core.sql}"
 MIGRATION2="${MIGRATION2:-$ROOT/supabase/migrations/20261125100000_farmer_activation_licence_lock.sql}"
+MIGRATION3="${MIGRATION3:-$ROOT/supabase/migrations/20261125230000_farmer_activation_app_gate.sql}"
 export PGHOST="${PGHOST:-127.0.0.1}" PGPORT="${PGPORT:-5432}" PGUSER="${PGUSER:-postgres}"
 DB=acttest; ADMIN="psql -d postgres -v ON_ERROR_STOP=1 -q -X"
 $ADMIN -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null || { echo "cannot create database $DB"; exit 2; }
@@ -18,11 +20,21 @@ $ADMIN -c "DROP ROLE IF EXISTS anon" -c "DROP ROLE IF EXISTS authenticated" -c "
 psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$HERE/replica.sql" >/dev/null 2>&1 || { echo "replica.sql failed"; exit 2; }
 psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION" >/dev/null 2>&1 || { echo "migration failed to apply"; exit 2; }
 PSQL="psql -d $DB -At -q -X"
+q()   { $PSQL -c "$1" 2>&1; }                                             # owner (postgres)
 # Before the licence lock: reproduce the hole it closes (rolled back).
 HOLE=$($PSQL -c "BEGIN" -c "SET LOCAL ROLE authenticated" -c "SET LOCAL request.jwt.claim.sub = 'bb000000-0000-0000-0000-000000000001'" \
   -c "WITH u AS (UPDATE public.tenants SET max_farmers = 999999 WHERE id = 'b0000000-0000-0000-0000-000000000000' RETURNING max_farmers), i AS (INSERT INTO public.tenant_subscriptions(tenant_id, billing_interval, status, current_period_end) VALUES ('b0000000-0000-0000-0000-000000000000','annually','active', now() + interval '10 years') RETURNING status) SELECT (SELECT max_farmers FROM u) || ' ' || (SELECT status FROM i)" -c "ROLLBACK" 2>&1)
 psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION2" >/dev/null 2>&1 || { echo "licence-lock migration failed to apply"; exit 2; }
 psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION2" >/dev/null 2>&1 || { echo "licence-lock migration is not re-runnable"; exit 2; }
+# Before the app gate: reproduce what it closes (rolled back). With the flag ON,
+# a registered farmer who has not redeemed a code resolves as a normal farmer.
+OPEN=$($PSQL -c "BEGIN" -c "UPDATE feature_flags SET is_enabled = true WHERE flag_name='farmer_activation_required'" \
+  -c "WITH f AS (INSERT INTO public.farmers(tenant_id, mobile_number, activation_pending) VALUES ('d0000000-0000-0000-0000-000000000000','9700000001', true) RETURNING id) INSERT INTO public.user_sessions(user_id, access_token_hash, expires_at, active_role) SELECT id, public.hash_session_token('probe'), now() + interval '1 day', 'FARMER' FROM f" \
+  -c "SET LOCAL ROLE anon" -c "SET LOCAL request.headers = '{\"x-session-token\":\"probe\"}'" \
+  -c "SELECT count(*) FROM public.verified_session_context()" -c "ROLLBACK" 2>&1)
+GUARD_BEFORE=$(q "SELECT md5(prosrc) FROM pg_proc WHERE oid IN ('public.verified_session_context()'::regprocedure, 'public.verified_account_context()'::regprocedure, 'activation.farmers_guard()'::regprocedure) ORDER BY proname" | tr '\n' ' ')
+psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION3" >/dev/null 2>&1 || { echo "app-gate migration failed to apply"; exit 2; }
+psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION3" >/dev/null 2>&1 || { echo "app-gate migration is not re-runnable"; exit 2; }
 SUPER=50000000-0000-0000-0000-000000000001; PLAIN=50000000-0000-0000-0000-000000000002
 ADM_A=aa000000-0000-0000-0000-000000000001; OWN_B=bb000000-0000-0000-0000-000000000001; VIEW_A=aa000000-0000-0000-0000-000000000009
 TD=d0000000-0000-0000-0000-000000000000; TA=a0000000-0000-0000-0000-000000000000; TB=b0000000-0000-0000-0000-000000000000; TC=c0000000-0000-0000-0000-000000000000
@@ -30,7 +42,6 @@ ADM_C=cc000000-0000-0000-0000-000000000001
 PLAN=f1000000-0000-0000-0000-000000000000; TPLAN=f2000000-0000-0000-0000-000000000000
 PASS=0; FAIL=0
 
-q()   { $PSQL -c "$1" 2>&1; }                                             # owner (postgres)
 usr() { $PSQL -c "SET ROLE authenticated" -c "SET request.jwt.claim.sub = '$1'" -c "$2" 2>&1; }
 svc() { $PSQL -c "SET ROLE service_role" -c "$1" 2>&1; }
 anon(){ $PSQL -c "SET ROLE anon" -c "$1" 2>&1; }
@@ -204,6 +215,45 @@ q "UPDATE tenant_subscriptions SET status='active' WHERE tenant_id='$TA'" >/dev/
 eq "T6 deleting a farmer keeps the used code final (FK clears the link, audit keeps the id)" "$(q "DELETE FROM account_roles WHERE account_id='${P[2]}'; DELETE FROM farmers WHERE id='${P[2]}'" >/dev/null; q "SELECT count(*) FROM activation_codes WHERE state='ACTIVATED' AND redeemed_by IS NULL"; q "SELECT count(*) FROM activation_logs WHERE farmer_id='${P[2]}' AND event='REDEEM_SUCCESS'")" "1
 1"
 
+echo "== S. app gate: an unactivated farmer is nobody to the database =="
+# session <farmer id> <token> [role]  → a live session row, as the auth edge function writes it
+session() { q "INSERT INTO public.user_sessions(user_id, access_token_hash, expires_at, active_role) VALUES ('$1', public.hash_session_token('$2'), now() + interval '7 days', '${3:-FARMER}')" >/dev/null; }
+# app <token> <sql>  → the farmer app: public anon key + x-session-token header
+app() { $PSQL -c "SET ROLE anon" -c "SET request.headers = '{\"x-session-token\":\"$1\"}'" -c "$2" 2>&1; }
+eq "S0 before the gate, an unactivated farmer resolved as a normal farmer (reproduced)" "$OPEN" "1"
+eq "S1 the three audited function bodies were the live ones (md5) before the gate" "$GUARD_BEFORE" "feb83c68681f8444c3a6791982cb1503 f3c467c88a67b5e93c956c40266c7385 b552df0538c73e0e9ee20a24d93d7927 "
+SR=$(svc "INSERT INTO public.farmers(tenant_id, mobile_number) VALUES ('$TD','9600000001') RETURNING id")
+eq "S2 app self-registration into the default tenant is born unactivated without asking for it" "$(q "SELECT activation_pending, tenant_id FROM farmers WHERE id='$SR'")" "t|$TD"
+eq "S3 it takes no seat" "$(q "SELECT count(*) FROM farmers WHERE tenant_id='$TD' AND NOT activation_pending")" "3"
+has "S4 app self-registration into any other tenant is still refused" "$(svc "INSERT INTO public.farmers(tenant_id, mobile_number) VALUES ('$TA','9600000002')")" "activation_required"
+eq "S5 a farmer created by a tenant admin in the portal is still born active" "$(q "SELECT activation_pending FROM farmers WHERE mobile_number='9200000001'")" "f"
+session $SR tok-pending
+eq "S6 unactivated farmer with a live session: farmer context is empty" "$(app tok-pending "SELECT count(*) FROM public.verified_session_context()")" "0"
+eq "S7 ... current farmer and tenant are NULL" "$(app tok-pending "SELECT public.get_current_farmer_id() IS NULL, public.get_current_tenant_id() IS NULL")" "t|t"
+eq "S8 ... account context in the FARMER role is empty" "$(app tok-pending "SELECT count(*) FROM public.verified_account_context()")" "0"
+svc "INSERT INTO public.lands(farmer_id, tenant_id, name) VALUES ('$SR','$TD','registered plot')" >/dev/null
+eq "S9 ... reads none of its own rows through RLS" "$(app tok-pending "SELECT count(*) FROM public.lands")" "0"
+has "S10 ... cannot write a row through RLS" "$(app tok-pending "INSERT INTO public.lands(farmer_id, tenant_id, name) VALUES ('$SR','$TD','x')")" "row-level security"
+has "S11 ... cannot clear its own pending mark" "$(app tok-pending "UPDATE public.farmers SET activation_pending = false WHERE id='$SR'")" "farmer_activation_locked\|permission denied\|row-level security"
+has "S12 ... the app role cannot call redeem itself" "$(app tok-pending "SELECT public.activation_redeem('$SR','ABCD-EFGH-JKMN')")" "permission denied"
+LEGACY=$(q "SELECT id FROM farmers WHERE mobile_number='9000000001'"); session $LEGACY tok-legacy
+eq "S13 a farmer from before the feature is untouched: context resolves" "$(app tok-legacy "SELECT farmer_id, tenant_id FROM public.verified_session_context()")" "$LEGACY|$TD"
+# the same person also holds the Service Provider role, with a session in that role
+q "INSERT INTO public.account_roles(account_id, tenant_id, role, source) VALUES ('$SR','$TD','SERVICE_PROVIDER','SELF_ADDED')" >/dev/null
+session $SR tok-provider SERVICE_PROVIDER
+eq "S14 activation is for farmers only: the same unactivated person in the Service Provider role resolves" "$(app tok-provider "SELECT account_id, active_role FROM public.verified_account_context()")" "$SR|SERVICE_PROVIDER"
+eq "S15 ... and that provider session is still no farmer session" "$(app tok-provider "SELECT count(*) FROM public.verified_session_context()")" "0"
+BS=$(gen $TA 2); usr $SUPER "SELECT public.activation_admin_release_batch('$BS')" >/dev/null; mapfile -t CS < <(codes $BS $ADM_A)
+eq "S16 a wrong code changes nothing: still nobody" "$(redeem $SR ZZZZ-ZZZZ-ZZZZ) $(app tok-pending "SELECT count(*) FROM public.verified_session_context()")" "activation_invalid 0"
+eq "S17 the code is redeemed" "$(redeem $SR "${CS[0]}")" "activated"
+eq "S18 the SAME session now resolves, in the tenant of the code" "$(app tok-pending "SELECT farmer_id, tenant_id FROM public.verified_session_context()")" "$SR|$TA"
+eq "S19 ... account context in the FARMER role resolves too" "$(app tok-pending "SELECT account_id, tenant_id, active_role FROM public.verified_account_context()")" "$SR|$TA|FARMER"
+eq "S20 ... reads its own row, which moved with it" "$(app tok-pending "SELECT name, tenant_id FROM public.lands")" "registered plot|$TA"
+has "S21 ... writes in its new tenant" "$(app tok-pending "INSERT INTO public.lands(farmer_id, tenant_id, name) VALUES ('$SR','$TA','new plot') RETURNING name")" "new plot"
+has "S22 ... cannot write into the tenant it left" "$(app tok-pending "INSERT INTO public.lands(farmer_id, tenant_id, name) VALUES ('$SR','$TD','old tenant')")" "row-level security"
+eq "S23 a forged or missing token is nobody" "$(app no-such-token "SELECT count(*) FROM public.verified_session_context()") $($PSQL -c "SET ROLE anon" -c "SELECT count(*) FROM public.verified_session_context()" 2>&1)" "0 0"
+SW=$(svc "INSERT INTO public.farmers(tenant_id, mobile_number) VALUES ('$TD','9600000003') RETURNING id"); session $SW tok-wait
+
 echo "== C. concurrency =="
 par() { # par <label-file> ; reads "farmer code" lines from stdin, fires all at the same instant
   local at; at=$(q "SELECT (clock_timestamp() + interval '2 seconds')::text"); local out=$1; : > "$out"
@@ -251,5 +301,9 @@ eq "I6 a full batch of 2000 codes generates, all hashes different" "$(q "SELECT 
 printf 'INFO  2000 codes generated in %.2f s\n' "$(echo "$T1 - $T0" | bc)"
 q "UPDATE feature_flags SET is_enabled = false WHERE flag_name='farmer_activation_required'" >/dev/null
 has "I7 flag back OFF: legacy registration into a tenant works again" "$(svc "INSERT INTO public.farmers(tenant_id, mobile_number) VALUES ('$TB','9400000001') RETURNING tenant_id")" "$TB"
+eq "I8 flag back OFF: a farmer who never redeemed a code resolves again, exactly as before the feature" "$(app tok-wait "SELECT farmer_id, tenant_id FROM public.verified_session_context()")" "$SW|$TD"
+eq "I9 flag back OFF: app registration is not made pending" "$(q "SELECT activation_pending FROM farmers WHERE mobile_number='9400000001'")" "f"
+q "UPDATE feature_flags SET is_enabled = true WHERE flag_name='farmer_activation_required'" >/dev/null
+eq "I10 flag ON again: the same farmer is nobody again" "$(app tok-wait "SELECT count(*) FROM public.verified_session_context()")" "0"
 echo; echo "RESULT: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

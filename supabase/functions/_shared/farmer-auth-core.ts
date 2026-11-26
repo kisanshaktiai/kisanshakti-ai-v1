@@ -52,6 +52,31 @@
  *   nurseryPhotoSign    { productId }        -> { bucket, path, signedUrl, token }
  *   nurseryPhotoConfirm { productId, path }  -> { photoPaths }
  *
+ * 2026-11-25 — Farmer activation (activation codes, third part). Served only
+ *              while the flag `farmer_activation_required` is ON; the database
+ *              decides that (public.activation_enforcement_status), never the
+ *              client. Applies to the Farmer role only: Service Provider and
+ *              Customer registration and sessions are untouched.
+ *
+ *   register    flag ON: the farmer is created in the default (holding) tenant
+ *               with activation_pending = true, whatever tenant the app sent.
+ *   every action that finds a farmer by mobile number now finds them in any
+ *               tenant: one number is one farmer (unique index
+ *               farmers_mobile_global_unique), and a farmer leaves the app's
+ *               own tenant when a code is redeemed.
+ *   every reply that carries `farmer` adds farmer.activation_required
+ *               (true = the app must show the Activate screen; the database
+ *               already refuses this farmer's session everywhere else).
+ *
+ *   New, authenticated by the session token:
+ *   activationStatus {}           -> { required, tenantId }
+ *   activate         { code }     -> { activated, already, tenant, subscriptionEnd,
+ *                                      farmer, profile }
+ *               The code (typed, or the text of the scanned QR) goes unchanged
+ *               to public.activation_redeem(), which alone validates it, counts
+ *               the attempt, assigns the tenant and writes the audit trail.
+ *               Failures answer { error: <result code> }.
+ *
  * `account` = { id, tenantId, displayName, avatarUrl, languageCode,
  *               mobileMasked, roles: [{ role, status }], activeRole }.
  * Roles are returned only to an authenticated caller, never by lookup.
@@ -94,6 +119,27 @@ const PROVIDER_WORKSPACE_FLAG = "provider_workspace";
 const NURSERY_PHOTO_BUCKET = "nursery-photos";
 const NURSERY_PHOTO_MAX = 3;
 const NURSERY_PHOTO_LIMIT = { maxRequests: 40, windowMs: 3600_000 };
+
+// --- Farmer activation -------------------------------------------------------
+// A second, coarser limit in front of the database's own (5 wrong codes per
+// farmer in 15 minutes, 100 per address in an hour — see activation_redeem).
+const ACTIVATE_LIMIT = { maxRequests: 30, windowMs: 3600_000 };
+// Longest text passed on as a code; the database refuses anything over 64.
+const ACTIVATION_CODE_MAX_INPUT = 64;
+// HTTP status per result code of public.activation_redeem().
+const ACTIVATION_HTTP: Record<string, number> = {
+  activation_invalid: 400,
+  activation_used: 409,
+  activation_revoked: 409,
+  activation_expired: 409,
+  activation_capacity_full: 409,
+  activation_not_enabled: 409,
+  activation_tenant_inactive: 403,
+  activation_subscription_inactive: 403,
+  activation_farmer_invalid: 403,
+  rate_limited: 429,
+  activation_failed: 500,
+};
 
 const MSG91_AUTH_KEY = Deno.env.get("MSG91_AUTH_KEY") ?? "";
 const MSG91_SENDER_ID = Deno.env.get("MSG91_SENDER_ID") ?? "";
@@ -199,12 +245,51 @@ function sanitizeFarmer(farmer: Record<string, unknown>) {
   return safe;
 }
 
-async function findFarmer(mobile: string, tenantId: string | null) {
-  let q = admin.from("farmers").select("*").eq("mobile_number", mobile).limit(2);
-  if (tenantId) q = q.eq("tenant_id", tenantId);
-  const { data, error } = await q;
+/**
+ * One mobile number is one farmer across all tenants (unique index
+ * farmers_mobile_global_unique), and a farmer moves out of the app's own tenant
+ * when an activation code is redeemed. The tenant the app sends therefore says
+ * nothing about where the farmer is, and the lookup is by number alone.
+ * `_tenantId` stays in the signature so every call site reads as before.
+ */
+async function findFarmer(mobile: string, _tenantId: string | null) {
+  const { data, error } = await admin.from("farmers").select("*")
+    .eq("mobile_number", mobile).limit(2);
   if (error) throw new Error(error.message);
   return data?.[0] ?? null;
+}
+
+// ============================================================================
+// Farmer activation helpers
+// ============================================================================
+
+/** Whether activation is enforced, and the tenant unactivated farmers wait in. */
+async function activationEnforcement(): Promise<{ enforced: boolean; holdingTenantId: string | null }> {
+  const { data, error } = await admin.rpc("activation_enforcement_status");
+  if (error) throw new Error(`activation_status_failed: ${error.message}`);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    enforced: row.enforced === true,
+    holdingTenantId: isUuid(row.holding_tenant_id) ? row.holding_tenant_id : null,
+  };
+}
+
+/** True while this farmer must redeem a code before the app opens. */
+async function activationRequired(farmer: any): Promise<boolean> {
+  if (farmer?.activation_pending !== true) return false;   // no database call for everyone else
+  return (await activationEnforcement()).enforced;
+}
+
+/** The farmer row as the client gets it: no pin_hash, plus the activation answer. */
+async function farmerForClient(farmer: any) {
+  return { ...sanitizeFarmer(farmer), activation_required: await activationRequired(farmer) };
+}
+
+/** Best available caller address, for the audit trail and the per-address limit. */
+function callerIp(req: Request): string | null {
+  return req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    null;
 }
 
 function lockoutRemainingMs(farmer: any): number {
@@ -355,7 +440,7 @@ async function farmerAuthReply(farmer: any, profile: any, req: Request, hint: un
   const session = await createSession(farmer.id, req, role);
   return json({
     session: { token: session.token, expiresAt: session.expiresAt },
-    farmer: isFarmer ? sanitizeFarmer(farmer) : null,
+    farmer: isFarmer ? await farmerForClient(farmer) : null,
     profile: isFarmer ? (profile ?? null) : null,
     ...(multi ? { account: await accountSummary(farmer.id, role) } : {}),
   });
@@ -438,7 +523,8 @@ function accountRpcError(message: string | undefined): Response {
 
 /** Session-authenticated actions. Returns null when `action` is not one of them. */
 async function handleSessionAction(action: string, req: Request, body: any): Promise<Response | null> {
-  if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "nurseryPhotoSign", "nurseryPhotoConfirm"].includes(action)) return null;
+  if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "nurseryPhotoSign", "nurseryPhotoConfirm",
+        "activationStatus", "activate"].includes(action)) return null;
 
   const ctx = await sessionAccount(req, body);
   if (!ctx) return json({ error: "session_required" }, 401);
@@ -446,6 +532,11 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
 
   if (action === "nurseryPhotoSign" || action === "nurseryPhotoConfirm") {
     return await handleNurseryPhoto(action, ctx, body);
+  }
+
+  // Farmer activation does not depend on the multi-role flag.
+  if (action === "activationStatus" || action === "activate") {
+    return await handleActivation(action, ctx, req, body);
   }
 
   if (action === "sessionInfo") {
@@ -471,7 +562,7 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
     let profile: any = null;
     if (body.role === "FARMER") {
       const { data: f } = await admin.from("farmers").select("*").eq("id", ctx.account.id).maybeSingle();
-      farmer = f ? sanitizeFarmer(f) : null;
+      farmer = f ? await farmerForClient(f) : null;
       const { data: p } = await admin.from("user_profiles")
         .select("*").eq("farmer_id", ctx.account.id).maybeSingle();
       profile = p ?? null;
@@ -514,6 +605,76 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
   const { error } = await admin.from("accounts").update(patch).eq("id", ctx.account.id);
   if (error) return json({ error: "server_error" }, 500);
   return json({ account: await accountSummary(ctx.account.id, await liveSessionRole(ctx)) });
+}
+
+/**
+ * Farmer activation. The farmer is the person behind the session token: nothing
+ * in the request names a farmer or a tenant. The session may be in any role the
+ * person holds; what matters is that they have a farmers row.
+ *
+ * `activate` hands the text to public.activation_redeem() exactly as received
+ * (cut to the longest length the database reads). That function is the only
+ * place a code is validated: it counts and limits attempts, takes the code
+ * under a row lock so it is used once, checks the tenant's subscription and
+ * seats, moves the farmer to the tenant of the code and writes the audit trail,
+ * all in one transaction. Nothing is decided here.
+ */
+async function handleActivation(
+  action: string, ctx: { sess: any; account: any }, req: Request, body: any,
+): Promise<Response> {
+  const { data: farmer, error } = await admin.from("farmers")
+    .select("*").eq("id", ctx.account.id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!farmer || farmer.is_active !== true) return json({ error: "activation_farmer_invalid" }, 403);
+
+  if (action === "activationStatus") {
+    return json({ required: await activationRequired(farmer), tenantId: farmer.tenant_id ?? null });
+  }
+
+  // activate
+  const limited = await rateLimited(ctx.account.id, "activate", ACTIVATE_LIMIT);
+  if (limited) return limited;
+
+  const code = (typeof body?.code === "string" ? body.code : "").slice(0, ACTIVATION_CODE_MAX_INPUT);
+  const { data, error: redeemError } = await admin.rpc("activation_redeem", {
+    p_farmer_id: farmer.id,
+    p_code: code,
+    p_ip: callerIp(req),
+    p_user_agent: (req.headers.get("user-agent") ?? "").slice(0, 300) || null,
+  });
+  if (redeemError) throw new Error(`activation_redeem_failed: ${redeemError.message}`);
+
+  const result = (data ?? {}) as Record<string, any>;
+  const resultCode = typeof result.code === "string" ? result.code : "activation_failed";
+
+  // "already_activated" is a success for the person: a repeated tap, or a
+  // request whose first answer was lost on a weak network.
+  if (result.ok === true || resultCode === "already_activated") {
+    const { data: fresh } = await admin.from("farmers").select("*").eq("id", farmer.id).maybeSingle();
+    if (!fresh) return json({ error: "activation_failed" }, 500);
+    const { data: profile } = await admin.from("user_profiles")
+      .select("*").eq("farmer_id", farmer.id).maybeSingle();
+    let tenant = result.tenant ?? null;
+    if (!tenant && fresh.tenant_id) {
+      const { data: t } = await admin.from("tenants")
+        .select("id, name, slug").eq("id", fresh.tenant_id).maybeSingle();
+      tenant = t ?? null;
+    }
+    return json({
+      activated: true,
+      already: result.ok !== true,
+      tenant,
+      subscriptionEnd: result.subscription_end ?? null,
+      farmer: await farmerForClient(fresh),
+      profile: profile ?? null,
+    });
+  }
+
+  return json({
+    error: resultCode,
+    ...(typeof result.retry_after_seconds === "number"
+      ? { retryAfterSeconds: result.retry_after_seconds } : {}),
+  }, ACTIVATION_HTTP[resultCode] ?? 400);
 }
 
 /**
@@ -820,6 +981,14 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
       const pinHash = await hashPin(body.pin);
       const language = typeof body?.language === "string" ? body.language : "hi";
 
+      // Farmer activation ON: a new farmer is never created in the tenant the
+      // app sent. They wait, unactivated, in the default (holding) tenant until
+      // a code assigns them to the tenant that issued it. The database enforces
+      // the same rule on the insert (activation.farmers_guard).
+      const activation = await activationEnforcement();
+      const farmerTenantId = activation.enforced ? activation.holdingTenantId : tenantId;
+      if (!farmerTenantId) return json({ error: "server_error" }, 500);
+
       // The number already belongs to a person without a farmers row: they sign
       // in and add the Farmer role from the Roles page. Creating a second
       // identity for the same number here is never right.
@@ -856,7 +1025,8 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
         const { data, error } = await admin.from("farmers")
           .insert({
             mobile_number: mobile,
-            tenant_id: tenantId,
+            tenant_id: farmerTenantId,
+            ...(activation.enforced ? { activation_pending: true } : {}),
             pin_hash: pinHash,
             pin_updated_at: new Date().toISOString(),
             language_preference: language,
@@ -878,7 +1048,7 @@ export async function handleFarmerAuth(req: Request, body: any): Promise<Respons
       await admin.from("user_profiles").upsert({
         id: farmer.id,
         farmer_id: farmer.id,
-        tenant_id: tenantId,
+        tenant_id: farmer.tenant_id ?? tenantId,   // the farmer's tenant, not the app's
         mobile_number: mobile,
         preferred_language: language,
         is_profile_complete: false,
@@ -1136,5 +1306,7 @@ export function isFarmerAuthAction(body: any): boolean {
       "updateAccount",
       "nurseryPhotoSign",
       "nurseryPhotoConfirm",
+      "activationStatus",
+      "activate",
     ].includes(body.action);
 }

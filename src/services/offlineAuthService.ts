@@ -58,6 +58,38 @@ class OfflineAuthService {
     }
   }
 
+  /**
+   * Farmer activation: the farmer row changed on the server (new tenant, no
+   * longer waiting for a code) without a PIN login. Replaces the farmer and
+   * profile in the offline copy and keeps its PIN hash, so an offline sign-in
+   * opens the farmer as they are now. Does nothing when there is no offline copy
+   * or it belongs to somebody else.
+   */
+  async updateCachedFarmer(farmerData: any, profileData: any): Promise<void> {
+    const cached = await this.getCachedAuthData();
+    if (!cached || !farmerData?.id || cached.farmerId !== farmerData.id) return;
+
+    const authData: OfflineAuthData = {
+      farmerId: cached.farmerId,
+      tenantId: farmerData.tenant_id ?? cached.tenantId,
+      mobile: cached.mobile,
+      pinHash: cached.pinHash,
+      farmerData,
+      profileData: profileData ?? cached.profileData,
+      lastSyncAt: new Date().toISOString(),
+    };
+
+    try {
+      await localDB.initialize();
+      const tx = (localDB as any).db.transaction('syncMetadata', 'readwrite');
+      await tx.objectStore('syncMetadata').put({ id: this.STORAGE_KEY, ...authData });
+      await tx.done;
+    } catch (error) {
+      console.error('Error updating cached auth data:', error);
+    }
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(authData));
+  }
+
   // Hash PIN for secure storage
   hashPin(pin: string): string {
     return CryptoJS.SHA256(pin + this.SALT).toString();
