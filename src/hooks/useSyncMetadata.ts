@@ -23,7 +23,10 @@ export function useSyncMetadata(): SyncMetadata {
     const load = async () => {
       try {
         const m = await localDB.getSyncMetadata();
-        if (mounted) setMetadata(m);
+        // No record yet (a sign-out clears the store and it is seeded again on
+        // the next app start): keep the defaults. Storing `undefined` here made
+        // every header component that reads this hook throw (2026-11-26).
+        if (mounted && m) setMetadata(m);
       } catch {
         /* noop */
       }

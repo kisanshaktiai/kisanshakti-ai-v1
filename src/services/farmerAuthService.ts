@@ -249,11 +249,17 @@ export const farmerAuthService = {
     return result;
   },
   async logout(token?: string | null) {
+    // The token on the device when this sign-out starts. The server call below
+    // can take seconds (cold start, weak network); a sign-in that finishes in
+    // the meantime has put ITS token in place, and that one must survive
+    // (2026-11-26: a slow sign-out used to wipe the next person's session).
+    // The activation mark is removed with the other personal keys by
+    // services/deviceWipe, at the moment of sign-out.
+    const tokenAtStart = getSessionToken();
     try {
       if (token) await call({ action: 'logout', sessionToken: token });
     } finally {
-      setSessionToken(null);
-      rememberActivation(false);
+      if (getSessionToken() === tokenAtStart) setSessionToken(null);
     }
   },
 };

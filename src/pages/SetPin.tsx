@@ -101,9 +101,14 @@ export default function SetPin() {
       // Create authenticated session
       const session = createSession(farmer.id, farmer.tenant_id, farmer.mobile_number);
       
-      // Mark session as PIN verified
+      // Mark session as PIN verified. The session carries the token the server
+      // issued: authStore sends session.token with every request (setSession,
+      // validateSession), so the placeholder createSession() generates would
+      // replace the real one and the server would refuse the farmer's very
+      // next call (2026-11-26).
       setSession({
         ...session,
+        token: result.session.token,
         isPinVerified: true
       });
       

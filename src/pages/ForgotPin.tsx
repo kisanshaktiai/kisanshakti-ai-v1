@@ -121,7 +121,9 @@ export default function ForgotPin() {
       const farmer = result.farmer;
       const profile = result.profile;
       const session = createSession(farmer.id, farmer.tenant_id, farmer.mobile_number);
-      setSession({ ...session, isPinVerified: true });
+      // The server-issued token, not createSession()'s placeholder: authStore
+      // sends session.token with every request (2026-11-26, see SetPin).
+      setSession({ ...session, token: result.session.token, isPinVerified: true });
       setUser({
         id: farmer.id,
         phone: farmer.mobile_number,
