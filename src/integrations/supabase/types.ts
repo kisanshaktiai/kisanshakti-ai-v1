@@ -33116,6 +33116,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          icon_path: string | null
           is_active: boolean
           label_en: string
           parent_code: string | null
@@ -33125,6 +33126,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          icon_path?: string | null
           is_active?: boolean
           label_en: string
           parent_code?: string | null
@@ -33134,6 +33136,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          icon_path?: string | null
           is_active?: boolean
           label_en?: string
           parent_code?: string | null
