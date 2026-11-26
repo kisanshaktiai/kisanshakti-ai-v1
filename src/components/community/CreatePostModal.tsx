@@ -166,7 +166,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             className="fixed inset-x-0 bottom-0 z-50 max-h-[90vh] bg-card rounded-t-3xl overflow-hidden"
           >
             <div className="flex items-center justify-between p-4 border-b border-border">
-              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full" aria-label={t('common.close')}>
                 <X className="w-5 h-5" />
               </Button>
               <h2 className="font-semibold text-foreground">{t('social.post.create')}</h2>

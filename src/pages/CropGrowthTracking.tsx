@@ -64,7 +64,7 @@ export default function CropGrowthTracking() {
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label={t('common.back')}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>

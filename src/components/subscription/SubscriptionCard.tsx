@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { cn } from '@/lib/utils';
  * Shows plan, status, days remaining, and CTA to subscription page.
  */
 export function SubscriptionCard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data, isLoading, planName, daysRemaining, isInGracePeriod, subscriptionStatus } =
     useSubscriptionContext();
@@ -78,14 +80,14 @@ export function SubscriptionCard() {
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Calendar className="w-3.5 h-3.5" />
               {isExpired ? (
-                <span>Renew to unlock premium features</span>
+                <span>{t('profile.subscription.renew_hint')}</span>
               ) : daysRemaining > 0 ? (
                 <span>
                   <span className="font-semibold text-foreground">{daysRemaining}</span>{' '}
                   {daysRemaining === 1 ? 'day' : 'days'} remaining
                 </span>
               ) : (
-                <span>Plan expires today</span>
+                <span>{t('profile.subscription.expires_today')}</span>
               )}
             </div>
           </div>

@@ -18,7 +18,7 @@ export function SoilReportHeader({ landName, exporting, onBack, onDownloadPDF, o
   return (
     <div className="sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-xl">
       <div className="mx-auto flex max-w-4xl items-center gap-2 px-2 py-2">
-        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl" onClick={onBack}>
+        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl" onClick={onBack} aria-label={t('common.back')}>
           <ArrowLeft className="h-5 w-5" />
           <span className="sr-only">{t('soil.backToLand')}</span>
         </Button>

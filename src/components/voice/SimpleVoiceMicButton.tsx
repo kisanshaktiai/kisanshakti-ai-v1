@@ -298,7 +298,6 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   
   return (
     <>
-      {console.log('[SimpleVoiceMicButton] Rendering close button and mic button')}
       
       {/* Close Button - Top Right */}
       <motion.button

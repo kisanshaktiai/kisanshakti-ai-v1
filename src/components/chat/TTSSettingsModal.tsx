@@ -63,14 +63,13 @@ export function TTSSettingsModal({ open, onClose, currentLanguage, previewText }
     onClose();
   };
 
+  // Resetting is itself undoable (set the slider again), so no confirmation dialog.
   const handleReset = () => {
-    if (confirm(t('chat.tts.confirmReset', 'Reset all settings to default?'))) {
-      setLocalRate(DEFAULT_RATE);
-      toast({
-        title: t('common.success'),
-        description: t('chat.tts.settingsReset', 'Settings reset to default'),
-      });
-    }
+    setLocalRate(DEFAULT_RATE);
+    toast({
+      title: t('common.success'),
+      description: t('chat.tts.settingsReset', 'Settings reset to default'),
+    });
   };
 
   return (

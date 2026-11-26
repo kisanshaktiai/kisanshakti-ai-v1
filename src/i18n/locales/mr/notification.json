@@ -34,6 +34,20 @@
     "unread": "न वाचलेले",
     "today": "आज",
     "yesterday": "काल",
-    "earlier": "आधी"
+    "earlier": "आधी",
+    "settingsSubtitle": "तुमचे अलर्ट आणि रिमाइंडर सांभाळा",
+    "enableShort": "सुरू करा",
+    "disableShort": "बंद करा",
+    "active": "सुरू",
+    "getUpdates": "अपडेट लगेच मिळवा",
+    "disabledTitle": "सूचना बंद",
+    "disabledDesc": "आता तुम्हाला पुश सूचना मिळणार नाहीत",
+    "enabledTitle": "सूचना सुरू",
+    "enabledDesc": "अलर्ट आणि रिमाइंडर तुम्हाला वेळेवर मिळतील",
+    "permissionDesc": "फोन किंवा ब्राउझरच्या सेटिंगमध्ये सूचनांना परवानगी द्या",
+    "updateFailed": "सूचना सेटिंग बदलता आली नाही",
+    "settingsUpdated": "सेटिंग बदलली",
+    "turnedOn": "{{what}} सुरू",
+    "turnedOff": "{{what}} बंद"
   }
 }

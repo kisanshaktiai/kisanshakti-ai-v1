@@ -670,7 +670,7 @@ function Header({
   return (
     <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border">
       <div className="px-3 py-2 flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-lg shrink-0">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} aria-label={t('common.back')} className="h-9 w-9 rounded-lg shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">

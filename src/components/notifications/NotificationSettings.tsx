@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 import { notificationService } from '@/services/notificationService';
 import { Bell, BellOff, Cloud, Calendar, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function NotificationSettings() {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -50,8 +52,8 @@ export default function NotificationSettings() {
         if (success) {
           setIsSubscribed(false);
           toast({
-            title: '🔕 Notifications Disabled',
-            description: 'You will no longer receive push notifications',
+            title: t('notification.disabledTitle'),
+            description: t('notification.disabledDesc'),
           });
         }
       } else {
@@ -59,22 +61,22 @@ export default function NotificationSettings() {
         if (success) {
           setIsSubscribed(true);
           toast({
-            title: '🔔 Notifications Enabled!',
-            description: 'You will now receive timely alerts and reminders',
+            title: t('notification.enabledTitle'),
+            description: t('notification.enabledDesc'),
             className: 'border-success bg-success text-success-foreground',
           });
         } else {
           toast({
-            title: 'Permission Required',
-            description: 'Please allow notifications in your browser settings',
+            title: t('notification.permissionRequired'),
+            description: t('notification.permissionDesc'),
             variant: 'destructive',
           });
         }
       }
     } catch (error) {
       toast({
-        title: 'Error',
-        description: 'Failed to update notification settings',
+        title: t('common.error'),
+        description: t('notification.updateFailed'),
         variant: 'destructive',
       });
     } finally {
@@ -94,8 +96,8 @@ export default function NotificationSettings() {
     if (key === 'weatherAlerts') setWeatherAlerts(value);
 
     toast({
-      title: '✅ Settings Updated',
-      description: `${key === 'taskReminders' ? 'Task reminders' : 'Weather alerts'} ${value ? 'enabled' : 'disabled'}`,
+      title: t('notification.settingsUpdated'),
+      description: t(value ? 'notification.turnedOn' : 'notification.turnedOff', { what: t(key === 'taskReminders' ? 'notification.taskReminders' : 'notification.weatherAlerts') }),
     });
   };
 
@@ -129,9 +131,9 @@ export default function NotificationSettings() {
             )}
           </motion.div>
           <div>
-            <CardTitle>Push Notifications</CardTitle>
+            <CardTitle>{t('notification.pushNotifications')}</CardTitle>
             <CardDescription>
-              Stay updated with task reminders and weather alerts
+              {t('notification.pushNotificationsDesc')}
             </CardDescription>
           </div>
         </div>
@@ -149,9 +151,9 @@ export default function NotificationSettings() {
               )}
             </div>
             <div>
-              <p className="font-semibold">Enable Notifications</p>
+              <p className="font-semibold">{t('notification.enable')}</p>
               <p className="text-sm text-muted-foreground">
-                {isSubscribed ? 'Active' : 'Get real-time updates'}
+                {isSubscribed ? t('notification.active') : t('notification.getUpdates')}
               </p>
             </div>
           </div>
@@ -161,7 +163,7 @@ export default function NotificationSettings() {
             variant={isSubscribed ? 'outline' : 'default'}
             className={isSubscribed ? '' : 'bg-gradient-to-r from-primary to-accent'}
           >
-            {loading ? 'Loading...' : isSubscribed ? 'Disable' : 'Enable'}
+            {loading ? t('common.loading') : isSubscribed ? t('notification.disableShort') : t('notification.enableShort')}
           </Button>
         </div>
 
@@ -181,10 +183,10 @@ export default function NotificationSettings() {
                   </div>
                   <div>
                     <Label htmlFor="task-reminders" className="font-medium cursor-pointer">
-                      Task Reminders
+                      {t('notification.taskReminders')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Daily notifications for upcoming farming tasks
+                      {t('notification.taskRemindersDesc')}
                     </p>
                   </div>
                 </div>
@@ -203,10 +205,10 @@ export default function NotificationSettings() {
                   </div>
                   <div>
                     <Label htmlFor="weather-alerts" className="font-medium cursor-pointer">
-                      Weather Alerts
+                      {t('notification.weatherAlerts')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Critical weather warnings and forecasts
+                      {t('notification.weatherAlertsDesc')}
                     </p>
                   </div>
                 </div>

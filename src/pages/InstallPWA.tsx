@@ -161,7 +161,7 @@ export default function InstallPWA() {
             <Card className="p-6 border-2 border-primary/20">
               <div className="flex items-center gap-3 mb-4">
                 <Chrome className="w-6 h-6 text-primary" />
-                <h2 className="font-semibold text-lg">Install on Android</h2>
+                <h2 className="font-semibold text-lg">{t('pwa.android.title')}</h2>
               </div>
               <Button
                 onClick={handleInstall}
@@ -170,7 +170,7 @@ export default function InstallPWA() {
                 size="lg"
               >
                 <Download className="w-5 h-5 mr-2" />
-                {installing ? 'Installing...' : 'Install App Now'}
+                {installing ? t('pwa.android.installing') : t('pwa.android.install_now')}
               </Button>
             </Card>
           </motion.div>
@@ -185,7 +185,7 @@ export default function InstallPWA() {
             <Card className="p-6 border-2 border-primary/20">
               <div className="flex items-center gap-3 mb-4">
                 <Apple className="w-6 h-6 text-primary" />
-                <h2 className="font-semibold text-lg">Install on iPhone/iPad</h2>
+                <h2 className="font-semibold text-lg">{t('pwa.ios.title')}</h2>
               </div>
               <Alert className="bg-info/10 border-info/20 mb-4">
                 <AlertDescription className="text-sm space-y-3">
@@ -194,9 +194,9 @@ export default function InstallPWA() {
                       <Share className="w-4 h-4 text-info" />
                     </div>
                     <div>
-                      <p className="font-medium mb-1">Step 1: Tap Share</p>
+                      <p className="font-medium mb-1">{t('pwa.ios.step_1')}</p>
                       <p className="text-xs text-muted-foreground">
-                        Tap the Share button <Share className="inline w-3 h-3" /> in Safari's toolbar
+                        {t('pwa.ios.step_1_desc')} <Share className="inline w-3 h-3" />
                       </p>
                     </div>
                   </div>
@@ -205,9 +205,9 @@ export default function InstallPWA() {
                       <Plus className="w-4 h-4 text-info" />
                     </div>
                     <div>
-                      <p className="font-medium mb-1">Step 2: Add to Home Screen</p>
+                      <p className="font-medium mb-1">{t('pwa.ios.step_2')}</p>
                       <p className="text-xs text-muted-foreground">
-                        Scroll and select "Add to Home Screen"
+                        {t('pwa.ios.step_2_desc')}
                       </p>
                     </div>
                   </div>
@@ -216,16 +216,16 @@ export default function InstallPWA() {
                       <Smartphone className="w-4 h-4 text-info" />
                     </div>
                     <div>
-                      <p className="font-medium mb-1">Step 3: Confirm</p>
+                      <p className="font-medium mb-1">{t('pwa.ios.step_3')}</p>
                       <p className="text-xs text-muted-foreground">
-                        Tap "Add" to install the app
+                        {t('pwa.ios.step_3_desc')}
                       </p>
                     </div>
                   </div>
                 </AlertDescription>
               </Alert>
               <p className="text-xs text-muted-foreground text-center">
-                Note: Installation must be done through Safari browser
+                {t('pwa.ios.note')}
               </p>
             </Card>
           </motion.div>
@@ -240,7 +240,7 @@ export default function InstallPWA() {
             <Card className="p-6 border-2 border-primary/20">
               <div className="flex items-center gap-3 mb-4">
                 <Monitor className="w-6 h-6 text-primary" />
-                <h2 className="font-semibold text-lg">Install on Desktop</h2>
+                <h2 className="font-semibold text-lg">{t('pwa.desktop.title')}</h2>
               </div>
               <Button
                 onClick={handleInstall}
@@ -249,10 +249,10 @@ export default function InstallPWA() {
                 size="lg"
               >
                 <Download className="w-5 h-5 mr-2" />
-                {installing ? 'Installing...' : 'Install App Now'}
+                {installing ? t('pwa.android.installing') : t('pwa.android.install_now')}
               </Button>
               <p className="text-xs text-muted-foreground text-center mt-3">
-                Or look for the install icon <Download className="inline w-3 h-3" /> in your browser's address bar
+                {t('pwa.desktop.look_for_icon')} <Download className="inline w-3 h-3" />
               </p>
             </Card>
           </motion.div>
@@ -262,7 +262,7 @@ export default function InstallPWA() {
         {!deferredPrompt && !isInstalled && platform !== 'ios' && (
           <Alert className="bg-muted">
             <AlertDescription className="text-sm">
-              <strong>Alternative method:</strong> Look for the install icon in your browser's menu or address bar.
+              <strong>{t('pwa.alternative_method')}</strong> {t('pwa.alternative_desc')}
             </AlertDescription>
           </Alert>
         )}

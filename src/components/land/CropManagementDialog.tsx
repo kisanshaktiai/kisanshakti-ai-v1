@@ -297,7 +297,7 @@ export function CropManagementDialog({
                     {/* Current Crop Selection */}
                     {!selectedGroup ? (
                       <div>
-                        <h3 className="text-sm font-medium mb-3">Select Crop Category</h3>
+                        <h3 className="text-sm font-medium mb-3">{t('lands.crop_management.select_category')}</h3>
                         <div className="grid grid-cols-3 gap-3">
                           {cropGroups.slice(0, 9).map((group) => (
                             <Card
@@ -417,7 +417,7 @@ export function CropManagementDialog({
                           name="expected_harvest_date"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Expected Harvest Date</FormLabel>
+                              <FormLabel>{t('lands.crop_management.expected_harvest')}</FormLabel>
                               {currentCropSelection.duration && form.watch('planting_date') && (
                                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                                   <AlertCircle className="h-3 w-3" />
@@ -449,7 +449,7 @@ export function CropManagementDialog({
                     {/* Previous Crop Selection */}
                     {!selectedGroup ? (
                       <div>
-                        <h3 className="text-sm font-medium mb-3">Select Previous Crop Category</h3>
+                        <h3 className="text-sm font-medium mb-3">{t('lands.crop_management.select_category')}</h3>
                         <div className="grid grid-cols-3 gap-3">
                           {cropGroups.slice(0, 9).map((group) => (
                             <Card
@@ -526,7 +526,7 @@ export function CropManagementDialog({
                           name="harvest_date"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Harvest Date</FormLabel>
+                              <FormLabel>{t('lands.wizard.fields.last_harvest_date')}</FormLabel>
                               <Popover>
                                 <PopoverTrigger asChild>
                                   <FormControl>

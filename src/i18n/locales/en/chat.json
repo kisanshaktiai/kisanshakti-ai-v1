@@ -89,7 +89,10 @@
         "feedback_yes": "Yes",
         "feedback_no": "No",
         "feedback_thanks": "Thank you for your feedback!"
-      }
+      },
+      "feedback_no": "No",
+      "feedback_thanks": "Thank you for your feedback!",
+      "feedback_yes": "Yes"
     },
     "schedule": {
       "title": "Recommended Schedule",

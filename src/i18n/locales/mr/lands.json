@@ -127,6 +127,18 @@
         "location_set": "स्थान सेट",
         "location_updated": "स्थान अद्यतनित",
         "gps_accuracy": "GPS अचूकता: {{accuracy}}मी"
+      },
+      "loading": {
+        "title": "नकाशा लोड होत आहे…",
+        "hint": "नकाशा तयार होईपर्यंत थांबा",
+        "failed": "नकाशा लोड होऊ शकला नाही",
+        "offline": "इंटरनेट नाही. जोडून पुन्हा प्रयत्न करा.",
+        "go_back": "मागे जा",
+        "try_again": "पुन्हा प्रयत्न करा",
+        "initializing": "नकाशा सुरू होत आहे…",
+        "hybrid": "उपग्रह नकाशा लोड होत आहे…",
+        "locating": "तुमचे ठिकाण शोधत आहे…",
+        "center_me": "माझ्या ठिकाणावर आणा"
       }
     },
     "wizard": {
@@ -239,7 +251,8 @@
         "label": "मालकीचा प्रकार",
         "owned": "स्वतःचे",
         "leased": "भाडेपट्टीवर",
-        "shared": "भागीदारी"
+        "shared": "भागीदारी",
+        "rented": "भाड्याने"
       },
       "placeholders": {
         "select_state": "राज्य निवडा",
@@ -282,7 +295,10 @@
         "current_crop": "सध्याचे पीक",
         "acres": "एकर",
         "guntha": "गुंठा",
-        "sqft": "चौ. फूट"
+        "sqft": "चौ. फूट",
+        "irrigation": "सिंचन",
+        "area": "क्षेत्रफळ",
+        "not_set": "भरलेले नाही"
       }
     },
     "card": {
@@ -398,17 +414,17 @@
       "needs_test": "तपासणी हवी"
     },
     "crop_management": {
-      "title": "पीक व्यवस्थापन",
+      "title": "पीक व्यवस्थापन - {{name}}",
       "description": "या जमिनीसाठी पिकाचे तपशील व्यवस्थापित करा",
       "current_crop": "सध्याचे पीक",
       "previous_crop": "मागील पीक",
       "planting_date": "लागवडीची तारीख",
       "expected_harvest": "अपेक्षित कापणी",
       "previous_harvest_date": "मागील कापणीची तारीख",
-      "duration_days": "कालावधी (दिवस)",
-      "auto_calculated": "स्वयं-गणना",
+      "duration_days": "~{{days}} दिवस",
+      "auto_calculated": "पिकाच्या कालावधीनुसार (~{{days}} दिवस) आपोआप मोजलेले",
       "select_category": "श्रेणी निवडा",
-      "select_from": "मधून निवडा",
+      "select_from": "{{group}} मधून पीक निवडा",
       "select_date": "तारीख निवडा",
       "select_planting_first": "प्रथम लागवडीची तारीख निवडा",
       "selected": "निवडलेले",
@@ -422,10 +438,10 @@
       }
     },
     "edit": {
-      "title": "जमीन संपादित करा",
+      "title": "जमीन संपादित करा: {{name}}",
       "basic_details": "मूलभूत तपशील",
-      "area_display": "क्षेत्र",
-      "area_detail": "क्षेत्र तपशील",
+      "area_display": "क्षेत्र: {{acres}} एकर",
+      "area_detail": "{{guntha}} गुंठा | {{sqft}} चौ. फूट",
       "basic_land_info": "जमिनीची मूलभूत माहिती",
       "land_characteristics": "जमिनीची वैशिष्ट्ये",
       "review": "पुनरावलोकन",

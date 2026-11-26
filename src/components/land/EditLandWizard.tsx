@@ -346,10 +346,10 @@ export function EditLandWizard({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="owned">Owned</SelectItem>
-                            <SelectItem value="leased">Leased</SelectItem>
-                            <SelectItem value="rented">Rented</SelectItem>
-                            <SelectItem value="shared">Shared</SelectItem>
+                            <SelectItem value="owned">{t('lands.wizard.ownership.owned')}</SelectItem>
+                            <SelectItem value="leased">{t('lands.wizard.ownership.leased')}</SelectItem>
+                            <SelectItem value="rented">{t('lands.wizard.ownership.rented')}</SelectItem>
+                            <SelectItem value="shared">{t('lands.wizard.ownership.shared')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -367,7 +367,7 @@ export function EditLandWizard({
                 {currentStep === 1 && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Location Details</h3>
+                      <h3 className="text-lg font-semibold">{t('lands.wizard.form.location_details')}</h3>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -379,13 +379,13 @@ export function EditLandWizard({
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="state">State</Label>
+                        <Label htmlFor="state">{t('lands.wizard.form.state')}</Label>
                         <Select 
                           value={formData.state}
                           onValueChange={(value) => handleInputChange('state', value)}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select State" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.state') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {states.map((state) => (
@@ -398,14 +398,14 @@ export function EditLandWizard({
                       </div>
                       
                       <div>
-                        <Label htmlFor="district">District</Label>
+                        <Label htmlFor="district">{t('lands.wizard.form.district')}</Label>
                         <Select 
                           value={formData.district}
                           onValueChange={(value) => handleInputChange('district', value)}
                           disabled={!formData.state}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select District" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.district') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {districts.map((district) => (
@@ -418,14 +418,14 @@ export function EditLandWizard({
                       </div>
                       
                       <div>
-                        <Label htmlFor="taluka">Taluka</Label>
+                        <Label htmlFor="taluka">{t('lands.wizard.form.taluka')}</Label>
                         <Select 
                           value={formData.taluka}
                           onValueChange={(value) => handleInputChange('taluka', value)}
                           disabled={!formData.district}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Taluka" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.taluka') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {talukas.map((taluka) => (
@@ -438,14 +438,14 @@ export function EditLandWizard({
                       </div>
                       
                       <div>
-                        <Label htmlFor="village">Village</Label>
+                        <Label htmlFor="village">{t('lands.wizard.form.village')}</Label>
                         <Select 
                           value={formData.village}
                           onValueChange={(value) => handleInputChange('village', value)}
                           disabled={!formData.taluka}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Village" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.village') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {villages.map((village) => (
@@ -463,7 +463,7 @@ export function EditLandWizard({
                 {currentStep === 2 && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Land Characteristics</h3>
+                      <h3 className="text-lg font-semibold">{t('lands.wizard.form.land_characteristics')}</h3>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -475,13 +475,13 @@ export function EditLandWizard({
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="soil_type">Soil Type</Label>
+                        <Label htmlFor="soil_type">{t('lands.wizard.form.soil_type')}</Label>
                         <Select 
                           value={formData.soil_type}
                           onValueChange={(value) => handleInputChange('soil_type', value)}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Soil Type" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.soil_type') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {soilTypes.map((type) => (
@@ -494,13 +494,13 @@ export function EditLandWizard({
                       </div>
                       
                       <div>
-                        <Label htmlFor="water_source">Water Source</Label>
+                        <Label htmlFor="water_source">{t('lands.wizard.form.water_source')}</Label>
                         <Select 
                           value={formData.water_source}
                           onValueChange={(value) => handleInputChange('water_source', value)}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Water Source" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.water_source') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {waterSources.map((source) => (
@@ -513,13 +513,13 @@ export function EditLandWizard({
                       </div>
                       
                       <div>
-                        <Label htmlFor="irrigation_type">Irrigation Type</Label>
+                        <Label htmlFor="irrigation_type">{t('lands.wizard.form.irrigation_type')}</Label>
                         <Select 
                           value={formData.irrigation_type}
                           onValueChange={(value) => handleInputChange('irrigation_type', value)}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Irrigation Type" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.irrigation_type') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {irrigationTypes.map((type) => (
@@ -532,13 +532,13 @@ export function EditLandWizard({
                       </div>
                       
                       <div>
-                        <Label htmlFor="current_crop">Current Crop</Label>
+                        <Label htmlFor="current_crop">{t('lands.wizard.form.current_crop')}</Label>
                         <Select 
                           value={formData.current_crop}
                           onValueChange={(value) => handleInputChange('current_crop', value)}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select Current Crop" />
+                            <SelectValue placeholder={t('lands.wizard.form.select', { field: t('lands.wizard.form.current_crop') })} />
                           </SelectTrigger>
                           <SelectContent>
                             {commonCrops.map((crop) => (
@@ -555,53 +555,53 @@ export function EditLandWizard({
 
                 {currentStep === 3 && (
                   <div className="space-y-6">
-                    <h3 className="text-lg font-semibold mb-4">Review Land Information</h3>
+                    <h3 className="text-lg font-semibold mb-4">{t('lands.edit.review')}</h3>
                     
                     <div className="space-y-4">
                       <Card>
                         <CardContent className="pt-6">
-                          <h4 className="font-semibold mb-3">Basic Details</h4>
+                          <h4 className="font-semibold mb-3">{t('lands.edit.basic_details')}</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
-                            <span className="text-muted-foreground">Name:</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.name')}:</span>
                             <span>{formData.name}</span>
-                            <span className="text-muted-foreground">Survey No:</span>
-                            <span>{formData.survey_no || 'N/A'}</span>
-                            <span className="text-muted-foreground">Ownership:</span>
-                            <span>{formData.ownership_type}</span>
-                            <span className="text-muted-foreground">Area:</span>
-                            <span>{area.acres.toFixed(2)} acres</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.survey_number')}:</span>
+                            <span>{formData.survey_no || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.ownership')}:</span>
+                            <span>{t(`lands.wizard.ownership.${formData.ownership_type}`, { defaultValue: formData.ownership_type })}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.area')}:</span>
+                            <span>{t('lands.edit.area_display', { acres: area.acres.toFixed(2) })}</span>
                           </div>
                         </CardContent>
                       </Card>
                       
                       <Card>
                         <CardContent className="pt-6">
-                          <h4 className="font-semibold mb-3">Location</h4>
+                          <h4 className="font-semibold mb-3">{t('lands.wizard.review.location')}</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
-                            <span className="text-muted-foreground">State:</span>
-                            <span>{states.find(s => s.id === formData.state)?.name || 'N/A'}</span>
-                            <span className="text-muted-foreground">District:</span>
-                            <span>{districts.find(d => d.id === formData.district)?.name || 'N/A'}</span>
-                            <span className="text-muted-foreground">Taluka:</span>
-                            <span>{talukas.find(t => t.id === formData.taluka)?.name || 'N/A'}</span>
-                            <span className="text-muted-foreground">Village:</span>
-                            <span>{villages.find(v => v.id === formData.village)?.name || 'N/A'}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.state')}:</span>
+                            <span>{states.find(s => s.id === formData.state)?.name || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.district')}:</span>
+                            <span>{districts.find(d => d.id === formData.district)?.name || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.taluka')}:</span>
+                            <span>{talukas.find(tk => tk.id === formData.taluka)?.name || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.village')}:</span>
+                            <span>{villages.find(v => v.id === formData.village)?.name || t('lands.wizard.review_labels.not_set')}</span>
                           </div>
                         </CardContent>
                       </Card>
                       
                       <Card>
                         <CardContent className="pt-6">
-                          <h4 className="font-semibold mb-3">Characteristics</h4>
+                          <h4 className="font-semibold mb-3">{t('lands.wizard.review.land_details')}</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
-                            <span className="text-muted-foreground">Soil Type:</span>
-                            <span>{soilTypeLabel(formData.soil_type) || 'N/A'}</span>
-                            <span className="text-muted-foreground">Water Source:</span>
-                            <span>{formData.water_source || 'N/A'}</span>
-                            <span className="text-muted-foreground">Irrigation:</span>
-                            <span>{formData.irrigation_type || 'N/A'}</span>
-                            <span className="text-muted-foreground">Current Crop:</span>
-                            <span>{formData.current_crop || 'N/A'}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.soil_type')}:</span>
+                            <span>{soilTypeLabel(formData.soil_type) || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.water_source')}:</span>
+                            <span>{formData.water_source || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.irrigation')}:</span>
+                            <span>{formData.irrigation_type || t('lands.wizard.review_labels.not_set')}</span>
+                            <span className="text-muted-foreground">{t('lands.wizard.review_labels.current_crop')}:</span>
+                            <span>{formData.current_crop || t('lands.wizard.review_labels.not_set')}</span>
                           </div>
                         </CardContent>
                       </Card>

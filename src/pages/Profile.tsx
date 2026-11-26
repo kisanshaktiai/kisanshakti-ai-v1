@@ -474,7 +474,7 @@ export default function Profile() {
       {/* Crops Section */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-base">Primary Crops</CardTitle>
+          <CardTitle className="text-base">{t('profile.primary_crops')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
@@ -494,7 +494,7 @@ export default function Profile() {
       {/* Location Card */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-base">Location Details</CardTitle>
+          <CardTitle className="text-base">{t('profile.location_details')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-start gap-3">

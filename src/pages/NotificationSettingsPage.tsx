@@ -1,10 +1,12 @@
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import NotificationSettings from '@/components/notifications/NotificationSettings';
 
 export default function NotificationSettingsPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-full bg-gradient-to-br from-background via-accent/5 to-primary/5">
@@ -15,13 +17,14 @@ export default function NotificationSettingsPage() {
               variant="ghost"
               size="icon"
               onClick={() => navigate('/app/profile')}
-              className="h-9 w-9 rounded-xl"
+              className="h-11 w-11 rounded-xl"
+              aria-label={t('common.back')}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-lg font-bold">Notification Settings</h1>
-              <p className="text-xs text-muted-foreground">Manage your alerts and reminders</p>
+              <h1 className="text-lg font-bold">{t('notification.settings')}</h1>
+              <p className="text-xs text-muted-foreground">{t('notification.settingsSubtitle')}</p>
             </div>
           </div>
         </div>

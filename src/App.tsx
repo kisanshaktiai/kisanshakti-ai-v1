@@ -62,7 +62,6 @@ const EnvDiagnostics = lazy(() => import("./pages/EnvDiagnostics"));
 const AIChat = lazy(() => import("./pages/AIChat"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const AICommunityPage = lazy(() => import("./pages/CommunityPage"));
-const CropSelectionTest = lazy(() => import("./pages/CropSelectionTest"));
 const Schedule = lazy(() => import("./pages/Schedule"));
 const MobileAuth = lazy(() => import("./pages/MobileAuth"));
 const NDVIAnalysis = lazy(() => import("./pages/NDVIAnalysis"));
@@ -436,7 +435,6 @@ const router = createBrowserRouter([
       { path: "chat", element: <Suspense fallback={<PageLoader />}><AIChat /></Suspense> },
       { path: "community", element: <Suspense fallback={<PageLoader />}><AICommunityPage /></Suspense> },
       { path: "analytics", element: <Suspense fallback={<PageLoader />}><Analytics /></Suspense> },
-      { path: "test/crop-selection", element: <Suspense fallback={<PageLoader />}><CropSelectionTest /></Suspense> },
       { path: "schedule", element: <Suspense fallback={<PageLoader />}><Schedule /></Suspense> },
       { path: "ai-dashboard", element: <Suspense fallback={<PageLoader />}><AIScheduleDashboard /></Suspense> },
       { path: "ndvi", element: <Suspense fallback={<PageLoader />}><NDVIAnalysis /></Suspense> },

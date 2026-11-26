@@ -67,6 +67,22 @@
     "success": {
       "installed": "App installed successfully!",
       "access_from_home": "You can now access KisanShakti from your home screen"
+    },
+    "banner": {
+      "dismiss": "Dismiss",
+      "benefits": "Fast access • Works offline • Notifications",
+      "install_app": "Install app",
+      "install_iphone": "Install on iPhone",
+      "add_home_hint": "Add to the home screen for the full app",
+      "show_steps": "Show steps",
+      "step_share": "Tap the Share button",
+      "step_share_desc": "Share is in the Safari toolbar at the bottom",
+      "step_add": "Add to Home Screen",
+      "step_add_desc": "Scroll and tap \"Add to Home Screen\"",
+      "step_confirm": "Confirm",
+      "step_confirm_desc": "Tap \"Add\" at the top right",
+      "got_it": "Got it",
+      "dont_show": "Don't show again"
     }
   },
   "__qa": {

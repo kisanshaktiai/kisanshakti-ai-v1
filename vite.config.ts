@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_BUILD_TIMESTAMP': JSON.stringify(BUILD_TIMESTAMP),
     'import.meta.env.VITE_BUILD_HASH': JSON.stringify(BUILD_HASH),
   },
+  // Production builds drop console.log/debug/info calls (708 of them in src/ at
+  // the time of writing); console.warn and console.error stay.
+  esbuild: mode === 'production' ? { pure: ['console.log', 'console.debug', 'console.info'] } : undefined,
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {

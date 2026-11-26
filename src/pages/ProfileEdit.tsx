@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/authStore';
+import { useLanguageStore } from '@/stores/languageStore';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
@@ -17,6 +18,7 @@ import { PageShell } from '@/components/layout/PageShell';
 
 export default function ProfileEdit() {
   const { t } = useTranslation();
+  const availableLanguages = useLanguageStore((s) => s.availableLanguages);
   const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
   const { toast } = useToast();
@@ -315,16 +317,16 @@ export default function ProfileEdit() {
       });
 
       toast({
-        title: 'Success',
-        description: 'Profile updated successfully',
+        title: t('common.success'),
+        description: t('profile_edit.updateSuccess'),
       });
 
       navigate('/app/profile');
     } catch (error) {
       console.error('Error saving profile:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to update profile. Please try again.',
+        title: t('common.error'),
+        description: t('profile_edit.updateFailed'),
         variant: 'destructive'
       });
     } finally {
@@ -334,7 +336,8 @@ export default function ProfileEdit() {
 
   return (
     <PageShell padding="default" spacing="none">
-      <div className="space-y-4">
+      {/* pb-28: room for the pinned save bar above the bottom navigation */}
+      <div className="space-y-4 pb-28">
         {dataLoading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -347,10 +350,11 @@ export default function ProfileEdit() {
                 size="icon"
                 onClick={() => navigate('/app/profile')}
                 className="shrink-0"
+                aria-label={t('common.back')}
               >
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
+              <h1 className="text-xl font-bold text-foreground truncate">{t('profile_edit.title')}</h1>
             </div>
 
             {/* Profile Picture Section */}
@@ -364,7 +368,7 @@ export default function ProfileEdit() {
                 />
                 <div className="text-center">
                   <p className="text-sm font-medium">{user?.fullName || user?.name}</p>
-                  <p className="text-xs text-muted-foreground">Click to change profile picture</p>
+                  <p className="text-xs text-muted-foreground">{t('profile_edit.changePhotoHint')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -372,31 +376,31 @@ export default function ProfileEdit() {
             {/* Personal Information */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Personal Information</CardTitle>
+                <CardTitle className="text-base">{t('profile_edit.personalInfo')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="fullName">Full Name</Label>
+                  <Label htmlFor="fullName">{t('profile_edit.fullName')}</Label>
                   <Input
                     id="fullName"
                     value={formData.fullName}
                     onChange={(e) => handleInputChange('fullName', e.target.value)}
-                    placeholder="Enter your full name"
+                    placeholder={t('profile_edit.fullNamePlaceholder')}
                   />
                 </div>
                 
                 <div>
-                  <Label htmlFor="displayName">Display Name</Label>
+                  <Label htmlFor="displayName">{t('profile_edit.displayName')}</Label>
                   <Input
                     id="displayName"
                     value={formData.displayName}
                     onChange={(e) => handleInputChange('displayName', e.target.value)}
-                    placeholder="Name to display in app"
+                    placeholder={t('profile_edit.displayNamePlaceholder')}
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Label htmlFor="dateOfBirth">{t('profile_edit.dateOfBirth')}</Label>
                   <Input
                     id="dateOfBirth"
                     type="date"
@@ -406,51 +410,51 @@ export default function ProfileEdit() {
                 </div>
 
                 <div>
-                  <Label htmlFor="gender">Gender</Label>
+                  <Label htmlFor="gender">{t('profile_edit.gender')}</Label>
                   <Select
                     value={formData.gender}
                     onValueChange={(value) => handleInputChange('gender', value)}
                   >
                     <SelectTrigger id="gender">
-                      <SelectValue placeholder="Select gender" />
+                      <SelectValue placeholder={t('profile_edit.genderPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Male">Male</SelectItem>
-                      <SelectItem value="Female">Female</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="Male">{t('profile_edit.male')}</SelectItem>
+                      <SelectItem value="Female">{t('profile_edit.female')}</SelectItem>
+                      <SelectItem value="Other">{t('profile_edit.other')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label htmlFor="email">Email (Optional)</Label>
+                  <Label htmlFor="email">{t('profile_edit.emailOptional')}</Label>
                   <Input
                     id="email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
-                    placeholder="your.email@example.com"
+                    placeholder={t('profile_edit.emailOptionalPlaceholder')}
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="aadhaarNumber">Aadhaar Number (Optional)</Label>
+                  <Label htmlFor="aadhaarNumber">{t('profile_edit.aadhaar')}</Label>
                   <Input
                     id="aadhaarNumber"
                     value={formData.aadhaarNumber}
                     onChange={(e) => handleInputChange('aadhaarNumber', e.target.value)}
-                    placeholder="XXXX-XXXX-XXXX"
+                    placeholder={t('profile_edit.aadhaarPlaceholder')}
                     maxLength={12}
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="bio">Bio (Optional)</Label>
+                  <Label htmlFor="bio">{t('profile_edit.bio')}</Label>
                   <Textarea
                     id="bio"
                     value={formData.bio}
                     onChange={(e) => handleInputChange('bio', e.target.value)}
-                    placeholder="Tell us about yourself"
+                    placeholder={t('profile_edit.bioPlaceholder')}
                     rows={3}
                   />
                 </div>
@@ -460,76 +464,76 @@ export default function ProfileEdit() {
       {/* Address Information */}
             <Card>
         <CardHeader>
-          <CardTitle className="text-base">Address</CardTitle>
+          <CardTitle className="text-base">{t('profile_edit.address')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="addressLine1">Address Line 1</Label>
+            <Label htmlFor="addressLine1">{t('profile_edit.addressLine1')}</Label>
             <Input
               id="addressLine1"
               value={formData.addressLine1}
               onChange={(e) => handleInputChange('addressLine1', e.target.value)}
-              placeholder="House/Plot number, Street"
+              placeholder={t('profile_edit.addressLine1Placeholder')}
             />
           </div>
 
           <div>
-            <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
+            <Label htmlFor="addressLine2">{t('profile_edit.addressLine2')}</Label>
             <Input
               id="addressLine2"
               value={formData.addressLine2}
               onChange={(e) => handleInputChange('addressLine2', e.target.value)}
-              placeholder="Landmark"
+              placeholder={t('profile_edit.addressLine2Placeholder')}
             />
           </div>
 
           <div>
-            <Label htmlFor="village">Village</Label>
+            <Label htmlFor="village">{t('profile_edit.village')}</Label>
             <Input
               id="village"
               value={formData.village}
               onChange={(e) => handleInputChange('village', e.target.value)}
-              placeholder="Enter village name"
+              placeholder={t('profile_edit.villagePlaceholder')}
             />
           </div>
 
           <div>
-            <Label htmlFor="taluka">Taluka/Tehsil</Label>
+            <Label htmlFor="taluka">{t('profile_edit.taluka')}</Label>
             <Input
               id="taluka"
               value={formData.taluka}
               onChange={(e) => handleInputChange('taluka', e.target.value)}
-              placeholder="Enter taluka/tehsil"
+              placeholder={t('profile_edit.talukaPlaceholder')}
             />
           </div>
 
           <div>
-            <Label htmlFor="district">District</Label>
+            <Label htmlFor="district">{t('profile_edit.district')}</Label>
             <Input
               id="district"
               value={formData.district}
               onChange={(e) => handleInputChange('district', e.target.value)}
-              placeholder="Enter district"
+              placeholder={t('profile_edit.districtPlaceholder')}
             />
           </div>
 
           <div>
-            <Label htmlFor="state">State</Label>
+            <Label htmlFor="state">{t('profile_edit.state')}</Label>
             <Input
               id="state"
               value={formData.state}
               onChange={(e) => handleInputChange('state', e.target.value)}
-              placeholder="Enter state"
+              placeholder={t('profile_edit.stateInputPlaceholder')}
             />
           </div>
 
           <div>
-            <Label htmlFor="pincode">Pincode</Label>
+            <Label htmlFor="pincode">{t('profile_edit.pincode')}</Label>
             <Input
               id="pincode"
               value={formData.pincode}
               onChange={(e) => handleInputChange('pincode', e.target.value)}
-              placeholder="Enter pincode"
+              placeholder={t('profile_edit.pincodePlaceholder')}
               maxLength={6}
             />
           </div>
@@ -539,84 +543,84 @@ export default function ProfileEdit() {
       {/* Farm Details */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Farm Details</CardTitle>
+          <CardTitle className="text-base">{t('profile_edit.farmDetails')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="totalLand">Total Land (Acres)</Label>
+            <Label htmlFor="totalLand">{t('profile_edit.totalLandAcres')}</Label>
             <Input
               id="totalLand"
               type="number"
               value={formData.totalLandAcres}
               onChange={(e) => handleInputChange('totalLandAcres', parseFloat(e.target.value) || 0)}
-              placeholder="Enter total land in acres"
+              placeholder={t('profile_edit.totalLandAcresPlaceholder')}
               min="0"
               step="0.1"
             />
           </div>
 
           <div>
-            <Label htmlFor="crops">Primary Crops (comma separated)</Label>
+            <Label htmlFor="crops">{t('profile_edit.primaryCrops')}</Label>
             <Textarea
               id="crops"
               value={formData.primaryCrops}
               onChange={(e) => handleInputChange('primaryCrops', e.target.value)}
-              placeholder="e.g., Wheat, Rice, Cotton"
+              placeholder={t('profile_edit.primaryCropsPlaceholder')}
               rows={2}
             />
           </div>
 
           <div>
-            <Label htmlFor="experience">Farming Experience (Years)</Label>
+            <Label htmlFor="experience">{t('profile_edit.farmingExperienceYears')}</Label>
             <Input
               id="experience"
               type="number"
               value={formData.farmingExperienceYears}
               onChange={(e) => handleInputChange('farmingExperienceYears', parseInt(e.target.value) || 0)}
-              placeholder="Years of experience"
+              placeholder={t('profile_edit.farmingExperiencePlaceholder')}
               min="0"
             />
           </div>
 
           <div>
-            <Label htmlFor="farmType">Farm Type</Label>
+            <Label htmlFor="farmType">{t('profile_edit.farmType')}</Label>
             <Select
               value={formData.farmType}
               onValueChange={(value) => handleInputChange('farmType', value)}
             >
               <SelectTrigger id="farmType">
-                <SelectValue placeholder="Select farm type" />
+                <SelectValue placeholder={t('profile_edit.farmTypePlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Small">Small (&lt; 2 acres)</SelectItem>
-                <SelectItem value="Medium">Medium (2-5 acres)</SelectItem>
-                <SelectItem value="Large">Large (&gt; 5 acres)</SelectItem>
-                <SelectItem value="Commercial">Commercial</SelectItem>
+                <SelectItem value="Small">{t('profile_edit.farmTypeSmall')}</SelectItem>
+                <SelectItem value="Medium">{t('profile_edit.farmTypeMedium')}</SelectItem>
+                <SelectItem value="Large">{t('profile_edit.farmTypeLarge')}</SelectItem>
+                <SelectItem value="Commercial">{t('profile_edit.farmTypeCommercial')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label htmlFor="income">Annual Income Range</Label>
+            <Label htmlFor="income">{t('profile_edit.annualIncome')}</Label>
             <Select
               value={formData.annualIncomeRange}
               onValueChange={(value) => handleInputChange('annualIncomeRange', value)}
             >
               <SelectTrigger id="income">
-                <SelectValue placeholder="Select income range" />
+                <SelectValue placeholder={t('profile_edit.annualIncomePlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="< 1 Lakh">Less than 1 Lakh</SelectItem>
-                <SelectItem value="1-3 Lakhs">1-3 Lakhs</SelectItem>
-                <SelectItem value="3-5 Lakhs">3-5 Lakhs</SelectItem>
-                <SelectItem value="5-10 Lakhs">5-10 Lakhs</SelectItem>
-                <SelectItem value="> 10 Lakhs">More than 10 Lakhs</SelectItem>
+                <SelectItem value="< 1 Lakh">{t('profile_edit.incomeBelow1')}</SelectItem>
+                <SelectItem value="1-3 Lakhs">{t('profile_edit.income1to3')}</SelectItem>
+                <SelectItem value="3-5 Lakhs">{t('profile_edit.income3to5')}</SelectItem>
+                <SelectItem value="5-10 Lakhs">{t('profile_edit.income5to10')}</SelectItem>
+                <SelectItem value="> 10 Lakhs">{t('profile_edit.incomeAbove10')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="flex items-center justify-between">
-            <Label htmlFor="hasLoan">Has Agricultural Loan</Label>
+            <Label htmlFor="hasLoan">{t('profile_edit.hasLoan')}</Label>
             <Switch
               id="hasLoan"
               checked={formData.hasLoan}
@@ -626,13 +630,13 @@ export default function ProfileEdit() {
 
           {formData.hasLoan && (
             <div>
-              <Label htmlFor="loanAmount">Loan Amount (₹)</Label>
+              <Label htmlFor="loanAmount">{t('profile_edit.loanAmount')}</Label>
               <Input
                 id="loanAmount"
                 type="number"
                 value={formData.loanAmount}
                 onChange={(e) => handleInputChange('loanAmount', parseFloat(e.target.value) || 0)}
-                placeholder="Enter loan amount"
+                placeholder={t('profile_edit.loanAmountPlaceholder')}
                 min="0"
               />
             </div>
@@ -643,11 +647,11 @@ export default function ProfileEdit() {
       {/* Facilities */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Facilities</CardTitle>
+          <CardTitle className="text-base">{t('profile_edit.facilities')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label htmlFor="tractor">Has Tractor</Label>
+            <Label htmlFor="tractor">{t('profile_edit.hasTractor')}</Label>
             <Switch
               id="tractor"
               checked={formData.hasTractor}
@@ -656,7 +660,7 @@ export default function ProfileEdit() {
           </div>
 
           <div className="flex items-center justify-between">
-            <Label htmlFor="irrigation">Has Irrigation</Label>
+            <Label htmlFor="irrigation">{t('profile_edit.hasIrrigation')}</Label>
             <Switch
               id="irrigation"
               checked={formData.hasIrrigation}
@@ -666,27 +670,27 @@ export default function ProfileEdit() {
 
           {formData.hasIrrigation && (
             <div>
-              <Label htmlFor="irrigationType">Irrigation Type</Label>
+              <Label htmlFor="irrigationType">{t('profile_edit.irrigationType')}</Label>
               <Select
                 value={formData.irrigationType}
                 onValueChange={(value) => handleInputChange('irrigationType', value)}
               >
                 <SelectTrigger id="irrigationType">
-                  <SelectValue placeholder="Select irrigation type" />
+                  <SelectValue placeholder={t('profile_edit.irrigationTypePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Drip">Drip</SelectItem>
-                  <SelectItem value="Sprinkler">Sprinkler</SelectItem>
-                  <SelectItem value="Canal">Canal</SelectItem>
-                  <SelectItem value="Tubewell">Tubewell</SelectItem>
-                  <SelectItem value="Rainfed">Rainfed</SelectItem>
+                  <SelectItem value="Drip">{t('profile_edit.drip')}</SelectItem>
+                  <SelectItem value="Sprinkler">{t('profile_edit.sprinkler')}</SelectItem>
+                  <SelectItem value="Canal">{t('profile_edit.canal')}</SelectItem>
+                  <SelectItem value="Tubewell">{t('profile_edit.tubewell')}</SelectItem>
+                  <SelectItem value="Rainfed">{t('profile_edit.rainfed')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
 
           <div className="flex items-center justify-between">
-            <Label htmlFor="storage">Has Storage Facility</Label>
+            <Label htmlFor="storage">{t('profile_edit.hasStorage')}</Label>
             <Switch
               id="storage"
               checked={formData.hasStorage}
@@ -699,53 +703,51 @@ export default function ProfileEdit() {
       {/* Preferences */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Preferences & Notes</CardTitle>
+          <CardTitle className="text-base">{t('profile_edit.preferencesNotes')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="language">Preferred Language</Label>
+            <Label htmlFor="language">{t('profile_edit.language')}</Label>
             <Select
               value={formData.preferredLanguage}
               onValueChange={(value) => handleInputChange('preferredLanguage', value)}
             >
               <SelectTrigger id="language">
-                <SelectValue placeholder="Select language" />
+                <SelectValue placeholder={t('profile_edit.languagePlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="hi">हिंदी</SelectItem>
-                <SelectItem value="pa">ਪੰਜਾਬੀ</SelectItem>
-                <SelectItem value="mr">मराठी</SelectItem>
-                <SelectItem value="ta">தமிழ்</SelectItem>
+                {availableLanguages.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>{lang.nativeName}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label htmlFor="contactMethod">Preferred Contact Method</Label>
+            <Label htmlFor="contactMethod">{t('profile_edit.contactMethod')}</Label>
             <Select
               value={formData.preferredContactMethod}
               onValueChange={(value) => handleInputChange('preferredContactMethod', value)}
             >
               <SelectTrigger id="contactMethod">
-                <SelectValue placeholder="Select contact method" />
+                <SelectValue placeholder={t('profile_edit.contactMethodPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="phone">Phone</SelectItem>
-                <SelectItem value="sms">SMS</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="phone">{t('profile_edit.contactPhone')}</SelectItem>
+                <SelectItem value="sms">{t('profile_edit.contactSms')}</SelectItem>
+                <SelectItem value="whatsapp">{t('profile_edit.contactWhatsapp')}</SelectItem>
+                <SelectItem value="email">{t('profile_edit.contactEmail')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label htmlFor="notes">Additional Notes (Optional)</Label>
+            <Label htmlFor="notes">{t('profile_edit.notes')}</Label>
             <Textarea
               id="notes"
               value={formData.notes}
               onChange={(e) => handleInputChange('notes', e.target.value)}
-              placeholder="Any additional information..."
+              placeholder={t('profile_edit.notesPlaceholder')}
               rows={3}
             />
           </div>
@@ -753,7 +755,8 @@ export default function ProfileEdit() {
       </Card>
 
             {/* Fixed Bottom Action Bar */}
-            <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10">
+            {/* Save bar: pinned just above the bottom navigation (5rem + the phone's own safe area), so it never sits under it. */}
+            <div className="fixed left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10" style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
               <div className="max-w-2xl mx-auto flex gap-3">
                 <Button
                   onClick={() => navigate('/app/profile')}
@@ -761,7 +764,7 @@ export default function ProfileEdit() {
                   className="flex-1"
                   disabled={loading}
                 >
-                  Cancel
+                  {t('profile_edit.cancel')}
                 </Button>
                 
                 <Button
@@ -772,12 +775,12 @@ export default function ProfileEdit() {
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
+                      {t('profile_edit.saving')}
                     </>
                   ) : (
                     <>
                       <Save className="w-4 h-4 mr-2" />
-                      Save
+                      {t('profile_edit.save')}
                     </>
                   )}
                 </Button>

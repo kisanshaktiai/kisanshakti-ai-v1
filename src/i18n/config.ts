@@ -8,6 +8,15 @@ import ta from './locales/ta.json';
 
 type SupportedPageLocale = 'en' | 'hi' | 'mr';
 
+/**
+ * Languages the app can really show: the ones with a full set of screen
+ * bundles under src/i18n/locales/<code>/. A language outside this list would
+ * show most screens in English, so the pickers offer only these. Add a code
+ * here (and to pageImporters) when its bundles are complete.
+ */
+export const TRANSLATED_LANGUAGES: readonly string[] = ['en', 'hi', 'mr'];
+export const isTranslatedLanguage = (code: string): boolean => TRANSLATED_LANGUAGES.includes(code);
+
 const pageImporters: Record<SupportedPageLocale, Record<string, () => Promise<any>>> = {
   en: {
     auth: () => import('./locales/en/auth.json'), identity: () => import('./locales/en/identity.json'), activation: () => import('./locales/en/activation.json'), provider: () => import('./locales/en/provider.json'), farmServices: () => import('./locales/en/farmServices.json'), toast: () => import('./locales/en/toast.json'), weather: () => import('./locales/en/weather.json'), home: () => import('./locales/en/home.json'), lands: () => import('./locales/en/lands.json'), profile: () => import('./locales/en/profile.json'), market: () => import('./locales/en/market.json'), social: () => import('./locales/en/social.json'), schedule: () => import('./locales/en/schedule.json'), analytics: () => import('./locales/en/analytics.json'), chat: () => import('./locales/en/chat.json'), instascan: () => import('./locales/en/instascan.json'), pwa: () => import('./locales/en/pwa.json'), ndvi: () => import('./locales/en/ndvi.json'), schemes: () => import('./locales/en/schemes.json'), advisory: () => import('./locales/en/advisory.json'), video: () => import('./locales/en/video.json'), error: () => import('./locales/en/error.json'), sync: () => import('./locales/en/sync.json'), common: () => import('./locales/en/common.json'), voice: () => import('./locales/en/voice.json'), notification: () => import('./locales/en/notification.json'), soil: () => import('./locales/en/soil.json'), profile_edit: () => import('./locales/en/profile_edit.json'), cropGrowth: () => import('./locales/en/cropGrowth.json'), chatCards: () => import('./locales/en/chat-cards.json'), farmIntel: () => import('./locales/en/farm-intelligence.json'), sky: () => import('./locales/en/sky.json'), alerts: () => import('./locales/en/alerts.json'),

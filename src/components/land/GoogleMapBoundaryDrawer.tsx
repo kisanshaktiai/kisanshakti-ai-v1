@@ -633,9 +633,9 @@ export function GoogleMapBoundaryDrawer({
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
           <p className="text-muted-foreground font-medium">
-            Loading Map...
+            {t('lands.map.loading.title')}
           </p>
-          <p className="text-xs text-muted-foreground">Please wait while we prepare the map</p>
+          <p className="text-xs text-muted-foreground">{t('lands.map.loading.hint')}</p>
           {!isOnline && (
             <div className="flex items-center justify-center gap-2 mt-2 text-amber-600">
               <WifiOff className="h-4 w-4" />
@@ -654,19 +654,19 @@ export function GoogleMapBoundaryDrawer({
       <div className="relative w-full h-full flex items-center justify-center bg-background p-4">
         <Card className="p-6 space-y-4 text-center max-w-md">
           <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
-          <h2 className="text-lg font-semibold text-destructive">Map Loading Failed</h2>
+          <h2 className="text-lg font-semibold text-destructive">{t('lands.map.loading.failed')}</h2>
           <p className="text-sm text-muted-foreground">
             {!isOnline 
-              ? 'No internet connection. Please connect to the internet and try again.'
+              ? t('lands.map.loading.offline')
               : loadError}
           </p>
           <div className="flex gap-3 justify-center pt-2">
             <Button onClick={onCancel} variant="outline">
-              Go Back
+              {t('lands.map.loading.go_back')}
             </Button>
             <Button onClick={retry} variant="default">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
+              {t('lands.map.loading.try_again')}
             </Button>
           </div>
         </Card>
@@ -681,7 +681,7 @@ export function GoogleMapBoundaryDrawer({
       <div className="relative w-full h-full flex items-center justify-center bg-background">
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground font-medium">Initializing map...</p>
+          <p className="text-muted-foreground font-medium">{t('lands.map.loading.initializing')}</p>
           <Button variant="outline" size="sm" onClick={retry} className="mt-2">
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
@@ -698,8 +698,8 @@ export function GoogleMapBoundaryDrawer({
         <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
           <Card className="p-6 space-y-4 text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Loading Hybrid Map...</p>
-            <p className="text-xs text-muted-foreground">Getting your location...</p>
+            <p className="text-muted-foreground">{t('lands.map.loading.hybrid')}</p>
+            <p className="text-xs text-muted-foreground">{t('lands.map.loading.locating')}</p>
           </Card>
         </div>
       )}
@@ -707,7 +707,7 @@ export function GoogleMapBoundaryDrawer({
       {/* Location center button — sits above the bottom action sheet, safe-area aware */}
       <button
         onClick={handleCenterOnLocation}
-        aria-label="Center on my location"
+        aria-label={t('lands.map.loading.center_me')}
         className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
         style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
         disabled={isCentering}

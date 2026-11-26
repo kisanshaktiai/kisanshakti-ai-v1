@@ -3,6 +3,9 @@
  * Handles Location, Camera, Microphone, and Contacts permissions
  */
 
+import i18n from '@/i18n/config';
+import { toast } from '@/hooks/use-toast';
+
 export type PermissionType = 'location' | 'camera' | 'microphone' | 'contacts';
 export type PermissionStatus = 'granted' | 'denied' | 'prompt' | 'blocked';
 
@@ -302,10 +305,10 @@ class PermissionManagerClass {
     } else if (userAgent.includes('iphone') || userAgent.includes('ipad')) {
       // iOS Safari doesn't support opening settings directly
       // We'll show instructions instead
-      alert('To enable permissions:\n1. Open Settings\n2. Scroll to Safari\n3. Find KisanShakti\n4. Enable permissions');
+      toast({ title: i18n.t('perm.blocked'), description: i18n.t('perm.openSettingsHint'), variant: 'destructive' });
     } else {
       // Desktop - show browser settings hint
-      alert('Please click the lock icon in your browser\'s address bar to manage permissions.');
+      toast({ title: i18n.t('perm.blocked'), description: i18n.t('perm.openSettingsHint'), variant: 'destructive' });
     }
   }
 
