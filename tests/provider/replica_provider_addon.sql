@@ -40,3 +40,7 @@ CREATE TABLE IF NOT EXISTS storage.buckets (
 CREATE TABLE IF NOT EXISTS storage.objects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), bucket_id text REFERENCES storage.buckets(id), name text, owner_id text);
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- ── for 20261124140600 (service requests) ──────────────────────────────────
+ALTER TABLE public.lands ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE public.lands ADD COLUMN IF NOT EXISTS village character varying;

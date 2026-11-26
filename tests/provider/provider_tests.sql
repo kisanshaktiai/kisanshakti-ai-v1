@@ -433,6 +433,166 @@ SELECT chk('S11 the farmer functions never return a session, a mobile number or 
   'false');
 UPDATE feature_flags SET is_enabled = false, target_tenants = '{}'::uuid[] WHERE flag_name = 'farm_services_search';
 
+\echo '=== service requests: ask, answer, book, done, rate (20261124140600) ==='
+-- tday(): today as the request functions count it (the policy timezone, not the server's)
+CREATE OR REPLACE FUNCTION public.tday() RETURNS date LANGUAGE sql STABLE AS $$ SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date $$;
+-- fm(token, path): one value out of the farmer's own requests; pin(token, path): one value out of the provider's inbox
+CREATE OR REPLACE FUNCTION public.fm(p_token text, p_path text) RETURNS text LANGUAGE sql AS $$
+  SELECT public.call_as('anon', p_token, format('SELECT coalesce(farm_service_requests_mine() #>> %L, ''(null)'')', p_path)) $$;
+CREATE OR REPLACE FUNCTION public.pin(p_token text, p_path text) RETURNS text LANGUAGE sql AS $$
+  SELECT public.call_as('anon', p_token, format('SELECT coalesce(provider_requests_inbox() #>> %L, ''(null)'')', p_path)) $$;
+UPDATE service_provider_profiles SET accepts_requests = true WHERE account_id IN ('9a000000-0000-0000-0000-000000000001', '9a000000-0000-0000-0000-000000000003');
+SELECT id AS svc_p1 FROM provider_services WHERE account_id = '9a000000-0000-0000-0000-000000000001' AND category_code = 'ROTAVATOR' AND status = 'ACTIVE' LIMIT 1 \gset
+SELECT chk('R01 flag off: a farmer cannot ask; a provider session is never a farmer',
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"provider_service_id":"%s"}')$$, tday(), :'svc_p1')) || ' | ' ||
+  w('tok-p1', 'farm_service_requests_mine()'), 'ERR FEATURE_DISABLED | ERR NOT_AUTHENTICATED');
+UPDATE feature_flags SET is_enabled = true, target_tenants = ARRAY['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222']::uuid[] WHERE flag_name = 'farm_services_search';
+SELECT chk('R02 a request needs a real kind, a day from today to the horizon, an amount, the farmer''s own located land, and a provider in reach',
+  w('tok-f1', $$farm_service_request_create('{"kind":"GIFT"}')$$) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"provider_service_id":"%s"}')$$, tday() - 1, :'svc_p1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"provider_service_id":"%s"}')$$, tday() + 61, :'svc_p1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":0,"provider_service_id":"%s"}')$$, tday(), :'svc_p1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1b000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"provider_service_id":"%s"}')$$, tday(), :'svc_p1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000002","needed_date":"%s","quantity":2,"provider_service_id":"%s"}')$$, tday(), :'svc_p1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"provider_service_id":"not-a-uuid"}')$$, tday())) || ' | ' ||
+  q('SELECT count(*) FROM service_requests'),
+  'ERR REQUEST_INPUT_INVALID | ERR REQUEST_DATE_INVALID | ERR REQUEST_DATE_INVALID | ERR REQUEST_QUANTITY_INVALID | ERR REQUEST_LAND_INVALID | ERR PROVIDER_OUT_OF_REACH | ERR REQUEST_INPUT_INVALID | 0');
+
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"provider_service_id":"%s"}')$$, tday(), :'svc_p1')) AS r \gset
+SELECT id AS rq1 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT chk('R03 asked of one provider: open, his name shown, his number not yet, the rate the farmer saw kept',
+  :'r' || ' ' || fm('tok-f1', '{0,status}') || ' ' || fm('tok-f1', '{0,is_direct}') || ' ' || fm('tok-f1', '{0,provider,public_name}') || ' ' || fm('tok-f1', '{0,provider,mobile}') || ' ' || fm('tok-f1', '{0,quoted_rate}') || ' ' || fm('tok-f1', '{0,quantity_unit}'),
+  'OK OPEN true Test Tractor Service (null) 1100.00 PER_HOUR');
+SELECT chk('R04 the provider sees the request without any name, number, village or tenant; another provider does not see it',
+  pin('tok-p1', '{new,0,id}') || ' ' || pin('tok-p1', '{new,0,distance_km}') || ' ' || pin('tok-p1', '{new,0,farmer}') || ' ' ||
+  call_as('anon', 'tok-p1', $$SELECT ((provider_requests_inbox()::text) ~* '(mobile|0000000001|tenant|village|land_name|"name")')::text$$) || ' ' ||
+  call_as('anon', 'tok-p3', $$SELECT jsonb_array_length(provider_requests_inbox() -> 'new')::text$$),
+  :'rq1' || ' 2 (null) false 0');
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rq1')) AS r \gset
+SELECT chk('R05 accepted as asked: booked at once, and only now both sides see name and number; the sharing is logged',
+  :'r' || ' ' || fm('tok-f1', '{0,status}') || ' ' || fm('tok-f1', '{0,agreed_rate}') || ' ' || fm('tok-f1', '{0,provider,mobile}') || ' | ' ||
+  pin('tok-p1', '{jobs,0,farmer,mobile}') || ' ' || pin('tok-p1', '{jobs,0,farmer,land_name}') || ' ' || pin('tok-p1', '{new}') || ' | ' ||
+  q(format($q$SELECT string_agg(event, ',' ORDER BY id) FROM service_request_events WHERE request_id = %L$q$, :'rq1')),
+  'OK CONFIRMED 1100.00 0000009001 | 0000000001 Test Land Near [] | CREATED,OFFERED,CONFIRMED,CONTACT_SHARED');
+SELECT chk('R06 nobody else can touch it: another farmer cannot cancel it, another provider cannot finish it, the same provider cannot answer twice',
+  w('tok-fb', format($$farm_service_request_cancel('%s')$$, :'rq1')) || ' | ' || w('tok-p3', format($$provider_job_done('%s')$$, :'rq1')) || ' | ' ||
+  w('tok-p1', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rq1')),
+  'ERR REQUEST_NOT_FOUND | ERR REQUEST_NOT_AVAILABLE | ERR REQUEST_NOT_AVAILABLE');
+SELECT w('tok-p1', format($$provider_job_done('%s')$$, :'rq1')) AS r \gset
+SELECT w('tok-f1', format($$farm_service_request_rate('%s', 9)$$, :'rq1')) AS bad \gset
+SELECT w('tok-f1', format($$farm_service_request_rate('%s', 4)$$, :'rq1')) AS good \gset
+SELECT w('tok-f1', format($$farm_service_request_rate('%s', 1)$$, :'rq1')) AS again \gset
+SELECT chk('R07 done, then rated once with 1 to 5 stars; the provider''s rating and finished jobs are counted from it',
+  :'r' || ' ' || :'bad' || ' ' || :'good' || ' ' || :'again' || ' | ' || fm('tok-f1', '{0,status}') || ' ' || fm('tok-f1', '{0,farmer_rating}') || ' | ' ||
+  q($q$SELECT rating_average || ' ' || rating_count || ' ' || jobs_completed FROM service_provider_profiles WHERE account_id = '9a000000-0000-0000-0000-000000000001'$q$),
+  'OK ERR RATING_INVALID OK ERR REQUEST_NOT_AVAILABLE | DONE 4 | 4.00 1 1');
+
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":1,"provider_service_id":"%s"}')$$, tday() + 2, :'svc_p1')) AS r \gset
+SELECT id AS rq2 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rq2')) AS a \gset
+SELECT w('tok-p1', format($$provider_job_done('%s')$$, :'rq2')) AS early \gset
+SELECT w('tok-p1', format($$provider_request_cancel('%s')$$, :'rq2')) AS cancel \gset
+SELECT chk('R08 a job cannot be marked done before its day; the provider can cancel it, and the farmer sees who cancelled',
+  :'a' || ' ' || :'early' || ' ' || :'cancel' || ' ' || q(format($q$SELECT status || ' ' || cancelled_by FROM service_requests WHERE id = %L$q$, :'rq2')),
+  'OK ERR JOB_NOT_STARTED OK CANCELLED PROVIDER');
+
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"category_code":"ROTAVATOR","quantity_unit":"PER_ACRE"}')$$, tday())) AS r \gset
+SELECT id AS rq3 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT chk('R09 asked of everyone near: the provider who offers that service sees it, the nursery does not, and an unknown service or unit is refused',
+  :'r' || ' ' || pin('tok-p1', '{new,0,id}') || ' ' || pin('tok-p1', '{new,0,is_direct}') || ' ' || pin('tok-p1', '{new,0,my_service,base_rate}') || ' ' ||
+  call_as('anon', 'tok-p3', $$SELECT jsonb_array_length(provider_requests_inbox() -> 'new')::text$$) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"category_code":"LAND_PREP","quantity_unit":"PER_ACRE"}')$$, tday())) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2,"category_code":"ROTAVATOR","quantity_unit":"NEGOTIABLE"}')$$, tday())),
+  'OK ' || :'rq3' || ' false 1100.00 0 | ERR REQUEST_SERVICE_NOT_FOUND | ERR REQUEST_UNIT_INVALID');
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rq3')) AS r \gset
+SELECT chk('R10 accepting a request sent to everyone is an offer at his own rate and unit; the farmer still chooses',
+  :'r' || ' ' || q(format($q$SELECT status FROM service_requests WHERE id = %L$q$, :'rq3')) || ' ' || fm('tok-f1', '{0,offers,0,rate}') || ' ' || fm('tok-f1', '{0,offers,0,pricing_unit}') || ' ' ||
+  fm('tok-f1', '{0,offers,0,public_name}') || ' ' || fm('tok-f1', '{0,offers,0,distance_km}') || ' ' || pin('tok-p1', '{waiting,0,my_offer,status}'),
+  'OK OPEN 1100.00 PER_HOUR Test Tractor Service 2.0 PENDING');
+SELECT fm('tok-f1', '{0,offers,0,id}') AS offer3 \gset
+SELECT w('tok-fb', format($$farm_service_offer_accept('%s')$$, :'offer3')) AS stranger \gset
+SELECT w('tok-f1', format($$farm_service_offer_accept('%s')$$, :'offer3')) AS r \gset
+SELECT w('tok-f1', format($$farm_service_offer_accept('%s')$$, :'offer3')) AS again \gset
+SELECT chk('R11 only the asking farmer can say yes, once; then it is booked with that provider',
+  :'stranger' || ' ' || :'r' || ' ' || :'again' || ' ' || q(format($q$SELECT status || ' ' || agreed_unit || ' ' || (provider_account_id = '9a000000-0000-0000-0000-000000000001') FROM service_requests WHERE id = %L$q$, :'rq3')),
+  'ERR OFFER_NOT_FOUND OK ERR OFFER_NOT_AVAILABLE CONFIRMED PER_HOUR true');
+SELECT w('tok-f1', format($$farm_service_request_cancel('%s')$$, :'rq3')) AS r \gset
+
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":3,"provider_service_id":"%s"}')$$, tday() + 1, :'svc_p1')) AS r \gset
+SELECT id AS rq4 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"OFFER","rate":"abc"}')$$, :'rq4')) AS badrate \gset
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"OFFER","rate":1000,"offer_date":"%s"}')$$, :'rq4', tday() - 3)) AS baddate \gset
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"OFFER","rate":1000,"offer_date":"%s"}')$$, :'rq4', tday() + 3)) AS r \gset
+SELECT chk('R12 another rate or day is an offer the farmer must answer; saying no to it ends a request that was for that provider alone',
+  :'badrate' || ' ' || :'baddate' || ' ' || :'r' || ' ' || fm('tok-f1', '{0,status}') || ' ' || fm('tok-f1', '{0,offers,0,rate}') || ' ' || (fm('tok-f1', '{0,offers,0,offer_date}') = (tday() + 3)::text) || ' | ' ||
+  w('tok-f1', format($$farm_service_offer_decline('%s')$$, fm('tok-f1', '{0,offers,0,id}'))),
+  'ERR REQUEST_INPUT_INVALID ERR REQUEST_DATE_INVALID OK OPEN 1000.00 true | OK');
+SELECT chk('R12b after the no: cancelled by the farmer', q(format($q$SELECT status || ' ' || cancelled_by FROM service_requests WHERE id = %L$q$, :'rq4')), 'CANCELLED FARMER');
+
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":3,"provider_service_id":"%s"}')$$, tday() + 1, :'svc_p1')) AS r \gset
+SELECT id AS rq5 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT w('tok-p1', format($$provider_request_respond('%s', '{"action":"REFUSE"}')$$, :'rq5')) AS r \gset
+SELECT chk('R13 the provider says no: the farmer sees it declined, and the provider''s list is clear',
+  :'r' || ' ' || fm('tok-f1', '{0,status}') || ' ' || pin('tok-p1', '{new}'), 'OK DECLINED []');
+
+\echo '=== service requests: nursery plants and stock ==='
+UPDATE nursery_batches SET total_qty = 100, reserved_qty = 40, ready_date = tday() - 1 WHERE product_id = :'np1';
+SELECT chk('R14 plants: whole numbers only, never more than one batch has free',
+  w('tok-f1', format($$farm_service_request_create('{"kind":"NURSERY","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":2.5,"nursery_product_id":"%s"}')$$, tday(), :'np1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"NURSERY","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":70,"nursery_product_id":"%s"}')$$, tday(), :'np1')) || ' | ' ||
+  w('tok-f1', format($$farm_service_request_create('{"kind":"NURSERY","land_id":"1a000000-0000-0000-0000-000000000002","needed_date":"%s","quantity":10,"nursery_product_id":"%s"}')$$, tday(), :'np1')),
+  'ERR REQUEST_QUANTITY_INVALID | ERR NURSERY_STOCK_SHORT | ERR NURSERY_STORE_NOT_FOUND');
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"NURSERY","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":50,"nursery_product_id":"%s"}')$$, tday(), :'np1')) AS r1 \gset
+SELECT id AS rn1 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT w('tok-fb', format($$farm_service_request_create('{"kind":"NURSERY","land_id":"1b000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":50,"nursery_product_id":"%s"}')$$, tday(), :'np1')) AS r2 \gset
+SELECT id AS rn2 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT w('tok-p3', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rn1')) AS a1 \gset
+SELECT w('tok-p3', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rn2')) AS a2 \gset
+SELECT chk('R15 two farmers ask for 50 each with 60 free: the first booking reserves the plants, the second is refused, nothing is oversold',
+  :'r1' || ' ' || :'r2' || ' ' || :'a1' || ' ' || :'a2' || ' | ' || q(format($q$SELECT total_qty || '/' || reserved_qty FROM nursery_batches WHERE product_id = %L$q$, :'np1')) || ' ' ||
+  q(format($q$SELECT status FROM service_requests WHERE id = %L$q$, :'rn1')) || ' ' || q(format($q$SELECT status FROM service_requests WHERE id = %L$q$, :'rn2')) || ' ' ||
+  q(format($q$SELECT count(*) FROM service_request_offers WHERE request_id = %L$q$, :'rn2')),
+  'OK OK OK ERR NURSERY_STOCK_SHORT | 100/90 CONFIRMED OPEN 0');
+SELECT w('tok-f1', format($$farm_service_request_cancel('%s')$$, :'rn1')) AS c \gset
+SELECT w('tok-p3', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rn2')) AS a2 \gset
+SELECT w('tok-p3', format($$provider_job_done('%s')$$, :'rn2')) AS d \gset
+SELECT chk('R16 a cancelled booking gives the plants back; a finished one takes them off the stock',
+  :'c' || ' ' || :'a2' || ' ' || :'d' || ' ' || q(format($q$SELECT total_qty || '/' || reserved_qty FROM nursery_batches WHERE product_id = %L$q$, :'np1')) || ' ' ||
+  call_as('anon', 'tok-fb', $$SELECT farm_service_requests_mine() #>> '{0,status}'$$) || ' ' || call_as('anon', 'tok-fb', $$SELECT farm_service_requests_mine() #>> '{0,plant,crop_id}'$$),
+  'OK OK OK 50/40 DONE c0000000-0000-0000-0000-000000000001');
+
+\echo '=== service requests: limits, saved providers, counts, expiry, direct table access ==='
+UPDATE system_config SET config_value = config_value || '{"max_open_requests": 1}' WHERE config_key = 'farm_services_policy';
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":1,"category_code":"ROTAVATOR","quantity_unit":"PER_ACRE"}')$$, tday() + 5)) AS one \gset
+SELECT w('tok-f1', format($$farm_service_request_create('{"kind":"SERVICE","land_id":"1a000000-0000-0000-0000-000000000001","needed_date":"%s","quantity":1,"category_code":"ROTAVATOR","quantity_unit":"PER_ACRE"}')$$, tday() + 6)) AS two \gset
+UPDATE system_config SET config_value = config_value || '{"max_open_requests": 10}' WHERE config_key = 'farm_services_policy';
+SELECT id AS rq6 FROM service_requests ORDER BY created_at DESC LIMIT 1 \gset
+SELECT chk('R17 the policy limits how many open requests one farmer may have', :'one' || ' ' || :'two', 'OK ERR REQUEST_LIMIT_REACHED');
+SELECT chk('R18 what waits for the farmer is counted on read',
+  call_as('anon', 'tok-f1', $$SELECT (farm_services_nearby() -> 'requests')::text$$),
+  '{"open": 1, "booked": 0, "to_rate": 0, "offers_waiting": 0}');
+SELECT call_as('anon', 'tok-f1', $$SELECT farm_services_save_provider('9a000000-0000-0000-0000-000000000001', true)::text$$) AS s1 \gset
+SELECT call_as('anon', 'tok-f1', $$SELECT (farm_services_providers('LAND_PREP') #>> '{0,saved}')$$) AS seen1 \gset
+SELECT call_as('anon', 'tok-fb', $$SELECT (farm_services_providers('LAND_PREP') #>> '{0,saved}')$$) AS other \gset
+SELECT call_as('anon', 'tok-f1', $$SELECT farm_services_save_provider('9a000000-0000-0000-0000-000000000001', false)::text$$) AS s2 \gset
+SELECT chk('R19 a saved provider shows as saved to that farmer only; unsaving keeps the row',
+  :'s1' || ' ' || :'seen1' || ' ' || :'other' || ' ' || :'s2' || ' ' || call_as('anon', 'tok-f1', $$SELECT (farm_services_providers('LAND_PREP') #>> '{0,saved}')$$) || ' ' ||
+  q($q$SELECT count(*) || ' ' || bool_or(is_saved) FROM farmer_saved_providers$q$) || ' ' ||
+  regexp_replace(call_as('anon', 'tok-f1', $$SELECT farm_services_save_provider('9a000000-0000-0000-0000-00000000dead', true)::text$$), '^ERR [0-9A-Z]{5} ', 'ERR '),
+  'true true false false false 1 false ERR PROVIDER_NOT_FOUND');
+UPDATE service_requests SET needed_date = tday() - 1 WHERE id = :'rq6';
+SELECT chk('R20 a request past its day with no booking reads as expired and can no longer be answered',
+  fm('tok-f1', '{0,status}') || ' ' || w('tok-p1', format($$provider_request_respond('%s', '{"action":"ACCEPT"}')$$, :'rq6')) || ' ' || pin('tok-p1', '{new}'),
+  'EXPIRED ERR REQUEST_NOT_AVAILABLE []');
+SELECT chk('R21 the browser cannot read or write the request tables directly; the event log cannot be changed even by the service role',
+  left(call_as('anon', 'tok-f1', 'SELECT count(*)::text FROM service_requests'), 9) || ' ' ||
+  left(call_as('authenticated', 'tok-p1', 'SELECT count(*)::text FROM service_request_offers'), 9) || ' ' ||
+  left(run_as('anon', 'tok-f1', $$UPDATE service_requests SET status = 'DONE'$$), 9) || ' ' ||
+  left(run_as('service_role', NULL, $$UPDATE service_request_events SET event = 'X'$$), 9) || ' ' ||
+  left(run_as('service_role', NULL, $$DELETE FROM service_requests$$), 9),
+  'ERR 42501 ERR 42501 ERR 42501 ERR 42501 ERR 42501');
+UPDATE feature_flags SET is_enabled = false, target_tenants = '{}'::uuid[] WHERE flag_name = 'farm_services_search';
+
 \echo '=== suspension and account adoption ==='
 UPDATE account_roles SET status = 'SUSPENDED' WHERE account_id = '9a000000-0000-0000-0000-000000000003' AND role = 'SERVICE_PROVIDER';
 SELECT chk('A01 a suspended provider is shut out on the next request and shows OFFLINE to the server',

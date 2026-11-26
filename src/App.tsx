@@ -40,6 +40,8 @@ const Market = lazy(() => import("./pages/Market"));
 const ServicesNearMe = lazy(() => import("./pages/services/ServicesNearMe"));
 const ServiceProviders = lazy(() => import("./pages/services/ServiceProviders"));
 const NurseryStorePage = lazy(() => import("./pages/services/NurseryStorePage"));
+const AskForWork = lazy(() => import("./pages/services/AskForWork"));
+const MyServiceRequests = lazy(() => import("./pages/services/MyServiceRequests"));
 const Advisory = lazy(() => import("./pages/Advisory"));
 const Schemes = lazy(() => import("./pages/Schemes"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -83,6 +85,7 @@ const WorkspaceProfile = lazy(() => import("./pages/identity/WorkspaceProfile"))
 // Provider Workspace (services, hours, equipment, nursery) — behind the provider_workspace flag
 const ProviderHome = lazy(() => import("./pages/provider/ProviderHome"));
 const ProviderBusiness = lazy(() => import("./pages/provider/ProviderBusiness"));
+const ProviderRequests = lazy(() => import("./pages/provider/ProviderRequests"));
 const ProviderProfileForm = lazy(() => import("./pages/provider/ProviderProfileForm"));
 const ProviderServices = lazy(() => import("./pages/provider/ProviderServices"));
 const ProviderServiceForm = lazy(() => import("./pages/provider/ProviderServiceForm"));
@@ -414,6 +417,8 @@ const router = createBrowserRouter([
       { path: "weather", element: <Suspense fallback={<PageLoader />}><Weather /></Suspense> },
       { path: "market", element: <Suspense fallback={<PageLoader />}><Market /></Suspense> },
       { path: "services-near-me", element: <Suspense fallback={<PageLoader />}><ServicesNearMe /></Suspense> },
+      { path: "services-near-me/ask", element: <Suspense fallback={<PageLoader />}><AskForWork /></Suspense> },
+      { path: "services-near-me/requests", element: <Suspense fallback={<PageLoader />}><MyServiceRequests /></Suspense> },
       { path: "services-near-me/nursery/:accountId", element: <Suspense fallback={<PageLoader />}><NurseryStorePage /></Suspense> },
       { path: "services-near-me/:family", element: <Suspense fallback={<PageLoader />}><ServiceProviders /></Suspense> },
       { path: "advisory", element: <Suspense fallback={<PageLoader />}><Advisory /></Suspense> },
@@ -487,6 +492,7 @@ const router = createBrowserRouter([
         ),
       },
       { path: "profile", element: <Suspense fallback={<PageLoader />}><WorkspaceProfile /></Suspense> },
+      { path: "requests", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderRequests /></ProviderFlagGate></Suspense> },
       { path: "business", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderBusiness /></ProviderFlagGate></Suspense> },
       { path: "business/profile", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderProfileForm /></ProviderFlagGate></Suspense> },
       { path: "business/services", element: <Suspense fallback={<PageLoader />}><ProviderFlagGate><ProviderServices /></ProviderFlagGate></Suspense> },

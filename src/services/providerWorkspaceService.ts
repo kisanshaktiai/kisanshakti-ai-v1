@@ -153,6 +153,8 @@ export interface ServiceCategory extends CatalogueRow {
 export interface PricingUnit extends CatalogueRow {
   is_per_area: boolean;
   is_negotiable: boolean;
+  /** Square metres in one unit, for the land units only. */
+  area_sqm?: number | null;
 }
 export interface EquipmentAttribute {
   code: string;
@@ -337,7 +339,7 @@ export const providerWorkspaceService = {
     const [categories, pricingUnits, equipmentTypes, providerTypes, skillTiers, nurseryItemKinds, paymentMethods] =
       await Promise.all([
         lookup('service_categories', 'code, parent_code, label_en, sort_order'),
-        lookup('pricing_units', 'code, label_en, is_per_area, is_negotiable, sort_order'),
+        lookup('pricing_units', 'code, label_en, is_per_area, is_negotiable, area_sqm, sort_order'),
         lookup('equipment_types', 'code, label_en, attribute_definitions, sort_order'),
         lookup('provider_types', 'code, label_en, sort_order'),
         lookup('skill_tiers', 'code, label_en, sort_order'),

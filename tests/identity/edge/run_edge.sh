@@ -41,6 +41,7 @@ PROVIDER_FILES=(
   20261124140300_provider_service_map_and_flag.sql
   20261124140400_provider_workspace_flag_check.sql
   20261124140500_nursery_store_and_farm_services_search.sql
+  20261124140600_farm_service_requests.sql
 )
 CUTOVER="20261124091000_identity_cutover_verified_session_context.sql"
 SECRET="identity-it-local-only-jwt-secret-0123456789"

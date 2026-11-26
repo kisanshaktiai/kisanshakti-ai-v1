@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, MapPinOff } from 'lucide-react';
+import { ChevronDown, ChevronRight, ClipboardList, MapPinOff } from 'lucide-react';
 import { EmptyState } from '@/components/layout/EmptyState';
-import { ProviderPage, Question, TileGrid } from '@/components/provider/ProviderUi';
+import { NavRow, ProviderPage, Question, StatusBadge, TileGrid } from '@/components/provider/ProviderUi';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
 import { farmServicesService, type NearbyFamilies } from '@/services/farmServicesService';
 import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
-import { farmServicesErrorMessage } from '@/lib/farmServicesText';
+import { farmServicesErrorMessage, requestsSummary } from '@/lib/farmServicesText';
+import { useFarmServicesStore } from '@/stores/farmServicesStore';
 import { familyIcon } from '@/lib/providerIcons';
 import { catalogueLabel } from '@/lib/providerText';
 
@@ -32,7 +33,9 @@ export default function ServicesNearMe() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setNearby(await farmServicesService.nearby());
+      const answer = await farmServicesService.nearby();
+      setNearby(answer);
+      useFarmServicesStore.getState().setNearby(answer);
     } catch (e) {
       setError(farmServicesErrorMessage(e));
     }
@@ -44,6 +47,7 @@ export default function ServicesNearMe() {
   const counts = new Map((nearby?.families ?? []).map((f) => [f.code, f.count]));
   const withCount = families.map((c) => ({ ...c, count: counts.get(c.code) ?? 0 }));
   const shown = showAll ? withCount : withCount.slice(0, FAMILIES_FIRST);
+  const waiting = nearby?.requests?.offers_waiting ?? 0;
 
   return (
     <ProviderPage
@@ -64,6 +68,15 @@ export default function ServicesNearMe() {
               description={t('farmServices.notLocatedDescription')}
             />
           )}
+          <NavRow
+            icon={ClipboardList}
+            title={t('farmServices.requests.title')}
+            summary={requestsSummary(nearby.requests)}
+            onClick={() => navigate(FARM_SERVICES_ROUTES.requests)}
+            badge={waiting > 0
+              ? <StatusBadge tone="busy">{waiting}</StatusBadge>
+              : <ChevronRight className="h-6 w-6 shrink-0 text-muted-foreground" aria-hidden="true" />}
+          />
           <Question>{t('farmServices.whatQuestion')}</Question>
           <TileGrid
             label={t('farmServices.whatQuestion')}

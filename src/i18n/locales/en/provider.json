@@ -6,7 +6,8 @@
   },
   "provider": {
     "nav": {
-      "business": "My business"
+      "business": "My business",
+      "requests": "Requests"
     },
     "common": {
       "back": "Back",
@@ -364,7 +365,14 @@
       "PHOTO_TOO_LARGE": "This photo is too large.",
       "PHOTO_UNREADABLE": "This photo could not be read. Try another.",
       "PHOTO_UPLOAD_FAILED": "The photo could not be uploaded. Check your network and try again.",
-      "PROVIDER_FEATURE_DISABLED": "This is not available for your account yet."
+      "PROVIDER_FEATURE_DISABLED": "This is not available for your account yet.",
+      "REQUEST_NOT_AVAILABLE": "This request is no longer open. Look at the list again.",
+      "REQUEST_INPUT_INVALID": "Something is missing. Check and send again.",
+      "REQUEST_DATE_INVALID": "Choose a day from today onwards, not too far ahead.",
+      "REQUEST_OFFERS_FULL": "Enough providers have already answered this request.",
+      "OFFER_RATE_REQUIRED": "Give your rate for this work.",
+      "NURSERY_STOCK_SHORT": "You do not have enough plants ready for that day.",
+      "JOB_NOT_STARTED": "You can mark this done on the day of the work."
     },
     "catalogue": {
       "category": {
@@ -587,6 +595,46 @@
     "home": {
       "activeCount": "Active: {{count}}",
       "readyPlants": "Ready to sell: {{count}}"
+    },
+    "requests": {
+      "title": "Requests from farmers",
+      "sections": {
+        "new": "New requests",
+        "jobs": "Booked jobs",
+        "waiting": "Waiting for the farmer",
+        "past": "Earlier"
+      },
+      "newCount": "New: {{count}}",
+      "jobsCount": "Booked: {{count}}",
+      "aboutKm": "About {{count}} km away",
+      "forYou": "Asked from you",
+      "forAll": "Open to all nearby",
+      "total": "About {{amount}} in all",
+      "yes": "Yes, I will do it",
+      "no": "No",
+      "change": "Change rate or day",
+      "giveRate": "Give your rate",
+      "yourRate": "Your rate · {{unit}}",
+      "yourDay": "The day you can come",
+      "sendAnswer": "Send answer",
+      "privacy": "You see the farmer's name, number and place after the work is booked.",
+      "waitingFarmer": "Waiting for the farmer's yes",
+      "takeBack": "Take back my answer",
+      "takeBackQuestion": "Take back your answer?",
+      "booked": "Booked",
+      "farmer": "Farmer",
+      "call": "Call",
+      "way": "Show the way",
+      "workDone": "Work done",
+      "given": "Plants given",
+      "doneFrom": "You can mark this done on {{date}}.",
+      "cancelJob": "Cancel this job",
+      "cancelQuestion": "Cancel this booked job? The farmer will see it.",
+      "keep": "Keep it",
+      "cancelYes": "Yes, cancel",
+      "done": "Done",
+      "cancelledByFarmer": "Cancelled by the farmer",
+      "cancelledByYou": "Cancelled by you"
     }
   }
 }

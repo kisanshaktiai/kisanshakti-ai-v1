@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, CalendarOff, Check, Inbox, MapPin, Store, Wrench, TreePine } from 'lucide-react';
+import { ArrowRight, CalendarOff, Check, ChevronRight, Inbox, MapPin, Store, Wrench, TreePine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { ReachCard, ReachSheet } from '@/components/identity/ReachCard';
 import { Switch } from '@/components/ui/switch';
-import { Panel, PrimaryAction, ProviderPage, SaveError } from '@/components/provider/ProviderUi';
+import { NavRow, Panel, PrimaryAction, ProviderPage, SaveError, StatusBadge } from '@/components/provider/ProviderUi';
 import { useAccountStore } from '@/stores/accountStore';
 import { useProviderWorkspace } from '@/hooks/useProviderWorkspace';
+import { useProviderRequestsStore } from '@/stores/providerRequestsStore';
 import { providerWorkspaceService, type AvailabilityState, type ProviderWorkspace } from '@/services/providerWorkspaceService';
 import { PROVIDER_ROUTES } from '@/lib/providerRoutes';
 import { formatDay } from '@/lib/providerText';
@@ -48,6 +49,10 @@ export default function ProviderHome() {
   const reachIsSet = useAccountStore((s) => !!s.reach.SERVICE_PROVIDER?.is_set);
   const { workspace, loading, loadError, isOnline, saving, saveError, run, reload } = useProviderWorkspace();
   const [reachOpen, setReachOpen] = useState(false);
+  // Read by the workspace shell every minute; shown here as one row.
+  const inbox = useProviderRequestsStore((s) => s.inbox);
+  const newRequests = inbox?.new.length ?? 0;
+  const bookedJobs = inbox?.jobs.length ?? 0;
 
   const profile = workspace?.profile ?? null;
   // The Reach can be saved on this screen after the workspace was read.
@@ -88,6 +93,23 @@ export default function ProviderHome() {
       {workspace && (
         <>
           <SaveError message={saveError} />
+
+          {profile && (
+            <NavRow
+              icon={Inbox}
+              title={t('provider.requests.title')}
+              summary={newRequests + bookedJobs > 0
+                ? [
+                    newRequests > 0 ? t('provider.requests.newCount', { count: newRequests }) : null,
+                    bookedJobs > 0 ? t('provider.requests.jobsCount', { count: bookedJobs }) : null,
+                  ].filter(Boolean).join(' · ')
+                : t('identity.home.SERVICE_PROVIDER.requestsDescription')}
+              onClick={() => navigate(PROVIDER_ROUTES.requests)}
+              badge={newRequests > 0
+                ? <StatusBadge tone="busy">{newRequests}</StatusBadge>
+                : <ChevronRight className="h-6 w-6 shrink-0 text-muted-foreground" aria-hidden="true" />}
+            />
+          )}
 
           <div className={cn('rounded-3xl p-5 space-y-4 shadow-md', STATE_CARD[state])}>
             <div className="flex items-center gap-3">
@@ -234,11 +256,13 @@ export default function ProviderHome() {
 
           <ReachCard role="SERVICE_PROVIDER" />
 
-          <EmptyState
-            icon={Inbox}
-            title={t('identity.home.SERVICE_PROVIDER.requestsTitle')}
-            description={t('identity.home.SERVICE_PROVIDER.requestsDescription')}
-          />
+          {!profile && (
+            <EmptyState
+              icon={Inbox}
+              title={t('identity.home.SERVICE_PROVIDER.requestsTitle')}
+              description={t('identity.home.SERVICE_PROVIDER.requestsDescription')}
+            />
+          )}
         </>
       )}
       <ReachSheet role="SERVICE_PROVIDER" open={reachOpen} onOpenChange={setReachOpen} />

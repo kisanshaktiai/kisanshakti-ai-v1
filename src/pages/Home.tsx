@@ -19,7 +19,6 @@ import {
   CloudRain,
   CloudSnow,
   RefreshCw,
-  Tractor,
 } from 'lucide-react';
 
 
@@ -34,6 +33,7 @@ import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
+import { FarmServicesHomeBlock } from '@/components/home/FarmServicesHomeBlock';
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
 import { useFarmServicesFlag } from '@/hooks/useFarmServicesFlag';
@@ -226,18 +226,6 @@ export default function Home() {
 
   const secondaryFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
-      ...(farmServicesOn
-        ? [{
-            title: t('farmServices.homeCard.title'),
-            icon: Tractor,
-            path: '/app/services-near-me',
-            description: t('farmServices.homeCard.description'),
-            stats: t('farmServices.homeCard.stats'),
-            color: 'bg-primary/10',
-            iconColor: 'text-primary',
-            badge: t('home.badge.new'),
-          } satisfies HomeFeatureCard]
-        : []),
       {
         title: t('home.features.community.title'),
         icon: Users,
@@ -280,7 +268,7 @@ export default function Home() {
         trendValue: '+12%',
       },
     ],
-    [t, avgNdvi, farmServicesOn],
+    [t, avgNdvi],
   );
 
   // Apply plan-gated `locked` flag from useFeatures (SSOT) onto each card.
@@ -697,6 +685,9 @@ export default function Home() {
 
         {/* Main Features Grid (memoized) */}
         <HomeFeaturesGrid features={mainFeatures} variant="main" reduceMotion={reduceMotion} />
+
+        {/* Services near me: nearby kinds of work and the farmer's requests (flag-gated) */}
+        {farmServicesOn && <FarmServicesHomeBlock />}
 
         {/* Secondary Features (memoized) */}
         <HomeFeaturesGrid features={secondaryFeatures} variant="secondary" reduceMotion={reduceMotion} />

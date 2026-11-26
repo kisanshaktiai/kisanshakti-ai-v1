@@ -6,7 +6,8 @@
   },
   "provider": {
     "nav": {
-      "business": "मेरा काम"
+      "business": "मेरा काम",
+      "requests": "अनुरोध"
     },
     "common": {
       "back": "पीछे",
@@ -364,7 +365,14 @@
       "PHOTO_TOO_LARGE": "यह फ़ोटो बहुत बड़ी है।",
       "PHOTO_UNREADABLE": "यह फ़ोटो पढ़ी नहीं जा सकी। दूसरी आज़माएँ।",
       "PHOTO_UPLOAD_FAILED": "फ़ोटो अपलोड नहीं हो सकी। नेटवर्क जाँचें और फिर कोशिश करें।",
-      "PROVIDER_FEATURE_DISABLED": "यह आपके खाते के लिए अभी उपलब्ध नहीं है।"
+      "PROVIDER_FEATURE_DISABLED": "यह आपके खाते के लिए अभी उपलब्ध नहीं है।",
+      "REQUEST_NOT_AVAILABLE": "यह अनुरोध अब खुला नहीं है। सूची फिर से देखें।",
+      "REQUEST_INPUT_INVALID": "कुछ छूट गया है। जाँचें और फिर भेजें।",
+      "REQUEST_DATE_INVALID": "आज या उसके बाद का कोई दिन चुनें, जो बहुत दूर न हो।",
+      "REQUEST_OFFERS_FULL": "इस अनुरोध पर पहले ही काफ़ी सेवा देने वाले जवाब दे चुके हैं।",
+      "OFFER_RATE_REQUIRED": "इस काम के लिए अपनी दर बताएँ।",
+      "NURSERY_STOCK_SHORT": "उस दिन के लिए आपके पास इतने तैयार पौधे नहीं हैं।",
+      "JOB_NOT_STARTED": "इसे आप काम के दिन पूरा दिखा सकते हैं।"
     },
     "catalogue": {
       "category": {
@@ -587,6 +595,46 @@
     "home": {
       "activeCount": "चालू: {{count}}",
       "readyPlants": "बिक्री के लिए तैयार: {{count}}"
+    },
+    "requests": {
+      "title": "किसानों के अनुरोध",
+      "sections": {
+        "new": "नए अनुरोध",
+        "jobs": "बुक हुए काम",
+        "waiting": "किसान के जवाब का इंतज़ार",
+        "past": "पहले के"
+      },
+      "newCount": "नए: {{count}}",
+      "jobsCount": "बुक: {{count}}",
+      "aboutKm": "लगभग {{count}} किमी दूर",
+      "forYou": "आपसे पूछा गया",
+      "forAll": "पास के सभी के लिए खुला",
+      "total": "कुल लगभग {{amount}}",
+      "yes": "हाँ, मैं करूँगा",
+      "no": "नहीं",
+      "change": "दर या दिन बदलें",
+      "giveRate": "अपनी दर बताएँ",
+      "yourRate": "आपकी दर · {{unit}}",
+      "yourDay": "जिस दिन आप आ सकते हैं",
+      "sendAnswer": "जवाब भेजें",
+      "privacy": "किसान का नाम, नंबर और जगह काम बुक होने के बाद दिखती है।",
+      "waitingFarmer": "किसान की हाँ का इंतज़ार",
+      "takeBack": "मेरा जवाब वापस लें",
+      "takeBackQuestion": "अपना जवाब वापस लें?",
+      "booked": "बुक",
+      "farmer": "किसान",
+      "call": "फ़ोन करें",
+      "way": "रास्ता दिखाएँ",
+      "workDone": "काम पूरा",
+      "given": "पौधे दे दिए",
+      "doneFrom": "इसे आप {{date}} को पूरा दिखा सकते हैं।",
+      "cancelJob": "यह काम रद्द करें",
+      "cancelQuestion": "यह बुक हुआ काम रद्द करें? किसान को यह दिखेगा।",
+      "keep": "रहने दें",
+      "cancelYes": "हाँ, रद्द करें",
+      "done": "पूरा",
+      "cancelledByFarmer": "किसान ने रद्द किया",
+      "cancelledByYou": "आपने रद्द किया"
     }
   }
 }

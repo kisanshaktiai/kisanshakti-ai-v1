@@ -6,6 +6,7 @@ const BUSINESS = `${HOME}/business`;
 
 export const PROVIDER_ROUTES = {
   home: HOME,
+  requests: `${HOME}/requests`,
   business: BUSINESS,
   profile: `${BUSINESS}/profile`,
   services: `${BUSINESS}/services`,

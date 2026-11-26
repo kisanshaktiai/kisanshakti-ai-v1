@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Clock, SearchX, Star, TreePine } from 'lucide-react';
+import { ArrowRight, Clock, SearchX, Star, TreePine } from 'lucide-react';
 import { EmptyState } from '@/components/layout/EmptyState';
 import { Panel, ProviderPage, StatusBadge, type Tone } from '@/components/provider/ProviderUi';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
 import { farmServicesService, type NurseryStore, type StoreProduct } from '@/services/farmServicesService';
+import { useFarmServicesStore } from '@/stores/farmServicesStore';
 import { nurseryPhotoUrl } from '@/services/nurseryPhotoService';
 import { localName, providerWorkspaceService, type LocalNames } from '@/services/providerWorkspaceService';
 import { FARM_SERVICES_ROUTES } from '@/lib/farmServicesRoutes';
-import { distanceText, farmServicesErrorMessage } from '@/lib/farmServicesText';
+import { distanceText, farmServicesErrorMessage, plantVarietyText } from '@/lib/farmServicesText';
 import { catalogueLabel, formatDay, formatMoney } from '@/lib/providerText';
 import { availabilityText } from '@/pages/services/ServiceProviders';
 
@@ -18,24 +19,16 @@ const STATE_TONE: Record<NurseryStore['provider']['availability']['state'], Tone
   AVAILABLE: 'good', BUSY: 'busy', NOT_ACCEPTING: 'off', OFFLINE: 'off',
 };
 
-/** The variety as the farmer should read it: the master's name in his language, else the nursery's own name. */
-function varietyText(p: StoreProduct, language: string): string {
-  if (p.variety_names) {
-    const names: LocalNames = {};
-    for (const [key, value] of Object.entries(p.variety_names)) if (value) names[key === 'en' ? 'default' : key] = value;
-    return localName(names, language);
-  }
-  return p.variety_name_local ?? '';
-}
-
 /**
  * One nursery as a store: every plant on sale with photos, variety, kind,
- * price and the stock free now or by ready date. Booking comes with the
- * request engine of the next task; until then the farmer sees and compares.
+ * price and the stock free now or by ready date. "Book plants" takes the
+ * farmer to the ask screen with that plant; the nursery then says yes or no.
  */
 export default function NurseryStorePage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { accountId = '' } = useParams<{ accountId: string }>();
+  const setDraft = useFarmServicesStore((s) => s.setDraft);
   const isOnline = useOfflineStatus();
   const { catalogue, error: catalogueError } = useServiceCatalogue();
   const [store, setStore] = useState<NurseryStore | null>(null);
@@ -66,6 +59,21 @@ export default function NurseryStorePage() {
   const kindLabel = (code: string) => catalogueLabel('nurseryKind', code, catalogue?.nurseryItemKinds.find((k) => k.code === code)?.label_en);
   const unitLabel = (code: string) => catalogueLabel('unit', code, catalogue?.pricingUnits.find((u) => u.code === code)?.label_en);
   const provider = store?.provider;
+
+  const book = (p: StoreProduct, cropName: string, variety: string) => {
+    if (!provider) return;
+    setDraft({
+      kind: 'NURSERY', familyCode: 'NURSERY',
+      provider: { accountId: provider.account_id, name: provider.public_name },
+      plant: {
+        productId: p.id, cropName, variety, price: p.price, unit: p.pricing_unit, currency: p.currency,
+        minOrder: p.min_order_qty, availableNow: p.available_qty,
+        firstReadyDate: p.available_qty > 0 ? null : p.batches[0]?.ready_date ?? null,
+        photoPath: p.photo_paths[0] ?? null,
+      },
+    });
+    navigate(FARM_SERVICES_ROUTES.ask);
+  };
 
   return (
     <ProviderPage
@@ -99,7 +107,7 @@ export default function NurseryStorePage() {
           )}
           {store.products.map((p) => {
             const crop = localName(cropNames[p.crop_id], i18n.language) || t('provider.nursery.cropUnknown');
-            const variety = varietyText(p, i18n.language);
+            const variety = plantVarietyText(p.variety_names, p.variety_name_local, i18n.language);
             const nextBatch = p.available_qty === 0 ? p.batches[0] : undefined;
             return (
               <Panel key={p.id} className="space-y-3">
@@ -141,10 +149,19 @@ export default function NurseryStorePage() {
                 {p.min_order_qty != null && (
                   <p className="text-sm text-muted-foreground">{t('farmServices.minOrder', { count: p.min_order_qty })}</p>
                 )}
+                {(p.available_qty > 0 || nextBatch) && (
+                  <button
+                    type="button"
+                    onClick={() => book(p, crop, variety)}
+                    className="flex w-full h-14 items-center justify-center gap-2 rounded-2xl bg-primary text-lg font-bold text-primary-foreground shadow-md active:scale-[0.99]"
+                  >
+                    {t('farmServices.bookPlants')}
+                    <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                )}
               </Panel>
             );
           })}
-          <p className="text-sm text-muted-foreground">{t('farmServices.bookingSoon')}</p>
         </div>
       )}
     </ProviderPage>
