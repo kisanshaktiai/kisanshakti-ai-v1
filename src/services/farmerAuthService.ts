@@ -23,6 +23,38 @@ export interface ActivationResult {
   profile: any;
 }
 export interface RegisterOptions { roles?: AccountRole[]; displayName?: string; }
+export interface FarmerProfilePayload {
+  fullName?: string;
+  displayName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  email?: string;
+  bio?: string;
+  aadhaarNumber?: string;
+  preferredContactMethod?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  village?: string;
+  taluka?: string;
+  district?: string;
+  state?: string;
+  pincode?: string;
+  totalLandAcres?: number;
+  primaryCrops?: string[];
+  farmingExperienceYears?: number;
+  farmType?: string;
+  hasLoan?: boolean;
+  loanAmount?: number;
+  hasTractor?: boolean;
+  hasIrrigation?: boolean;
+  irrigationType?: string;
+  hasStorage?: boolean;
+  annualIncomeRange?: string;
+  preferredLanguage?: string;
+  notes?: string;
+  avatarUrl?: string;
+}
+export type FarmerProfileResult = Pick<FarmerAuthResult, 'farmer' | 'profile'>;
 
 class FarmerAuthError extends Error {
   code: string; retryAfterSeconds?: number;
@@ -225,6 +257,18 @@ export const farmerAuthService = {
   async updateAccount(fields: { displayName?: string; languageCode?: string }) {
     return call<{ account: AccountSummary }>({
       action: 'updateAccount', ...fields, sessionToken: getSessionToken() ?? undefined,
+    });
+  },
+  /** Reads only the farmer behind the verified session; no identity is sent. */
+  async getFarmerProfile() {
+    return call<FarmerProfileResult>({
+      action: 'getFarmerProfile', sessionToken: getSessionToken() ?? undefined,
+    });
+  },
+  /** Saves allowlisted profile fields for the verified session's farmer. */
+  async updateFarmerProfile(profile: FarmerProfilePayload) {
+    return call<FarmerProfileResult>({
+      action: 'updateFarmerProfile', profile, sessionToken: getSessionToken() ?? undefined,
     });
   },
   // ── Farmer activation: actions authenticated by the session token ────────

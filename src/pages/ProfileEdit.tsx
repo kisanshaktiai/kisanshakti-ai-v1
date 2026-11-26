@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/authStore';
 import { useLanguageStore } from '@/stores/languageStore';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { farmerAuthService } from '@/services/farmerAuthService';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
@@ -67,84 +67,53 @@ export default function ProfileEdit() {
     notes: ''
   });
 
-  // Fetch fresh data from database on mount
+  // Read through the verified-session service; locked-down browser table grants
+  // are not a profile API and cannot authorize a farmer write.
   useEffect(() => {
     const loadProfileData = async () => {
-      if (!user?.id || !user?.tenantId) return;
-      
+      if (!user?.id) return;
+
       setDataLoading(true);
       try {
-        // Create authenticated client with custom headers
-        const authClient = supabaseWithAuth(user.id, user.tenantId);
-        console.log('🔐 Loading profile with authenticated client:', { userId: user.id, tenantId: user.tenantId });
-        
-        // Fetch from farmers table
-        const { data: farmerData, error: farmerError } = await authClient
-          .from('farmers')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle();
+        const { farmer: farmerData, profile: profileData } = await farmerAuthService.getFarmerProfile();
+        const mergedData = {
+          fullName: profileData?.full_name || farmerData?.farmer_name || user.fullName || '',
+          displayName: profileData?.display_name || user.displayName || '',
+          dateOfBirth: profileData?.date_of_birth || user.dateOfBirth || '',
+          gender: profileData?.gender || user.gender || '',
+          email: profileData?.email || '',
+          bio: profileData?.bio || '',
+          aadhaarNumber: profileData?.aadhaar_number || farmerData?.aadhaar_number || '',
+          preferredContactMethod: farmerData?.preferred_contact_method || 'phone',
+          addressLine1: profileData?.address_line1 || '',
+          addressLine2: profileData?.address_line2 || '',
+          village: profileData?.village || user.village || '',
+          taluka: profileData?.taluka || user.taluka || '',
+          district: profileData?.district || user.district || '',
+          state: profileData?.state || user.state || '',
+          pincode: profileData?.pincode || user.pincode || '',
+          totalLandAcres: profileData?.total_land_acres ?? farmerData?.total_land_acres ?? user.totalLandAcres ?? 0,
+          primaryCrops: (profileData?.primary_crops || farmerData?.primary_crops || user.primaryCrops || []).join(', '),
+          farmingExperienceYears: profileData?.farming_experience_years ?? farmerData?.farming_experience_years ?? user.farmingExperienceYears ?? 0,
+          farmType: farmerData?.farm_type || user.farmType || '',
+          hasLoan: farmerData?.has_loan ?? false,
+          loanAmount: farmerData?.loan_amount ?? 0,
+          hasTractor: profileData?.has_tractor ?? farmerData?.has_tractor ?? user.hasTractor ?? false,
+          hasIrrigation: profileData?.has_irrigation ?? farmerData?.has_irrigation ?? user.hasIrrigation ?? false,
+          irrigationType: farmerData?.irrigation_type || user.irrigationType || '',
+          hasStorage: profileData?.has_storage ?? farmerData?.has_storage ?? user.hasStorage ?? false,
+          annualIncomeRange: profileData?.annual_income_range || farmerData?.annual_income_range || user.annualIncomeRange || '',
+          preferredLanguage: profileData?.preferred_language || farmerData?.language_preference || user.preferredLanguage || 'hi',
+          notes: farmerData?.notes || ''
+        };
 
-        if (farmerError) {
-          console.error('Error loading farmer data:', farmerError);
-        }
-
-        // Fetch from user_profiles table
-        const { data: profileData, error: profileError } = await authClient
-          .from('user_profiles')
-          .select('*')
-          .eq('farmer_id', user.id)
-          .maybeSingle();
-
-        if (profileError && profileError.code !== 'PGRST116') {
-          console.error('Error loading profile data:', profileError);
-        }
-
-        // Merge data and update form
-        if (farmerData || profileData) {
-          const mergedData = {
-            fullName: profileData?.full_name || farmerData?.farmer_name || user.fullName || '',
-            displayName: profileData?.display_name || user.displayName || '',
-            dateOfBirth: profileData?.date_of_birth || user.dateOfBirth || '',
-            gender: profileData?.gender || user.gender || '',
-            email: profileData?.email || '',
-            bio: profileData?.bio || '',
-            aadhaarNumber: profileData?.aadhaar_number || farmerData?.aadhaar_number || '',
-            preferredContactMethod: farmerData?.preferred_contact_method || 'phone',
-            addressLine1: profileData?.address_line1 || '',
-            addressLine2: profileData?.address_line2 || '',
-            village: profileData?.village || user.village || '',
-            taluka: profileData?.taluka || user.taluka || '',
-            district: profileData?.district || user.district || '',
-            state: profileData?.state || user.state || '',
-            pincode: profileData?.pincode || user.pincode || '',
-            totalLandAcres: profileData?.total_land_acres || farmerData?.total_land_acres || user.totalLandAcres || 0,
-            primaryCrops: (profileData?.primary_crops || farmerData?.primary_crops || user.primaryCrops || []).join(', '),
-            farmingExperienceYears: profileData?.farming_experience_years || farmerData?.farming_experience_years || user.farmingExperienceYears || 0,
-            farmType: farmerData?.farm_type || user.farmType || '',
-            hasLoan: farmerData?.has_loan ?? false,
-            loanAmount: farmerData?.loan_amount || 0,
-            hasTractor: profileData?.has_tractor ?? farmerData?.has_tractor ?? user.hasTractor ?? false,
-            hasIrrigation: profileData?.has_irrigation ?? farmerData?.has_irrigation ?? user.hasIrrigation ?? false,
-            irrigationType: farmerData?.irrigation_type || user.irrigationType || '',
-            hasStorage: profileData?.has_storage ?? farmerData?.has_storage ?? user.hasStorage ?? false,
-            annualIncomeRange: profileData?.annual_income_range || farmerData?.annual_income_range || user.annualIncomeRange || '',
-            preferredLanguage: profileData?.preferred_language || farmerData?.language_preference || user.preferredLanguage || 'hi',
-            notes: farmerData?.notes || ''
-          };
-
-          setFormData(mergedData);
-          
-          // Update avatar if available
-          if (profileData?.avatar_url) {
-            setAvatarUrl(profileData.avatar_url);
-          }
-        }
+        setFormData(mergedData);
+        if (profileData?.avatar_url) setAvatarUrl(profileData.avatar_url);
       } catch (error) {
         console.error('Error loading profile:', error);
         toast({
-          title: 'Error',
-          description: 'Failed to load profile data',
+          title: t('common.error'),
+          description: t('profile_edit.loadFailed'),
           variant: 'destructive'
         });
       } finally {
@@ -153,7 +122,7 @@ export default function ProfileEdit() {
     };
 
     loadProfileData();
-  }, [user?.id]);
+  }, [user, t, toast]);
 
   const handleAvatarUpdate = (url: string) => {
     setAvatarUrl(url);
@@ -171,130 +140,49 @@ export default function ProfileEdit() {
 
   const handleSave = async () => {
     if (!user || !user.tenantId) return;
-    
+
     setLoading(true);
     try {
-      // Create authenticated client with custom headers
-      const authClient = supabaseWithAuth(user.id, user.tenantId);
-      console.log('🔐 Saving profile with authenticated client:', { userId: user.id, tenantId: user.tenantId });
-      
-      // Parse crops string to array
       const cropsArray = formData.primaryCrops
         .split(',')
         .map(crop => crop.trim())
         .filter(crop => crop.length > 0);
 
-      // Update farmers table
-      const { error: farmerError } = await authClient
-        .from('farmers')
-        .update({
-          total_land_acres: formData.totalLandAcres,
-          primary_crops: cropsArray,
-          farming_experience_years: formData.farmingExperienceYears,
-          farm_type: formData.farmType,
-          has_loan: formData.hasLoan,
-          loan_amount: formData.loanAmount,
-          has_tractor: formData.hasTractor,
-          has_irrigation: formData.hasIrrigation,
-          irrigation_type: formData.irrigationType,
-          has_storage: formData.hasStorage,
-          annual_income_range: formData.annualIncomeRange,
-          language_preference: formData.preferredLanguage,
-          preferred_contact_method: formData.preferredContactMethod,
-          aadhaar_number: formData.aadhaarNumber,
-          notes: formData.notes,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
+      const saved = await farmerAuthService.updateFarmerProfile({
+        fullName: formData.fullName,
+        displayName: formData.displayName,
+        dateOfBirth: formData.dateOfBirth,
+        gender: formData.gender,
+        email: formData.email,
+        bio: formData.bio,
+        aadhaarNumber: formData.aadhaarNumber,
+        preferredContactMethod: formData.preferredContactMethod,
+        addressLine1: formData.addressLine1,
+        addressLine2: formData.addressLine2,
+        village: formData.village,
+        taluka: formData.taluka,
+        district: formData.district,
+        state: formData.state,
+        pincode: formData.pincode,
+        totalLandAcres: formData.totalLandAcres,
+        primaryCrops: cropsArray,
+        farmingExperienceYears: formData.farmingExperienceYears,
+        farmType: formData.farmType,
+        hasLoan: formData.hasLoan,
+        loanAmount: formData.loanAmount,
+        hasTractor: formData.hasTractor,
+        hasIrrigation: formData.hasIrrigation,
+        irrigationType: formData.irrigationType,
+        hasStorage: formData.hasStorage,
+        annualIncomeRange: formData.annualIncomeRange,
+        preferredLanguage: formData.preferredLanguage,
+        notes: formData.notes,
+      });
 
-      if (farmerError) {
-        console.error('Error updating farmer:', farmerError);
-        throw farmerError;
-      }
-
-      // Check if profile exists
-      const { data: existingProfile } = await authClient
-        .from('user_profiles')
-        .select('id')
-        .eq('farmer_id', user.id)
-        .maybeSingle();
-
-      // Update or create user_profiles
-      if (existingProfile) {
-        const { error: profileError } = await authClient
-          .from('user_profiles')
-          .update({
-            full_name: formData.fullName,
-            display_name: formData.displayName,
-            date_of_birth: formData.dateOfBirth || null,
-            gender: formData.gender || null,
-            email: formData.email || null,
-            bio: formData.bio || null,
-            aadhaar_number: formData.aadhaarNumber || null,
-            address_line1: formData.addressLine1 || null,
-            address_line2: formData.addressLine2 || null,
-            village: formData.village || null,
-            taluka: formData.taluka || null,
-            district: formData.district || null,
-            state: formData.state || null,
-            pincode: formData.pincode || null,
-            total_land_acres: formData.totalLandAcres,
-            primary_crops: cropsArray,
-            farming_experience_years: formData.farmingExperienceYears,
-            has_tractor: formData.hasTractor,
-            has_irrigation: formData.hasIrrigation,
-            has_storage: formData.hasStorage,
-            annual_income_range: formData.annualIncomeRange,
-            preferred_language: formData.preferredLanguage as any,
-            updated_at: new Date().toISOString()
-          })
-          .eq('farmer_id', user.id);
-
-        if (profileError) {
-          console.error('Error updating profile:', profileError);
-          throw profileError;
-        }
-      } else {
-        const { error: profileError } = await authClient
-          .from('user_profiles')
-          .insert({
-            id: user.id,
-            farmer_id: user.id,
-            tenant_id: user.tenantId,
-            full_name: formData.fullName,
-            display_name: formData.displayName,
-            date_of_birth: formData.dateOfBirth || null,
-            gender: formData.gender || null,
-            email: formData.email || null,
-            bio: formData.bio || null,
-            aadhaar_number: formData.aadhaarNumber || null,
-            address_line1: formData.addressLine1 || null,
-            address_line2: formData.addressLine2 || null,
-            village: formData.village || null,
-            taluka: formData.taluka || null,
-            district: formData.district || null,
-            state: formData.state || null,
-            pincode: formData.pincode || null,
-            total_land_acres: formData.totalLandAcres,
-            primary_crops: cropsArray,
-            farming_experience_years: formData.farmingExperienceYears,
-            has_tractor: formData.hasTractor,
-            has_irrigation: formData.hasIrrigation,
-            has_storage: formData.hasStorage,
-            annual_income_range: formData.annualIncomeRange,
-            preferred_language: formData.preferredLanguage as any,
-            mobile_number: user.phone
-          });
-
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          throw profileError;
-        }
-      }
-
-      // Update local user state
       setUser({
         ...user,
+        name: formData.fullName || user.name,
+        farmerName: formData.fullName || user.farmerName,
         fullName: formData.fullName,
         displayName: formData.displayName,
         dateOfBirth: formData.dateOfBirth,
@@ -316,11 +204,16 @@ export default function ProfileEdit() {
         preferredLanguage: formData.preferredLanguage
       });
 
+      // Keep offline sign-in's cached profile aligned with the saved server copy.
+      try {
+        const { offlineAuthService } = await import('@/services/offlineAuthService');
+        await offlineAuthService.updateCachedFarmer(saved.farmer, saved.profile);
+      } catch { /* no offline copy on this device */ }
+
       toast({
         title: t('common.success'),
         description: t('profile_edit.updateSuccess'),
       });
-
       navigate('/app/profile');
     } catch (error) {
       console.error('Error saving profile:', error);

@@ -81,6 +81,13 @@
  *               mobileMasked, roles: [{ role, status }], activeRole }.
  * Roles are returned only to an authenticated caller, never by lookup.
  *
+ * 2026-11-26 — Verified-session farmer profile reads/writes. The browser no
+ *              longer writes farmers/user_profiles directly (locked-down RLS
+ *              rejected profile saves). Allowlisted fields only; farmer and
+ *              tenant identity always come from the live FARMER session.
+ *   getFarmerProfile    {}         -> { farmer, profile }
+ *   updateFarmerProfile { profile } -> { farmer, profile }
+ *
  * No endpoint ever returns pin_hash. Identity (farmer_id / tenant_id) is only
  * ever derived here, server-side, and handed back with an opaque session token
  * whose SHA-256 hash is persisted in public.user_sessions.
@@ -89,6 +96,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { isFlagEnabled } from "../_shared/featureFlags.ts";
 import { checkRateLimit } from "../_shared/rateLimiter.ts";
+import { preserveTriggerManagedProfileFields, validateFarmerProfilePayload } from "../_shared/farmer-profile.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -115,6 +123,7 @@ const ROLE_REGISTER_LIMIT = { maxRequests: 5, windowMs: 3600_000 };
 const ROLE_ADD_LIMIT = { maxRequests: 10, windowMs: 3600_000 };
 const ROLE_SWITCH_LIMIT = { maxRequests: 30, windowMs: 60_000 };
 const ACCOUNT_UPDATE_LIMIT = { maxRequests: 20, windowMs: 3600_000 };
+const FARMER_PROFILE_UPDATE_LIMIT = { maxRequests: 60, windowMs: 3600_000 };
 const PROVIDER_WORKSPACE_FLAG = "provider_workspace";
 const NURSERY_PHOTO_BUCKET = "nursery-photos";
 const NURSERY_PHOTO_MAX = 3;
@@ -521,10 +530,79 @@ function accountRpcError(message: string | undefined): Response {
   return json({ error: "server_error" }, 500);
 }
 
+/**
+ * Farmer-owned profile reads/writes. The farmer and tenant come only from the
+ * verified FARMER session; client-supplied farmer_id/tenant_id are never read.
+ */
+async function handleFarmerProfile(
+  action: "getFarmerProfile" | "updateFarmerProfile",
+  ctx: { sess: any; account: any },
+  body: any,
+): Promise<Response> {
+  if (await liveSessionRole(ctx) !== "FARMER") return json({ error: "role_not_active" }, 403);
+
+  const { data: farmer, error: farmerError } = await admin.from("farmers")
+    .select("*").eq("id", ctx.account.id).eq("is_active", true).maybeSingle();
+  if (farmerError) throw new Error(farmerError.message);
+  if (!farmer) return json({ error: "farmer_not_found" }, 404);
+
+  const readProfile = async () => {
+    const { data, error } = await admin.from("user_profiles")
+      .select("*").eq("farmer_id", farmer.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ?? null;
+  };
+
+  if (action === "getFarmerProfile") {
+    return json({ farmer: await farmerForClient(farmer), profile: await readProfile() });
+  }
+
+  const validated = validateFarmerProfilePayload(body?.profile);
+  if (!validated.ok) return json({ error: validated.error }, 400);
+  const limited = await rateLimited(ctx.account.id, "updateFarmerProfile", FARMER_PROFILE_UPDATE_LIMIT);
+  if (limited) return limited;
+
+  const now = new Date().toISOString();
+  const existingProfile = await readProfile();
+  const farmerWillChange = Object.keys(validated.patches.farmer).length > 0;
+
+  // The existing handle_farmer_update trigger mirrors metadata into the
+  // profile on every farmer write. Run it first, then reapply the explicit
+  // profile values and preserve fields absent from a partial/offline update.
+  if (farmerWillChange) {
+    const { error } = await admin.from("farmers")
+      .update({ ...validated.patches.farmer, updated_at: now }).eq("id", farmer.id);
+    if (error) throw new Error(error.message);
+  }
+
+  const preservedProfile = preserveTriggerManagedProfileFields(
+    validated.patches.profile, existingProfile, farmerWillChange,
+  );
+  if (Object.keys(preservedProfile).length > 0) {
+    const profilePatch = { ...preservedProfile, updated_at: now };
+    const profileResult = existingProfile
+      ? await admin.from("user_profiles").update(profilePatch).eq("farmer_id", farmer.id)
+      : await admin.from("user_profiles").insert({
+          id: farmer.id,
+          farmer_id: farmer.id,
+          tenant_id: farmer.tenant_id,
+          mobile_number: farmer.mobile_number,
+          farmer_code: farmer.farmer_code,
+          ...profilePatch,
+        });
+    if (profileResult.error) throw new Error(profileResult.error.message);
+  }
+
+  const { data: freshFarmer, error: freshError } = await admin.from("farmers")
+    .select("*").eq("id", farmer.id).maybeSingle();
+  if (freshError || !freshFarmer) throw new Error(freshError?.message ?? "saved farmer unavailable");
+  return json({ farmer: await farmerForClient(freshFarmer), profile: await readProfile() });
+}
+
 /** Session-authenticated actions. Returns null when `action` is not one of them. */
 async function handleSessionAction(action: string, req: Request, body: any): Promise<Response | null> {
-  if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "nurseryPhotoSign", "nurseryPhotoConfirm",
-        "activationStatus", "activate"].includes(action)) return null;
+  if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "getFarmerProfile", "updateFarmerProfile",
+        "nurseryPhotoSign", "nurseryPhotoConfirm", "activationStatus", "activate"].includes(action)) return null;
 
   const ctx = await sessionAccount(req, body);
   if (!ctx) return json({ error: "session_required" }, 401);
@@ -537,6 +615,10 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
   // Farmer activation does not depend on the multi-role flag.
   if (action === "activationStatus" || action === "activate") {
     return await handleActivation(action, ctx, req, body);
+  }
+
+  if (action === "getFarmerProfile" || action === "updateFarmerProfile") {
+    return await handleFarmerProfile(action, ctx, body);
   }
 
   if (action === "sessionInfo") {
@@ -1304,6 +1386,8 @@ export function isFarmerAuthAction(body: any): boolean {
       "switchRole",
       "addRole",
       "updateAccount",
+      "getFarmerProfile",
+      "updateFarmerProfile",
       "nurseryPhotoSign",
       "nurseryPhotoConfirm",
       "activationStatus",

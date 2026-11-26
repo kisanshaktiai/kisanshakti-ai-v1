@@ -46,6 +46,7 @@
     "cancel": "Cancel",
     "updateSuccess": "Profile updated successfully",
     "updateFailed": "Failed to update profile",
+    "loadFailed": "Could not load your saved profile. Please try again.",
     "validationError": "Please fill all required fields",
     "invalidPhone": "Invalid phone number",
     "invalidEmail": "Invalid email address",

@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { farmerAuthService } from '@/services/farmerAuthService';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 
@@ -419,24 +419,10 @@ class LocationService {
   // Get location from user profile
   async getLocationFromUserProfile(): Promise<LocationData | null> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('No authenticated user');
-        return null;
-      }
-
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('village, taluka, district, state, pincode')
-        .eq('id', user.id)
-        .single();
-
-      if (error || !profile) {
-        console.error('Error fetching user profile:', error);
-        return null;
-      }
-
-      console.log('User profile location data:', profile);
+      // This app uses verified PIN sessions, not supabase.auth users. Resolve
+      // the saved address through the same session-bound profile service.
+      const { profile } = await farmerAuthService.getFarmerProfile();
+      if (!profile) return null;
 
       // Try to geocode the address
       const geocoded = await this.geocodeAddress({
