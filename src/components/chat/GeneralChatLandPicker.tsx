@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import {
   Sheet,
   SheetContent,
@@ -50,6 +51,7 @@ interface Props {
 
 export default function GeneralChatLandPicker({ open, lands, onPick, onClose }: Props) {
   const { t } = useTranslation('chat');
+  const cropNameOf = useCropNames();
 
   const sortedLands = useMemo(
     () => [...(lands || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
@@ -161,7 +163,7 @@ export default function GeneralChatLandPicker({ open, lands, onPick, onClose }: 
           <AnimatePresence>
             <div className="grid grid-cols-1 gap-2.5">
               {sortedLands.map((l, idx) => {
-                const crop = l.current_crop || l.crop_name;
+                const crop = cropNameOf(l.current_crop || l.crop_name, (l as { current_crop_id?: string | null }).current_crop_id);
                 return (
                   <motion.button
                     key={l.id}

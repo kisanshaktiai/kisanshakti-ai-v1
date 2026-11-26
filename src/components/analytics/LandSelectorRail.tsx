@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 import type { LandAnalytics } from '@/lib/analytics/reportEngine';
 import { MapPin, Layers } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useSignedSatelliteImage } from '@/hooks/useSignedSatelliteImage';
@@ -31,6 +32,7 @@ function LandSatelliteThumb({ landId, path }: { landId: string; path: string | n
 
 export function LandSelectorRail({ perLand, selectedId, onSelect, totalAreaAcres }: Props) {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   return (
     <div className="overflow-x-auto no-scrollbar -mx-4 px-4">
       <div className="flex gap-2 pb-1">
@@ -70,7 +72,7 @@ export function LandSelectorRail({ perLand, selectedId, onSelect, totalAreaAcres
               </div>
               <p className="text-[11px] font-bold leading-tight truncate">{a.land.name || '—'}</p>
               <p className="text-[10px] opacity-80 truncate">
-                {(a.land.area_acres ?? 0).toFixed(1)} {t('analytics.units.acre', 'ac')} · {a.land.current_crop || t('analytics.no_crop_short', 'fallow')}
+                {(a.land.area_acres ?? 0).toFixed(1)} {t('analytics.units.acre', 'ac')} · {a.land.current_crop ? cropNameOf(a.land.current_crop, (a.land as { current_crop_id?: string | null }).current_crop_id) : t('analytics.no_crop_short', 'fallow')}
               </p>
             </button>
           );

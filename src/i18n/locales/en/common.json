@@ -94,6 +94,7 @@
     "info": "Info",
     "listen": "Listen",
     "loadingFeatures": "Loading features...",
-    "rateLimitError": "Too many requests. Please wait a moment and try again."
+    "rateLimitError": "Too many requests. Please wait a moment and try again.",
+    "greeting": "Hello, {{name}}"
   }
 }

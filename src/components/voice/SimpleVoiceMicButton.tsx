@@ -82,19 +82,14 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   const fetchSuggestions = async () => {
     try {
       console.log('[Voice] Fetching suggestions...');
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      
+      // This app signs farmers in with its own session, not Supabase Auth:
+      // the signed-in user (and the tenant) is in the auth store.
+      const authUser = useAuthStore.getState().user;
       if (!authUser) {
         console.error('[Voice] No user found');
         return;
       }
-
-      // Get user's tenant from profile
-      const { data: profile } = await supabase
-        .from('farmers')
-        .select('tenant_id')
-        .eq('id', authUser.id)
-        .single();
+      const profile = { tenant_id: authUser.tenantId };
 
       const language = currentLanguage || 'en';
       console.log('[Voice] Using language:', language);

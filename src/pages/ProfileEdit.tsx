@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/authStore';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useLands } from '@/hooks/useLands';
 import { farmerAuthService } from '@/services/farmerAuthService';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
@@ -19,6 +20,9 @@ import { PageShell } from '@/components/layout/PageShell';
 export default function ProfileEdit() {
   const { t } = useTranslation();
   const availableLanguages = useLanguageStore((s) => s.availableLanguages);
+  // Total land is the sum of the lands the farmer has drawn, not a typed number.
+  const { lands } = useLands();
+  const landsTotalAcres = useMemo(() => Math.round(lands.reduce((sum, land) => sum + (Number(land.area_acres) || 0), 0) * 100) / 100, [lands]);
   const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
   const { toast } = useToast();
@@ -164,7 +168,7 @@ export default function ProfileEdit() {
         district: formData.district,
         state: formData.state,
         pincode: formData.pincode,
-        totalLandAcres: formData.totalLandAcres,
+        totalLandAcres: lands.length > 0 ? landsTotalAcres : formData.totalLandAcres,
         primaryCrops: cropsArray,
         farmingExperienceYears: formData.farmingExperienceYears,
         farmType: formData.farmType,
@@ -192,7 +196,7 @@ export default function ProfileEdit() {
         district: formData.district,
         state: formData.state,
         pincode: formData.pincode,
-        totalLandAcres: formData.totalLandAcres,
+        totalLandAcres: lands.length > 0 ? landsTotalAcres : formData.totalLandAcres,
         primaryCrops: cropsArray,
         farmingExperienceYears: formData.farmingExperienceYears,
         farmType: formData.farmType,
@@ -441,15 +445,27 @@ export default function ProfileEdit() {
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="totalLand">{t('profile_edit.totalLandAcres')}</Label>
-            <Input
-              id="totalLand"
-              type="number"
-              value={formData.totalLandAcres}
-              onChange={(e) => handleInputChange('totalLandAcres', parseFloat(e.target.value) || 0)}
-              placeholder={t('profile_edit.totalLandAcresPlaceholder')}
-              min="0"
-              step="0.1"
-            />
+            {lands.length > 0 ? (
+              <>
+                <div id="totalLand" className="flex h-11 items-center rounded-md border border-input bg-muted/40 px-3 text-base font-semibold text-foreground">
+                  {landsTotalAcres}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{t('profile_edit.totalLandFromLands', { count: lands.length })}</p>
+              </>
+            ) : (
+              <>
+                <Input
+                  id="totalLand"
+                  type="number"
+                  value={formData.totalLandAcres}
+                  onChange={(e) => handleInputChange('totalLandAcres', parseFloat(e.target.value) || 0)}
+                  placeholder={t('profile_edit.totalLandAcresPlaceholder')}
+                  min="0"
+                  step="0.1"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{t('profile_edit.totalLandAddLandsHint')}</p>
+              </>
+            )}
           </div>
 
           <div>

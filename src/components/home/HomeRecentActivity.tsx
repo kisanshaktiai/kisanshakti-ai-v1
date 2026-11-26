@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -27,6 +28,7 @@ function HomeRecentActivityImpl({
   reduceMotion,
 }: Props) {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const dotCount = lands.length > 0 ? Math.min(lands.length, 5) : 3;
 
   return (
@@ -64,7 +66,7 @@ function HomeRecentActivityImpl({
                   </div>
                 </div>
                 <Badge variant="secondary" className="text-xs">
-                  {(lands[currentActivityIndex] as any)?.current_crop || t('home.no_crop')}
+                  {(() => { const land = lands[currentActivityIndex] as { current_crop?: string | null; current_crop_id?: string | null } | undefined; return land?.current_crop ? cropNameOf(land.current_crop, land.current_crop_id) : t('home.no_crop'); })()}
                 </Badge>
               </motion.div>
             ) : (

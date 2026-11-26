@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { 
   Plus, Grid3x3, List, Search, Filter, Download, Share2,
   MapPin, Sprout, Calendar, Camera, Activity, AlertCircle,
@@ -56,6 +57,7 @@ interface Land {
 
 export default function LandManagement() {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -176,7 +178,7 @@ export default function LandManagement() {
               
               {land.current_crop && (
                 <div className="text-right">
-                  <p className="text-sm font-medium truncate max-w-[100px]">{land.current_crop}</p>
+                  <p className="text-sm font-medium truncate max-w-[100px]">{cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id)}</p>
                   {land.crop_stage && (
                     <Badge className={`${getCropStageColor(land.crop_stage)} text-primary-foreground text-xs`}>
                       {land.crop_stage}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,6 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import {
   AlertDialog,
@@ -54,6 +54,7 @@ interface Land {
   water_source?: string;
   irrigation_type?: string;
   current_crop?: string;
+  current_crop_id?: string | null;
   soil_ph?: number;
   organic_carbon_percent?: number;
 }
@@ -114,10 +115,9 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
-  // crop_name (lowercased) -> localized crop label for the active language.
-  const [cropLabels, setCropLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
@@ -137,7 +137,6 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
 
     try {
       const landIds = new Set(lands.map(l => l.id));
-      const client = supabaseWithAuth(user.id, user.tenantId);
 
       // Direct PostgREST reads of crop_schedules are denied for the anon role;
       // the schedules-api edge function verifies the session and scopes rows server-side.
@@ -156,40 +155,10 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       });
 
       setScheduleStatuses(statuses);
-
-      // Non-blocking enhancement: resolve localized crop names (crops table).
-      void loadCropLabels(client, statuses.map(s => s.cropName).filter(Boolean) as string[]);
     } catch (error) {
       console.error('Error fetching schedule statuses:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadCropLabels = async (
-    client: ReturnType<typeof supabaseWithAuth>,
-    cropNames: string[],
-  ) => {
-    const lang = i18n.language?.split('-')[0];
-    if (!lang || lang === 'en' || cropNames.length === 0) return;
-    try {
-      const { data } = await client
-        .from('crops')
-        .select('value, label, label_hi, label_mr, local_name');
-      if (!data) return;
-      const langColumn = lang === 'hi' ? 'label_hi' : lang === 'mr' ? 'label_mr' : null;
-      const map: Record<string, string> = {};
-      for (const crop of data as Array<Record<string, string | null>>) {
-        const localized =
-          (langColumn ? crop[langColumn] : null) || crop.local_name || null;
-        if (!localized) continue;
-        for (const key of [crop.value, crop.label]) {
-          if (key) map[String(key).trim().toLowerCase()] = localized;
-        }
-      }
-      setCropLabels(map);
-    } catch (error) {
-      console.warn('Crop label localization skipped:', error);
     }
   };
 
@@ -361,7 +330,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         {hasSchedule && status?.cropName && (
                           <Badge variant="secondary" className="text-xs px-2 py-0.5">
                             <Wheat className="h-2.5 w-2.5 mr-1" />
-                            {cropLabels[status.cropName.trim().toLowerCase()] || status.cropName}
+                            {cropNameOf(status.cropName)}
                           </Badge>
                         )}
                       </div>
@@ -471,7 +440,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
                         <CropIcon className="h-3.5 w-3.5 text-success" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.current_crop}
+                          {cropNameOf(land.current_crop, land.current_crop_id)}
                         </span>
                       </div>
                     )}

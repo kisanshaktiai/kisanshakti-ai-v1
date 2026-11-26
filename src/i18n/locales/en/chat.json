@@ -214,6 +214,9 @@
       "continueUsingApp": "You can continue using the app while downloading",
       "voiceReady": "{{language}} voice ready!",
       "voiceReadyDesc": "{{language}} voice is now available"
+    },
+    "land": {
+      "growing": "Growing: {{crop}}"
     }
   },
   "__qa": {

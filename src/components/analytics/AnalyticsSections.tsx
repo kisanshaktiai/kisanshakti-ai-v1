@@ -5,6 +5,7 @@
  */
 import React, { forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -140,6 +141,7 @@ export function MoneyHarvestCard({ a }: { a: LandAnalytics }) {
 // ─── 2. Field condition ────────────────────────────────────────────────────
 export function FieldConditionCard({ a }: { a: LandAnalytics }) {
   const { t, i18n } = useTranslation();
+  const cropNameOf = useCropNames();
   const fs = a.farmState;
   const c = fs?.canopy ?? null;
   const canopyWord = c?.vs_expected === 'below'
@@ -153,7 +155,7 @@ export function FieldConditionCard({ a }: { a: LandAnalytics }) {
     <SectionCard
       icon={<Sprout className="w-4 h-4" />}
       title={t('analytics.field.title', 'How the crop is doing')}
-      subtitle={a.land.current_crop || t('analytics.no_crop', 'No active crop')}
+      subtitle={a.land.current_crop ? cropNameOf(a.land.current_crop, (a.land as { current_crop_id?: string | null }).current_crop_id) : t('analytics.no_crop', 'No active crop')}
     >
       {!fs ? (
         <Hint>{t('analytics.field.no_state', 'Field data is not in yet.')}</Hint>

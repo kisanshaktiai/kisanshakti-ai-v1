@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Cloud, Droplets, Thermometer, Leaf, AlertCircle, Sprout, Bug, CircleCheckBig, Wind, TrendingUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { landsApi } from '@/services/landsApi';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWeatherStore } from '@/stores/weatherStore';
@@ -15,6 +16,7 @@ interface LandSpecificChatTabProps {
 
 export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatTabProps) {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const [landData, setLandData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -104,7 +106,7 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
             <div className="col-span-4 flex items-center gap-2 p-2 rounded-xl bg-success/10 border border-success/20 backdrop-blur-sm">
               <TrendingUp className="w-4 h-4 text-success" />
               <span className="text-xs font-medium text-success dark:text-success">
-                Growing: {landData.current_crop}
+                {t('chat.land.growing', { crop: cropNameOf(landData.current_crop, landData.current_crop_id) })}
               </span>
             </div>
           )}

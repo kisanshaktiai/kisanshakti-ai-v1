@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/stores/authStore';
-import { isMultiRoleEnabled } from '@/services/farmerAuthService';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { farmerAuthService, isMultiRoleEnabled } from '@/services/farmerAuthService';
 import { 
   User, 
   Phone, 
@@ -61,25 +60,19 @@ export default function Profile() {
   // Fetch analytics data
   useEffect(() => {
     const fetchAnalytics = async () => {
-      if (!user?.id || !user?.tenantId) return;
-      
-      // Create authenticated client with custom headers
-      const authClient = supabaseWithAuth(user.id, user.tenantId);
-      console.log('🔐 Fetching analytics with authenticated client:', { userId: user.id, tenantId: user.tenantId });
-      
-      const { data, error } = await authClient
-        .from('farmers')
-        .select('app_install_date, last_app_open, total_app_opens, total_queries, created_at, last_login_at')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      if (!error && data) {
-        setAnalyticsData(data);
+      if (!user?.id) return;
+      // The farmers table is not readable from the browser; the service
+      // returns only the row behind this session.
+      try {
+        const { farmer } = await farmerAuthService.getFarmerProfile();
+        if (farmer) setAnalyticsData(farmer);
+      } catch (error) {
+        console.warn('Profile analytics unavailable:', error);
       }
     };
     
     fetchAnalytics();
-  }, [user?.id, user?.tenantId]);
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await logout();

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useCropGrowthTracking } from '@/hooks/useCropGrowthTracking';
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils';
 
 export default function CropGrowthTracking() {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { tenant } = useTenant();
@@ -102,7 +104,7 @@ export default function CropGrowthTracking() {
               >
                 {land.name}
                 {land.current_crop && (
-                  <span className="ml-1 text-xs opacity-70">({land.current_crop})</span>
+                  <span className="ml-1 text-xs opacity-70">({cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id)})</span>
                 )}
               </Button>
             ))}

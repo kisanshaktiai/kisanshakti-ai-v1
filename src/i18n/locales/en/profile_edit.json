@@ -110,6 +110,8 @@
     "notes": "Additional notes (optional)",
     "notesPlaceholder": "Anything else we should know",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "totalLandFromLands": "Added up from your {{count}} lands; it changes when you add or edit a land.",
+    "totalLandAddLandsHint": "Once you add your lands, this is worked out for you."
   }
 }

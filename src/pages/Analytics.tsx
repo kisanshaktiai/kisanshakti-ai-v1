@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { ArrowLeft, RefreshCw, Layers, Sprout, Wallet, TrendingUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -22,6 +23,7 @@ const RANGES: DateRange[] = ['7d', '30d', 'season', '1y'];
 
 export default function Analytics() {
   const { t, i18n } = useTranslation();
+  const cropNameOf = useCropNames();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [range, setRange] = useState<DateRange>((params.get('range') as DateRange) || '30d');
@@ -131,7 +133,7 @@ export default function Analytics() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground truncate">{a.land.name}</p>
                       <p className="text-[11px] text-muted-foreground truncate">
-                        {a.land.current_crop || t('analytics.no_crop_short', 'fallow')} · {formatNumber(a.land.area_acres ?? 0, 1, locale)} {t('analytics.units.acre', 'ac')}
+                        {a.land.current_crop ? cropNameOf(a.land.current_crop, (a.land as { current_crop_id?: string | null }).current_crop_id) : t('analytics.no_crop_short', 'fallow')} · {formatNumber(a.land.area_acres ?? 0, 1, locale)} {t('analytics.units.acre', 'ac')}
                       </p>
                     </div>
                     <div className="text-right">

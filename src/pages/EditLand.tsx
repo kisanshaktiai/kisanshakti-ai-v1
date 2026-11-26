@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, Edit } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuthStore } from '@/stores/authStore';
@@ -140,7 +140,7 @@ export default function EditLand() {
       <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
         <Card className="p-6 space-y-4 text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Loading land details...</p>
+          <p className="text-muted-foreground">{t('lands.edit.loading')}</p>
         </Card>
       </div>
     );
@@ -151,23 +151,14 @@ export default function EditLand() {
     return (
       <GoogleMapsScriptProvider>
         <div className="fixed inset-0 z-[60] bg-background">
-          {/* Title bar */}
-          <div className="absolute top-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-b z-10 p-4">
-            <div className="flex items-center gap-3">
-              <Edit className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-semibold">
-                Editing Land: {landData?.name || 'Land Parcel'}
-              </h1>
-            </div>
-          </div>
-          
-          {/* Map component with preloaded boundary */}
-          <div className="pt-16 h-[calc(100%-4rem)]">
+          {/* The map fills the screen; its own top bar carries the land's name and the back button. */}
+          <div className="h-full">
             <GoogleMapBoundaryDrawer
               onSave={handleMapSave}
               onCancel={handleCancel}
               initialCenter={initialCenter}
               initialBoundary={boundary}
+              title={landData?.name ? t('lands.edit.title', { name: landData.name }) : undefined}
             />
           </div>
         </div>

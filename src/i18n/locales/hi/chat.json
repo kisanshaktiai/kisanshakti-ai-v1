@@ -214,6 +214,9 @@
       "continueUsingApp": "डाउनलोड के दौरान ऐप चलाते रह सकते हैं",
       "voiceReady": "{{language}} आवाज़ तैयार है!",
       "voiceReadyDesc": "{{language}} आवाज़ अब उपलब्ध है"
+    },
+    "land": {
+      "growing": "उगा रहे हैं: {{crop}}"
     }
   },
   "__qa": {

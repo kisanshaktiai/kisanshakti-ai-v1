@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import { 
   ArrowLeft, Edit, Trash2, Share2, Download, MapPin, 
   Droplets, Mountain, Sprout, Calendar, Camera, Activity,
@@ -91,6 +92,7 @@ interface CropHistory {
 export default function LandDetails() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -407,7 +409,7 @@ export default function LandDetails() {
                 </div>
                 <div>
                   <p className="text-xl md:text-2xl font-bold text-foreground line-clamp-1">
-                    {land.current_crop || t('lands.details.no_crop')}
+                    {land.current_crop ? cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id) : t('lands.details.no_crop')}
                   </p>
                   {land.crop_stage && (
                     <Badge variant="secondary" className="mt-1.5 text-xs bg-success/10 text-success border-success/20">

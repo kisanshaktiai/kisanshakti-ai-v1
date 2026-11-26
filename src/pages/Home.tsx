@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { useCropNames } from '@/hooks/useCropNames';
 import {
   MapPin,
   Calendar,
@@ -50,6 +51,7 @@ const VideoHelpCard = lazy(() =>
 
 export default function Home() {
   const { t } = useTranslation();
+  const cropNameOf = useCropNames();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const { lands, isLoading: loading } = useLands();
@@ -148,8 +150,11 @@ export default function Home() {
 
   // Get next crop from lands
   const nextCrop = useMemo(
-    () => lands.find((land: any) => land.current_crop)?.current_crop || 'Not planned',
-    [lands],
+    () => {
+      const land = lands.find((land: any) => land.current_crop);
+      return land ? cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id) : t('home.no_crop');
+    },
+    [lands, cropNameOf, t],
   );
 
   // Calculate NDVI average from actual land data

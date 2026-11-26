@@ -601,24 +601,17 @@ class SyncService {
         throw new Error('Missing or invalid authentication data for sync');
       }
       
-      // Test database access with a simple, non-failing query
-      console.log('🔍 [Sync] Testing database access...');
+      // The browser has no grant on the farmers table (the farmer's own row
+      // comes through the verified-session service below), so the only
+      // access check that means anything is the session itself.
       const client = supabaseWithAuth(userId, tenant);
-      
-      // Fixed: Use a query that won't fail if farmer doesn't exist
-      // Just test we can access the farmers table at all
-      const testQuery = await client
-        .from('farmers')
-        .select('id')
-        .eq('tenant_id', tenant)
-        .limit(1);
-      
-      if (testQuery.error) {
-        console.error('❌ [Sync] Database access test failed:', testQuery.error);
-        throw new Error(`Database access failed: ${testQuery.error.message}. Your authentication may have expired.`);
+      try {
+        await farmerAuthService.sessionInfo();
+      } catch (probeError) {
+        console.error('❌ [Sync] Session check failed:', probeError);
+        throw new Error(`Session check failed: ${probeError instanceof Error ? probeError.message : String(probeError)}. Please sign in again.`);
       }
-      
-      console.log('✅ [Sync] Database access verified, proceeding with download');
+      console.log('✅ [Sync] Session verified, proceeding with download');
 
       // ====================================================================
       // STEP 0: Download subscription data FIRST (gating depends on it)
@@ -636,28 +629,24 @@ class SyncService {
       const phaseStart = Date.now();
 
       const downloadFarmers = async () => {
-        console.log('📥 [Sync] Fetching farmers from server...');
-        const { data: farmers, error: farmersError } = await client
-          .from('farmers')
-          .select('*')
-          .eq('tenant_id', tenant)
-          .eq('id', userId);
-
-        if (farmersError) {
-          console.error('❌ [Sync] Failed to fetch farmers:', farmersError);
-          return;
-        }
-        console.log(`✅ [Sync] Fetched ${farmers?.length || 0} farmers from server`);
-
-        if (farmers && farmers.length > 0) {
-          await localDB.bulkSave({
-            farmers: farmers.map(f => ({
-              ...f,
-              tenant_id: tenantId,
-              lastModified: new Date(f.updated_at || f.created_at || Date.now()).getTime(),
-              syncStatus: 'synced' as const,
-            })),
-          });
+        console.log('📥 [Sync] Fetching the farmer row through the verified session...');
+        try {
+          // The farmers table is not readable from the browser; the service
+          // returns only the row behind this session.
+          const { farmer } = await farmerAuthService.getFarmerProfile();
+          if (farmer) {
+            await localDB.bulkSave({
+              farmers: [{
+                ...farmer,
+                tenant_id: tenantId,
+                lastModified: new Date(farmer.updated_at || farmer.created_at || Date.now()).getTime(),
+                syncStatus: 'synced' as const,
+              }],
+            });
+            console.log('✅ [Sync] Fetched the farmer row');
+          }
+        } catch (farmersError) {
+          console.error('❌ [Sync] Failed to fetch the farmer row:', farmersError);
         }
       };
 

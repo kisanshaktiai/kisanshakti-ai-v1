@@ -108,8 +108,8 @@
     },
     "map": {
       "mode": {
-        "tap_to_mark": "Tap to Mark",
-        "walk_boundary": "Walk Boundary"
+        "tap_to_mark": "Tap corners",
+        "walk_boundary": "Walk the edge"
       },
       "gps": {
         "start_tracking": "Start GPS Tracking",
@@ -143,6 +143,10 @@
         "hybrid": "Loading the satellite map…",
         "locating": "Finding your location…",
         "center_me": "Centre on my location"
+      },
+      "layers": {
+        "show_map": "Show map",
+        "show_satellite": "Show satellite"
       }
     },
     "wizard": {
@@ -193,7 +197,13 @@
         "red": "Red",
         "laterite": "Laterite",
         "desert": "Desert",
-        "mountain": "Mountain"
+        "mountain": "Mountain",
+        "clay": "Clay",
+        "sandy": "Sandy",
+        "loamy": "Loamy",
+        "saline": "Saline / alkaline",
+        "peaty": "Organic / peaty",
+        "other": "Other"
       },
       "water_sources": {
         "well": "Well",
@@ -201,7 +211,13 @@
         "canal": "Canal",
         "river": "River",
         "rain": "Rain-fed",
-        "tank": "Tank"
+        "tank": "Tank",
+        "rainwater": "Rainwater",
+        "rainwater_harvesting": "Rainwater harvesting",
+        "pond": "Pond",
+        "drip": "Drip",
+        "sprinkler": "Sprinkler",
+        "rainfed": "Rain-fed"
       },
       "irrigation_types": {
         "drip": "Drip",
@@ -209,7 +225,8 @@
         "flood": "Flood",
         "furrow": "Furrow",
         "manual": "Manual",
-        "none": "None"
+        "none": "None",
+        "surface": "Surface"
       },
       "review": {
         "land_area": "Land Area",
@@ -453,7 +470,8 @@
         "success": "Land updated successfully",
         "error": "Failed to update land",
         "session_error": "Session or land information missing"
-      }
+      },
+      "loading": "Loading land details…"
     },
     "smartConfirm": {
       "title": "Confirm your land",
