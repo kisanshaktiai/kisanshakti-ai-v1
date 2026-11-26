@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Security, isolation and concurrency tests for the farmer activation database part
 # (supabase/migrations/20261124160000_farmer_activation_core.sql,
-#  supabase/migrations/20261125100000_farmer_activation_licence_lock.sql and
-#  supabase/migrations/20261125230000_farmer_activation_app_gate.sql).
+#  supabase/migrations/20261125100000_farmer_activation_licence_lock.sql,
+#  supabase/migrations/20261125230000_farmer_activation_app_gate.sql and
+#  supabase/migrations/20261126120000_farmer_activation_issue.sql).
 #
 # Needs a local PostgreSQL 15+ with pgcrypto that you can connect to as a
 # superuser. It creates and drops its OWN database (acttest) and the three API
@@ -13,6 +14,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/../.." && pwd)"
 MIGRATION="${MIGRATION:-$ROOT/supabase/migrations/20261124160000_farmer_activation_core.sql}"
 MIGRATION2="${MIGRATION2:-$ROOT/supabase/migrations/20261125100000_farmer_activation_licence_lock.sql}"
 MIGRATION3="${MIGRATION3:-$ROOT/supabase/migrations/20261125230000_farmer_activation_app_gate.sql}"
+MIGRATION4="${MIGRATION4:-$ROOT/supabase/migrations/20261126120000_farmer_activation_issue.sql}"
 export PGHOST="${PGHOST:-127.0.0.1}" PGPORT="${PGPORT:-5432}" PGUSER="${PGUSER:-postgres}"
 DB=acttest; ADMIN="psql -d postgres -v ON_ERROR_STOP=1 -q -X"
 $ADMIN -c "DROP DATABASE IF EXISTS $DB" -c "CREATE DATABASE $DB" 2>/dev/null || { echo "cannot create database $DB"; exit 2; }
@@ -35,6 +37,8 @@ OPEN=$($PSQL -c "BEGIN" -c "UPDATE feature_flags SET is_enabled = true WHERE fla
 GUARD_BEFORE=$(q "SELECT md5(prosrc) FROM pg_proc WHERE oid IN ('public.verified_session_context()'::regprocedure, 'public.verified_account_context()'::regprocedure, 'activation.farmers_guard()'::regprocedure) ORDER BY proname" | tr '\n' ' ')
 psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION3" >/dev/null 2>&1 || { echo "app-gate migration failed to apply"; exit 2; }
 psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION3" >/dev/null 2>&1 || { echo "app-gate migration is not re-runnable"; exit 2; }
+psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION4" >/dev/null 2>&1 || { echo "issue migration failed to apply"; exit 2; }
+psql -d $DB -v ON_ERROR_STOP=1 -q -X -f "$MIGRATION4" >/dev/null 2>&1 || { echo "issue migration is not re-runnable"; exit 2; }
 SUPER=50000000-0000-0000-0000-000000000001; PLAIN=50000000-0000-0000-0000-000000000002
 ADM_A=aa000000-0000-0000-0000-000000000001; OWN_B=bb000000-0000-0000-0000-000000000001; VIEW_A=aa000000-0000-0000-0000-000000000009
 TD=d0000000-0000-0000-0000-000000000000; TA=a0000000-0000-0000-0000-000000000000; TB=b0000000-0000-0000-0000-000000000000; TC=c0000000-0000-0000-0000-000000000000
@@ -288,6 +292,43 @@ for i in $(seq 1 8); do
 done; wait
 eq "C4 8 redemptions + 8 portal inserts racing for 2 seats: exactly 2 succeed in total" "$(grep -c 'activated\|portal_created' /tmp/c4.out) $(q "SELECT (SELECT count(*) FROM farmers WHERE tenant_id='$TA' AND NOT activation_pending) = (SELECT max_farmers FROM tenants WHERE id='$TA')")" "2 t"
 q "UPDATE tenants SET max_farmers = 1000 WHERE id='$TA'" >/dev/null
+
+echo "== H. handing a code to a farmer =="
+issue() { usr "$1" "SELECT public.activation_issue_code('$2'${3:+, $3})"; }       # actor, code id, [name, mobile, note as SQL]
+BH=$(gen $TA 4); usr $SUPER "SELECT public.activation_admin_release_batch('$BH')" >/dev/null
+mapfile -t HID < <(q "SELECT id FROM activation_codes WHERE batch_id='$BH' ORDER BY created_at, id")
+mapfile -t HCODE < <(codes $BH $ADM_A)
+LOGS0=$(q "SELECT count(*) FROM activation_logs WHERE batch_id='$BH' AND event IN ('CODE_ISSUED','CODE_SHOWN')")
+SHOWN=$(issue $ADM_A "${HID[0]}")
+eq "H1 a tenant admin is shown one code of the own tenant, with its QR text" "$(echo "$SHOWN" | jq -r '[.ok, .code, .qr_payload, .issued] | @tsv')" "$(printf 'true\t%s\tKSA1:%s\tfalse' "${HCODE[0]}" "${HCODE[0]}")"
+eq "H2 only showing it leaves the code in stock, and is audited with the actor" "$(q "SELECT (SELECT issued_at IS NULL FROM activation_codes WHERE id='${HID[0]}'), (SELECT event||'/'||actor_id FROM activation_logs WHERE activation_code_id='${HID[0]}' ORDER BY created_at DESC LIMIT 1)")" "t|CODE_SHOWN/$ADM_A"
+GIVEN=$(issue $ADM_A "${HID[1]}" "'  Sample   Farmer ', '+91 98765-43210', 'Kharif camp'")
+eq "H3 handing it out returns the code and records the recipient, cleaned" "$(echo "$GIVEN" | jq -r '[.code, .issued, .issued_to_name, .issued_to_mobile] | @tsv')" "$(printf '%s\ttrue\tSample   Farmer\t9876543210' "${HCODE[1]}")"
+eq "H4 the code row carries who, by whom and the note; it is still unused" "$(q "SELECT state, issued_by, issued_to_mobile, issue_note, issued_at IS NOT NULL FROM activation_codes WHERE id='${HID[1]}'")" "AVAILABLE|$ADM_A|9876543210|Kharif camp|t"
+eq "H5 the audit line names the recipient but keeps only the last 4 digits of the number" "$(q "SELECT event, metadata->>'recipient_name', metadata->>'recipient_mobile_last4', metadata ? 'recipient_mobile' FROM activation_logs WHERE activation_code_id='${HID[1]}' ORDER BY created_at DESC LIMIT 1")" "CODE_ISSUED|Sample   Farmer|3210|f"
+issue $ADM_A "${HID[1]}" "'Second Farmer', NULL, NULL" >/dev/null
+eq "H6 handing the same code to someone else replaces the recipient and says so in the audit" "$(q "SELECT (SELECT issued_to_name||'/'||COALESCE(issued_to_mobile,'-')||'/'||COALESCE(issue_note,'-') FROM activation_codes WHERE id='${HID[1]}'), (SELECT metadata->>'replaces_earlier_recipient' FROM activation_logs WHERE activation_code_id='${HID[1]}' ORDER BY created_at DESC LIMIT 1)")" "Second Farmer/-/-|true"
+has "H7 an admin of another tenant is refused" "$(issue $OWN_B "${HID[2]}" "'X', NULL, NULL")" "not_authorized"
+has "H8 a viewer of the same tenant is refused" "$(issue $VIEW_A "${HID[2]}")" "not_authorized"
+has "H9 an unknown code answers the same as a foreign one" "$(issue $ADM_A "00000000-0000-0000-0000-000000000000")" "not_authorized"
+has "H10 the app (anon) cannot call it" "$($PSQL -c "SET ROLE anon" -c "SELECT public.activation_issue_code('${HID[2]}')" 2>&1)" "permission denied"
+has "H11 the service role is not a portal user: refused" "$(svc "SELECT public.activation_issue_code('${HID[2]}')")" "not_authorized\|permission denied"
+has "H12 a wrong mobile number is refused" "$(issue $ADM_A "${HID[2]}" "'A', '12345', NULL")" "invalid_recipient"
+has "H13 a note without a recipient is refused" "$(issue $ADM_A "${HID[2]}" "NULL, NULL, 'note only'")" "invalid_recipient"
+has "H14 a name longer than 80 characters is refused" "$(issue $ADM_A "${HID[2]}" "repeat('x', 81), NULL, NULL")" "invalid_recipient"
+eq "H15 the refused calls changed nothing and wrote no audit line" "$(q "SELECT (SELECT issued_at IS NULL FROM activation_codes WHERE id='${HID[2]}'), (SELECT count(*) FROM activation_logs WHERE activation_code_id='${HID[2]}')")" "t|0"
+has "H16 a tenant admin cannot write the recipient directly" "$(usr $ADM_A "UPDATE public.activation_codes SET issued_to_name='forged', issued_at=now(), issued_by='$ADM_A' WHERE id='${HID[2]}'")" "permission denied"
+eq "H17 the tenant reads its own hand-out record; another tenant sees none of it" "$(usr $ADM_A "SELECT count(*) FROM public.activation_codes WHERE batch_id='$BH' AND issued_at IS NOT NULL") $(usr $OWN_B "SELECT count(*) FROM public.activation_codes WHERE batch_id='$BH'")" "1 0"
+has "H18 the encrypted copy and the hash stay unreadable to the portal" "$(usr $ADM_A "SELECT code_ciphertext FROM public.activation_codes WHERE id='${HID[1]}'")" "permission denied"
+FH=$(newfarmer 9500000001)
+eq "H19 handing out reserves nothing: whoever enters the code first uses it" "$(redeem $FH "${HCODE[1]}")" "activated"
+eq "H20 the used code keeps the record of who it was handed to" "$(q "SELECT state, issued_to_name, code_ciphertext IS NULL FROM activation_codes WHERE id='${HID[1]}'")" "ACTIVATED|Second Farmer|t"
+has "H21 a used code can no longer be shown" "$(issue $ADM_A "${HID[1]}")" "code_not_available"
+has "H22 the hand-out record of a used code cannot be rewritten, even by the owner of the database" "$(q "UPDATE public.activation_codes SET issued_to_name='rewritten' WHERE id='${HID[1]}'")" "cannot change"
+usr $SUPER "SELECT public.activation_admin_revoke(NULL, ARRAY['${HID[3]}']::uuid[], 'lost sheet')" >/dev/null
+has "H23 a revoked code cannot be shown" "$(issue $ADM_A "${HID[3]}")" "code_not_available"
+has "H24 half a record is refused by the table itself" "$(q "UPDATE public.activation_codes SET issued_at=now() WHERE id='${HID[2]}'")" "activation_codes_issue_shape"
+eq "H25 audit lines written in this section: 1 shown + 2 issued" "$(( $(q "SELECT count(*) FROM activation_logs WHERE batch_id='$BH' AND event IN ('CODE_ISSUED','CODE_SHOWN')") - LOGS0 ))" "3"
 
 echo "== I. integrity after everything =="
 eq "I1 no farmer holds two codes, no code two farmers" "$(q "SELECT (SELECT count(*) FROM (SELECT redeemed_by FROM activation_codes WHERE redeemed_by IS NOT NULL GROUP BY 1 HAVING count(*)>1) x), (SELECT count(*) FROM (SELECT activation_code_id FROM farmers WHERE activation_code_id IS NOT NULL GROUP BY 1 HAVING count(*)>1) y)")" "0|0"
