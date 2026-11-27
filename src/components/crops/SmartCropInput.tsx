@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { CropImage } from '@/components/crops/CropImage';
 import { supabase } from '@/integrations/supabase/client';
 import { EnhancedCropSelector } from './EnhancedCropSelector';
 
@@ -36,6 +37,7 @@ export function SmartCropInput({
   const [cropName, setCropName] = useState<string>('');
   const [localName, setLocalName] = useState<string>('');
   const [cropIcon, setCropIcon] = useState<string | null>(null);
+  const [cropRecordId, setCropRecordId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch crop details when value changes
@@ -45,6 +47,7 @@ export function SmartCropInput({
         setCropName('');
         setLocalName('');
         setCropIcon(null);
+        setCropRecordId(null);
         return;
       }
 
@@ -52,7 +55,7 @@ export function SmartCropInput({
       try {
         const { data, error } = await supabase
           .from('crops')
-          .select('label, icon')
+          .select('id, label, icon')
           .eq('id', cropId)
           .single();
 
@@ -62,6 +65,7 @@ export function SmartCropInput({
           setCropName(data.label);
           setLocalName(''); // local_name will be handled separately
           setCropIcon(data.icon);
+          setCropRecordId(data.id);
         }
       } catch (err) {
         console.error('Error fetching crop details:', err);
@@ -113,12 +117,8 @@ export function SmartCropInput({
           disabled={isLoading}
         >
           <div className="flex items-center gap-2 flex-1 text-left">
-            {cropIcon ? (
-              <img 
-                src={cropIcon} 
-                alt="" 
-                className="h-5 w-5 object-contain"
-              />
+            {cropRecordId ? (
+              <CropImage cropId={cropRecordId} cropName={cropName} fallbackIcon={cropIcon} className="h-6 w-6 rounded-md text-xs" />
             ) : (
               <Wheat className="h-4 w-4" />
             )}
