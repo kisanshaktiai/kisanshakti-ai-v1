@@ -26,6 +26,8 @@ const isFarmerFullScreen = (path: string) =>
   (path.includes('/app/community/') && path.includes('/chat')) ||
   path === '/app/lands/add' ||
   /^\/app\/lands\/[^/]+\/edit$/.test(path);
+/** Field and Day carry the switcher in their own top row (LandBar), so the floating copy is not drawn there. */
+const hasLandBar = (path: string) => /^\/app\/?(home|day)?$/.test(path);
 
 /** Side of the round button, in px, per variant: the card opens exactly over it. */
 const BUTTON_PX = { header: 44, floating: 48 } as const;
@@ -50,7 +52,7 @@ export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
   const held = activeRolesOf(account);
   const current = workspaceRoleOf(account);
   if (!account || !current || held.length < 2) return null;
-  if (variant === 'floating' && isFarmerFullScreen(location.pathname)) return null;
+  if (variant === 'floating' && (isFarmerFullScreen(location.pathname) || hasLandBar(location.pathname))) return null;
 
   const handleOpenChange = (next: boolean) => {
     if (switchingTo) return; // the card stays until the workspace has opened or the server has refused
@@ -110,7 +112,7 @@ export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
           aria-label={t('identity.switcher.open', { role: t(`identity.roles.${current}.name`) })}
           className={cn(
             'relative flex shrink-0 items-center justify-center rounded-full border border-primary/30 bg-card shadow-sm transition-transform active:scale-95',
-            variant === 'header' ? 'h-11 w-11' : 'fixed left-4 bottom-24 z-40 h-12 w-12 shadow-lg',
+            variant === 'header' ? 'h-11 w-11' : 'fixed left-4 bottom-[calc(var(--lf-dock-h)+env(safe-area-inset-bottom,0px)+0.75rem)] z-40 h-12 w-12 shadow-lg',
           )}
         >
           <RolePicture role={current} className={variant === 'floating' ? 'h-9 w-9' : undefined} />

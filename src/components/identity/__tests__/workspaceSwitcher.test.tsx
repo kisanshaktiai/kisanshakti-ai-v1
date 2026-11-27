@@ -56,7 +56,8 @@ function signIn(roles: AccountRole[], activeRole: AccountRole) {
 }
 
 let client: QueryClient;
-function show(variant: 'header' | 'floating', path = '/app') {
+// '/app/weather': a farmer page where the floating switcher is drawn (Field and Day carry it in their own top row).
+function show(variant: 'header' | 'floating', path = '/app/weather') {
   cleanup();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -171,6 +172,15 @@ describe('Workspace switcher: one picture, the choices in the same place', () =>
     signIn(['FARMER', 'SERVICE_PROVIDER'], 'FARMER');
     const { container } = show('floating', '/app/chat');
     expect(container.querySelector('button')).toBeNull();
+  });
+
+  it('is not drawn floating on Field and Day, which carry it in their top row', () => {
+    signIn(['FARMER', 'SERVICE_PROVIDER'], 'FARMER');
+    for (const path of ['/app', '/app/home', '/app/day']) {
+      const { container, unmount } = show('floating', path);
+      expect(container).toBeEmptyDOMElement();
+      unmount();
+    }
   });
 });
 

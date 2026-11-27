@@ -46,6 +46,20 @@
     },
     "listen": "Listen",
     "stop": "Stop",
-    "add_land": "Add land"
+    "add_land": "Add land",
+    "day": {
+      "label": "Today's sun path",
+      "now": "Now",
+      "nothing_today": "Nothing due today",
+      "nothing_this_day": "No work on this day.",
+      "rain_legend": "Blue on the path: hours that may rain",
+      "week": "Next 7 days",
+      "done": "Done",
+      "mark_done": "Work done",
+      "full_schedule": "Full schedule",
+      "no_schedule": "This land has no crop schedule yet.",
+      "make_schedule": "Make a schedule",
+      "retry": "Try again"
+    }
   }
 }

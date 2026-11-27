@@ -56,5 +56,9 @@
 .lf-head { font-size: var(--lf-fs-head); line-height: 1.4; font-weight: 700; }
 .lf-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(8px, 2.6vw, 12px); }
 .lf-tile { width: clamp(44px, 12.5vw, 56px); aspect-ratio: 1; border-radius: 32%; display: grid; place-items: center; flex: none; }
+.lf-scene-night { background: linear-gradient(to bottom, hsl(var(--foreground) / 0.16), hsl(var(--foreground) / 0) 70%); }
+.lf-scene-day { flex: none; height: clamp(180px, 30dvh, 300px); min-height: 0; background: none; }
+.lf-scene-day .lf-stage { aspect-ratio: 390 / 262; }
+@supports (width: 1cqw) { .lf-scene-day .lf-stage { width: min(100cqw, calc(100cqh * 390 / 262)); } }
 @media (max-height: 640px) { .lf-hide-short { display: none !important; } .lf-brief { padding: 10px 12px; } }
 @media (prefers-reduced-motion: reduce) { .lf-orb { transition: none; } }

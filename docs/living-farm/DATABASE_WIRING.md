@@ -38,6 +38,26 @@ Checked against the shared project on 2026-11-27 (read-only queries) and against
 | Voice button → Photo | opens `InstaScanFlow` | as the old centre menu did. |
 | Voice button → Type | `/app/chat` | — |
 
+## Day (`src/pages/DayView.tsx`, route `/app/day`)
+
+| What the farmer sees | Value | Table and column | Read or written through | Notes |
+|---|---|---|---|---|
+| Sun on its path, sunrise and sunset times | `sunrise`, `sunset` | `weather_current` | `useWeather(undefined, land.id)` | The sun is drawn only between the two times. |
+| Blue stretches on the path | hourly rain chance (`pop`) for daylight hours | hourly forecast | `useWeather().hourlyForecast` → `rainSegments` | Each hour is drawn at its own chance; the screen does not call any hour "likely". |
+| Week strip: weather mark and dots | daily forecast `weather[0].main`; open tasks per date | forecast; `schedule_tasks.task_date`, `.status` | `useWeather().forecast`; `useTodayTasks().allTasks` | Dots are unfinished tasks on that date (three at most); a green dot means all done. |
+| Task cards for the chosen day | `task_name`, `task_description`, `task_type`, `status` | `schedule_tasks` | `useTodayTasks` → `useSchedules(land)` + `schedulesApi.fetchTasks(scheduleId)` → `schedules-api` | Text is shown as stored (the schedule's own language). |
+| "Work done" | completion of that task now | `schedule_tasks.status`, `.completed_at` | `schedulesApi.setTaskCompletion(taskId, true, now, null)` → `schedules-api` `POST /tasks/:id/complete` | The same call the schedule timeline makes for work done today. The list is then re-read from the server, so a recurring task that stays open is shown open. Offered only for today and earlier days. |
+| Photo | task photo | as before | `TaskPhotoUploadDialog` (unchanged component) | Needs the schedule, land, farmer and tenant ids, all taken from data already loaded. |
+| Listen | task name and description | none | `useSpeech` | — |
+| "Full schedule", "Make a schedule" | — | — | navigate to `/app/schedule` | Generating, editing, stages, drafts, consent dialogs and measured irrigation litres stay on the existing Schedule page. |
+
+**A limit set by the data:** `schedule_tasks` has a date but no time of day, so a task cannot be placed on the sun path at "the right hour". The first sample picture showed that; the built screen lists the day's tasks under the path instead. Placing tasks by hour would need a time or a time window per task from the schedule engine, which is a backend change and is not done here.
+
+## Shared pieces
+
+- `src/living/LandBar.tsx`: land chip and picker for Field and Day, with `WorkspaceSwitcher variant="header"` first in the row. The floating copy of the switcher is not drawn on `/app`, `/app/home` and `/app/day`, and on other farmer pages it now sits just above the dock.
+- `src/living/useChosenLand.ts`: the picked land is kept in `sessionStorage` (`lf_chosen_land`) so Field and Day show the same land. Nothing is written to the database.
+
 ## Gaps found (not changed here)
 
 1. Stage is resolved on 11 of 33 lands and DAS on 12, so most live lands draw a bare field. That is existing data, not a wiring fault.

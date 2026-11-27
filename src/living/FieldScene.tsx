@@ -13,6 +13,8 @@ interface FieldSceneProps {
   irrigationNeeded: boolean | null;
   /** 0..1 from sunrise to sunset; null when the sun is down or the times are unknown */
   sun: number | null;
+  /** true only when the sun times are known and it is night */
+  night?: boolean;
   cloudy: boolean;
   raining: boolean;
   pins: FieldPin[];
@@ -30,7 +32,7 @@ const TONE_PILL: Record<FieldPin['tone'], string> = {
 };
 
 /** The farmer's field as a tilted block: crop on top, soil and water on the edge, sky above. Static SVG, no animation. */
-export const FieldScene = memo(function FieldScene({ ring, stageProgress, irrigationNeeded, sun, cloudy, raining, pins, stageLabel, waterLabel, ariaLabel }: FieldSceneProps) {
+export const FieldScene = memo(function FieldScene({ ring, stageProgress, irrigationNeeded, sun, night = false, cloudy, raining, pins, stageLabel, waterLabel, ariaLabel }: FieldSceneProps) {
   const slab = useMemo(
     () => buildSlab(ring ?? DEFAULT_RING, irrigationNeeded == null ? null : irrigationNeeded ? 0.22 : 0.7),
     [ring, irrigationNeeded],
@@ -48,6 +50,12 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
             <circle cx={sunAt.x} cy={sunAt.y} r="40" fill="hsl(var(--accent) / 0.22)" />
             <circle cx={sunAt.x} cy={sunAt.y} r="28" fill="hsl(var(--accent) / 0.45)" />
             <circle cx={sunAt.x} cy={sunAt.y} r="18" fill="hsl(var(--accent))" stroke="hsl(var(--tertiary, var(--accent)))" strokeWidth="2" />
+          </g>
+        )}
+        {night && (
+          <g>
+            <path d="M318 34 a24 24 0 1 0 22 36 a19 19 0 0 1 -22 -36z" fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5" />
+            {[[60, 44], [112, 22], [150, 70], [232, 30], [268, 84], [40, 96]].map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="2" fill="hsl(var(--foreground) / 0.4)" />)}
           </g>
         )}
         {cloudy && (

@@ -13,7 +13,7 @@ interface DockItem { path: string; icon: LucideIcon; labelKey: string; match: (p
 
 const ITEMS: DockItem[] = [
   { path: '/app', icon: Sprout, labelKey: 'living.dock.field', match: (p) => p === '/app' || p === '/app/' || p === '/app/home' },
-  { path: '/app/schedule', icon: SunMedium, labelKey: 'living.dock.day', match: (p) => p.startsWith('/app/schedule') },
+  { path: '/app/day', icon: SunMedium, labelKey: 'living.dock.day', match: (p) => p.startsWith('/app/day') || p.startsWith('/app/schedule') },
   { path: '/app/lands', icon: Layers, labelKey: 'living.dock.land', match: (p) => p.startsWith('/app/lands') },
   { path: '/app/all', icon: LayoutGrid, labelKey: 'living.dock.all', match: (p) => p.startsWith('/app/all') },
 ];
@@ -38,7 +38,8 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
 
   // Same plan rule as the feature list: a locked or disabled destination opens the subscription page.
   const go = (path: string) => {
-    const feature = features.find((f) => f.path === path);
+    // Day shows schedule work, so it follows the schedule feature's lock.
+    const feature = features.find((f) => f.path === (path === '/app/day' ? '/app/schedule' : path));
     navigate(feature && (feature.locked || !feature.enabled) ? '/app/subscription' : path);
   };
 

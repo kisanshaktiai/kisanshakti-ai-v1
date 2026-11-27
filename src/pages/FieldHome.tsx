@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, CalendarCheck, ChevronDown, CloudRain, Droplet, MapPinned, Plus, Sprout, Volume2, VolumeX, Check } from 'lucide-react';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { AlertTriangle, ArrowRight, CalendarCheck, CloudRain, Droplet, Plus, Volume2, VolumeX } from 'lucide-react';
 import { useLands } from '@/hooks/useLands';
 import { useWeather } from '@/hooks/useWeather';
 import { useFieldSky } from '@/hooks/useFieldSky';
@@ -15,6 +14,8 @@ import { FieldScene, type FieldPin } from '@/living/FieldScene';
 import { normaliseRing, ringFromBoundary, sunProgress } from '@/living/fieldGeometry';
 import { chooseBrief, topAlert, type BriefTone } from '@/living/fieldBrief';
 import { useTodayTasks } from '@/living/useTodayTasks';
+import { LandBar } from '@/living/LandBar';
+import { useChosenLand } from '@/living/useChosenLand';
 import '@/living/living.css';
 
 interface HomeLand {
@@ -48,9 +49,7 @@ export default function FieldHome() {
 
   const { lands: rawLands, isLoading: landsLoading, isError: landsError } = useLands();
   const lands = rawLands as HomeLand[];
-  const [chosenId, setChosenId] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const land = lands.find((l) => l.id === chosenId) ?? lands.find((l) => l.is_active !== false) ?? lands[0] ?? null;
+  const { land, choose } = useChosenLand(lands);
 
   const { currentWeather, forecast, hourlyForecast, loading: weatherLoading } = useWeather(undefined, land?.id);
   const sky = useFieldSky(land?.id ?? null);
@@ -80,6 +79,9 @@ export default function FieldHome() {
     const pop = (forecast as Array<{ pop?: number }> | undefined)?.[0]?.pop;
     return pop != null ? Math.round(Number(pop) * 100) : null;
   })();
+  const sunAt = sunProgress(now.getTime(), currentWeather?.sunrise, currentWeather?.sunset);
+  // Night is said only when the sun times are known and now is outside them.
+  const night = sunAt == null && currentWeather?.sunrise != null && currentWeather?.sunset != null;
   const weatherMain = String(currentWeather?.main ?? '');
   const raining = /rain|drizzle|thunder/i.test(weatherMain);
   const cloudy = raining || Number(currentWeather?.clouds ?? 0) >= 40;
@@ -106,18 +108,9 @@ export default function FieldHome() {
 
   return (
     <div className="lf-home">
-      <div className="lf-top">
-        <button type="button" className="lf-landsel" onClick={() => (lands.length > 1 ? setPickerOpen(true) : navigate(land ? `/app/lands/${land.id}` : '/app/lands/add'))} aria-haspopup={lands.length > 1 ? 'dialog' : undefined}>
-          <MapPinned size={18} aria-hidden className="shrink-0 text-primary" />
-          <span>{landLabel}</span>
-          {lands.length > 1 && <ChevronDown size={18} aria-hidden className="shrink-0" />}
-        </button>
-        <button type="button" className="lf-round bg-card border border-border" aria-label={t('living.add_land')} onClick={() => navigate('/app/lands/add')}>
-          <Plus size={22} aria-hidden />
-        </button>
-      </div>
+      <LandBar lands={lands} land={land} onChoose={choose} />
 
-      <div className="lf-scene">
+      <div className={`lf-scene ${night ? 'lf-scene-night' : ''}`}>
         <button type="button" className="lf-now" onClick={() => navigate('/app/weather')} aria-label={t('home.weather')}>
           {currentWeather?.temp != null
             ? <div className="lf-stat">{Math.round(Number(currentWeather.temp))}°</div>
@@ -130,7 +123,8 @@ export default function FieldHome() {
           ring={ring}
           stageProgress={stageProgress}
           irrigationNeeded={irrigationNeeded}
-          sun={sunProgress(now.getTime(), currentWeather?.sunrise, currentWeather?.sunset)}
+          sun={sunAt}
+          night={night}
           cloudy={cloudy}
           raining={raining}
           pins={pins}
@@ -156,7 +150,7 @@ export default function FieldHome() {
         <div className="mt-3 flex flex-wrap gap-2">
           {briefAction && (
             <button type="button" className={`lf-pill ${TONE_CLASS[brief.tone]}`} onClick={() => navigate(briefAction)}>
-              {brief.kind === 'key' ? <Plus size={16} aria-hidden /> : <Check size={16} aria-hidden />}
+              {brief.kind === 'key' ? <Plus size={16} aria-hidden /> : <ArrowRight size={16} aria-hidden />}
               {t(brief.kind === 'key' ? 'living.add_land' : 'home.view')}
             </button>
           )}
@@ -175,26 +169,6 @@ export default function FieldHome() {
           )}
         </div>
       </div>
-
-      <Drawer open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DrawerContent>
-          <DrawerHeader><DrawerTitle className="lf-head">{t('home.myLand')}</DrawerTitle></DrawerHeader>
-          <div className="flex flex-col gap-2 overflow-y-auto px-4" style={{ maxHeight: '60dvh', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
-            {lands.map((l) => {
-              const crop = l.current_crop ? cropNameOf(l.current_crop, l.current_crop_id) : t('home.no_crop');
-              const selected = l.id === land?.id;
-              return (
-                <button key={l.id} type="button" onClick={() => { setChosenId(l.id); setPickerOpen(false); }}
-                  className={`flex items-center gap-3 rounded-2xl border px-4 text-start ${selected ? 'border-primary bg-primary/10' : 'border-border bg-card'}`} style={{ minHeight: 'calc(var(--lf-tap) + 12px)' }}>
-                  <span className="lf-tile bg-primary/10 text-primary"><Sprout size={22} aria-hidden /></span>
-                  <span className="min-w-0 flex-1"><span className="lf-lab block truncate">{l.name || t('home.unnamed_land')}</span><span className="lf-cap block truncate text-muted-foreground">{crop}</span></span>
-                  {selected && <Check size={20} aria-hidden className="shrink-0 text-primary" />}
-                </button>
-              );
-            })}
-          </div>
-        </DrawerContent>
-      </Drawer>
     </div>
   );
 }
