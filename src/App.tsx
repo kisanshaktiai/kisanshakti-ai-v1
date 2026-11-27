@@ -33,7 +33,8 @@ declare global {
 }
 
 // PERFORMANCE: Lazy load all page components (with auto-retry + stale-chunk recovery)
-const Home = lazy(() => import("./pages/Home"));
+const FieldHome = lazy(() => import('./pages/FieldHome'));
+const AllFeatures = lazy(() => import('./pages/AllFeatures'));
 const Weather = lazy(() => import("./pages/Weather"));
 const Market = lazy(() => import("./pages/Market"));
 // "Services near me" (Provider Workspace part A, file 6): farmer side, behind the farm_services_search flag.
@@ -418,8 +419,9 @@ const router = createBrowserRouter([
     ),
     errorElement: <RouteErrorBoundary />,
     children: [
-      { index: true, element: <Suspense fallback={<PageLoader />}><Home /></Suspense> },
-      { path: "home", element: <Suspense fallback={<PageLoader />}><Home /></Suspense> },
+      { index: true, element: <Suspense fallback={<PageLoader />}><FieldHome /></Suspense> },
+      { path: "home", element: <Suspense fallback={<PageLoader />}><FieldHome /></Suspense> },
+      { path: "all", element: <Suspense fallback={<PageLoader />}><AllFeatures /></Suspense> },
       { path: "weather", element: <Suspense fallback={<PageLoader />}><Weather /></Suspense> },
       { path: "market", element: <Suspense fallback={<PageLoader />}><Market /></Suspense> },
       { path: "services-near-me", element: <Suspense fallback={<PageLoader />}><ServicesNearMe /></Suspense> },

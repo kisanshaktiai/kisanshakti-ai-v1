@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { BottomNavigation } from './BottomNavigation';
+import { LivingDock } from '@/living/LivingDock';
 import { HindenburgMenu } from './HindenburgMenu';
 import { useEffect, useRef, useState } from 'react';
 import { useProactiveAlerts } from '@/hooks/useProactiveAlerts';
@@ -44,6 +44,8 @@ export function AppLayout() {
     /^\/app\/lands\/[^/]+\/edit$/.test(location.pathname);
 
   const isFullScreenRoute = isAIChat || isCommunityChat || isLandMapRoute;
+  // The Field home keeps its sentence card clear; voice is on the dock there.
+  const isFieldHome = /^\/app\/?(home)?$/.test(location.pathname);
 
   return (
     <ModernVoiceProvider>
@@ -78,7 +80,7 @@ export function AppLayout() {
               className={
                 isFullScreenRoute
                   ? 'flex-1 min-h-0'
-                  : 'pb-nav-safe mobile-scroll-container'
+                  : 'lf-pb-dock mobile-scroll-container'
               }
               style={
                 isFullScreenRoute
@@ -100,9 +102,9 @@ export function AppLayout() {
             <VoiceIndicator />
 
             {/* Native Voice Navigation Button - Floating (hidden on full-screen routes) */}
-            {!isFullScreenRoute && (
+            {!isFullScreenRoute && !isFieldHome && (
               <NativeVoiceButton
-                className="bottom-24 right-4"
+                className="right-4 bottom-[calc(var(--lf-dock-h)+env(safe-area-inset-bottom,0px)+0.75rem)]"
                 size="md"
                 showTranscript={true}
                 showExamples={true}
@@ -110,11 +112,7 @@ export function AppLayout() {
             )}
 
             {/* Bottom Navigation - Hidden on full-screen routes */}
-            <BottomNavigation
-              onMenuOpen={() => setIsMenuOpen(true)}
-              hideNav={isFullScreenRoute}
-              hideAction={false}
-            />
+            <LivingDock hidden={isFullScreenRoute} />
 
             {/* Hindenburg Menu */}
             <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />

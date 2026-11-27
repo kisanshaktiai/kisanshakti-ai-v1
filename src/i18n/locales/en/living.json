@@ -1,0 +1,51 @@
+{
+  "living": {
+    "dock": {
+      "label": "Main menu",
+      "field": "Field",
+      "day": "Day",
+      "land": "Land",
+      "all": "All",
+      "ask": "Ask"
+    },
+    "ask": {
+      "title": "How do you want to ask?",
+      "speak": "Speak",
+      "photo": "Photo",
+      "type": "Type"
+    },
+    "brief": {
+      "who": "Your farm companion",
+      "loading": "Looking at your field…",
+      "cannot_load": "Could not load today's work. Check the network and open again.",
+      "all_clear": "Nothing is due on this field today.",
+      "no_crop": "No crop on this field now.",
+      "water_needed": "This field needs water.",
+      "task_today": "Today: {{task}}",
+      "task_today_more": "Today: {{task}}, and {{count}} more",
+      "no_land": "Add your first land to begin."
+    },
+    "scene": {
+      "label": "Picture of {{land}}",
+      "day": "Day {{day}}",
+      "water_low": "Soil is dry",
+      "water_ok": "Soil has water",
+      "rain": "Rain {{percent}}%"
+    },
+    "pins": {
+      "tasks": "Tasks {{count}}",
+      "alerts": "Alerts {{count}}"
+    },
+    "all": {
+      "title": "All features",
+      "videos": "Videos",
+      "advisory": "Advisory",
+      "notifications": "Notification settings",
+      "subscription": "Subscription",
+      "locked": "Locked in your plan"
+    },
+    "listen": "Listen",
+    "stop": "Stop",
+    "add_land": "Add land"
+  }
+}
