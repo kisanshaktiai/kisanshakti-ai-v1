@@ -70,6 +70,22 @@ The chosen land read top to bottom: sky, crop, water, soil. Each band opens the 
 
 **Differs from the sample picture:** the sample showed soil moisture at three depths. The governed soil chain gives moisture only from a soil device and has no per-depth verdict, so the built screen shows one water band from the irrigation flag and one soil band from the saved soil reports. No depth figures are invented.
 
+## Companion, step 1: the reply card and its actions (chat page)
+
+No data path changes. The decision reply still arrives from `ai-agriculture-chat` as `message.advisorCard` and the card renders only what the backend sent.
+
+| Change | File | Why |
+|---|---|---|
+| Labels read with `keyPrefix: 'chatCards'` | `src/components/chat/AdvisorCard.tsx` | The card asked i18n for a namespace named `chatCards`. `src/i18n/config.ts` merges every page bundle into the default namespace under its own key, so that namespace never existed and What / Why / How fell back to English. A test now proves the Marathi labels show. |
+| New key `chatCards.cards.dayN` (en, hi, mr) | `src/i18n/locales/*/chat-cards.json` | The card used this key for the day count but it was missing, so only a bare number showed. |
+| WHAT is the large sentence, HOW is numbered steps, sizes from the fluid scale | `src/components/chat/AdvisorCard.tsx` | Living Farm look. Order, sections and collapsed parts are unchanged. |
+| Copy, read-aloud, share, like, dislike always visible, 44 px each | `src/components/chat/ModernChatUI.tsx` | The row was `opacity-0` until hover, and phones have no hover. Handlers are unchanged. |
+| Same prefix fix | `src/components/chat/GeneralChatLandPicker.tsx` | It asked for a namespace `chat`; its six keys exist under `chat.*` in the merged bundle. |
+
+**Found, not fixed (needs new wording, so it is your call):** four more components ask for namespaces that do not exist and their keys are not in any bundle, so they show English or raw keys today: `ChatQuotaHeader.tsx` (`quota.used`, `quota.resets_in`), `ChatQuotaBanner.tsx` (`quota.exceeded_body`, `quota.upgrade_cta`), `TenantSuspendedScreen.tsx` (4 keys) and `LandLimitGuard.tsx` (2 keys).
+
+**Not done yet:** the voice-first composer (mic largest, photo second, keyboard third). The composer lives in the chat tab components, not in the message component, and carries upload, quota and voice logic; it needs its own audit before it is touched.
+
 ## Shared pieces
 
 - `src/living/LandBar.tsx`: land chip and picker for Field, Day and Land, with `WorkspaceSwitcher variant="header"` first in the row. The floating copy of the switcher is not drawn on `/app`, `/app/home`, `/app/day` and `/app/land`, and on other farmer pages it now sits just above the dock.

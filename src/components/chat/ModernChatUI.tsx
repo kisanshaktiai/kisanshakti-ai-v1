@@ -874,22 +874,23 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="flex items-center gap-1 mt-2 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+            className="flex items-center gap-1 mt-2 px-1"
           >
             <Button
               variant="ghost"
               size="icon"
               onClick={() => onCopy(message.id, message.content)}
-              className="h-7 w-7 hover:bg-muted/50 hover:scale-110 transition-all"
+              className="h-11 w-11 rounded-full hover:bg-muted/50"
             >
               {message.isCopied ? (
-                <Check className="h-3.5 w-3.5 text-success" />
+                <Check className="h-5 w-5 text-success" />
               ) : (
-                <Copy className="h-3.5 w-3.5" />
+                <Copy className="h-5 w-5" />
               )}
             </Button>
 
             <EnhancedSpeakerButton
+              className="h-11 w-11 rounded-full bg-primary/10 text-primary"
               messageId={message.id}
               content={message.content}
               language={currentLanguage}
@@ -901,9 +902,9 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
               variant="ghost"
               size="icon"
               onClick={() => onShare(message.content)}
-              className="h-7 w-7 hover:bg-muted/50 hover:scale-110 transition-all"
+              className="h-11 w-11 rounded-full hover:bg-muted/50"
             >
-              <Share2 className="h-3.5 w-3.5" />
+              <Share2 className="h-5 w-5" />
             </Button>
 
             <div className="h-4 w-px bg-border/50 mx-1" />
@@ -913,12 +914,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
               size="icon"
               onClick={() => onLike(message.id, true)}
               className={cn(
-                "h-7 w-7 hover:bg-muted/50 hover:scale-110 transition-all",
+                "h-11 w-11 rounded-full hover:bg-muted/50",
                 message.feedback === 'like' && "text-success"
               )}
             >
               <ThumbsUp className={cn(
-                "h-3.5 w-3.5",
+                "h-5 w-5",
                 message.feedback === 'like' && "fill-current"
               )} />
             </Button>
@@ -928,12 +929,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
               size="icon"
               onClick={() => onLike(message.id, false)}
               className={cn(
-                "h-7 w-7 hover:bg-muted/50 hover:scale-110 transition-all",
+                "h-11 w-11 rounded-full hover:bg-muted/50",
                 message.feedback === 'dislike' && "text-destructive"
               )}
             >
               <ThumbsDown className={cn(
-                "h-3.5 w-3.5",
+                "h-5 w-5",
                 message.feedback === 'dislike' && "fill-current"
               )} />
             </Button>

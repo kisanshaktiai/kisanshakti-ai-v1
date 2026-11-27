@@ -145,7 +145,8 @@
       "sourceRegulatory": "पंजीकरण स्थिति",
       "sourcePhi": "प्रतीक्षा अवधि का आधार",
       "gdd": "ऊष्मा इकाई (GDD)",
-      "gddUnit": "°C-दिन"
+      "gddUnit": "°C-दिन",
+      "dayN": "दिन {{count}}"
     }
   }
 }

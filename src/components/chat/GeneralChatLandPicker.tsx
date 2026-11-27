@@ -50,7 +50,7 @@ interface Props {
 }
 
 export default function GeneralChatLandPicker({ open, lands, onPick, onClose }: Props) {
-  const { t } = useTranslation('chat');
+  const { t } = useTranslation(undefined, { keyPrefix: 'chat' });
   const cropNameOf = useCropNames();
 
   const sortedLands = useMemo(

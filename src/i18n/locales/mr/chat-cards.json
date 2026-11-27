@@ -145,7 +145,8 @@
       "sourceRegulatory": "परवानगीची स्थिती",
       "sourcePhi": "प्रतीक्षा कालावधीचा आधार",
       "gdd": "उष्णता एकक (GDD)",
-      "gddUnit": "°C-दिवस"
+      "gddUnit": "°C-दिवस",
+      "dayN": "दिवस {{count}}"
     }
   }
 }

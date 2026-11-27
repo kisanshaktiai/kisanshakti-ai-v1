@@ -10,13 +10,15 @@
  * - Every colour comes from a theme token (bg-card, text-foreground, border-border, text-success…). No hex, no
  *   inline style, no per-section colour map — a white-label tenant changes the theme and this card follows.
  * - Mobile first: single column, 16px base text, 44px minimum tap targets, no horizontal scroll, safe truncation.
- * - All labels come from i18n (chatCards namespace) — no English string is hard-coded.
+ * - All labels come from i18n (the `chatCards` bundle) — no English string is hard-coded.
+ * - Living Farm look: WHAT is the large sentence, HOW is numbered steps; sizes come from src/living/living.css.
  * - The card renders only what the backend sent. An empty field is omitted, never filled with a placeholder.
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Sprout, HelpCircle, Wrench, Ban, Package, Info, Leaf, FileCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import '@/living/living.css';
 
 export interface AdvisorProduct {
   name: string; brand?: string | null; company?: string | null;
@@ -42,22 +44,25 @@ export interface AdvisorCardData {
   source?: { rule_id?: string | null; explained_by?: string };
 }
 
-function Section({ icon: Icon, label, children, tone = 'default' }: {
+function Section({ icon: Icon, label, children, tone = 'default', lead = false }: {
   icon: typeof Sprout; label: string; children: React.ReactNode; tone?: 'default' | 'danger';
+  /** the sentence the farmer should read first */
+  lead?: boolean;
 }) {
   return (
-    <section className="px-4 py-3 border-t border-border first:border-t-0">
-      <div className="flex items-center gap-2 mb-1.5">
-        <Icon className={cn('h-4 w-4 shrink-0', tone === 'danger' ? 'text-destructive' : 'text-primary')} aria-hidden />
-        <h3 className={cn('text-sm font-semibold tracking-wide', tone === 'danger' ? 'text-destructive' : 'text-foreground')}>{label}</h3>
+    <section className="flex items-start gap-3 border-t border-border px-4 py-3 first:border-t-0">
+      <span className={cn('lf-tile', tone === 'danger' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary')} style={{ width: 'clamp(36px, 10vw, 44px)' }}><Icon className="h-5 w-5" aria-hidden /></span>
+      <div className="min-w-0 flex-1">
+        <h3 className={cn('lf-cap font-bold', tone === 'danger' ? 'text-destructive' : 'text-primary')}>{label}</h3>
+        <div className={cn('break-words text-foreground', lead ? 'lf-head' : 'lf-lab font-normal')} style={{ lineHeight: 1.55 }}>{children}</div>
       </div>
-      <div className="text-base leading-relaxed text-foreground/90 break-words">{children}</div>
     </section>
   );
 }
 
 export function AdvisorCard({ data }: { data: AdvisorCardData }) {
-  const { t } = useTranslation('chatCards');
+  // The bundle is merged into the default namespace under `chatCards`, so the keys are read with that prefix.
+  const { t } = useTranslation(undefined, { keyPrefix: 'chatCards' });
   const [showExtras, setShowExtras] = useState(false);
   const [showProducts, setShowProducts] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -71,12 +76,12 @@ export function AdvisorCard({ data }: { data: AdvisorCardData }) {
   const isBlock = data.kind === 'DO_NOT';
 
   return (
-    <article className="rounded-2xl bg-card text-card-foreground border border-border overflow-hidden shadow-sm">
+    <article className="overflow-hidden rounded-[var(--lf-r)] border border-border bg-card text-card-foreground shadow-sm">
       {/* 1. greeting + context strip */}
       <header className="px-4 pt-4 pb-3">
-        <p className="text-base font-medium text-foreground">{data.greeting}</p>
+        <p className="lf-lab text-foreground">{data.greeting}</p>
         {(data.crop || data.stage) && (
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="lf-cap mt-1 text-muted-foreground">
             {[data.crop, data.stage, typeof data.das === 'number' ? t('cards.dayN', { count: data.das, defaultValue: '' }) || `${data.das}` : null]
               .filter(Boolean).join(' · ')}
           </p>
@@ -85,7 +90,7 @@ export function AdvisorCard({ data }: { data: AdvisorCardData }) {
 
       {/* 2. WHAT happened */}
       {data.what_happened && (
-        <Section icon={isBlock ? Ban : Sprout} label={t('cards.what', { defaultValue: 'What' })} tone={isBlock ? 'danger' : 'default'}>
+        <Section lead icon={isBlock ? Ban : Sprout} label={t('cards.what', { defaultValue: 'What' })} tone={isBlock ? 'danger' : 'default'}>
           {data.what_happened}
         </Section>
       )}
@@ -100,14 +105,14 @@ export function AdvisorCard({ data }: { data: AdvisorCardData }) {
         <Section icon={Wrench} label={t('cards.how', { defaultValue: 'How' })}>
           {data.how_to_fix && <p>{data.how_to_fix}</p>}
           {data.how_lines?.length > 0 && (
-            <ul className="mt-2 space-y-1.5">
+            <ol className="mt-2 space-y-2">
               {data.how_lines.map((line, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary shrink-0" aria-hidden />
-                  <span>{line}</span>
+                <li key={i} className="flex items-start gap-3">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground lf-cap font-bold" style={{ fontFamily: 'Inter, system-ui, sans-serif' }} aria-hidden>{i + 1}</span>
+                  <span className="min-w-0 flex-1">{line}</span>
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </Section>
       )}
@@ -130,14 +135,14 @@ export function AdvisorCard({ data }: { data: AdvisorCardData }) {
       {data.extras?.length > 0 && (
         <div className="border-t border-border">
           <button type="button" onClick={() => setShowExtras(v => !v)} aria-expanded={showExtras}
-            className="w-full min-h-[44px] px-4 py-3 flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground hover:text-foreground active:bg-muted/50 transition-colors">
+            className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-2 lf-lab text-muted-foreground hover:text-foreground active:bg-muted/50 transition-colors">
             <span className="flex items-center gap-2"><Info className="h-4 w-4" aria-hidden />{t('cards.moreNotes', { defaultValue: 'Other notes' })} ({data.extras.length})</span>
             <ChevronDown className={cn('h-4 w-4 transition-transform', showExtras && 'rotate-180')} aria-hidden />
           </button>
           {showExtras && (
             <ul className="px-4 pb-3 space-y-3">
               {data.extras.map((e, i) => (
-                <li key={i} className="text-sm">
+                <li key={i} className="lf-lab font-normal">
                   {e.title && <p className="font-medium text-foreground">{e.title}</p>}
                   <p className="text-foreground/80 leading-relaxed">{e.text}</p>
                 </li>
@@ -151,7 +156,7 @@ export function AdvisorCard({ data }: { data: AdvisorCardData }) {
       {data.products?.length > 0 && (
         <div className="border-t border-border">
           <button type="button" onClick={() => setShowProducts(v => !v)} aria-expanded={showProducts}
-            className="w-full min-h-[44px] px-4 py-3 flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground hover:text-foreground active:bg-muted/50 transition-colors">
+            className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-2 lf-lab text-muted-foreground hover:text-foreground active:bg-muted/50 transition-colors">
             <span className="flex items-center gap-2"><Package className="h-4 w-4" aria-hidden />{t('cards.marketProducts', { defaultValue: 'Products available in the market' })} ({data.products.length})</span>
             <ChevronDown className={cn('h-4 w-4 transition-transform', showProducts && 'rotate-180')} aria-hidden />
           </button>
@@ -167,28 +172,28 @@ export function AdvisorCard({ data }: { data: AdvisorCardData }) {
                     </span>
                   )}
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-foreground truncate">{p.name}</span>
+                    <span className="lf-lab block truncate text-foreground">{p.name}</span>
                     {(p.company || p.pack_sizes) && (
-                      <span className="block text-xs text-muted-foreground truncate">{[p.company, p.pack_sizes].filter(Boolean).join(' · ')}</span>
+                      <span className="lf-cap block truncate text-muted-foreground">{[p.company, p.pack_sizes].filter(Boolean).join(' · ')}</span>
                     )}
                   </span>
                 </li>
               ))}
             </ul>
           )}
-          <p className="px-4 pb-3 text-xs text-muted-foreground">{t('cards.productsNote', { defaultValue: 'Shown for reference. Buy from a licensed dealer and read the label.' })}</p>
+          <p className="lf-cap px-4 pb-3 text-muted-foreground">{t('cards.productsNote', { defaultValue: 'Shown for reference. Buy from a licensed dealer and read the label.' })}</p>
         </div>
       )}
       {/* 7. source and traceability — collapsed. Every claim above can be traced to this row. */}
       {provRows.length > 0 && (
         <div className="border-t border-border">
           <button type="button" onClick={() => setShowSource(v => !v)} aria-expanded={showSource}
-            className="w-full min-h-[44px] px-4 py-3 flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground hover:text-foreground active:bg-muted/50 transition-colors">
+            className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-2 lf-lab text-muted-foreground hover:text-foreground active:bg-muted/50 transition-colors">
             <span className="flex items-center gap-2"><FileCheck className="h-4 w-4" aria-hidden />{t('cards.source', { defaultValue: 'Source of this advice' })}</span>
             <ChevronDown className={cn('h-4 w-4 transition-transform', showSource && 'rotate-180')} aria-hidden />
           </button>
           {showSource && (
-            <dl className="px-4 pb-4 space-y-2 text-xs">
+            <dl className="lf-cap px-4 pb-4 space-y-2">
               {provRows.map(([key, value]) => (
                 <div key={key} className="flex flex-col gap-0.5">
                   <dt className="text-muted-foreground">{t(`cards.${key}`, { defaultValue: key })}</dt>

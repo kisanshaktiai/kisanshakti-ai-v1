@@ -145,7 +145,8 @@
       "sourceRegulatory": "Regulatory status",
       "sourcePhi": "Waiting-period source",
       "gdd": "Heat units (GDD)",
-      "gddUnit": "°C-days"
+      "gddUnit": "°C-days",
+      "dayN": "Day {{count}}"
     }
   }
 }
