@@ -1,8 +1,8 @@
 /** farmerAuthService — server-side farmer authentication transport. */
 import { supabase, setSessionToken, getSessionToken } from '@/integrations/supabase/client';
-import i18n from '@/i18n/config';
 import type { AccountRole, AccountRoleStatus, AccountSummary } from '@/lib/accountRoles';
 import { rememberActivation } from '@/lib/activationState';
+import { authMessageForCode } from '@/lib/authErrors';
 
 const FUNCTION_NAME = 'farmer-auth';
 export interface FarmerSession { token: string; expiresAt: string; }
@@ -63,27 +63,14 @@ class FarmerAuthError extends Error {
   }
 }
 
-const MESSAGES: Record<string, string> = {
-  invalid_mobile: 'Please enter a valid 10-digit mobile number.',
-  invalid_pin: 'PIN must be 4 digits.',
-  invalid_credentials: 'Incorrect PIN. Please try again.',
-  locked_out: 'Too many failed attempts. Please try again later.',
-  already_registered: 'This mobile number is already registered. Please sign in.',
-  tenant_required: 'Application is still loading. Please try again.',
-  server_error: 'Something went wrong. Please try again.',
-  transport_unavailable: 'Network connection is weak. Please try again.',
-  rate_limited: 'Too many reset requests. Please wait before trying again.',
-  sms_not_configured: 'PIN reset by SMS is not available yet. Please contact support.',
-  sms_send_failed: 'Could not send the reset code. Please try again.',
-  invalid_reset_code: 'Incorrect reset code. Please try again.',
-  reset_code_expired: 'This reset code has expired. Please request a new one.',
-};
-
-// Multi-role identity: codes added with the account actions have no English text
-// here; they resolve through the i18n bundle (identity.errors.<code>).
-function identityMessage(code: string): string | undefined {
-  const key = `identity.errors.${code}`;
-  return i18n.exists(key) ? i18n.t(key) : undefined;
+// The server answers a refusal with a code ({ error: "<code>" }). The text for
+// a code lives in the i18n bundles (auth.errors.<code>, then
+// identity.errors.<code>) and is read through lib/authErrors, so a
+// FarmerAuthError's message is always a sentence in the app language, never
+// the code itself and never a transport message. Screens show
+// authErrorMessage(err), which reads the code again at display time.
+function serverCode(value: unknown): string {
+  return typeof value === 'string' && value ? value : 'server_error';
 }
 
 // The multi-role flag is read server-side; `lookup` reports it for the tenant.
@@ -127,21 +114,13 @@ async function invokeOnce<T>(fn: string, payload: Record<string, unknown>) {
         return { retryTransport: true } as const;
       }
 
-      const code = parsed?.error ?? 'server_error';
-      throw new FarmerAuthError(
-        code,
-        MESSAGES[code] ?? identityMessage(code) ?? error.message,
-        parsed?.retryAfterSeconds,
-      );
+      const code = serverCode(parsed?.error);
+      throw new FarmerAuthError(code, authMessageForCode(code), parsed?.retryAfterSeconds);
     }
 
     if (data && (data as any).error) {
-      const code = (data as any).error as string;
-      throw new FarmerAuthError(
-        code,
-        MESSAGES[code] ?? identityMessage(code) ?? code,
-        (data as any).retryAfterSeconds,
-      );
+      const code = serverCode((data as any).error);
+      throw new FarmerAuthError(code, authMessageForCode(code), (data as any).retryAfterSeconds);
     }
 
     return { retryTransport: false, data: data as T } as const;
@@ -166,7 +145,7 @@ async function call<T>(payload: Record<string, unknown>): Promise<T> {
   // Every transport attempt failed without a usable HTTP response — this is a
   // network/CORS failure, NOT a credential failure. Callers must be able to
   // tell them apart so offline PIN validation can take over.
-  throw new FarmerAuthError('transport_unavailable', MESSAGES.transport_unavailable);
+  throw new FarmerAuthError('transport_unavailable', authMessageForCode('transport_unavailable'));
 }
 
 export const farmerAuthService = {

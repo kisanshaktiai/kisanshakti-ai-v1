@@ -87,7 +87,8 @@ export default function Profile() {
   const { t, i18n } = useTranslation();
   const { join: joinPlace } = useLocalizedPlace();
   const cropNameOf = useCropNames();
-  const { user, setUser, logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
+  const setUser = useAuthStore((state) => state.setUser);
   const navigate = useNavigate();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
 

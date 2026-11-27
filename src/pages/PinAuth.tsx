@@ -14,6 +14,7 @@ import { offlineAuthService } from '@/services/offlineAuthService';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { toast } from '@/hooks/use-toast';
 import { FarmerAuthError } from '@/services/farmerAuthService';
+import { authErrorCode, authErrorMessage } from '@/lib/authErrors';
 
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = 5 * 60_000;
@@ -101,7 +102,14 @@ export default function PinAuth() {
       );
 
       if (!authResult.success) {
-        throw Object.assign(new Error((authResult as any).code ?? authResult.error ?? 'Authentication failed'), { retryAfterSeconds: (authResult as any).retryAfterSeconds });
+        // The code travels as the error's code, never as its message: the
+        // message is what a screen may show (2026-11-27, "server_error" was
+        // shown to the farmer).
+        throw new FarmerAuthError(
+          authResult.code ?? 'server_error',
+          authResult.error ?? '',
+          authResult.retryAfterSeconds,
+        );
       }
 
       // Multi-role identity: the session opened in the Provider or Customer
@@ -238,16 +246,15 @@ export default function PinAuth() {
     } catch (err: any) {
       console.error('Error verifying PIN:', err);
       setPin('');
-      const msg: string = err?.message || '';
-      const code = err instanceof FarmerAuthError ? err.code : msg;
-      if (code === 'locked_out' || /too many failed/i.test(msg)) {
+      const code = authErrorCode(err);
+      if (code === 'locked_out') {
         const secs = Number(err?.retryAfterSeconds) || LOCK_MS / 1000;
         startLock(secs * 1000);
         setAttempts(MAX_ATTEMPTS);
         setError(t('auth.pinLocked', 'Too many wrong PINs. Login is locked for 5 minutes.'));
         return;
       }
-      if (code === 'invalid_credentials' || /incorrect pin|invalid pin/i.test(msg)) {
+      if (code === 'invalid_credentials') {
         const newAttempts = attempts + 1;
         setAttempts(newAttempts);
         if (newAttempts >= MAX_ATTEMPTS) {
@@ -258,7 +265,10 @@ export default function PinAuth() {
         }
         return;
       }
-      setError(msg || t('auth.loginFailedRetry', 'Could not sign in. Please try again.'));
+      // Every other reason (server trouble, weak network, no offline copy on
+      // this phone, an unexpected exception): the sentence for its code, or
+      // the generic one. Never the code or a technical message.
+      setError(authErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

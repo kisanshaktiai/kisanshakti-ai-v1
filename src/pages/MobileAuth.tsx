@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { authErrorMessage } from '@/lib/authErrors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -113,7 +114,7 @@ export default function MobileAuth() {
           navigate('/pin-auth');
           return;
         }
-        setError('Network connection is weak. Please move to an area with better signal and try again.');
+        setError(authErrorMessage(lastNetworkError ?? { code: 'transport_unavailable' }));
         setIsLoading(false);
         return;
       }
@@ -143,7 +144,7 @@ export default function MobileAuth() {
       }
     } catch (err: any) {
       console.error('Error in mobile auth:', err);
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(authErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

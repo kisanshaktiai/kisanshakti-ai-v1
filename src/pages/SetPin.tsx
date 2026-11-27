@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { authErrorMessage } from '@/lib/authErrors';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
@@ -146,7 +147,7 @@ export default function SetPin() {
       } else if (code === 'invalid_credentials') {
         setError(t('auth.wrongPinTryAgain', 'You entered a wrong PIN. Please try again.'));
       } else {
-        setError(err.message || t('common.somethingWentWrong') || 'Something went wrong. Please try again.');
+        setError(authErrorMessage(err));
       }
     } finally {
       setIsLoading(false);

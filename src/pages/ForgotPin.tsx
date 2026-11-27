@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { authErrorMessage } from '@/lib/authErrors';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -75,7 +76,7 @@ export default function ForgotPin() {
       setNotice(t('auth.resetCodeSent') || 'We sent a 6-digit code to your mobile number.');
     } catch (err: any) {
       console.error('[ForgotPin] reset request failed:', err);
-      setError(err.message || t('auth.serverError') || 'Server error. Please try again later.');
+      setError(authErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +147,7 @@ export default function ForgotPin() {
       navigate('/app');
     } catch (err: any) {
       console.error('[ForgotPin] reset failed:', err);
-      setError(err.message || t('auth.serverError') || 'Server error. Please try again later.');
+      setError(authErrorMessage(err));
     } finally {
       setIsLoading(false);
     }

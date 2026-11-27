@@ -3,6 +3,25 @@ import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integration
 import CryptoJS from 'crypto-js';
 import { farmerAuthService, FarmerAuthError } from './farmerAuthService';
 import { accountSessionService } from './accountSessionService';
+import { authErrorCode, authMessageForCode } from '@/lib/authErrors';
+
+/**
+ * What a PIN sign-in attempt answers. A failure always carries `code` — the
+ * server's code, or one of this service's own (transport_unavailable,
+ * offline_login_unavailable) — and `error`, the sentence for that code in the
+ * app language (lib/authErrors). The screen decides by `code`.
+ */
+export interface PinAuthResult {
+  success: boolean;
+  isOffline: boolean;
+  farmerData?: any;
+  profileData?: any;
+  error?: string;
+  code?: string;
+  retryAfterSeconds?: number;
+  /** Multi-role identity: route of the non-farmer workspace the session opened in. */
+  accountDestination?: string;
+}
 
 interface OfflineAuthData {
   farmerId: string;
@@ -156,15 +175,7 @@ class OfflineAuthService {
     pin: string,
     farmerId: string,
     tenantId: string
-  ): Promise<{
-    success: boolean;
-    isOffline: boolean;
-    farmerData?: any;
-    profileData?: any;
-    error?: string;
-    /** Multi-role identity: route of the non-farmer workspace the session opened in. */
-    accountDestination?: string;
-  }> {
+  ): Promise<PinAuthResult> {
     // OFFLINE-FIRST: Check cached auth IMMEDIATELY, regardless of network status
     const offlineResult = await this.validateOfflinePin(mobile, pin);
     
@@ -182,10 +193,18 @@ class OfflineAuthService {
           profileData: offlineResult.profileData
         };
       } else {
+        // Without internet a PIN can only be checked against the copy kept by
+        // an earlier online sign-in on this phone. No such copy for this number
+        // is a different problem from a wrong PIN, and the farmer is told so.
+        const cached = await this.getCachedAuthData().catch(() => null);
+        const code = cached && cached.mobile === mobile
+          ? 'invalid_credentials'
+          : 'offline_login_unavailable';
         return {
           success: false,
           isOffline: true,
-          error: 'Invalid PIN. Please ensure you have logged in at least once while online.'
+          code,
+          error: authMessageForCode(code)
         };
       }
     }
@@ -268,12 +287,18 @@ class OfflineAuthService {
                            lastError?.message === 'Load failed' ||
                            lastError?.name === 'TypeError';
     
+    // An error that reached here without a code (a timeout, an unexpected
+    // exception) is reported as server_error: its own message is for the
+    // console line above, not for the farmer.
+    const code = isNetworkError
+      ? 'transport_unavailable'
+      : authErrorCode(lastError) || 'server_error';
+
     return {
       success: false,
       isOffline: !isOnline,
-      error: isNetworkError
-        ? 'Network connection is weak. Please move to an area with better signal and try again.'
-        : lastError?.message || 'Unable to authenticate. Please try again.'
+      code,
+      error: authMessageForCode(code)
     };
   }
 
@@ -281,14 +306,7 @@ class OfflineAuthService {
     mobile: string,
     tenantId: string,
     pin: string
-  ): Promise<{
-    success: boolean;
-    isOffline: boolean;
-    farmerData?: any;
-    profileData?: any;
-    error?: string;
-    accountDestination?: string;
-  }> {
+  ): Promise<PinAuthResult> {
     // Credentials are verified server-side only. The client never reads
     // `pin_hash` and never derives its own identity.
     try {
@@ -315,7 +333,7 @@ class OfflineAuthService {
         // fallback path runs. Only genuine credential failures are terminal.
         if (error.code === 'transport_unavailable') throw error;
         // Credential failures must not be retried or masked by offline fallback.
-        return { success: false, isOffline: false, error: error.message, code: error.code, retryAfterSeconds: error.retryAfterSeconds } as any;
+        return { success: false, isOffline: false, error: error.message, code: error.code, retryAfterSeconds: error.retryAfterSeconds };
       }
       throw error;
     }
