@@ -1438,5 +1438,7 @@ export function isFarmerAuthAction(body: any): boolean {
       "nurseryPhotoConfirm",
       "activationStatus",
       "activate",
+      "avatarUploadSign",
+      "chatMedia",
     ].includes(body.action);
 }
