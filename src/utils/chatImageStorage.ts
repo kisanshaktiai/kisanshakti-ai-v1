@@ -1,5 +1,35 @@
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { farmerAuthService } from '@/services/farmerAuthService';
+
+/**
+ * Chat attachments go through server-signed slots bound to the verified
+ * farmer session; direct storage access was refused after the privilege lockdown.
+ */
+const chatBucket = {
+  async upload(path: string, body: Blob, opts: { contentType: string; cacheControl?: string; upsert?: boolean }) {
+    try {
+      const slot = await farmerAuthService.chatMedia<{ path: string; token: string }>('upload', [path]);
+      const { error } = await supabase.storage.from(STORAGE_BUCKET)
+        .uploadToSignedUrl(slot.path, slot.token, body, { contentType: opts.contentType, upsert: true });
+      return error ? { data: null, error } : { data: { path: slot.path }, error: null };
+    } catch (e) {
+      return { data: null, error: e as Error };
+    }
+  },
+  async createSignedUrl(path: string, _ttl: number) {
+    try {
+      const { urls } = await farmerAuthService.chatMedia<{ urls: (string | null)[] }>('read', [path]);
+      return urls?.[0] ? { data: { signedUrl: urls[0] }, error: null } : { data: null, error: new Error('no_url') };
+    } catch (e) {
+      return { data: null, error: e as Error };
+    }
+  },
+  async remove(paths: string[]) {
+    try { await farmerAuthService.chatMedia('delete', paths); return { error: null }; }
+    catch (e) { return { error: e as Error }; }
+  },
+};
 
 const STORAGE_BUCKET = 'chat-attachments';
 const TARGET_SIZE_KB = 150;
@@ -39,11 +69,7 @@ export async function getChatAttachmentUrl(value: string): Promise<string | null
   if (!authState.user?.id || authState.user.id !== firstSegment || !authState.user.tenantId) {
     return null;
   }
-
-  const client = getAuthenticatedClient();
-  const { data, error } = await client.storage
-    .from(STORAGE_BUCKET)
-    .createSignedUrl(filePath, CHAT_SIGNED_URL_TTL_SECONDS);
+  const { data, error } = await chatBucket.createSignedUrl(filePath, CHAT_SIGNED_URL_TTL_SECONDS);
 
   return error || !data?.signedUrl ? null : data.signedUrl;
 }
@@ -435,16 +461,11 @@ export async function uploadChatImage(
       tenantId
     });
     
-    // ✅ Use authenticated client with custom headers
-    const client = getAuthenticatedClient();
-    
     // Upload with retry logic
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
-        const { data, error } = await client.storage
-          .from(STORAGE_BUCKET)
-          .upload(filePath, blob, {
+        const { data, error } = await chatBucket.upload(filePath, blob, {
             contentType: 'image/jpeg',
             cacheControl: '31536000', // 1 year cache
             upsert: true
@@ -540,14 +561,9 @@ export async function uploadCompressedVideo(
       videoSizeMB: Math.round(videoBlob.size / 1024 / 1024 * 100) / 100
     });
     
-    // ✅ Use authenticated client with custom headers
-    const client = getAuthenticatedClient();
-    
     // Upload video
     const videoPath = `${authUserId}/${sessionId}/${messageId}_${timestamp}.webm`;
-    const { data: videoData, error: videoError } = await client.storage
-      .from(STORAGE_BUCKET)
-      .upload(videoPath, videoBlob, {
+    const { data: videoData, error: videoError } = await chatBucket.upload(videoPath, videoBlob, {
         contentType: 'video/webm',
         cacheControl: '31536000',
         upsert: true
@@ -555,9 +571,7 @@ export async function uploadCompressedVideo(
     
     // Upload thumbnail
     const thumbPath = `${authUserId}/${sessionId}/${messageId}_${timestamp}_thumb.jpg`;
-    const { data: thumbData, error: thumbError } = await client.storage
-      .from(STORAGE_BUCKET)
-      .upload(thumbPath, thumbnailBlob, {
+    const { data: thumbData, error: thumbError } = await chatBucket.upload(thumbPath, thumbnailBlob, {
         contentType: 'image/jpeg',
         cacheControl: '31536000',
         upsert: true
@@ -640,11 +654,7 @@ export async function uploadCompressedAudio(
     
     const timestamp = Date.now();
     const audioPath = `${userId}/${sessionId}/${messageId}_${timestamp}.webm`;
-    
-    const client = getAuthenticatedClient();
-    const { data, error } = await client.storage
-      .from(STORAGE_BUCKET)
-      .upload(audioPath, audioBlob, {
+    const { data, error } = await chatBucket.upload(audioPath, audioBlob, {
         contentType: 'audio/webm',
         cacheControl: '3600',
         upsert: true
@@ -711,11 +721,7 @@ export async function deleteChatImage(imageUrl: string): Promise<void> {
 
     const authState = useAuthStore.getState();
     if (authState.user?.id !== filePath.split('/')[0]) return;
-
-    const client = getAuthenticatedClient();
-    await client.storage
-      .from(STORAGE_BUCKET)
-      .remove([filePath]);
+    await chatBucket.remove([filePath]);
       
     console.log('🗑️ Image deleted:', filePath);
   } catch (err) {

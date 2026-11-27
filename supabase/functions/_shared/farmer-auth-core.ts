@@ -600,9 +600,11 @@ async function handleFarmerProfile(
 }
 
 /** Session-authenticated actions. Returns null when `action` is not one of them. */
+const CHAT_MEDIA_LIMIT = { maxRequests: 900, windowMs: 3600_000 };
+
 async function handleSessionAction(action: string, req: Request, body: any): Promise<Response | null> {
   if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "getFarmerProfile", "updateFarmerProfile",
-        "nurseryPhotoSign", "nurseryPhotoConfirm", "activationStatus", "activate", "avatarUploadSign"].includes(action)) return null;
+        "nurseryPhotoSign", "nurseryPhotoConfirm", "activationStatus", "activate", "avatarUploadSign", "chatMedia"].includes(action)) return null;
 
   const ctx = await sessionAccount(req, body);
   if (!ctx) return json({ error: "session_required" }, 401);
@@ -630,6 +632,35 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
     }
     const { data: pub } = admin.storage.from("avatars").getPublicUrl(path);
     return json({ path, token: data.token, signedUrl: data.signedUrl, publicUrl: pub.publicUrl });
+  }
+
+  if (action === "chatMedia") {
+    // Chat attachments: every path must sit in the verified farmer's own folder.
+    if (await liveSessionRole(ctx) !== "FARMER") return json({ error: "role_not_active" }, 403);
+    const limited = await rateLimited(ctx.account.id, "chatMedia", CHAT_MEDIA_LIMIT);
+    if (limited) return limited;
+    const paths: unknown[] = Array.isArray(body?.paths) ? body.paths.slice(0, 20) : [body?.path];
+    const prefix = `${ctx.account.id}/`;
+    const ok = paths.every((p) => typeof p === "string" && p.startsWith(prefix) && p.length < 300 &&
+      /^[A-Za-z0-9_\-./]+$/.test(p) && !p.includes(".."));
+    if (!ok || paths.length === 0) return json({ error: "invalid_request" }, 400);
+    const bucket = admin.storage.from("chat-attachments");
+    if (body?.op === "upload") {
+      const { data, error } = await bucket.createSignedUploadUrl(paths[0] as string, { upsert: true });
+      if (error || !data) { console.error("[farmer-auth] chat sign failed", error?.message); return json({ error: "server_error" }, 500); }
+      return json({ path: data.path, token: data.token });
+    }
+    if (body?.op === "read") {
+      const { data, error } = await bucket.createSignedUrls(paths as string[], 24 * 3600);
+      if (error) return json({ error: "server_error" }, 500);
+      return json({ urls: (data ?? []).map((d) => d.signedUrl ?? null) });
+    }
+    if (body?.op === "delete") {
+      const { error } = await bucket.remove(paths as string[]);
+      if (error) return json({ error: "server_error" }, 500);
+      return json({ ok: true });
+    }
+    return json({ error: "invalid_request" }, 400);
   }
 
   if (action === "getFarmerProfile" || action === "updateFarmerProfile") {

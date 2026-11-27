@@ -256,6 +256,10 @@ export const farmerAuthService = {
       action: 'avatarUploadSign', sessionToken: getSessionToken() ?? undefined,
     });
   },
+  /** Chat attachment upload slot / read links / delete, in the verified farmer's folder. */
+  async chatMedia<T = any>(op: 'upload' | 'read' | 'delete', paths: string[]) {
+    return call<T>({ action: 'chatMedia', op, paths, sessionToken: getSessionToken() ?? undefined });
+  },
   // ── Farmer activation: actions authenticated by the session token ────────
   /** Asks the server whether the signed-in farmer still has to redeem a code. */
   async activationStatus() {
