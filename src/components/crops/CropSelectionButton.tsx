@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CropImage } from '@/components/crops/CropImage';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Sprout, X } from 'lucide-react';
@@ -29,6 +30,7 @@ export function CropSelectionButton({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
   const [cropIcon, setCropIcon] = useState<string>("");
+  const [resolvedCropId, setResolvedCropId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch crop details when value or cropName changes
@@ -37,6 +39,7 @@ export function CropSelectionButton({
       if (!value && !cropName) {
         setDisplayName("");
         setCropIcon("");
+        setResolvedCropId(null);
         return;
       }
 
@@ -49,7 +52,7 @@ export function CropSelectionButton({
         if (value) {
           const result = await supabase
             .from('crops')
-            .select('label, icon')
+            .select('id, label, icon')
             .eq('id', value)
             .maybeSingle();
           
@@ -61,7 +64,7 @@ export function CropSelectionButton({
         if (!data && cropName) {
           const result = await supabase
             .from('crops')
-            .select('label, icon')
+            .select('id, label, icon')
             .eq('label', cropName)
             .maybeSingle();
 
@@ -72,7 +75,7 @@ export function CropSelectionButton({
           if (!data) {
             const valueResult = await supabase
               .from('crops')
-              .select('label, icon')
+              .select('id, label, icon')
               .eq('value', cropName)
               .maybeSingle();
             
@@ -83,15 +86,18 @@ export function CropSelectionButton({
         if (data) {
           setDisplayName(data.label);
           setCropIcon(data.icon || "");
+          setResolvedCropId(data.id ?? null);
         } else {
           // Fallback to displaying the raw cropName
           setDisplayName(cropName || "");
           setCropIcon("");
+          setResolvedCropId(null);
         }
       } catch (error) {
         console.error('Error fetching crop details:', error);
         setDisplayName(cropName || "");
         setCropIcon("");
+          setResolvedCropId(null);
       } finally {
         setIsLoading(false);
       }
@@ -110,6 +116,7 @@ export function CropSelectionButton({
     e.stopPropagation();
     setDisplayName("");
     setCropIcon("");
+          setResolvedCropId(null);
     onChange("", "");
     if (onClear) {
       onClear();
@@ -147,8 +154,8 @@ export function CropSelectionButton({
           <div className="flex items-center gap-2 w-full">
             {displayName ? (
               <>
-                {cropIcon ? (
-                  <span className="text-lg flex-shrink-0">{cropIcon}</span>
+                {resolvedCropId ? (
+                  <CropImage cropId={resolvedCropId} cropName={displayName} fallbackIcon={cropIcon} className="h-6 w-6 rounded-md text-xs" />
                 ) : (
                   <Sprout className="h-4 w-4 flex-shrink-0" />
                 )}

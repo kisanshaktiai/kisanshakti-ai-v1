@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { CropImage } from '@/components/crops/CropImage';
 import { useTranslation } from 'react-i18next';
 
 interface CropGroup {
@@ -411,12 +412,7 @@ export function CropSelectionCard({
                           </motion.div>
                         )}
                         
-                        <motion.span 
-                          className="text-2xl sm:text-3xl filter drop-shadow-lg"
-                          whileHover={{ scale: 1.1 }}
-                        >
-                          {crop.icon || "🌱"}
-                        </motion.span>
+                        <CropImage cropId={crop.id} cropName={crop.label} fallbackIcon={crop.icon} className="h-11 w-11 sm:h-14 sm:w-14 text-lg sm:text-xl border border-border/60 shadow-sm" />
                         
                         <div className="text-center space-y-0.5">
                           <p className={cn(

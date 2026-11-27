@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Loader2, ChevronLeft, ChevronRight, Check, Search, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { CropImage } from '@/components/crops/CropImage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
@@ -347,9 +348,7 @@ export function CentralizedCropSelector({
                             ? "bg-gradient-to-br from-primary/40 to-accent/40" 
                             : "bg-gradient-to-br from-primary/20 to-accent/20 group-hover:from-primary/30 group-hover:to-accent/30"
                         )} />
-                        <span className="relative text-2xl filter drop-shadow-lg">
-                          {crop.icon || "🌱"}
-                        </span>
+                        <CropImage cropId={crop.id} cropName={displayCropName(crop)} fallbackIcon={crop.icon} className="relative h-11 w-11 sm:h-14 sm:w-14 text-lg sm:text-xl border border-border/60 shadow-sm" />
                       </motion.div>
                       
                       {/* Labels - Compact */}

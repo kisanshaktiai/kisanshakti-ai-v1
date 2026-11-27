@@ -2,6 +2,7 @@
 // ModernChatUI = per-message renderer.
 // All message-bubble/card changes go in ModernChatUI or the card components it imports.
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { CropImage } from '@/components/crops/CropImage';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -2081,7 +2082,7 @@ export function EnhancedAIChatInterface() {
                         : "bg-muted/50 border-border/40 hover:bg-muted"
                     )}
                   >
-                    <span className="text-base leading-none">{cropEmoji}</span>
+                    <CropImage cropId={land.current_crop_id} cropName={typeof land.current_crop === 'string' ? land.current_crop : (land.name || '')} fallbackIcon={cropEmoji} className="h-5 w-5 rounded-md bg-transparent text-[10px]" />
                     <span className="text-[9px] font-medium truncate max-w-[56px] mt-0.5">
                       {land.name?.substring(0, 7) || 'Land'}
                     </span>

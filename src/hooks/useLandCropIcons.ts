@@ -46,3 +46,37 @@ export function useLandCropIcons(lands: Array<{ id: string; current_crop_id?: st
     return out;
   }, [cropsQ.data, stagesQ.data, lands]);
 }
+
+/** Exact crop UUID per land (current_crop_id, else stage crop_code → crops.value); null when unidentified. */
+export function useLandCropIds(lands: Array<{ id: string; current_crop_id?: string | null; stage_uuid?: string | null }>): Record<string, string | null> {
+  const cropsQ = useQuery({
+    queryKey: ['crops-ids-by-value'],
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('crops').select('id, value');
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; value: string | null }>;
+    },
+  });
+  const stageIds = useMemo(() => [...new Set(lands.filter((l) => !l.current_crop_id && l.stage_uuid).map((l) => l.stage_uuid as string))].sort(), [lands]);
+  const stagesQ = useQuery({
+    queryKey: ['land-stage-crops', stageIds],
+    enabled: stageIds.length > 0,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('crop_stage_master').select('id, crop_code').in('id', stageIds);
+      if (error) throw error;
+      return (data || []) as Array<{ id: string; crop_code: string }>;
+    },
+  });
+  return useMemo(() => {
+    const byCode = new Map((cropsQ.data || []).filter((c) => c.value).map((c) => [String(c.value).toLowerCase(), c.id]));
+    const stageCrop = new Map((stagesQ.data || []).map((s) => [s.id, s.crop_code]));
+    const out: Record<string, string | null> = {};
+    for (const l of lands) {
+      const code = l.stage_uuid ? stageCrop.get(l.stage_uuid) : undefined;
+      out[l.id] = l.current_crop_id || (code ? byCode.get(code.toLowerCase()) ?? null : null);
+    }
+    return out;
+  }, [cropsQ.data, stagesQ.data, lands]);
+}

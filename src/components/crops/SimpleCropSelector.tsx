@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, ChevronLeft, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { CropImage } from '@/components/crops/CropImage';
 
 interface CropGroup {
   id: string;
@@ -187,7 +188,7 @@ export function SimpleCropSelector({
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">{crop.icon || "🌱"}</span>
+                    <CropImage cropId={crop.id} cropName={crop.label} fallbackIcon={crop.icon} className="h-11 w-11 text-base border border-border/60" />
                     <div>
                       <p className="font-medium">{crop.label}</p>
                       {crop.label_local && (

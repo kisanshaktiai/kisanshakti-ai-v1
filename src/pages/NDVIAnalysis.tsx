@@ -23,7 +23,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
-import { useLandCropIcons } from '@/hooks/useLandCropIcons';
+import { useLandCropIcons, useLandCropIds } from '@/hooks/useLandCropIcons';
+import { CropImage } from '@/components/crops/CropImage';
 import { cn } from '@/lib/utils';
 
 interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; current_crop_id?: string | null; stage_uuid?: string | null; boundary_polygon_old?: { coordinates?: number[][][] } | null; center_point_old?: { coordinates?: number[] } | null; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
@@ -60,6 +61,7 @@ export default function NDVIAnalysis() {
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
   // each land's crop icon comes from the crops master (crops.icon), not from a crop list in code
   const cropIcons = useLandCropIcons(lands);
+  const cropIds = useLandCropIds(lands);
 
   const sky = useFieldSky(selectedLandId, reloadKey);
 
@@ -91,7 +93,7 @@ export default function NDVIAnalysis() {
         {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-24 rounded-full shrink-0" />) : lands.map(land => {
           const active = land.id === selectedLandId;
           return <button key={land.id} onClick={() => setSelectedLandId(land.id)} aria-pressed={active} className={cn('snap-start shrink-0 flex items-center gap-1.5 pl-1 pr-3 h-9 rounded-full border text-xs font-semibold transition active:scale-95', active ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-card border-border/50 text-muted-foreground')}>
-            <span className={cn('h-6 w-6 rounded-full grid place-items-center text-sm', active ? 'bg-primary-foreground/20' : 'bg-muted')}>{cropIcons[land.id] ?? <Sprout className="h-3.5 w-3.5" aria-hidden />}</span>
+            <span className={cn('h-6 w-6 rounded-full grid place-items-center text-sm', active ? 'bg-primary-foreground/20' : 'bg-muted')}>{cropIds[land.id] ? <CropImage cropId={cropIds[land.id]} cropName={land.name || ''} fallbackIcon={cropIcons[land.id]} className="h-6 w-6 rounded-full bg-transparent text-sm" /> : (cropIcons[land.id] ?? <Sprout className="h-3.5 w-3.5" aria-hidden />)}</span>
             <span className="truncate max-w-[110px]">{land.name}</span>
             {hasSatellite(land) && <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-primary-foreground' : 'bg-success')} aria-hidden />}
           </button>;

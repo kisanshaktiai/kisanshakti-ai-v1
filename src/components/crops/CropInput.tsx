@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CropImage } from '@/components/crops/CropImage';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Sprout, X } from 'lucide-react';
@@ -43,7 +44,7 @@ export function CropInput({
     try {
       const { data, error } = await supabase
         .from('crops')
-        .select('label, icon')
+        .select('id, label, icon')
         .eq('id', cropId)
         .single();
 
@@ -90,7 +91,7 @@ export function CropInput({
           <div className="flex items-center gap-2 w-full">
             {cropName ? (
               <>
-                <span className="text-lg">{cropIcon}</span>
+                <CropImage cropId={value} cropName={cropName} fallbackIcon={cropIcon} className="h-6 w-6 rounded-md text-xs" />
                 <span className="truncate">{cropName}</span>
               </>
             ) : (
