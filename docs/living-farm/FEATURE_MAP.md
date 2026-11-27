@@ -6,6 +6,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 |---|---|---|
 | `/app`, `/app/home` | **New: Field home** | dock: Field |
 | `/app/all` | **New: All launcher** | dock: All |
+| `/app/land` | **New: Land** (sky, crop, water and soil of the chosen land) | dock: Land |
 | `/app/day` | **New: Day** (sun path, week strip, the day's tasks) | dock: Day |
 | `/app/weather` | old look, working | temperature on Field home; All |
 | `/app/market` | old look, working | All |
@@ -18,7 +19,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/schemes` | old look, working | All |
 | `/app/profile` | old look, working | All |
 | `/app/profile/edit` | old look, working | from its parent page, as before |
-| `/app/lands` | old look, working | dock: Land; All |
+| `/app/lands` | old look, working | Land: "All my lands"; All |
 | `/app/lands/add` | old look, working | + on Field home; Land page |
 | `/app/lands/:id/edit` | old look, working | from its parent page, as before |
 | `/app/lands/:id` | old look, working | land chip on Field home (one land); Land page |
@@ -57,7 +58,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 ## Changed behaviour to check
 
 - The floating voice-navigation button is hidden on the Field home only (it would cover the sentence card). It is on every other page as before, moved to sit just above the new dock.
-- The round role-switch button (people with several roles) is in the top row on Field and Day. On other farmer pages it floats just above the dock, at the left.
+- The round role-switch button (people with several roles) is in the top row on Field, Day and Land. On other farmer pages it floats just above the dock, at the left.
 - The old bottom bar (Home, Community, Scan menu, Analytics, Profile) is replaced by the dock. Community, Analytics and Profile are on All.
 - `HindenburgMenu` is still mounted but nothing opens it now; every working destination it listed is on All. Its links to `/app/finance`, `/app/irrigation`, `/app/solar`, `/app/help` and `/app/contact` had no routes.
 - `src/pages/Home.tsx` and `src/components/BottomNavigation.tsx` are left in the repo, unused, until you confirm nothing is missing.

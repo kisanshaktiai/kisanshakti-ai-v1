@@ -26,8 +26,8 @@ const isFarmerFullScreen = (path: string) =>
   (path.includes('/app/community/') && path.includes('/chat')) ||
   path === '/app/lands/add' ||
   /^\/app\/lands\/[^/]+\/edit$/.test(path);
-/** Field and Day carry the switcher in their own top row (LandBar), so the floating copy is not drawn there. */
-const hasLandBar = (path: string) => /^\/app\/?(home|day)?$/.test(path);
+/** Field, Day and Land carry the switcher in their own top row (LandBar), so the floating copy is not drawn there. */
+const hasLandBar = (path: string) => /^\/app\/?(home|day|land)?$/.test(path);
 
 /** Side of the round button, in px, per variant: the card opens exactly over it. */
 const BUTTON_PX = { header: 44, floating: 48 } as const;

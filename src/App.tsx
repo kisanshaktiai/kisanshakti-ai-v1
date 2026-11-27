@@ -36,6 +36,7 @@ declare global {
 const FieldHome = lazy(() => import('./pages/FieldHome'));
 const AllFeatures = lazy(() => import('./pages/AllFeatures'));
 const DayView = lazy(() => import('./pages/DayView'));
+const LandCore = lazy(() => import('./pages/LandCore'));
 const Weather = lazy(() => import("./pages/Weather"));
 const Market = lazy(() => import("./pages/Market"));
 // "Services near me" (Provider Workspace part A, file 6): farmer side, behind the farm_services_search flag.
@@ -424,6 +425,7 @@ const router = createBrowserRouter([
       { path: "home", element: <Suspense fallback={<PageLoader />}><FieldHome /></Suspense> },
       { path: "all", element: <Suspense fallback={<PageLoader />}><AllFeatures /></Suspense> },
       { path: "day", element: <Suspense fallback={<PageLoader />}><DayView /></Suspense> },
+      { path: "land", element: <Suspense fallback={<PageLoader />}><LandCore /></Suspense> },
       { path: "weather", element: <Suspense fallback={<PageLoader />}><Weather /></Suspense> },
       { path: "market", element: <Suspense fallback={<PageLoader />}><Market /></Suspense> },
       { path: "services-near-me", element: <Suspense fallback={<PageLoader />}><ServicesNearMe /></Suspense> },

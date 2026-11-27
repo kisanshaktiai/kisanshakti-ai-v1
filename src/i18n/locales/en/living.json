@@ -60,6 +60,18 @@
       "no_schedule": "This land has no crop schedule yet.",
       "make_schedule": "Make a schedule",
       "retry": "Try again"
+    },
+    "land": {
+      "sky": "Sky today",
+      "crop": "Crop",
+      "water": "Water in the root zone",
+      "soil": "Soil",
+      "stage_unknown": "Crop stage not worked out yet",
+      "water_unknown": "No water reading for this land yet",
+      "next_stage": "Next: {{stage}}",
+      "all_lands": "All my lands",
+      "satellite": "Satellite view",
+      "edit": "Edit this land"
     }
   }
 }

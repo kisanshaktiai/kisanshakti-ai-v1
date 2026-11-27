@@ -53,10 +53,27 @@ Checked against the shared project on 2026-11-27 (read-only queries) and against
 
 **A limit set by the data:** `schedule_tasks` has a date but no time of day, so a task cannot be placed on the sun path at "the right hour". The first sample picture showed that; the built screen lists the day's tasks under the path instead. Placing tasks by hour would need a time or a time window per task from the schedule engine, which is a backend change and is not done here.
 
+## Land (`src/pages/LandCore.tsx`, route `/app/land`)
+
+The chosen land read top to bottom: sky, crop, water, soil. Each band opens the existing page that holds the detail.
+
+| Band | Value | Table and column | Read through | Opens |
+|---|---|---|---|---|
+| Sky | temperature, rain chance | `weather_current`, forecast | `useWeather(undefined, land.id)` | `/app/weather` |
+| Crop: "Day N · stage" | days after sowing, stage name | `lands.das`, `lands.stage_uuid`, `crop_stage_master` | `useFieldSky(land).stage` (`das`, `stageName`, `ladder`, `index`, `next`), stage names through the existing `stageKey` translation keys | `/app/lands/:id` |
+| Crop: one-line verdict | the satellite verdict the field-sky model already gives | `ndvi_data`, `ndvi_intelligence`, `crop_stage_master` bands | `useFieldSky(land).state`, worded by the existing `sky.state.*` keys | same |
+| Water | governed irrigation flag | `land_weather_state.irrigation_needed` | `useFieldSky(land).water.irrigationNeeded` → `weather` edge function | `/app/weather` |
+| Soil: one or two plain lines | pH, organic carbon, N, P, K read against the governed bands | saved soil reports (lab, device, soil map) and soil rating bands | `loadSoilState` → `resolveSoilSources` → `bestReadings` → `soilVerdictLines` (the same chain as the soil card on the land page) | `/app/lands/:id/soil` |
+| Buttons | all lands, satellite view, edit, listen | — | navigate to `/app/lands`, `/app/lands/:id/ndvi`, `/app/lands/:id/edit`; `useSpeech` | — |
+
+`bestReadings` was a private function inside `src/components/soil/LandSoilSummary.tsx`. It is moved, unchanged, to `src/lib/soilBestReadings.ts` so both screens use one copy.
+
+**Differs from the sample picture:** the sample showed soil moisture at three depths. The governed soil chain gives moisture only from a soil device and has no per-depth verdict, so the built screen shows one water band from the irrigation flag and one soil band from the saved soil reports. No depth figures are invented.
+
 ## Shared pieces
 
-- `src/living/LandBar.tsx`: land chip and picker for Field and Day, with `WorkspaceSwitcher variant="header"` first in the row. The floating copy of the switcher is not drawn on `/app`, `/app/home` and `/app/day`, and on other farmer pages it now sits just above the dock.
-- `src/living/useChosenLand.ts`: the picked land is kept in `sessionStorage` (`lf_chosen_land`) so Field and Day show the same land. Nothing is written to the database.
+- `src/living/LandBar.tsx`: land chip and picker for Field, Day and Land, with `WorkspaceSwitcher variant="header"` first in the row. The floating copy of the switcher is not drawn on `/app`, `/app/home`, `/app/day` and `/app/land`, and on other farmer pages it now sits just above the dock.
+- `src/living/useChosenLand.ts`: the picked land is kept in `sessionStorage` (`lf_chosen_land`) so Field, Day and Land show the same land. Nothing is written to the database.
 
 ## Gaps found (not changed here)
 

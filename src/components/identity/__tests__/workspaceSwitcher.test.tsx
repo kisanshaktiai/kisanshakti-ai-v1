@@ -174,9 +174,9 @@ describe('Workspace switcher: one picture, the choices in the same place', () =>
     expect(container.querySelector('button')).toBeNull();
   });
 
-  it('is not drawn floating on Field and Day, which carry it in their top row', () => {
+  it('is not drawn floating on Field, Day and Land, which carry it in their top row', () => {
     signIn(['FARMER', 'SERVICE_PROVIDER'], 'FARMER');
-    for (const path of ['/app', '/app/home', '/app/day']) {
+    for (const path of ['/app', '/app/home', '/app/day', '/app/land']) {
       const { container, unmount } = show('floating', path);
       expect(container).toBeEmptyDOMElement();
       unmount();

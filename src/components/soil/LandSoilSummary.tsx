@@ -7,27 +7,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
-import { loadSoilState, resolveSoilSources, type SoilRating, type SoilSourceKey, type SoilSources } from '@/services/soil/soilReport';
-import { bestSoilMetrics } from '@/lib/soilSummary';
-import { readSoil, type SoilParameter, type SoilReading } from '@/lib/soilInterpretation';
+import { loadSoilState, resolveSoilSources, type SoilSourceKey } from '@/services/soil/soilReport';
+import { bestReadings } from '@/lib/soilBestReadings';
 import { soilVerdictLines } from '@/components/soil/SoilVerdictCard';
 import { SoilReadingCard, NutrientTrio } from '@/components/soil/SoilVisuals';
 import { SOIL_SOURCE_ICON, SOIL_SOURCE_ORDER } from '@/components/soil/soilSourceMeta';
-
-const METRIC_PARAMETER: Record<string, SoilParameter> = {
-  ph: 'ph', organicCarbon: 'organic_carbon', nitrogen: 'available_nitrogen', phosphorus: 'available_phosphorus', potassium: 'available_potassium',
-};
-
-/** Each value from the best report that has it, read against the governed bands for that report type. */
-function bestReadings(sources: SoilSources, ratings: SoilRating[] | undefined) {
-  const metrics = Object.fromEntries(bestSoilMetrics(sources).map((m) => [m.key, m]));
-  const read = (key: string): { reading: SoilReading; source: SoilSourceKey | null } => {
-    const m = metrics[key];
-    const source = m?.source ?? null;
-    return { reading: readSoil(METRIC_PARAMETER[key], m?.value ?? null, ratings, source ?? 'lab'), source };
-  };
-  return { ph: read('ph'), oc: read('organicCarbon'), n: read('nitrogen'), p: read('phosphorus'), k: read('potassium') };
-}
 
 /** Soil at a glance on the land page; every value comes from a saved soil report and says which one. */
 export function LandSoilSummary({ landId }: { landId: string }) {
