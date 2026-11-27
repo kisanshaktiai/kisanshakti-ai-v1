@@ -111,7 +111,7 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
           >
             <Card className={cn(
               "relative overflow-hidden border h-full transition-all hover:shadow-md",
-              "bg-gradient-to-br from-card to-card/80 backdrop-blur-sm",
+              "bg-gradient-to-br from-card to-card/80",
               rec.color === 'text-success' && "border-success/30",
               rec.color === 'text-destructive' && "border-destructive/30",
               rec.color === 'text-warning' && "border-warning/30",
@@ -126,7 +126,7 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
                 <div className="flex items-center justify-between">
                   <rec.icon className={cn("h-8 w-8", rec.color)} />
                   {rec.fromField && (
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    <span className="lf-cap font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       {t('weather.farming.field_badge')}
                     </span>
                   )}
@@ -146,7 +146,7 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
                     {rec.label}
                   </Badge>
                   {rec.sub && (
-                    <p className="text-[9px] text-muted-foreground mt-1">{rec.sub}</p>
+                    <p className="lf-cap text-muted-foreground mt-1">{rec.sub}</p>
                   )}
                 </div>
               </CardContent>

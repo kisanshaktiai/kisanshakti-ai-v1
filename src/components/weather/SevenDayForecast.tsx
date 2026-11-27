@@ -13,7 +13,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { format, isToday, isTomorrow, addDays } from 'date-fns';
+import { isToday, isTomorrow, addDays } from 'date-fns';
 import { 
   Sun, Cloud, CloudRain, CloudSnow, CloudLightning, 
   CloudDrizzle, Droplets, Wind, Calendar, Thermometer,
@@ -166,7 +166,7 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
               <Card 
                 className={cn(
                   "relative overflow-hidden transition-all duration-300",
-                  "bg-card/90 backdrop-blur-xl border-border/50",
+                  "bg-card/90 border-border/50",
                   "hover:shadow-lg hover:scale-[1.01]",
                   isFirstDay && "ring-2 ring-primary/30 bg-primary/5"
                 )}
@@ -180,8 +180,8 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
                     )}>
                       {getDayLabel(day.dt)}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {format(new Date(day.dt * 1000), 'd MMM')}
+                    <p className="lf-cap text-muted-foreground">
+                      {new Intl.DateTimeFormat(i18n.language === 'en' ? 'en-IN' : `${i18n.language}-IN`, { day: 'numeric', month: 'short' }).format(new Date(day.dt * 1000))}
                     </p>
                   </div>
 
@@ -235,7 +235,7 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
                         />
                       </div>
                       <span className={cn(
-                        "text-[10px] font-semibold mt-0.5",
+                        "lf-cap font-semibold mt-0.5",
                         day.pop > 0.6 ? "text-info" : "text-info"
                       )}>
                         {Math.round(day.pop * 100)}%

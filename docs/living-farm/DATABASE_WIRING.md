@@ -113,3 +113,29 @@ Chat header: the title block may now shrink and the action group may not, so the
 1. Stage is resolved on 11 of 33 lands and DAS on 12, so most live lands draw a bare field. That is existing data, not a wiring fault.
 2. `useProactiveAlerts` does not expose an error flag; on a failed fetch it serves its offline cache. The sentence therefore cannot tell "alerts failed" from "no alerts". Exposing the flag is a logic change, so it is reported, not done.
 3. `useWeather` sunrise and sunset arrive as numbers; both seconds and milliseconds are accepted by `sunProgress`.
+
+## Weather (`src/pages/Weather.tsx`)
+
+Same route (`/app/weather`) and the same three data calls as before: `useWeather()`, `useLands()`, `useLandWeatherState(selectedLandId)`. The land selection rule (first land until the farmer picks another), the refresh handler and its toasts, the pull-to-refresh controller, the field panel (`LandAgronomyPanel`), the farming advice (`FarmingRecommendations`), read-aloud (`VoiceWeatherSummary`) and the seven-day list (`SevenDayForecast`) are the same components with the same inputs.
+
+| Part | Fields read (unchanged) | Change |
+|---|---|---|
+| Now | `currentWeather.temp/description/feels_like/main/location/provider`, `locationSource`, `regionalFallbackLabel`, `weatherDistanceKm`, `weatherStationName`, `isStale`, `lastUpdated` | Drawn in the page instead of `WeatherHeroCard`. Same provenance rule. "Old reading", "Updated", "Feels like" now come from existing keys (were English in code). |
+| Six readings | `wind_speed`, `humidity`, `visibility`, `pressure`, `uv_index`, `dew_point` | One 3-column grid, same colour thresholds. |
+| Hour by hour | `hourlyForecast[0..11].dt/temp/pop` | Plain scrolling strip; the chart library is no longer loaded for this page. `feels_like` per hour is no longer shown. |
+| Rain | `forecast[0..6].rain` | Today and week totals as before; seven plain bars. The cumulative line is no longer drawn. |
+
+Removed from this page: the moving background (`AnimatedWeatherBackground`), three endless animations and all blur. Those component files are left in the repo, unused by this page.
+
+**Missing wording found:** `weather.farming.unavailable` is not in any language file, so the advice cards show the English fallback "Decision unavailable".
+
+## Loading on old phones
+
+Measured on the built app, phone-sized browser, processor slowed 6x, 1.6 Mbit/s network, compressed files, start address up to the splash screen (the database is not reachable from the test machine, so pages behind sign-in were not timed):
+
+| Build | First paint | Download | Script memory |
+|---|---|---|---|
+| `kisanshakti-ai-update` (85aa422) | 2.3 s | 626 kB | 11.7 MB |
+| `living-farm-ui` | 2.3 s | 623 kB | 10.3 MB |
+
+The photo scan flow is now fetched when first opened instead of with the app shell (shell script 660 kB to 608 kB uncompressed). Screen-height units in `living.css` have a `vh` line before each `dvh` line for browsers older than Chrome 108.

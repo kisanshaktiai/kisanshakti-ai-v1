@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Sprout, SunMedium, Layers, LayoutGrid, Mic, Camera, Keyboard } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { InstaScanFlow } from '@/components/InstaScan/InstaScanFlow';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { useFeatures } from '@/hooks/useFeatures';
 import './living.css';
+
+// The photo flow carries the camera and QR code; it is fetched the first time the farmer opens it, not with the app shell.
+const InstaScanFlow = lazy(() => import('@/components/InstaScan/InstaScanFlow').then((m) => ({ default: m.InstaScanFlow })));
 
 interface DockItem { path: string; icon: LucideIcon; labelKey: string; match: (pathname: string) => boolean }
 
@@ -31,6 +33,9 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
   const { features } = useFeatures();
   const [askOpen, setAskOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  // Stays true after the first open so the flow keeps its own closing behaviour.
+  const [scanLoaded, setScanLoaded] = useState(false);
+  useEffect(() => { if (scanOpen) setScanLoaded(true); }, [scanOpen]);
 
   useEffect(() => { setAskOpen(false); }, [pathname]);
 
@@ -97,7 +102,11 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
         </DrawerContent>
       </Drawer>
 
-      <InstaScanFlow isOpen={scanOpen} onClose={() => setScanOpen(false)} />
+      {scanLoaded && (
+        <Suspense fallback={null}>
+          <InstaScanFlow isOpen={scanOpen} onClose={() => setScanOpen(false)} />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useSpeech } from '@/hooks/useSpeech';
 import { toast } from 'sonner';
@@ -70,38 +69,30 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
     }
   };
 
+  const label = isSpeaking ? t('weather.voice.stop', 'Stop Reading') : t('weather.voice.read', 'Read Aloud');
+
   return (
-    <motion.button
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
+    <button
+      type="button"
       onClick={handleToggleSpeech}
       disabled={isLoading}
+      aria-pressed={isSpeaking}
       className={cn(
-        'relative p-3 rounded-full transition-all duration-300 shadow-lg backdrop-blur-sm',
+        'lf-lab flex items-center justify-center gap-2 rounded-full px-4 font-bold',
         isLoading && 'opacity-70 cursor-wait',
-        isSpeaking
-          ? 'bg-primary text-primary-foreground animate-pulse'
-          : 'bg-background/80 hover:bg-background border border-border',
+        isSpeaking ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary',
         className
       )}
-      title={isSpeaking ? t('weather.voice.stop', 'Stop Reading') : t('weather.voice.read', 'Read Aloud')}
+      style={{ minHeight: 'var(--lf-tap)' }}
     >
       {isLoading ? (
-        <Loader2 className="h-5 w-5 animate-spin" />
+        <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
       ) : isSpeaking ? (
-        <VolumeX className="h-5 w-5" />
+        <VolumeX className="h-6 w-6" aria-hidden />
       ) : (
-        <Volume2 className={cn('h-5 w-5', hasSpoken && 'text-primary')} />
+        <Volume2 className="h-6 w-6" aria-hidden />
       )}
-      {isSpeaking && (
-        <motion.div
-          className="absolute -inset-1 bg-primary/20 rounded-full -z-10"
-          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      )}
-    </motion.button>
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
   );
 };

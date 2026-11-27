@@ -155,7 +155,7 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
           {t('weather.field.title')}
           {landName && <span className="text-xs font-medium text-muted-foreground">· {landName}</span>}
         </h3>
-        <Badge variant="secondary" className="text-[10px]">
+        <Badge variant="secondary" className="lf-cap">
           {isToday
             ? t('weather.field.today')
             : t('weather.field.as_of', { date: state.metric_date?.slice(0, 10) })}
@@ -165,7 +165,7 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
       {!isToday && (
         <div className="flex items-center gap-2 mb-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2">
           <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
-          <p className="text-[11px] text-foreground/80">
+          <p className="lf-cap text-foreground/80">
             {t('weather.field.stale_note')}
           </p>
         </div>
@@ -180,14 +180,14 @@ export const LandAgronomyPanel: React.FC<LandAgronomyPanelProps> = ({
             <div className="flex flex-col items-center text-center gap-0.5">
               <m.icon className={cn('h-4 w-4', m.tone)} />
               <span className={cn('text-sm font-bold leading-tight', m.tone)}>{m.value}</span>
-              <span className="text-[10px] text-muted-foreground font-medium leading-tight">{m.label}</span>
-              <span className="text-[9px] text-muted-foreground/80 leading-tight">{m.sub}</span>
+              <span className="lf-cap text-muted-foreground font-medium leading-tight">{m.label}</span>
+              <span className="lf-cap text-muted-foreground/80 leading-tight">{m.sub}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <p className="text-[9px] text-muted-foreground mt-2">
+      <p className="lf-cap text-muted-foreground mt-2">
         {t('weather.field.footer')}
         {state.computed_at
           ? ` · ${new Date(state.computed_at).toLocaleString(localeTag, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}`

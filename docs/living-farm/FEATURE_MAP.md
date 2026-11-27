@@ -8,7 +8,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/all` | **New: All launcher** | dock: All |
 | `/app/land` | **New: Land** (sky, crop, water and soil of the chosen land) | dock: Land |
 | `/app/day` | **New: Day** (sun path, week strip, the day's tasks) | dock: Day |
-| `/app/weather` | old look, working | temperature on Field home; All |
+| `/app/weather` | new look; same data calls | temperature on Field home; All |
 | `/app/market` | old look, working | All |
 | `/app/services-near-me` | old look, working | All (services block, when the flag is on) |
 | `/app/services-near-me/ask` | old look, working | from its parent page, as before |

@@ -1,45 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Cloud, CloudRain, Sun, Wind, Droplets, Eye, Gauge, 
-  Thermometer, CloudSnow, CloudDrizzle, CloudLightning,
-  Sunrise, Sunset, Navigation, AlertTriangle, Info,
-  TrendingUp, TrendingDown, Calendar, MapPin, RefreshCw,
-  ChevronDown, Activity, Sparkles, Waves, Timer,
-  ShieldCheck, XCircle, Bell, Zap, Umbrella, Sprout
+  Cloud, CloudRain, Sun, Wind, Droplets, Eye, Gauge, Thermometer, CloudSnow, CloudLightning, CloudDrizzle,
+  Sunrise, Sunset, AlertTriangle, RefreshCw, MapPin, Satellite, Umbrella, Clock,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Progress } from '@/components/ui/progress';
+import type { LucideIcon } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AnimatedWeatherBackground } from '@/components/weather/AnimatedWeatherBackground';
-import { RainfallChart } from '@/components/weather/RainfallChart';
 import { VoiceWeatherSummary } from '@/components/weather/VoiceWeatherSummary';
-import { WeatherHeroCard } from '@/components/weather/WeatherHeroCard';
 import { FarmingRecommendations } from '@/components/weather/FarmingRecommendations';
 import { PageShell } from '@/components/layout/PageShell';
-
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { useLandWeatherState } from '@/hooks/useLandWeatherState';
 import { LandAgronomyPanel } from '@/components/weather/LandAgronomyPanel';
-// Weather sync now handled by backend edge function
-import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
 import { toastManager } from '@/utils/ToastManager';
 import { WeatherSkeleton } from '@/components/skeletons';
 import { PullRefreshController } from '@/components/weather/PullRefreshController';
-import { HourlyForecastChart } from '@/components/weather/HourlyForecastChart';
 import { SevenDayForecast } from '@/components/weather/SevenDayForecast';
+import '@/living/living.css';
+
+/**
+ * Weather in the Living Farm look. The data calls are the ones this page always made
+ * (`useWeather`, `useLands`, `useLandWeatherState`); only the drawing changed:
+ * no moving background, no blur, no chart library, sizes from the shared fluid scale.
+ */
+const card = 'rounded-[var(--lf-r)] border border-border bg-card shadow-sm';
+const pad = { padding: 'clamp(12px, 3.6vw, 18px)' } as const;
+const gut = { padding: '0 var(--lf-gut)' } as const;
 
 export default function Weather() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const numLocale = `${i18n.language || 'en'}-u-nu-latn`;
   const {
     currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated,
     locationSource, regionalFallbackLabel, weatherDistanceKm, weatherStationName, isStale,
@@ -76,52 +67,11 @@ export default function Weather() {
   };
 
 
-  const getWeatherCondition = (): 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night' => {
-    if (!currentWeather) return 'clouds';
-    const main = currentWeather.main?.toLowerCase();
-    const hour = new Date().getHours();
-    
-    if (main?.includes('thunder')) return 'storm';
-    if (main?.includes('snow')) return 'snow';
-    if (main?.includes('rain') || main?.includes('drizzle')) return 'rain';
-    if (main?.includes('fog') || main?.includes('mist')) return 'fog';
-    if (main?.includes('clear') && (hour >= 6 && hour < 18)) return 'sun';
-    if (main?.includes('clear') && (hour < 6 || hour >= 18)) return 'night';
-    return 'clouds';
-  };
-
-  const getWeatherIcon = (condition: string, size: 'small' | 'medium' | 'large' = 'medium') => {
-    const sizeClass = {
-      small: 'h-4 w-4',
-      medium: 'h-6 w-6',
-      large: 'h-10 w-10'
-    }[size];
-
-    const iconMap: { [key: string]: React.ReactNode } = {
-      'Clear': <Sun className={sizeClass} />,
-      'Clouds': <Cloud className={sizeClass} />,
-      'Rain': <CloudRain className={sizeClass} />,
-      'Drizzle': <CloudDrizzle className={sizeClass} />,
-      'Thunderstorm': <CloudLightning className={sizeClass} />,
-      'Snow': <CloudSnow className={sizeClass} />,
-      'Mist': <Cloud className={sizeClass} />,
-      'Fog': <Cloud className={sizeClass} />,
+  const getWeatherIcon = (condition: string) => {
+    const iconMap: Record<string, LucideIcon> = {
+      Clear: Sun, Clouds: Cloud, Rain: CloudRain, Drizzle: CloudDrizzle, Thunderstorm: CloudLightning, Snow: CloudSnow, Mist: Cloud, Fog: Cloud,
     };
-    return iconMap[condition] || <Cloud className={sizeClass} />;
-  };
-
-  const getWeatherGradient = () => {
-    const condition = getWeatherCondition();
-    const gradients = {
-      sun: 'from-warning/20 via-warning/10 to-background',
-      rain: 'from-info/20 via-info/10 to-background',
-      clouds: 'from-gray-400/20 via-gray-300/10 to-background',
-      storm: 'from-primary/20 via-primary/10 to-background',
-      snow: 'from-info/20 via-info/10 to-background',
-      fog: 'from-gray-500/20 via-gray-400/10 to-background',
-      night: 'from-info/20 via-info/10 to-background'
-    };
-    return gradients[condition] || gradients.clouds;
+    return iconMap[condition] || Cloud;
   };
 
   const getStatColor = (type: string, value: number) => {
@@ -145,88 +95,121 @@ export default function Weather() {
 
   if (error || !currentWeather) {
     return (
-      <PageShell variant="gradient-soft" className="flex items-center justify-center">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="max-w-md w-full bg-background/60 backdrop-blur-xl border-border/50 shadow-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-5 w-5" />
-                {t('weather.error.title')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-muted-foreground">
-                {error || t('weather.error.message')}
-              </p>
-              <Button onClick={handleManualSync} className="w-full" size="lg">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                {t('weather.error.retry')}
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
+      <PageShell variant="plain" className="flex items-center justify-center">
+        <div className={`${card} flex w-full max-w-md flex-col gap-3`} style={pad} role="alert">
+          <h1 className="lf-head flex items-center gap-2 text-destructive"><AlertTriangle size={22} aria-hidden />{t('weather.error.title')}</h1>
+          <p className="lf-lab font-normal text-muted-foreground">{error || t('weather.error.message')}</p>
+          <button type="button" onClick={() => { void handleManualSync().catch(() => undefined); }} className="flex items-center justify-center gap-2 rounded-full bg-primary font-bold text-primary-foreground" style={{ minHeight: 'var(--lf-tap)', fontSize: 'var(--lf-fs-lab)' }}>
+            <RefreshCw size={20} aria-hidden />{t('weather.error.retry')}
+          </button>
+        </div>
       </PageShell>
     );
   }
 
-  // Prepare accurate rainfall chart data
-  const rainfallData = forecast.slice(0, 7).map((day, index) => ({
-    date: format(new Date(day.dt * 1000), 'EEE'),
-    rainfall: day.rain || 0,
-    cumulative: forecast.slice(0, index + 1).reduce((sum, d) => sum + (d.rain || 0), 0)
-  }));
+  // A farmer must be able to tell his own field from a borrowed reading.
+  const provenance = (() => {
+    if (locationSource === 'regional') return { label: regionalFallbackLabel || t('weather.provenance.regional'), tone: 'bg-warning/15 text-warning' };
+    if (weatherDistanceKm !== null && weatherDistanceKm !== undefined && weatherDistanceKm > 0.5) {
+      return {
+        label: weatherStationName ? t('weather.provenance.named_station', { name: weatherStationName, km: weatherDistanceKm }) : t('weather.provenance.nearby_station', { km: weatherDistanceKm }),
+        tone: 'bg-info/15 text-info',
+      };
+    }
+    if (locationSource === 'farm') return { label: t('weather.provenance.your_field'), tone: 'bg-success/15 text-success' };
+    if (locationSource === 'gps') return { label: t('weather.provenance.your_location'), tone: 'bg-success/15 text-success' };
+    return null;
+  })();
 
-  // Animation variants for modern AccuWeather-style animations
-  const fadeInUp = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 }
-  };
+  const updatedText = (() => {
+    if (!lastUpdated) return null;
+    const minutes = Math.round((Date.now() - lastUpdated) / 60000);
+    if (minutes < 1) return t('weather.header.updated_now');
+    if (minutes < 60) return t('weather.header.updated_minutes', { minutes });
+    const hours = Math.floor(minutes / 60);
+    return hours === 1 ? t('weather.header.updated_hour') : t('weather.header.updated_hours', { hours });
+  })();
 
-  const scaleIn = {
-    hidden: { opacity: 0, scale: 0.8 },
-    visible: { opacity: 1, scale: 1 }
-  };
+  const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString(numLocale, { hour: 'numeric', minute: '2-digit' });
+  const HeroIcon = getWeatherIcon(currentWeather.main);
 
-  const slideIn = {
-    hidden: { opacity: 0, x: -20 },
-    visible: { opacity: 1, x: 0 }
-  };
+  const week = forecast.slice(0, 7);
+  const weekRain = week.reduce((sum, day) => sum + (day.rain || 0), 0);
+  const maxRain = Math.max(...week.map((day) => day.rain || 0), 0);
+  const hours = (hourlyForecast || []).slice(0, 12);
+
+  const uv = currentWeather.uv_index;
+  const uvTone = uv !== undefined && uv > 7 ? 'text-destructive' : uv !== undefined && uv > 3 ? 'text-warning' : 'text-success';
+  const windKmh = Math.round(currentWeather.wind_speed * 3.6);
+  const visibilityKm = (currentWeather.visibility / 1000).toFixed(1);
+  const stats: Array<{ key: string; icon: LucideIcon; label: string; value: string; unit: string; tone: string }> = [
+    { key: 'wind', icon: Wind, label: t('weather.stats.wind'), value: String(windKmh), unit: t('weather.units.kmh'), tone: getStatColor('wind', windKmh) },
+    { key: 'humidity', icon: Droplets, label: t('weather.stats.humidity'), value: String(currentWeather.humidity), unit: t('weather.units.percent'), tone: getStatColor('humidity', currentWeather.humidity) },
+    { key: 'visibility', icon: Eye, label: t('weather.stats.visibility'), value: visibilityKm, unit: t('weather.units.km'), tone: getStatColor('visibility', Number(visibilityKm)) },
+    { key: 'pressure', icon: Gauge, label: t('weather.stats.pressure'), value: String(currentWeather.pressure), unit: t('weather.units.hpa'), tone: 'text-foreground' },
+    { key: 'uv', icon: Sun, label: t('weather.stats.uv'), value: uv !== undefined ? uv.toFixed(1) : '--', unit: '', tone: uvTone },
+    { key: 'dew', icon: Thermometer, label: t('weather.stats.dew_point'), value: currentWeather.dew_point !== undefined ? `${Math.round(currentWeather.dew_point)}°` : '--', unit: '', tone: 'text-success' },
+  ];
 
   return (
-    <PageShell variant="plain" padding="none" spacing="none" className="relative">
-      <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30 fixed inset-0 pointer-events-none" />
-
+    <PageShell variant="plain" padding="none" spacing="none">
       {/* PullRefreshController inherits the global scroll container — no nested scroller. */}
       <PullRefreshController onRefresh={handleManualSync} threshold={80}>
-        <div className="relative z-10">
-          {/* Hero Section with Weather Info */}
-          <WeatherHeroCard
-            currentWeather={currentWeather}
-            location={currentWeather.location || t('weather.header.current_location')}
-            lastSyncTime={lastUpdated ? new Date(lastUpdated) : null}
-            isRefreshing={false}
-            onRefresh={handleManualSync}
-            weatherIcon={getWeatherIcon(currentWeather.main, 'large')}
-            weatherCondition={getWeatherCondition()}
-            gradient={getWeatherGradient()}
-            lastUpdated={lastUpdated}
-            locationSource={locationSource as any}
-            regionalFallbackLabel={regionalFallbackLabel}
-            weatherDistanceKm={weatherDistanceKm}
-            weatherStationName={weatherStationName}
-            isStale={isStale}
-          />
+        <div className="flex flex-col gap-3 pb-4" style={{ fontSize: 'var(--lf-fs-body)', lineHeight: 1.55 }}>
+          {/* Now: where the reading is from, then the reading */}
+          <section aria-label={t('weather.aria.hero_card')} style={{ padding: '12px var(--lf-gut) 0', background: 'linear-gradient(to bottom, hsl(var(--info) / 0.18), hsl(var(--info) / 0))' }}>
+            <div className="flex items-start gap-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <h1 className="lf-head flex items-center gap-1.5"><MapPin size={20} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0 truncate">{currentWeather.location || t('weather.header.current_location')}</span></h1>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {provenance && <span className={`lf-pill lf-pill-sm ${provenance.tone}`}><Satellite size={14} aria-hidden />{provenance.label}</span>}
+                  {isStale && <span className="lf-pill lf-pill-sm bg-warning/15 text-warning"><AlertTriangle size={14} aria-hidden />{t('weather.provenance.stale')}</span>}
+                </div>
+                <p className="lf-cap text-muted-foreground">
+                  {new Date().toLocaleDateString(numLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
+                  {updatedText && <> · {t('weather.header.updated_prefix')} {updatedText}</>}
+                </p>
+              </div>
+              <button type="button" onClick={() => { void handleManualSync().catch(() => undefined); }} aria-label={t('weather.aria.refresh_button')} className="lf-round border border-border bg-card text-foreground">
+                <RefreshCw size={22} aria-hidden />
+              </button>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-start gap-1">
+                  <span className="lf-stat" style={{ fontSize: 'clamp(64px, 21vw, 104px)' }}>{Math.round(currentWeather.temp)}</span>
+                  <span className="lf-head mt-2 text-muted-foreground">{t('weather.units.celsius')}</span>
+                </div>
+                <p className="lf-head mt-1 capitalize" style={{ overflowWrap: 'anywhere' }}>{currentWeather.description}</p>
+                <p className="lf-lab mt-0.5 flex items-center gap-1 font-normal text-muted-foreground"><Thermometer size={16} aria-hidden />{t('weather.hero.feels_like', { temp: Math.round(currentWeather.feels_like) })}</p>
+              </div>
+              <div className="flex shrink-0 flex-col items-center gap-2">
+                <span className="grid place-items-center rounded-[32%] bg-card text-primary shadow-sm" style={{ width: 'clamp(72px, 22vw, 104px)', height: 'clamp(72px, 22vw, 104px)' }}><HeroIcon style={{ width: '55%', height: '55%' }} aria-hidden /></span>
+                {currentWeather.provider && <span className="lf-cap text-muted-foreground">{currentWeather.provider}</span>}
+              </div>
+            </div>
+
+            {(currentWeather.sunrise || currentWeather.sunset) && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {currentWeather.sunrise && <span className="lf-pill lf-pill-sm bg-warning/15 text-foreground"><Sunrise size={16} className="text-warning" aria-hidden />{clock(currentWeather.sunrise)}</span>}
+                {currentWeather.sunset && <span className="lf-pill lf-pill-sm bg-primary/10 text-foreground"><Sunset size={16} className="text-primary" aria-hidden />{clock(currentWeather.sunset)}</span>}
+              </div>
+            )}
+          </section>
+
+          <div style={gut}><VoiceWeatherSummary currentWeather={currentWeather} forecast={forecast} className="w-full" /></div>
 
           {/* Land selector — only meaningful when the farmer has multiple fields */}
           {lands && lands.length > 1 && (
-            <div className="px-4 pt-3">
+            <div style={gut}>
               <Select value={selectedLandId} onValueChange={setSelectedLandId}>
-                <SelectTrigger className="h-9 text-xs rounded-xl">
+                <SelectTrigger className="rounded-full text-base" style={{ minHeight: 'var(--lf-tap)' }}>
                   <SelectValue placeholder={t('weather.field.select')} />
                 </SelectTrigger>
                 <SelectContent>
                   {lands.map((l: any) => (
-                    <SelectItem key={l.id} value={l.id} className="text-xs">
+                    <SelectItem key={l.id} value={l.id} className="py-3 text-base">
                       {l.name}{l.area_acres ? ` · ${l.area_acres} ac` : ''}
                     </SelectItem>
                   ))}
@@ -237,233 +220,75 @@ export default function Weather() {
 
           {/* MODEL B — DB-derived field intelligence */}
           {selectedLandId && (
-            <LandAgronomyPanel
-              state={landState}
-              landName={selectedLand?.name}
-              isToday={landStateIsToday}
-              isLoading={landStateLoading}
-            />
+            <LandAgronomyPanel state={landState} landName={selectedLand?.name} isToday={landStateIsToday} isLoading={landStateLoading} />
           )}
 
-
-
-          {/* Sunrise/Sunset Row - NEW: Shows real data from API */}
-          {(currentWeather.sunrise || currentWeather.sunset) && (
-            <motion.div
-              variants={fadeInUp}
-              initial="hidden"
-              animate="visible"
-              transition={{ delay: 0.15 }}
-              className="px-3 pt-3 pb-1"
-            >
-              <div className="flex justify-center gap-6">
-                {currentWeather.sunrise && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-warning/10 to-warning/10 border border-warning/20">
-                    <Sunrise className="h-4 w-4 text-warning" />
-                    <span className="text-xs font-medium">
-                      {format(new Date(currentWeather.sunrise * 1000), 'h:mm a')}
-                    </span>
-                  </div>
-                )}
-                {currentWeather.sunset && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-info/10 border border-primary/20">
-                    <Sunset className="h-4 w-4 text-primary" />
-                    <span className="text-xs font-medium">
-                      {format(new Date(currentWeather.sunset * 1000), 'h:mm a')}
-                    </span>
-                  </div>
-                )}
+          <section aria-label={t('weather.aria.stats_grid')} className="lf-grid3" style={gut}>
+            {stats.map((stat) => (
+              <div key={stat.key} className={`${card} flex min-w-0 flex-col items-center gap-0.5 text-center`} style={{ padding: 'clamp(8px, 2.6vw, 14px) 4px' }}>
+                <stat.icon size={22} className={stat.tone} aria-hidden />
+                <span className={`lf-head ${stat.tone}`} style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{stat.value}{stat.unit && <span className="lf-cap ms-0.5 text-muted-foreground">{stat.unit}</span>}</span>
+                <span className="lf-cap w-full truncate text-muted-foreground">{stat.label}</span>
               </div>
-            </motion.div>
+            ))}
+          </section>
+
+          <FarmingRecommendations currentWeather={currentWeather} forecast={forecast} landState={landStateIsToday ? landState : null} />
+
+          {hours.length > 0 && (
+            <section style={gut} aria-label={t('weather.aria.hourly_chart')}>
+              <div className={card} style={pad}>
+                <h2 className="lf-head flex items-center gap-2"><Clock size={20} className="text-primary" aria-hidden />{t('weather.hourly.title')}</h2>
+                <ul className="mt-2 flex gap-1 overflow-x-auto pb-1">
+                  {hours.map((hour, index) => {
+                    const chance = Math.round((hour.pop || 0) * 100);
+                    return (
+                      <li key={hour.dt} className={`flex shrink-0 flex-col items-center gap-1 rounded-2xl px-2 py-2 ${index === 0 ? 'bg-primary/10' : ''}`} style={{ minWidth: 'clamp(56px, 16vw, 72px)' }}>
+                        <span className="lf-cap text-muted-foreground">{index === 0 ? t('weather.hourly.now') : new Date(hour.dt * 1000).toLocaleTimeString(numLocale, { hour: 'numeric' })}</span>
+                        <b className="lf-head" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{Math.round(hour.temp)}°</b>
+                        <span className="flex h-10 w-2.5 items-end overflow-hidden rounded-full bg-muted" aria-hidden><span className="w-full rounded-full bg-info" style={{ height: `${chance}%` }} /></span>
+                        <span className={`lf-cap flex items-center gap-0.5 ${chance > 0 ? 'text-info' : 'text-muted-foreground'}`}><Droplets size={12} aria-hidden /><span className="sr-only">{t('weather.hourly.rain')}</span>{chance}{t('weather.units.percent')}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </section>
           )}
 
-          {/* Quick Stats Grid - Modern 2030 Design */}
-          <div className="px-3 py-2 relative z-20">
-            <motion.div 
-              variants={fadeInUp}
-              initial="hidden"
-              animate="visible"
-              transition={{ delay: 0.2 }}
-              className="grid grid-cols-3 gap-2"
-            >
-              {/* Row 1: Primary Stats */}
-              {[
-                { icon: Wind, label: t('weather.stats.wind'), value: Math.round(currentWeather.wind_speed * 3.6), unit: t('weather.units.kmh'), type: 'wind', gradient: 'from-info/10 to-info/10' },
-                { icon: Droplets, label: t('weather.stats.humidity'), value: currentWeather.humidity, unit: t('weather.units.percent'), type: 'humidity', gradient: 'from-info/10 to-info/10' },
-                { icon: Eye, label: t('weather.stats.visibility'), value: (currentWeather.visibility / 1000).toFixed(1), unit: t('weather.units.km'), type: 'visibility', gradient: 'from-success/10 to-success/10' }
-
-              ].map((stat, index) => (
-                <motion.div
-                  key={stat.label}
-                  variants={scaleIn}
-                  initial="hidden"
-                  animate="visible"
-                  transition={{ delay: 0.25 + index * 0.05 }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className={cn(
-                    "bg-gradient-to-br backdrop-blur-xl rounded-2xl p-3 border border-white/10 shadow-sm",
-                    stat.gradient
-                  )}
-                >
-                  <div className="flex flex-col items-center text-center gap-1">
-                    <stat.icon className={cn("h-5 w-5", getStatColor(stat.type, Number(stat.value)))} />
-                    <span className={cn("text-xl font-bold tracking-tight", getStatColor(stat.type, Number(stat.value)))}>
-                      {stat.value}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground font-medium">{stat.label}</span>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-
-            {/* Row 2: Secondary Stats + Voice */}
-            <motion.div 
-              variants={fadeInUp}
-              initial="hidden"
-              animate="visible"
-              transition={{ delay: 0.3 }}
-              className="grid grid-cols-4 gap-2 mt-2"
-            >
-              {/* Voice Button */}
-              <motion.div
-                variants={scaleIn}
-                initial="hidden"
-                animate="visible"
-                transition={{ delay: 0.3 }}
-                className="bg-gradient-to-br from-primary/10 to-primary/5 backdrop-blur-xl rounded-2xl p-2 border border-primary/20 shadow-sm flex items-center justify-center"
-              >
-                <VoiceWeatherSummary
-                  currentWeather={currentWeather}
-                  forecast={forecast}
-                  className="w-full"
-                />
-              </motion.div>
-
-              {/* Pressure */}
-              <motion.div
-                variants={scaleIn}
-                initial="hidden"
-                animate="visible"
-                transition={{ delay: 0.35 }}
-                className="bg-gradient-to-br from-gray-500/10 to-slate-500/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
-              >
-                <div className="flex flex-col items-center text-center gap-0.5">
-                  <Gauge className="h-4 w-4 text-foreground/80" />
-                  <span className="text-sm font-bold">{currentWeather.pressure}</span>
-                  <span className="text-[9px] text-muted-foreground">hPa</span>
+          <section style={gut} aria-label={t('weather.aria.rainfall_chart')}>
+            <div className={card} style={pad}>
+              <h2 className="lf-head flex items-center gap-2"><Umbrella size={20} className="text-primary" aria-hidden />{t('weather.rainfall.title')}</h2>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div>
+                  <p className="lf-cap text-muted-foreground">{t('weather.rainfall.today')}</p>
+                  <p className="lf-head text-primary">{forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} {t('weather.units.mm')}</p>
                 </div>
-              </motion.div>
-
-              {/* UV Index - NEW: Real data from API */}
-              <motion.div
-                variants={scaleIn}
-                initial="hidden"
-                animate="visible"
-                transition={{ delay: 0.4 }}
-                className={cn(
-                  "bg-gradient-to-br backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm",
-                  currentWeather.uv_index !== undefined && currentWeather.uv_index > 7 
-                    ? "from-destructive/10 to-warning/10" 
-                    : currentWeather.uv_index !== undefined && currentWeather.uv_index > 3 
-                      ? "from-warning/10 to-warning/10"
-                      : "from-success/10 to-success/10"
-                )}
-              >
-                <div className="flex flex-col items-center text-center gap-0.5">
-                  <Sun className={cn(
-                    "h-4 w-4",
-                    currentWeather.uv_index !== undefined && currentWeather.uv_index > 7 
-                      ? "text-destructive" 
-                      : currentWeather.uv_index !== undefined && currentWeather.uv_index > 3 
-                        ? "text-warning"
-                        : "text-success"
-                  )} />
-                  <span className="text-sm font-bold">
-                    {currentWeather.uv_index !== undefined ? currentWeather.uv_index.toFixed(1) : '--'}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">{t('weather.stats.uv')}</span>
+                <div>
+                  <p className="lf-cap text-muted-foreground">{t('weather.rainfall.week')}</p>
+                  <p className="lf-head text-primary">{weekRain.toFixed(1)} {t('weather.units.mm')}</p>
                 </div>
-              </motion.div>
+              </div>
+              {maxRain > 0 ? (
+                <ul className="mt-3 flex items-end gap-1.5">
+                  {week.map((day) => {
+                    const mm = day.rain || 0;
+                    return (
+                      <li key={day.dt} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                        <span className="lf-cap text-muted-foreground" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{mm > 0 ? mm.toFixed(mm < 10 ? 1 : 0) : ''}</span>
+                        <span className="flex h-16 w-full items-end overflow-hidden rounded-lg bg-muted" aria-hidden><span className="w-full rounded-lg bg-info" style={{ height: `${(mm / maxRain) * 100}%` }} /></span>
+                        <span className="lf-cap w-full truncate text-center text-muted-foreground">{new Date(day.dt * 1000).toLocaleDateString(numLocale, { weekday: 'short' })}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="lf-lab mt-3 font-normal text-muted-foreground">{t('weather.rainfall.no_rain')}</p>
+              )}
+            </div>
+          </section>
 
-              {/* Dew Point - NEW: Real data from API */}
-              <motion.div
-                variants={scaleIn}
-                initial="hidden"
-                animate="visible"
-                transition={{ delay: 0.45 }}
-                className="bg-gradient-to-br from-success/10 to-info/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
-              >
-                <div className="flex flex-col items-center text-center gap-0.5">
-                  <Thermometer className="h-4 w-4 text-success" />
-                  <span className="text-sm font-bold">
-                    {currentWeather.dew_point !== undefined ? Math.round(currentWeather.dew_point) : '--'}°
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">{t('weather.stats.dew_point')}</span>
-                </div>
-              </motion.div>
-            </motion.div>
-          </div>
-
-          {/* Main Scrollable Content */}
-          <div className="pb-24 space-y-1">
-            {/* Farming Recommendations */}
-            <FarmingRecommendations
-              currentWeather={currentWeather}
-              forecast={forecast}
-              landState={landStateIsToday ? landState : null}
-            />
-
-
-            {/* Hourly Forecast Chart - NEW: Line chart instead of cards */}
-            {hourlyForecast && hourlyForecast.length > 0 && (
-              <HourlyForecastChart hourlyForecast={hourlyForecast} />
-            )}
-
-            {/* Rainfall Summary */}
-            <motion.div 
-              variants={fadeInUp}
-              initial="hidden"
-              animate="visible"
-              transition={{ delay: 0.5 }}
-              className="px-4 py-3"
-            >
-              <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5">
-                      <Umbrella className="h-3.5 w-3.5 text-primary" />
-                      {t('weather.rainfall.title')}
-                    </span>
-                    <Badge variant="secondary" className="text-xs">{t('weather.forecast.days_7')}</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 pb-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.today')}</p>
-                      <p className="text-lg font-bold text-primary">
-                        {forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} {t('weather.units.mm')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.week')}</p>
-                      <p className="text-lg font-bold text-primary">
-                        {forecast ? forecast.slice(0, 7).reduce((sum, day) => sum + (day.rain || 0), 0).toFixed(1) : '0.0'} {t('weather.units.mm')}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="h-24">
-                    <RainfallChart data={rainfallData} />
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* 7-Day Forecast - Modern 2030 Component */}
-            <SevenDayForecast forecast={forecast} />
-          </div>
+          <SevenDayForecast forecast={forecast} />
         </div>
       </PullRefreshController>
     </PageShell>
