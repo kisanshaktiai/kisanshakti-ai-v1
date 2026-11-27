@@ -1,20 +1,16 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { ElementType } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/stores/authStore';
 import { farmerAuthService, isMultiRoleEnabled } from '@/services/farmerAuthService';
-import { 
-  User, 
-  Phone, 
-  MapPin, 
-  LogOut, 
-  Edit, 
-  TrendingUp, 
+import {
+  Phone,
+  MapPin,
+  LogOut,
+  Pencil,
+  TrendingUp,
   Droplets,
-  Wheat,
   Calendar,
   Award,
   Tractor,
@@ -22,38 +18,76 @@ import {
   Activity,
   BarChart3,
   Clock,
-  Users
+  Users,
+  Bell,
+  Sprout,
+  LandPlot,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { TTSSettingsPanel } from '@/components/tts';
 import { PageShell } from '@/components/layout/PageShell';
 import { useNavigate } from 'react-router-dom';
-import { format, formatDistanceToNow } from 'date-fns';
-import { 
-  AreaChart, 
-  Area, 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell,
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  RadialBarChart,
-  RadialBar,
-  Legend
-} from 'recharts';
 import { SyncStatus } from '@/components/sync/SyncStatus';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
+import { IconTile, SectionCard, SettingsGroup, SettingsRow } from '@/components/profile/SettingsList';
 import { SubscriptionCard } from '@/components/subscription/SubscriptionCard';
 import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
+import { useCropNames } from '@/hooks/useCropNames';
+import { formatFarmerDate } from '@/lib/dateFormat';
+
+// Values the Edit Profile selects save; each one already has its label in
+// the profile_edit bundle (farmType<Value>, <irrigation value in lower case>).
+const FARM_TYPE_VALUES = ['Small', 'Medium', 'Large', 'Commercial'];
+const IRRIGATION_VALUES = ['drip', 'sprinkler', 'canal', 'tubewell', 'rainfed'];
+
+interface FactTileProps {
+  icon: ElementType;
+  label: string;
+  value: string;
+  /** true / false adds a tick or a cross, so the answer reads without the words. */
+  status?: boolean;
+}
+
+function FactTile({ icon, label, value, status }: FactTileProps) {
+  return (
+    <div className="rounded-2xl bg-muted/50 p-3">
+      <div className="flex items-center gap-2">
+        <IconTile icon={icon} size="sm" />
+        <span className="min-w-0 text-sm font-medium leading-tight text-muted-foreground">{label}</span>
+      </div>
+      <p className="mt-2 flex items-start gap-1.5 text-base font-semibold leading-snug text-foreground">
+        {status === true && <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />}
+        {status === false && <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        <span className="min-w-0 break-words">{value}</span>
+      </p>
+    </div>
+  );
+}
+
+interface UsageStatProps {
+  icon: ElementType;
+  label: string;
+  value: string | number;
+}
+
+function UsageStat({ icon: Icon, label, value }: UsageStatProps) {
+  return (
+    <div className="rounded-2xl bg-muted/50 p-3">
+      <p className="break-words text-lg font-bold leading-tight text-foreground">{value}</p>
+      <p className="mt-1 flex items-center gap-1.5 text-sm leading-tight text-muted-foreground">
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="min-w-0">{label}</span>
+      </p>
+    </div>
+  );
+}
 
 export default function Profile() {
-  const { t } = useTranslation();
-  const { join: joinPlace, place: placeName } = useLocalizedPlace();
-  const { user, logout } = useAuthStore();
+  const { t, i18n } = useTranslation();
+  const { join: joinPlace } = useLocalizedPlace();
+  const cropNameOf = useCropNames();
+  const { user, setUser, logout } = useAuthStore();
   const navigate = useNavigate();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
 
@@ -70,7 +104,7 @@ export default function Profile() {
         console.warn('Profile analytics unavailable:', error);
       }
     };
-    
+
     fetchAnalytics();
   }, [user?.id]);
 
@@ -83,40 +117,18 @@ export default function Profile() {
     navigate('/app/profile/edit');
   };
 
+  // Show the new photo at once, the same way the Edit Profile page does.
+  const handleAvatarUpdate = (url: string) => {
+    if (user) {
+      setUser({ ...user, avatarUrl: url });
+    }
+  };
+
   // Format location string
   const getLocation = () => {
     const s = joinPlace({ village: user?.village, taluka: user?.taluka, district: user?.district, state: user?.state });
-    return s || t('profile.info.not_set', 'Location not set');
+    return s || t('profile.info.location_not_set');
   };
-
-  // Format crops array
-  const getCrops = () => {
-    if (user?.primaryCrops && user.primaryCrops.length > 0) {
-      return user.primaryCrops;
-    }
-    return ['Not specified'];
-  };
-
-  // Mock data for charts
-  const yieldData = [
-    { month: 'Jan', yield: 65 },
-    { month: 'Feb', yield: 72 },
-    { month: 'Mar', yield: 78 },
-    { month: 'Apr', yield: 85 },
-    { month: 'May', yield: 90 },
-    { month: 'Jun', yield: 95 },
-  ];
-
-  const cropDistribution = [
-    { name: 'Wheat', value: 40, color: 'hsl(var(--success))' },
-    { name: 'Rice', value: 30, color: 'hsl(var(--info))' },
-    { name: 'Cotton', value: 20, color: 'hsl(var(--warning))' },
-    { name: 'Others', value: 10, color: 'hsl(var(--accent))' },
-  ];
-
-  const farmScore = [
-    { name: 'Farm Score', value: 78, fill: 'hsl(var(--success))' }
-  ];
 
   // Calculate profile completion
   const calculateProfileCompletion = () => {
@@ -141,404 +153,260 @@ export default function Profile() {
 
   const profileCompletion = calculateProfileCompletion();
 
+  // Dates in the app language (lib/dateFormat), not date-fns English.
+  const formatDate = (time: number) => formatFarmerDate(new Date(time), (i18n.language || 'en').split('-')[0]);
+
+  // Same wording as the sync card: just now / minutes / hours, then the date.
+  const formatLastActive = (value: string) => {
+    const time = new Date(value).getTime();
+    if (Number.isNaN(time)) return t('profile.analytics.unknown');
+    const diff = Date.now() - time;
+    if (diff < 60000) return t('sync.just_now');
+    if (diff < 3600000) return t('sync.minutes_ago', { count: Math.floor(diff / 60000) });
+    if (diff < 86400000) return t('sync.hours_ago', { count: Math.floor(diff / 3600000) });
+    return formatDate(time);
+  };
+
+  const formatMemberSince = (value: string) => {
+    const time = new Date(value).getTime();
+    if (Number.isNaN(time)) return t('profile.analytics.unknown');
+    return formatDate(time);
+  };
+
+  const displayName = user?.farmerName || user?.fullName || user?.name || t('profile.role.farmer');
+  const shortLocation =
+    joinPlace({ village: user?.village, district: user?.district }, ['village', 'district']) ||
+    t('profile.info.location_not_set');
+  const crops = user?.primaryCrops && user.primaryCrops.length > 0 ? user.primaryCrops : [];
+
+  const farmTypeLabel = !user?.farmType
+    ? t('profile.farm_info.not_specified')
+    : FARM_TYPE_VALUES.includes(user.farmType)
+    ? t(`profile_edit.farmType${user.farmType}`)
+    : t(`profile.farm_type.${user.farmType.toLowerCase()}`, user.farmType);
+
+  const irrigationLabel = !user?.hasIrrigation
+    ? t('profile.farm_info.no')
+    : !user.irrigationType
+    ? t('profile.farm_info.yes')
+    : IRRIGATION_VALUES.includes(user.irrigationType.toLowerCase())
+    ? t(`profile_edit.${user.irrigationType.toLowerCase()}`)
+    : user.irrigationType;
+
   return (
     <PageShell padding="default" spacing="none">
-      <div className="space-y-6 animate-fade-in">
-        {/* Sync Status Card */}
-        <SyncStatus />
+      <div className="mx-auto w-full max-w-2xl animate-fade-in space-y-4 lg:grid lg:max-w-5xl lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
+        {/* ── Column 1: who the farmer is ─────────────────────────────── */}
+        <div className="space-y-4">
+          {/* Identity */}
+          <section className="relative overflow-hidden rounded-3xl bg-primary text-primary-foreground shadow-md">
+            <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-14 h-44 w-44 rounded-full bg-primary-foreground/10" />
+            <div aria-hidden="true" className="pointer-events-none absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-primary-foreground/5" />
 
-        {/* Subscription Card — entry point to /app/subscription */}
-        <SubscriptionCard />
-
-        {/* Header Section */}
-      <div className="relative">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/10 rounded-2xl blur-2xl" />
-        <Card className="relative border-0 bg-gradient-to-br from-card to-card/95 shadow-xl">
-          <CardContent className="p-6">
-            {/* Edit Button - Top Right Corner */}
-            <Button 
-              onClick={handleEditProfile} 
-              size="icon"
-              variant="ghost"
-              className="absolute top-4 right-4 w-8 h-8 rounded-full hover:bg-primary/10"
-            >
-              <Edit className="w-4 h-4" />
-            </Button>
-            
-            <div className="flex items-start gap-4">
-              <div className="relative">
-                <AvatarUpload 
+            <div className="relative p-5">
+              <div className="flex items-center gap-4">
+                <AvatarUpload
                   currentAvatarUrl={user?.avatarUrl}
+                  onAvatarUpdate={handleAvatarUpdate}
                   size="lg"
                   editable={true}
                 />
-                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-success rounded-full border-2 border-card" />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-foreground">
-                  {user?.farmerName || user?.fullName || user?.name || 'Farmer'}
-                </h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="secondary" className="bg-primary/10 text-primary">
+                <div className="min-w-0 flex-1">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-foreground/15 px-2.5 py-1 text-xs font-semibold">
+                    <Sprout className="h-3.5 w-3.5" aria-hidden="true" />
                     {t('profile.role.farmer')}
-                  </Badge>
-                  <Badge variant="outline">
-                    {user?.farmType ? t(`profile.farm_type.${user.farmType.toLowerCase()}`, user.farmType) : t('profile.farm_type.general')}
-                  </Badge>
+                  </span>
+                  <h1 className="mt-1.5 line-clamp-2 break-words text-xl font-bold leading-tight">{displayName}</h1>
                 </div>
               </div>
-            </div>
 
-            {/* Profile Completion */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t('profile.completion.label')}</span>
-                <span className="font-medium">{profileCompletion}%</span>
-              </div>
-              <Progress value={profileCompletion} className="h-2" />
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg">
-                <Phone className="w-4 h-4 text-primary" />
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.info.phone')}</p>
-                  <p className="text-sm font-medium">{user?.phone || t('profile.info.not_set')}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg">
-                <MapPin className="w-4 h-4 text-primary" />
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.info.location')}</p>
-                  <p className="text-sm font-medium truncate">{placeName(user?.district, 'district') || t('profile.info.not_set')}</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* App Usage Analytics */}
-      {analyticsData && (
-        <Card className="border-0 shadow-lg">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              {t('profile.analytics.title')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Activity className="w-3 h-3" />
-                  <p className="text-xs">{t('profile.analytics.total_opens')}</p>
-                </div>
-                <p className="text-2xl font-bold text-primary">{analyticsData.total_app_opens || 0}</p>
-              </div>
-              
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="w-3 h-3" />
-                  <p className="text-xs">{t('profile.analytics.last_active')}</p>
-                </div>
-                <p className="text-sm font-semibold">
-                  {analyticsData.last_app_open 
-                    ? formatDistanceToNow(new Date(analyticsData.last_app_open), { addSuffix: true })
-                    : t('profile.analytics.never')}
+              <div className="mt-4 space-y-1.5 text-sm text-primary-foreground/90">
+                <p className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="sr-only">{t('profile.info.phone')}: </span>
+                  <span className="font-medium">{user?.phone || t('profile.info.not_set')}</span>
+                </p>
+                <p className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="sr-only">{t('profile.info.location')}: </span>
+                  <span className="min-w-0 truncate font-medium">{shortLocation}</span>
                 </p>
               </div>
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Calendar className="w-3 h-3" />
-                  <p className="text-xs">{t('profile.analytics.member_since')}</p>
-                </div>
-                <p className="text-xs font-medium">
-                  {analyticsData.created_at 
-                    ? format(new Date(analyticsData.created_at), 'MMM yyyy')
-                    : t('profile.analytics.unknown')}
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <TrendingUp className="w-3 h-3" />
-                  <p className="text-xs">{t('profile.analytics.ai_queries')}</p>
-                </div>
-                <p className="text-2xl font-bold text-success">{analyticsData.total_queries || 0}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Farm Analytics Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Farm Score Card */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="w-4 h-4 text-primary" />
-                {t('profile.performance.title')}
-              </CardTitle>
-              <Badge variant="secondary" className="bg-success/10 text-success">
-                {t('profile.performance.good')}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={150}>
-              <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={farmScore}>
-                <RadialBar dataKey="value" cornerRadius={10} fill="hsl(var(--success))" />
-                <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold">
-                  78%
-                </text>
-              </RadialBarChart>
-            </ResponsiveContainer>
-            <div className="flex justify-around mt-2">
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">{t('profile.performance.yield')}</p>
-                <p className="text-sm font-semibold">85%</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">{t('profile.performance.efficiency')}</p>
-                <p className="text-sm font-semibold">72%</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">{t('profile.performance.sustainability')}</p>
-                <p className="text-sm font-semibold">90%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Crop Distribution */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Wheat className="w-4 h-4 text-primary" />
-              {t('profile.crops.distribution_title')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={150}>
-              <PieChart>
-                <Pie
-                  data={cropDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={40}
-                  outerRadius={60}
-                  paddingAngle={2}
-                  dataKey="value"
+              {/* Profile Completion — shown only while something is missing */}
+              {profileCompletion < 100 && (
+                <div
+                  className="mt-4 rounded-2xl bg-primary-foreground/10 px-3 py-2.5"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={profileCompletion}
+                  aria-label={t('profile.completion.label')}
                 >
-                  {cropDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {cropDistribution.map((crop) => (
-                <div key={crop.name} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: crop.color }} />
-                  <span className="text-xs">{crop.name} ({crop.value}%)</span>
+                  <div className="flex items-center justify-between gap-3 text-sm font-medium">
+                    <span>{t('profile.completion.label')}</span>
+                    <span className="font-bold">{profileCompletion}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-primary-foreground/25">
+                    <div className="h-full rounded-full bg-primary-foreground" style={{ width: `${profileCompletion}%` }} />
+                  </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              )}
 
-      {/* Yield Trend */}
-      <Card className="border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary" />
-            {t('profile.yield.trend_title')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={yieldData}>
-              <defs>
-                <linearGradient id="colorYield" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="month" className="text-muted-foreground" fontSize={12} />
-              <YAxis className="text-muted-foreground" fontSize={12} />
-              <Tooltip />
-              <Area 
-                type="monotone" 
-                dataKey="yield" 
-                stroke="hsl(var(--success))" 
-                strokeWidth={2}
-                fillOpacity={1} 
-                fill="url(#colorYield)" 
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Farm Details */}
-      <Card className="border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-base">{t('profile.farm_info.title')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <MapPin className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.total_land')}</p>
-                  <p className="text-sm font-semibold">{user?.totalLandAcres || 0} {t('profile.farm_info.acres')}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.experience')}</p>
-                  <p className="text-sm font-semibold">{user?.farmingExperienceYears || 0} {t('profile.farm_info.years')}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Award className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.farm_type')}</p>
-                  <p className="text-sm font-semibold">{user?.farmType ? t(`profile.farm_type.${user.farmType.toLowerCase()}`, user.farmType) : t('profile.farm_info.not_specified')}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Droplets className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.irrigation')}</p>
-                  <p className="text-sm font-semibold">
-                    {user?.hasIrrigation ? (user?.irrigationType || t('profile.farm_info.yes')) : t('profile.farm_info.no')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Tractor className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.tractor')}</p>
-                  <p className="text-sm font-semibold">{user?.hasTractor ? t('profile.farm_info.available') : t('profile.farm_info.not_available')}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Package className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.storage')}</p>
-                  <p className="text-sm font-semibold">{user?.hasStorage ? t('profile.farm_info.available') : t('profile.farm_info.not_available')}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Crops Section */}
-      <Card className="border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-base">{t('profile.primary_crops')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {getCrops().map((crop, index) => (
-              <Badge 
-                key={index} 
-                variant="secondary"
-                className="bg-primary/10 text-primary border-0 px-3 py-1"
+              <button
+                type="button"
+                onClick={handleEditProfile}
+                className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary-foreground text-base font-semibold text-primary transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-primary motion-reduce:transition-none"
               >
-                {crop}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+                {t('profile_edit.title')}
+              </button>
+            </div>
+          </section>
 
-      {/* Location Card */}
-      <Card className="border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-base">{t('profile.location_details')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-start gap-3">
-            <MapPin className="w-5 h-5 text-primary mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{getLocation()}</p>
-              {user?.pincode && (
-                <p className="text-xs text-muted-foreground">PIN: {user.pincode}</p>
+          {/* Farm Details */}
+          <SectionCard title={t('profile.farm_info.title')} icon={LandPlot}>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <FactTile
+                icon={MapPin}
+                label={t('profile.farm_info.total_land')}
+                value={`${user?.totalLandAcres || 0} ${t('profile.farm_info.acres')}`}
+              />
+              <FactTile
+                icon={Calendar}
+                label={t('profile.farm_info.experience')}
+                value={`${user?.farmingExperienceYears || 0} ${t('profile.farm_info.years')}`}
+              />
+              <FactTile icon={Award} label={t('profile.farm_info.farm_type')} value={farmTypeLabel} />
+              <FactTile
+                icon={Droplets}
+                label={t('profile.farm_info.irrigation')}
+                value={irrigationLabel}
+                status={!!user?.hasIrrigation}
+              />
+              <FactTile
+                icon={Tractor}
+                label={t('profile.farm_info.tractor')}
+                value={user?.hasTractor ? t('profile.farm_info.available') : t('profile.farm_info.not_available')}
+                status={!!user?.hasTractor}
+              />
+              <FactTile
+                icon={Package}
+                label={t('profile.farm_info.storage')}
+                value={user?.hasStorage ? t('profile.farm_info.available') : t('profile.farm_info.not_available')}
+                status={!!user?.hasStorage}
+              />
+            </div>
+
+            {/* Crops */}
+            <div className="mt-4 border-t border-border pt-4">
+              <h3 className="text-sm font-medium text-muted-foreground">{t('profile.primary_crops')}</h3>
+              {crops.length > 0 ? (
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {crops.map((crop, index) => (
+                    <li
+                      key={index}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary"
+                    >
+                      <Sprout className="h-4 w-4" aria-hidden="true" />
+                      {cropNameOf(crop)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-base font-semibold text-foreground">{t('profile.farm_info.not_specified')}</p>
               )}
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Voice Settings */}
-      <TTSSettingsPanel />
+            {/* Location */}
+            <div className="mt-4 flex items-start gap-3 border-t border-border pt-4">
+              <IconTile icon={MapPin} size="sm" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-medium text-muted-foreground">{t('profile.location_details')}</h3>
+                <p className="mt-0.5 break-words text-base font-semibold leading-snug text-foreground">{getLocation()}</p>
+                {user?.pincode && (
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {t('profile_edit.pincode')}: {user.pincode}
+                  </p>
+                )}
+              </div>
+            </div>
+          </SectionCard>
 
-      {/* Action Buttons */}
-      <div className="space-y-3">
-        <Button 
-          onClick={handleEditProfile} 
-          variant="outline" 
-          className="w-full border-primary/20 hover:bg-primary/5"
-        >
-          <Edit className="w-4 h-4 mr-2" />
-          Edit Profile
-        </Button>
-        
-        {/* Multi-role identity: the farmer's way to the Roles page, where the same
-            person adds the Service Provider or Customer role (no new number, no
-            new PIN) and opens that workspace. Shown only while the flag is on. */}
-        {isMultiRoleEnabled() && (
+          {/* App Usage Analytics */}
+          {analyticsData && (
+            <SectionCard title={t('profile.analytics.title')} icon={BarChart3}>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2">
+                <UsageStat
+                  icon={Activity}
+                  label={t('profile.analytics.total_opens')}
+                  value={analyticsData.total_app_opens || 0}
+                />
+                <UsageStat
+                  icon={TrendingUp}
+                  label={t('profile.analytics.ai_queries')}
+                  value={analyticsData.total_queries || 0}
+                />
+                <UsageStat
+                  icon={Clock}
+                  label={t('profile.analytics.last_active')}
+                  value={analyticsData.last_app_open
+                    ? formatLastActive(analyticsData.last_app_open)
+                    : t('profile.analytics.never')}
+                />
+                <UsageStat
+                  icon={Calendar}
+                  label={t('profile.analytics.member_since')}
+                  value={analyticsData.created_at
+                    ? formatMemberSince(analyticsData.created_at)
+                    : t('profile.analytics.unknown')}
+                />
+              </div>
+            </SectionCard>
+          )}
+        </div>
+
+        {/* ── Column 2: plan, settings and account ────────────────────── */}
+        <div className="space-y-4">
+          {/* Subscription Card — entry point to /app/subscription */}
+          <SubscriptionCard />
+
+          <h2 className="px-1 pt-1 text-sm font-bold text-muted-foreground">{t('menu.settings')}</h2>
+
+          <SettingsGroup>
+            <SettingsRow
+              icon={Bell}
+              title={t('menu.notifications')}
+              description={t('notification.settingsSubtitle')}
+              onClick={() => navigate('/app/notifications/settings')}
+            />
+            {/* Multi-role identity: the farmer's way to the Roles page, where the same
+                person adds the Service Provider or Customer role (no new number, no
+                new PIN) and opens that workspace. Shown only while the flag is on. */}
+            {isMultiRoleEnabled() && (
+              <SettingsRow
+                icon={Users}
+                title={t('identity.profile.addRoleEntry')}
+                onClick={() => navigate('/roles')}
+              />
+            )}
+          </SettingsGroup>
+
+          {/* Voice Settings */}
+          <TTSSettingsPanel />
+
+          {/* Sync Status */}
+          <SyncStatus />
+
           <Button
-            onClick={() => navigate('/roles')}
+            onClick={handleLogout}
             variant="outline"
-            className="w-full border-primary/20 hover:bg-primary/5"
+            className="h-12 w-full border-destructive/40 text-base font-semibold text-destructive hover:border-destructive hover:bg-destructive/5"
           >
-            <Users className="w-4 h-4 mr-2" />
-            {t('identity.profile.addRoleEntry')}
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            {t('auth.logout')}
           </Button>
-        )}
-
-        <Button 
-          onClick={handleLogout} 
-          variant="destructive" 
-          className="w-full"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          {t('auth.logout')}
-        </Button>
-      </div>
+        </div>
       </div>
     </PageShell>
   );

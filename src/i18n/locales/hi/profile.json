@@ -24,6 +24,12 @@
       "not_set": "सेट नहीं",
       "location_not_set": "स्थान सेट नहीं"
     },
+    "avatar": {
+      "crop_title": "फ़ोटो ठीक करें",
+      "zoom": "ज़ूम",
+      "invalid_type": "कृपया फ़ोटो चुनें (JPG, PNG या WEBP)।",
+      "too_large": "फ़ोटो 5 MB से छोटी होनी चाहिए।"
+    },
     "analytics": {
       "title": "ऐप उपयोग सांख्यिकी",
       "total_opens": "कुल खुलना",
@@ -78,7 +84,11 @@
       "autoRead": "ऑटो पढ़ें",
       "autoReadChat": "AI चैट प्रतिक्रियाएं",
       "autoReadAlerts": "मौसम और अलर्ट",
-      "autoReadSchedule": "दैनिक कार्य"
+      "autoReadSchedule": "दैनिक कार्य",
+      "slow": "धीमा",
+      "normal": "सामान्य",
+      "fast": "तेज़",
+      "test_phrase": "नमस्ते! टेक्स्ट टू स्पीच सही काम कर रहा है।"
     },
     "primary_crops": "मुख्य फ़सलें",
     "location_details": "स्थान का विवरण",
@@ -125,7 +135,8 @@
         "predictive_analytics": "पूर्वानुमान विश्लेषण",
         "white_label_mobile_app": "व्हाइट-लेबल ऐप",
         "api_access": "API पहुँच"
-      }
+      },
+      "days_left": "दिन बाकी"
     }
   },
   "__qa": {

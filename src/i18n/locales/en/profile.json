@@ -24,6 +24,12 @@
       "not_set": "Not set",
       "location_not_set": "Location not set"
     },
+    "avatar": {
+      "crop_title": "Adjust your photo",
+      "zoom": "Zoom",
+      "invalid_type": "Please choose a photo (JPG, PNG or WEBP).",
+      "too_large": "The photo must be smaller than 5 MB."
+    },
     "analytics": {
       "title": "App Usage Statistics",
       "total_opens": "Total Opens",
@@ -78,7 +84,11 @@
       "autoRead": "Auto Read",
       "autoReadChat": "AI Chat Responses",
       "autoReadAlerts": "Weather & Alerts",
-      "autoReadSchedule": "Daily Tasks"
+      "autoReadSchedule": "Daily Tasks",
+      "slow": "Slow",
+      "normal": "Normal",
+      "fast": "Fast",
+      "test_phrase": "Hello! Text-to-speech is working perfectly."
     },
     "primary_crops": "Main crops",
     "location_details": "Location details",
@@ -125,7 +135,8 @@
         "predictive_analytics": "Predictive analytics",
         "white_label_mobile_app": "White-label app",
         "api_access": "API access"
-      }
+      },
+      "days_left": "days left"
     }
   },
   "__qa": {

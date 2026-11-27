@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 import { notificationService } from '@/services/notificationService';
-import { Bell, BellOff, Cloud, Calendar, CheckCircle2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Bell, BellOff, CloudSun, Calendar, CheckCircle2, Loader2 } from 'lucide-react';
+import { IconTile, SettingsGroup, SettingsRow, sectionCardClass } from '@/components/profile/SettingsList';
+import { cn } from '@/lib/utils';
 
 export default function NotificationSettings() {
   const { t } = useTranslation();
@@ -103,125 +102,75 @@ export default function NotificationSettings() {
 
   if (loading) {
     return (
-      <Card className="glass-card">
-        <CardContent className="py-8">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className={cn(sectionCardClass, 'flex items-center justify-center py-10')}>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+        <span className="sr-only">{t('common.loading')}</span>
+      </div>
     );
   }
 
   return (
-    <Card className="glass-card border-primary/10 overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 pointer-events-none" />
-      
-      <CardHeader className="relative">
+    <div className="space-y-4">
+      {/* Main Toggle */}
+      <div className={cn(sectionCardClass, 'p-4', isSubscribed && 'border-primary/25 bg-primary/5')}>
         <div className="flex items-center gap-3">
-          <motion.div
-            className="p-2 rounded-xl bg-primary/10"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            {isSubscribed ? (
-              <Bell className="h-5 w-5 text-primary" />
-            ) : (
-              <BellOff className="h-5 w-5 text-muted-foreground" />
-            )}
-          </motion.div>
-          <div>
-            <CardTitle>{t('notification.pushNotifications')}</CardTitle>
-            <CardDescription>
-              {t('notification.pushNotificationsDesc')}
-            </CardDescription>
+          <IconTile icon={isSubscribed ? Bell : BellOff} tone={isSubscribed ? 'primary' : 'muted'} />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold leading-snug text-foreground">{t('notification.pushNotifications')}</h2>
+            <p className="mt-0.5 flex items-center gap-1.5 text-sm leading-snug text-muted-foreground">
+              {isSubscribed && <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />}
+              <span className="min-w-0">{isSubscribed ? t('notification.active') : t('notification.getUpdates')}</span>
+            </p>
           </div>
         </div>
-      </CardHeader>
+        <Button
+          onClick={handleToggleNotifications}
+          disabled={loading}
+          variant={isSubscribed ? 'outline' : 'default'}
+          className="mt-4 h-12 w-full text-base"
+        >
+          {isSubscribed ? <BellOff className="h-4 w-4" aria-hidden="true" /> : <Bell className="h-4 w-4" aria-hidden="true" />}
+          {loading ? t('common.loading') : isSubscribed ? t('notification.disableShort') : t('notification.enableShort')}
+        </Button>
+      </div>
 
-      <CardContent className="space-y-6 relative">
-        {/* Main Toggle */}
-        <div className="flex items-center justify-between p-4 rounded-xl bg-background/50 border border-primary/10">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${isSubscribed ? 'bg-primary/10' : 'bg-muted/50'}`}>
-              {isSubscribed ? (
-                <CheckCircle2 className="h-5 w-5 text-primary" />
-              ) : (
-                <Bell className="h-5 w-5 text-muted-foreground" />
-              )}
-            </div>
-            <div>
-              <p className="font-semibold">{t('notification.enable')}</p>
-              <p className="text-sm text-muted-foreground">
-                {isSubscribed ? t('notification.active') : t('notification.getUpdates')}
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={handleToggleNotifications}
-            disabled={loading}
-            variant={isSubscribed ? 'outline' : 'default'}
-            className={isSubscribed ? '' : 'bg-gradient-to-r from-primary to-accent'}
-          >
-            {loading ? t('common.loading') : isSubscribed ? t('notification.disableShort') : t('notification.enableShort')}
-          </Button>
-        </div>
-
-        <AnimatePresence>
-          {isSubscribed && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="space-y-4"
-            >
-              {/* Task Reminders */}
-              <div className="flex items-center justify-between p-4 rounded-xl bg-background/30 border border-border/50 hover:border-primary/30 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/10">
-                    <Calendar className="h-4 w-4 text-blue-500" />
-                  </div>
-                  <div>
-                    <Label htmlFor="task-reminders" className="font-medium cursor-pointer">
-                      {t('notification.taskReminders')}
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('notification.taskRemindersDesc')}
-                    </p>
-                  </div>
-                </div>
+      {isSubscribed && (
+        <SettingsGroup className="animate-fade-in">
+          {/* Task Reminders */}
+          <label htmlFor="task-reminders" className="block cursor-pointer">
+            <SettingsRow
+              icon={Calendar}
+              tone="info"
+              title={t('notification.taskReminders')}
+              description={t('notification.taskRemindersDesc')}
+              trailing={
                 <Switch
                   id="task-reminders"
                   checked={taskReminders}
                   onCheckedChange={(checked) => updatePreference('taskReminders', checked)}
                 />
-              </div>
+              }
+            />
+          </label>
 
-              {/* Weather Alerts */}
-              <div className="flex items-center justify-between p-4 rounded-xl bg-background/30 border border-border/50 hover:border-primary/30 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-orange-500/10">
-                    <Cloud className="h-4 w-4 text-orange-500" />
-                  </div>
-                  <div>
-                    <Label htmlFor="weather-alerts" className="font-medium cursor-pointer">
-                      {t('notification.weatherAlerts')}
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('notification.weatherAlertsDesc')}
-                    </p>
-                  </div>
-                </div>
+          {/* Weather Alerts */}
+          <label htmlFor="weather-alerts" className="block cursor-pointer">
+            <SettingsRow
+              icon={CloudSun}
+              tone="warning"
+              title={t('notification.weatherAlerts')}
+              description={t('notification.weatherAlertsDesc')}
+              trailing={
                 <Switch
                   id="weather-alerts"
                   checked={weatherAlerts}
                   onCheckedChange={(checked) => updatePreference('weatherAlerts', checked)}
                 />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </CardContent>
-    </Card>
+              }
+            />
+          </label>
+        </SettingsGroup>
+      )}
+    </div>
   );
 }

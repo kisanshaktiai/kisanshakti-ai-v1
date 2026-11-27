@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
@@ -8,6 +7,7 @@ import { syncService } from '@/services/syncService';
 import { localDB } from '@/services/localDB';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useTranslation } from 'react-i18next';
+import { IconTile, sectionCardClass } from '@/components/profile/SettingsList';
 import { cn } from '@/lib/utils';
 
 export function SyncStatus() {
@@ -66,45 +66,42 @@ export function SyncStatus() {
   };
 
   return (
-    <Card className="p-3 bg-card/60 backdrop-blur-xl border-border/40">
-      <div className="flex items-center justify-between gap-3">
+    <div className={cn(sectionCardClass, 'px-4 py-3')}>
+      <div className="flex min-h-[40px] items-center gap-3">
         {/* Left: Status */}
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {isOnline ? (
-            <Wifi className="h-3.5 w-3.5 text-success shrink-0" />
-          ) : (
-            <WifiOff className="h-3.5 w-3.5 text-destructive shrink-0" />
-          )}
-          <div className="min-w-0 flex-1">
-            <span className="text-xs font-medium block truncate">
+        <IconTile icon={isOnline ? Wifi : WifiOff} tone={isOnline ? 'success' : 'destructive'} />
+        <div className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-base font-semibold leading-snug text-foreground">
               {isOnline ? t('common.online') : t('common.offline')}
             </span>
-            <span className="text-[10px] text-muted-foreground block truncate">
-              {formatLastSync(syncMetadata.lastSyncTime)}
-            </span>
-          </div>
+            {/* Pending badge */}
+            {syncMetadata.pendingChanges > 0 && (
+              <Badge variant="outline" className="border-warning/50 bg-warning/15 px-2 py-0.5 text-xs text-foreground hover:bg-warning/15">
+                {syncMetadata.pendingChanges} {t('sync.pending')}
+              </Badge>
+            )}
+          </span>
+          <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">
+            {syncMetadata.lastSyncTime
+              ? `${t('sync.last_synced')}: ${formatLastSync(syncMetadata.lastSyncTime)}`
+              : formatLastSync(null)}
+          </span>
         </div>
-
-        {/* Middle: Pending badge */}
-        {syncMetadata.pendingChanges > 0 && (
-          <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0">
-            {syncMetadata.pendingChanges}
-          </Badge>
-        )}
 
         {/* Right: Sync button */}
         <Button
           onClick={handleManualSync}
           disabled={!isOnline || syncMetadata.syncInProgress}
-          variant="ghost"
+          variant="surface"
           size="icon"
-          className="h-11 w-11 shrink-0"
+          className="h-11 w-11 shrink-0 rounded-full"
           aria-label={t('sync.sync_now')}
         >
           <RefreshCw 
             className={cn(
-              "h-3.5 w-3.5",
-              syncMetadata.syncInProgress && "animate-spin"
+              "!h-5 !w-5 text-primary",
+              (syncMetadata.syncInProgress || (syncProgress > 0 && syncProgress < 100)) && "animate-spin"
             )}
           />
         </Button>
@@ -112,8 +109,8 @@ export function SyncStatus() {
       
       {/* Progress bar */}
       {syncProgress > 0 && (
-        <Progress value={syncProgress} className="h-1 mt-2" />
+        <Progress value={syncProgress} className="h-1.5 mt-3 bg-muted" />
       )}
-    </Card>
+    </div>
   );
 }

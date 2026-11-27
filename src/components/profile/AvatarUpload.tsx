@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import Cropper, { Area } from 'react-easy-crop';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Camera, Upload, X, ZoomIn, ZoomOut, Loader2, User } from 'lucide-react';
+import { Camera, Check, ZoomIn, ZoomOut, Loader2, User } from 'lucide-react';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +25,7 @@ export function AvatarUpload({
   size = 'lg',
   editable = true 
 }: AvatarUploadProps) {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,8 +55,8 @@ export function AvatarUpload({
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
-        title: 'Invalid file type',
-        description: 'Please select an image file (JPG, PNG, WEBP)',
+        title: t('toast.avatar_upload_failed'),
+        description: t('profile.avatar.invalid_type'),
         variant: 'destructive'
       });
       return;
@@ -63,8 +65,8 @@ export function AvatarUpload({
     // Validate file size (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
       toast({
-        title: 'File too large',
-        description: 'Image must be less than 5MB',
+        title: t('toast.avatar_upload_failed'),
+        description: t('profile.avatar.too_large'),
         variant: 'destructive'
       });
       return;
@@ -211,8 +213,8 @@ export function AvatarUpload({
       await farmerAuthService.updateFarmerProfile({ avatarUrl: publicUrl });
 
       toast({
-        title: 'Success!',
-        description: 'Profile picture updated successfully'
+        title: t('common.success'),
+        description: t('toast.avatar_updated')
       });
 
       onAvatarUpdate?.(publicUrl);
@@ -223,20 +225,20 @@ export function AvatarUpload({
     } catch (error: any) {
       console.error('Error uploading avatar:', error);
       
-      let errorMessage = 'Failed to update profile picture. Please try again.';
-      
+      // The farmer reads the reason in the app language; the technical
+      // message stays in the console line above.
+      let errorMessage = t('common.tryAgain');
+
       if (error.message?.includes('Not authenticated')) {
-        errorMessage = error.message;
+        errorMessage = t('toast.session_expired');
       } else if (error.message?.includes('row-level security')) {
-        errorMessage = 'Permission denied. Please log in again.';
+        errorMessage = t('toast.permission_denied');
       } else if (error.message?.includes('size')) {
-        errorMessage = 'Image file is too large. Please use a smaller image.';
-      } else if (error.message) {
-        errorMessage = error.message;
+        errorMessage = t('profile.avatar.too_large');
       }
-      
+
       toast({
-        title: 'Upload failed',
+        title: t('toast.avatar_upload_failed'),
         description: errorMessage,
         variant: 'destructive'
       });
@@ -259,34 +261,39 @@ export function AvatarUpload({
 
   return (
     <>
-      <div className="relative group">
-        <Avatar className={cn(sizeClasses[size], "ring-2 ring-border shadow-lg")}>
-          <AvatarImage src={currentAvatarUrl} alt="Profile" />
-          <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xl font-bold">
-            <User className="w-1/2 h-1/2" />
+      <div className="relative shrink-0">
+        <Avatar className={cn(sizeClasses[size], "ring-2 ring-background shadow-md")}>
+          <AvatarImage src={currentAvatarUrl} alt="" />
+          <AvatarFallback className="bg-muted text-primary">
+            <User className="w-1/2 h-1/2" aria-hidden="true" />
           </AvatarFallback>
         </Avatar>
         
         {editable && (
           <>
+            {/* The input stays in the page (not display:none) so it can take
+                keyboard focus; the label over the photo is the touch target. */}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
               onChange={handleFileSelect}
-              className="hidden"
+              className="peer sr-only"
               id="avatar-upload"
+              aria-label={t('profile_edit.changePhoto')}
             />
             <label
               htmlFor="avatar-upload"
               className={cn(
-                "absolute inset-0 flex items-center justify-center rounded-full",
-                "bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100",
-                "transition-all duration-300 cursor-pointer",
+                "absolute inset-0 rounded-full cursor-pointer",
+                "peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background",
                 sizeClasses[size]
               )}
             >
-              <Camera className="w-1/3 h-1/3 text-white" />
+              {/* Always visible: a phone has no hover to reveal it. */}
+              <span className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-card text-primary shadow-sm">
+                <Camera className="h-4 w-4" aria-hidden="true" />
+              </span>
             </label>
           </>
         )}
@@ -294,14 +301,14 @@ export function AvatarUpload({
 
       {/* Crop Dialog */}
       <Dialog open={showCropDialog} onOpenChange={setShowCropDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl w-[calc(100%-2rem)]">
           <DialogHeader>
-            <DialogTitle>Crop Profile Picture</DialogTitle>
+            <DialogTitle>{t('profile.avatar.crop_title')}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
             {/* Cropper */}
-            <div className="relative w-full h-64 bg-muted rounded-lg overflow-hidden">
+            <div className="relative w-full h-64 bg-muted rounded-xl overflow-hidden">
               {imageSrc && (
                 <Cropper
                   image={imageSrc}
@@ -318,45 +325,44 @@ export function AvatarUpload({
             </div>
 
             {/* Zoom Control */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <ZoomOut className="w-4 h-4" />
-                <span>Zoom</span>
-                <ZoomIn className="w-4 h-4" />
-              </div>
+            <div className="flex items-center gap-3 text-muted-foreground">
+              <ZoomOut className="w-5 h-5 shrink-0" aria-hidden="true" />
               <Slider
                 value={[zoom]}
                 min={1}
                 max={3}
                 step={0.1}
                 onValueChange={(value) => setZoom(value[0])}
-                className="w-full"
+                className="w-full py-3"
+                aria-label={t('profile.avatar.zoom')}
               />
+              <ZoomIn className="w-5 h-5 shrink-0" aria-hidden="true" />
             </div>
           </div>
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="flex-row gap-3 sm:space-x-0">
             <Button
               variant="outline"
               onClick={handleCancel}
               disabled={uploading}
+              className="h-12 flex-1 text-base"
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               onClick={handleCropSave}
               disabled={uploading}
-              className="min-w-24"
+              className="h-12 flex-1 text-base"
             >
               {uploading ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  {t('common.saving')}
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Save
+                  <Check className="w-4 h-4" aria-hidden="true" />
+                  {t('common.save')}
                 </>
               )}
             </Button>

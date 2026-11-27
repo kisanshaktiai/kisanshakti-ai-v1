@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Check, Crown, Sparkles, Leaf, Calendar, MessageSquare, MapPin, Database, Loader2, Receipt } from 'lucide-react';
+import { Check, Crown, Sparkles, Leaf, Calendar, MessageSquare, MapPin, Database, Loader2, Receipt } from 'lucide-react';
 import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
 import { useAuthStore } from '@/stores/authStore';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { PlanBadge } from '@/components/subscription/PlanBadge';
 import { UsageMeter } from '@/components/subscription/UsageMeter';
 import { useFarmerPlans, type FarmerPlanRow } from '@/hooks/useFarmerPlans';
-import { format } from 'date-fns';
+import { InnerPageHeader } from '@/components/profile/InnerPageHeader';
+import { IconTile, SectionCard, sectionCardClass } from '@/components/profile/SettingsList';
+import { PageShell } from '@/components/layout/PageShell';
+import { formatFarmerDate } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
@@ -43,7 +45,7 @@ const PLAN_ICONS: Record<string, typeof Leaf> = {
 const FEATURE_CODES = ['ai_chat', 'satellite_imagery', 'weather_forecast', 'soil_testing', 'community_forum', 'marketplace', 'advanced_analytics', 'custom_reports', 'drone_monitoring', 'predictive_analytics', 'white_label_mobile_app', 'api_access'];
 
 export default function SubscriptionPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { data, planName, daysRemaining, isInGracePeriod, subscriptionStatus, isLoading } =
@@ -106,116 +108,100 @@ export default function SubscriptionPage() {
   const isExpired = subscriptionStatus === 'expired' || (data && !data.valid);
   const isActive = subscriptionStatus === 'active' && !isInGracePeriod;
 
-  return (
-    <div className="min-h-full bg-gradient-to-br from-background via-accent/5 to-primary/5 pb-nav-safe">
-      {/* Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 bg-background/70 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-3 py-3 flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate(-1)}
-            className="h-11 w-11 rounded-xl"
-            aria-label={t('common.back')}
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h1 className="text-lg font-bold">{t('profile.subscription.title')}</h1>
-            <p className="text-xs text-muted-foreground">{t('profile.subscription.subtitle')}</p>
-          </div>
-        </div>
-      </div>
+  // Dates in the app language (lib/dateFormat), not date-fns English.
+  const formatDate = (value: string) => formatFarmerDate(new Date(value), (i18n.language || 'en').split('-')[0]);
 
-      <div className="pt-20 px-4 pb-24 space-y-5 max-w-2xl mx-auto">
+  return (
+    <PageShell
+      padding="none"
+      spacing="none"
+      stickyHeader={
+        <InnerPageHeader
+          title={t('profile.subscription.title')}
+          subtitle={t('profile.subscription.subtitle')}
+          onBack={() => navigate(-1)}
+        />
+      }
+    >
+      <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-4">
         {/* Current Plan Card */}
-        <Card className="border bg-gradient-to-br from-primary/10 via-accent/5 to-background shadow-xl border-primary/20">
-          <CardContent className="p-5 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  {t('profile.subscription.current_plan')}
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <PlanBadge planName={planName} size="md" />
-                  {isActive && (
-                    <Badge variant="outline" className="text-success border-success/30 bg-success/5 text-[10px]">
-                      {t('profile.subscription.active')}
-                    </Badge>
-                  )}
-                  {isInGracePeriod && (
-                    <Badge variant="outline" className="text-warning border-warning/30 bg-warning/5 text-[10px]">
-                      {t('profile.subscription.grace')}
-                    </Badge>
-                  )}
-                  {isExpired && <Badge variant="destructive" className="text-[10px]">{t('profile.subscription.expired')}</Badge>}
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold text-primary">{daysRemaining}</p>
-                <p className="text-[10px] text-muted-foreground uppercase">days left</p>
+        <section className={cn(sectionCardClass, 'border-primary/25 bg-primary/5 p-4')}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-muted-foreground">
+                {t('profile.subscription.current_plan')}
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <PlanBadge planName={planName} size="md" />
+                {isActive && (
+                  <Badge variant="outline" className="border-success/40 bg-success/10 text-xs text-success hover:bg-success/10">
+                    {t('profile.subscription.active')}
+                  </Badge>
+                )}
+                {isInGracePeriod && (
+                  <Badge variant="outline" className="border-warning/50 bg-warning/15 text-xs text-foreground hover:bg-warning/15">
+                    {t('profile.subscription.grace')}
+                  </Badge>
+                )}
+                {isExpired && <Badge variant="destructive" className="text-xs">{t('profile.subscription.expired')}</Badge>}
               </div>
             </div>
+            <div className="shrink-0 rounded-2xl bg-card px-4 py-2 text-center shadow-soft">
+              <p className="text-2xl font-bold leading-none text-primary">{daysRemaining}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('profile.subscription.days_left')}</p>
+            </div>
+          </div>
 
-            {data?.end_date && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground border-t border-border/30 pt-3">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>{t('profile.subscription.renews_on', { date: format(new Date(data.end_date), 'dd MMM yyyy') })}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {data?.end_date && (
+            <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-sm text-muted-foreground">
+              <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{t('profile.subscription.renews_on', { date: formatDate(data.end_date) })}</span>
+            </div>
+          )}
+        </section>
 
         {/* Usage Card */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Database className="w-4 h-4 text-primary" />
-              {t('profile.subscription.usage_title')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <UsageMeter
-              label={t('profile.subscription.ai_queries')}
-              current={aiUsage}
-              limit={normalizeLimit(currentLimits.ai_queries_per_month)}
-              icon={<MessageSquare className="w-3.5 h-3.5" />}
-            />
-            <UsageMeter
-              label={t('profile.subscription.lands')}
-              current={landUsage}
-              limit={normalizeLimit(currentLimits.land_limit)}
-              icon={<MapPin className="w-3.5 h-3.5" />}
-            />
-            <UsageMeter
-              label={t('profile.subscription.soil_reports')}
-              current={soilUsage}
-              limit={normalizeLimit(currentLimits.soil_reports_per_month)}
-              icon={<Database className="w-3.5 h-3.5" />}
-            />
-          </CardContent>
-        </Card>
+        <SectionCard title={t('profile.subscription.usage_title')} icon={Database} contentClassName="space-y-4">
+          <UsageMeter
+            label={t('profile.subscription.ai_queries')}
+            current={aiUsage}
+            limit={normalizeLimit(currentLimits.ai_queries_per_month)}
+            icon={<MessageSquare className="w-3.5 h-3.5" />}
+          />
+          <UsageMeter
+            label={t('profile.subscription.lands')}
+            current={landUsage}
+            limit={normalizeLimit(currentLimits.land_limit)}
+            icon={<MapPin className="w-3.5 h-3.5" />}
+          />
+          <UsageMeter
+            label={t('profile.subscription.soil_reports')}
+            current={soilUsage}
+            limit={normalizeLimit(currentLimits.soil_reports_per_month)}
+            icon={<Database className="w-3.5 h-3.5" />}
+          />
+        </SectionCard>
 
         {/* Plan Comparison */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold">{t('profile.subscription.available_plans')}</h2>
-            <div className="flex items-center bg-muted/50 rounded-full p-1 text-[10px]">
-              {(['monthly', 'quarterly', 'annually'] as const).map((cycle) => (
-                <button
-                  key={cycle}
-                  onClick={() => setBillingCycle(cycle)}
-                  className={cn(
-                    'px-3 py-1 rounded-full font-medium capitalize transition-all',
-                    billingCycle === cycle
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {t(cycle === 'annually' ? 'profile.subscription.yearly' : cycle === 'quarterly' ? 'profile.subscription.quarterly' : 'profile.subscription.monthly')}
-                </button>
-              ))}
-            </div>
+          <h2 className="px-1 pt-1 text-base font-bold text-foreground">{t('profile.subscription.available_plans')}</h2>
+          <div className="grid grid-cols-3 gap-1 rounded-full bg-muted p-1">
+            {(['monthly', 'quarterly', 'annually'] as const).map((cycle) => (
+              <button
+                key={cycle}
+                type="button"
+                aria-pressed={billingCycle === cycle}
+                onClick={() => setBillingCycle(cycle)}
+                className={cn(
+                  'h-10 rounded-full px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
+                  billingCycle === cycle
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground'
+                )}
+              >
+                {t(cycle === 'annually' ? 'profile.subscription.yearly' : cycle === 'quarterly' ? 'profile.subscription.quarterly' : 'profile.subscription.monthly')}
+              </button>
+            ))}
           </div>
 
           {loadingPlans ? (
@@ -223,15 +209,13 @@ export default function SubscriptionPage() {
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : plans.length === 0 ? (
-            <Card className="border-dashed border-border/60">
-              <CardContent className="p-6 text-center space-y-2">
-                <Leaf className="w-8 h-8 text-muted-foreground mx-auto" />
-                <p className="text-sm font-medium">{t('profile.subscription.no_plans')}</p>
-                <p className="text-xs text-muted-foreground">
-                  {t('profile.subscription.no_plans_hint')}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="rounded-2xl border border-dashed border-border bg-card p-6 text-center">
+              <Leaf className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
+              <p className="mt-2 text-base font-semibold text-foreground">{t('profile.subscription.no_plans')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('profile.subscription.no_plans_hint')}
+              </p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {plans.map((plan) => {
@@ -248,95 +232,77 @@ export default function SubscriptionPage() {
                 );
 
                 return (
-                  <Card
+                  <div
                     key={plan.id}
                     className={cn(
-                      'border-2 transition-all',
-                      isCurrentPlan
-                        ? 'border-primary bg-gradient-to-br from-primary/10 to-accent/5 shadow-xl'
-                        : 'border-border/50 hover:border-primary/40 hover:shadow-lg'
+                      'space-y-3 rounded-2xl border-2 p-4 text-card-foreground shadow-soft',
+                      isCurrentPlan ? 'border-primary bg-primary/5' : 'border-border bg-card'
                     )}
                   >
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={cn(
-                              'w-10 h-10 rounded-xl flex items-center justify-center',
-                              plan.name === 'AI PRO'
-                                ? 'bg-gradient-to-br from-warning/20 to-warning/10 text-warning'
-                                : plan.name === 'Shakti'
-                                ? 'bg-gradient-to-br from-primary/20 to-accent/20 text-primary'
-                                : 'bg-success/15 text-success'
-                            )}
-                          >
-                            <Icon className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-base">{plan.name}</h3>
-                            <p className="text-[10px] text-muted-foreground capitalize">
-                              {plan.plan_type}
-                            </p>
-                          </div>
-                        </div>
-                        {isCurrentPlan && (
-                          <Badge className="bg-primary text-primary-foreground text-[10px]">
-                            Current
-                          </Badge>
-                        )}
+                    <div className="flex items-center gap-3">
+                      <IconTile
+                        icon={Icon}
+                        tone={plan.name === 'AI PRO' ? 'warning' : plan.name === 'Shakti' ? 'primary' : 'success'}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-bold leading-snug text-foreground">{plan.name}</h3>
+                        <p className="text-sm capitalize leading-snug text-muted-foreground">
+                          {plan.plan_type}
+                        </p>
                       </div>
-
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-bold text-foreground">
-                          ₹{price?.toLocaleString('en-IN') ?? '—'}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {t(billingCycle === 'monthly' ? 'profile.subscription.per_month' : billingCycle === 'quarterly' ? 'profile.subscription.per_quarter' : 'profile.subscription.per_year')}
-                        </span>
-                      </div>
-
-                      <ul className="space-y-1.5">
-                        {featureKeys.slice(0, 6).map((key) => (
-                          <li key={key} className="flex items-center gap-2 text-xs">
-                            <Check className="w-3.5 h-3.5 text-success shrink-0" />
-                            <span className="text-foreground/80">
-                              {FEATURE_CODES.includes(key) ? t(`profile.subscription.feature.${key}`) : key.replace(/_/g, ' ')}
-                            </span>
-                          </li>
-                        ))}
-                        {featureKeys.length > 6 && (
-                          <li className="text-[10px] text-muted-foreground pl-5">
-                            {t('profile.subscription.more_features', { count: featureKeys.length - 6 })}
-                          </li>
-                        )}
-                      </ul>
-
-                      <div className="text-[10px] text-muted-foreground border-t border-border/30 pt-2 space-y-0.5">
-                        <div>
-                          AI Queries:{' '}
-                          <span className="font-semibold text-foreground">
-                            {plan.limits.ai_queries_per_month}
-                          </span>
-                        </div>
-                        <div>
-                          Lands:{' '}
-                          <span className="font-semibold text-foreground">
-                            {plan.limits.land_limit}
-                          </span>
-                        </div>
-                      </div>
-
-                      {!isCurrentPlan && (
-                        <Button
-                          className="w-full"
-                          variant={plan.name === 'AI PRO' ? 'default' : 'outline'}
-                          onClick={() => handleUpgrade(plan)}
-                        >
-                          {t('profile.subscription.upgrade_to', { plan: plan.name })}
-                        </Button>
+                      {isCurrentPlan && (
+                        <Badge className="shrink-0 bg-primary text-xs text-primary-foreground">
+                          {t('profile.subscription.current_plan')}
+                        </Badge>
                       )}
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-2xl font-bold text-foreground">
+                        ₹{price?.toLocaleString('en-IN') ?? '—'}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {t(billingCycle === 'monthly' ? 'profile.subscription.per_month' : billingCycle === 'quarterly' ? 'profile.subscription.per_quarter' : 'profile.subscription.per_year')}
+                      </span>
+                    </div>
+
+                    <ul className="space-y-2">
+                      {featureKeys.slice(0, 6).map((key) => (
+                        <li key={key} className="flex items-start gap-2 text-sm leading-snug">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                          <span className="text-foreground">
+                            {FEATURE_CODES.includes(key) ? t(`profile.subscription.feature.${key}`) : key.replace(/_/g, ' ')}
+                          </span>
+                        </li>
+                      ))}
+                      {featureKeys.length > 6 && (
+                        <li className="pl-6 text-sm text-muted-foreground">
+                          {t('profile.subscription.more_features', { count: featureKeys.length - 6 })}
+                        </li>
+                      )}
+                    </ul>
+
+                    <div className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-sm">
+                      <div className="rounded-xl bg-muted/50 px-3 py-2">
+                        <p className="text-xs leading-snug text-muted-foreground">{t('profile.subscription.ai_queries')}</p>
+                        <p className="font-semibold text-foreground">{plan.limits.ai_queries_per_month}</p>
+                      </div>
+                      <div className="rounded-xl bg-muted/50 px-3 py-2">
+                        <p className="text-xs leading-snug text-muted-foreground">{t('profile.subscription.lands')}</p>
+                        <p className="font-semibold text-foreground">{plan.limits.land_limit}</p>
+                      </div>
+                    </div>
+
+                    {!isCurrentPlan && (
+                      <Button
+                        className="h-12 w-full text-base"
+                        variant={plan.name === 'AI PRO' ? 'default' : 'outline'}
+                        onClick={() => handleUpgrade(plan)}
+                      >
+                        {t('profile.subscription.upgrade_to', { plan: plan.name })}
+                      </Button>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -345,51 +311,43 @@ export default function SubscriptionPage() {
 
         {/* Payment History */}
         {payments.length > 0 && (
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-primary" />
-                {t('profile.subscription.payment_history')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {payments.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">
-                      ₹{p.amount.toLocaleString('en-IN')}{' '}
-                      <span className="text-xs text-muted-foreground font-normal">
-                        {p.currency}
-                      </span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {format(new Date(p.created_at), 'dd MMM yyyy')} ·{' '}
-                      {p.payment_method ?? t('profile.subscription.online')}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={p.status === 'success' ? 'default' : 'outline'}
-                    className={cn(
-                      'text-[10px] capitalize',
-                      p.status === 'success' && 'bg-success/15 text-success border-success/30'
-                    )}
-                  >
-                    {p.status}
-                  </Badge>
+          <SectionCard title={t('profile.subscription.payment_history')} icon={Receipt} contentClassName="space-y-2">
+            {payments.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-base font-semibold text-foreground">
+                    ₹{p.amount.toLocaleString('en-IN')}{' '}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {p.currency}
+                    </span>
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatDate(p.created_at)} ·{' '}
+                    {p.payment_method ?? t('profile.subscription.online')}
+                  </p>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                <Badge
+                  variant={p.status === 'success' ? 'default' : 'outline'}
+                  className={cn(
+                    'shrink-0 text-xs capitalize',
+                    p.status === 'success' && 'border-success/40 bg-success/10 text-success hover:bg-success/10'
+                  )}
+                >
+                  {p.status}
+                </Badge>
+              </div>
+            ))}
+          </SectionCard>
         )}
 
         {/* Help footer */}
-        <div className="text-center text-[10px] text-muted-foreground py-4">
+        <p className="py-2 text-center text-sm text-muted-foreground">
           {t('profile.subscription.help')}
-        </div>
+        </p>
       </div>
-    </div>
+    </PageShell>
   );
 }

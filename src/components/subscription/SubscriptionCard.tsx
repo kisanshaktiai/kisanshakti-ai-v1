@@ -1,11 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
 import { PlanBadge } from './PlanBadge';
-import { Calendar, ChevronRight, AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
+import { ChevronRight, AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
+import { IconTile, sectionCardClass } from '@/components/profile/SettingsList';
 import { cn } from '@/lib/utils';
 
 /**
@@ -20,11 +19,9 @@ export function SubscriptionCard() {
 
   if (isLoading) {
     return (
-      <Card className="border-0 shadow-lg">
-        <CardContent className="p-4">
-          <div className="h-20 animate-pulse bg-muted/30 rounded-lg" />
-        </CardContent>
-      </Card>
+      <div className={cn(sectionCardClass, 'p-4')}>
+        <div className="h-14 animate-pulse rounded-xl bg-muted/50" />
+      </div>
     );
   }
 
@@ -33,67 +30,68 @@ export function SubscriptionCard() {
   const isExpiringSoon = isActive && daysRemaining > 0 && daysRemaining <= 7;
 
   const accent = isExpired
-    ? 'from-destructive/15 to-destructive/5 border-destructive/30'
+    ? 'border-destructive/40 bg-destructive/5'
     : isInGracePeriod || isExpiringSoon
-    ? 'from-warning/15 to-warning/5 border-warning/30'
-    : 'from-primary/10 to-accent/10 border-primary/20';
+    ? 'border-warning/50 bg-warning/5'
+    : 'border-primary/25 bg-primary/5';
+  const tone = isExpired ? 'destructive' : isInGracePeriod || isExpiringSoon ? 'warning' : 'primary';
 
   return (
-    <Card
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${t('profile.subscription.title')}. ${t('common.subscription.tap_to_manage')}`}
       className={cn(
-        'border bg-gradient-to-br shadow-lg cursor-pointer transition-all hover:shadow-xl active:scale-[0.99]',
+        sectionCardClass,
+        'flex min-h-[72px] cursor-pointer items-center gap-3 px-4 py-3 transition-colors active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
         accent
       )}
       onClick={() => navigate('/app/subscription')}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          navigate('/app/subscription');
+        }
+      }}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-4 h-4 text-primary shrink-0" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {t('profile.subscription.title')}
-              </span>
-            </div>
+      <IconTile icon={Sparkles} tone={tone} />
 
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <PlanBadge planName={planName} size="md" />
-              {isActive && (
-                <Badge variant="outline" className="gap-1 text-success border-success/30 bg-success/5 text-[10px]">
-                  <CheckCircle2 className="w-3 h-3" />
-                  {t('profile.subscription.active')}
-                </Badge>
-              )}
-              {isInGracePeriod && (
-                <Badge variant="outline" className="gap-1 text-warning border-warning/30 bg-warning/5 text-[10px]">
-                  <AlertTriangle className="w-3 h-3" />
-                  {t('profile.subscription.grace')}
-                </Badge>
-              )}
-              {isExpired && (
-                <Badge variant="destructive" className="text-[10px]">
-                  {t('profile.subscription.expired')}
-                </Badge>
-              )}
-            </div>
+      <div className="min-w-0 flex-1">
+        <span className="block text-sm font-medium leading-snug text-muted-foreground">
+          {t('profile.subscription.title')}
+        </span>
 
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Calendar className="w-3.5 h-3.5" />
-              {isExpired ? (
-                <span>{t('profile.subscription.renew_hint')}</span>
-              ) : daysRemaining > 0 ? (
-                <span>{t('common.subscription.days_remaining', { d: daysRemaining })}</span>
-              ) : (
-                <span>{t('profile.subscription.expires_today')}</span>
-              )}
-            </div>
-          </div>
-
-          <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 -mr-2" aria-label={t('common.subscription.tap_to_manage')} tabIndex={-1}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <PlanBadge planName={planName} size="md" />
+          {isActive && (
+            <Badge variant="outline" className="gap-1 border-success/40 bg-success/10 text-xs text-success hover:bg-success/10">
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('profile.subscription.active')}
+            </Badge>
+          )}
+          {isInGracePeriod && (
+            <Badge variant="outline" className="gap-1 border-warning/50 bg-warning/15 text-xs text-foreground hover:bg-warning/15">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('profile.subscription.grace')}
+            </Badge>
+          )}
+          {isExpired && (
+            <Badge variant="destructive" className="text-xs">
+              {t('profile.subscription.expired')}
+            </Badge>
+          )}
         </div>
-      </CardContent>
-    </Card>
+
+        <span className="mt-1 block text-sm leading-snug text-muted-foreground">
+          {isExpired
+            ? t('profile.subscription.renew_hint')
+            : daysRemaining > 0
+            ? t('common.subscription.days_remaining', { d: daysRemaining })
+            : t('profile.subscription.expires_today')}
+        </span>
+      </div>
+
+      <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+    </div>
   );
 }
