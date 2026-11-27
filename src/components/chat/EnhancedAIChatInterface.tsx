@@ -1952,20 +1952,21 @@ export function EnhancedAIChatInterface() {
           ═══════════════════════════════════════════════════════════════════════════ */}
       <header className="sticky top-0 z-50 flex-shrink-0 bg-background/95 backdrop-blur-xl border-b border-border/30">
         {/* Header Row - Compact */}
-        <div className="flex items-center justify-between px-3 py-2 pt-safe">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 pt-safe">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {/* Back Button */}
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate('/app/home')}
-              className="h-9 w-9 rounded-full"
+              aria-label={t('common.back')}
+              className="h-9 w-9 shrink-0 rounded-full"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             
             {/* AI Avatar + Title */}
-            <div className="relative">
+            <div className="relative shrink-0">
               <Avatar className="h-9 w-9 border-2 border-primary/30">
                 <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-sm">
                   <Bot className="h-4 w-4" />
@@ -1986,7 +1987,7 @@ export function EnhancedAIChatInterface() {
           </div>
           
           {/* Action Buttons */}
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <FarmingModeBadge
               mode={farmingMode}
               onSelectModeKey={(modeKey) => sendMessage(modeKey)}
@@ -1997,6 +1998,7 @@ export function EnhancedAIChatInterface() {
               variant="ghost"
               size="icon"
               onClick={() => setIsSearchOpen(!isSearchOpen)}
+              aria-label={t('common.search')}
               className={cn("h-8 w-8 rounded-full", isSearchOpen && "bg-primary/10 text-primary")}
             >
               <Search className="h-4 w-4" />
@@ -2006,6 +2008,7 @@ export function EnhancedAIChatInterface() {
               size="icon"
               onClick={handleRefresh}
               disabled={isRefreshing}
+              aria-label={t('common.refresh')}
               className="h-8 w-8 rounded-full"
             >
               <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin text-primary")} />

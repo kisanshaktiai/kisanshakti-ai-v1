@@ -99,6 +99,8 @@ Markup only. Every control calls the handler it called before.
 
 Labels use the existing `chat.input.*_aria` keys; one new key, `living.chat.remove_attachment`. The quota header and banner sit where they were. `text-white` on the buttons is replaced by the theme's foreground tokens.
 
+Chat header: the title block may now shrink and the action group may not, so the search and refresh buttons stay on screen at 320 px (they were pushed off the right edge). Back, search and refresh gained labels from the existing `common.back`, `common.search`, `common.refresh` keys. No handler changed.
+
 **Seen, not changed:** in a sent message, a picture that fails to load is hidden (`ModernChatUI.tsx`, `onError` sets `display: none`), so the farmer sees nothing where the picture should be.
 
 ## Shared pieces
