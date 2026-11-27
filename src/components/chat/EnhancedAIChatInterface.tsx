@@ -17,6 +17,7 @@ import {
   Search, X, Clock, MessageCircle, Check, AlertCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import '@/living/living.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -142,6 +143,13 @@ export function EnhancedAIChatInterface() {
   }, [user?.id, tenant?.id]);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  // One preview address per attached picture, made once and released when the list changes.
+  const [attachmentPreviews, setAttachmentPreviews] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = attachedFiles.map((file) => (file.type.startsWith('image/') ? URL.createObjectURL(file) : ''));
+    setAttachmentPreviews(urls);
+    return () => urls.forEach((url) => url && URL.revokeObjectURL(url));
+  }, [attachedFiles]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
@@ -2300,31 +2308,29 @@ export function EnhancedAIChatInterface() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex gap-2 overflow-x-auto scrollbar-hide mb-2"
+                className="flex gap-3 overflow-x-auto scrollbar-hide mb-2 pt-2 pr-2"
               >
                 {attachedFiles.map((file, index) => (
-                  <motion.div 
-                    key={index} 
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="relative flex-shrink-0"
-                  >
-                    <div className="h-12 w-12 rounded-lg overflow-hidden border border-border">
+                  <div key={`${file.name}-${file.lastModified}-${index}`} className="relative flex-shrink-0">
+                    <div className="overflow-hidden rounded-2xl border border-border bg-muted" style={{ width: 'clamp(72px, 22vw, 96px)', height: 'clamp(72px, 22vw, 96px)' }}>
                       {file.type.startsWith('image/') ? (
-                        <img src={URL.createObjectURL(file)} alt="" className="h-full w-full object-cover" />
+                        <img src={attachmentPreviews[index]} alt={file.name} className="h-full w-full object-cover" />
                       ) : (
-                        <div className="h-full w-full flex items-center justify-center bg-muted">
-                          <Paperclip className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1">
+                          <Paperclip className="h-5 w-5 text-muted-foreground" aria-hidden />
+                          <span className="lf-cap w-full truncate text-center text-muted-foreground">{file.name}</span>
                         </div>
                       )}
                     </div>
                     <button
+                      type="button"
+                      aria-label={t('living.chat.remove_attachment')}
                       onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
-                      className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-[10px]"
+                      className="absolute -right-2 -top-2 grid h-8 w-8 place-items-center rounded-full border-2 border-background bg-destructive text-destructive-foreground"
                     >
-                      ×
+                      <X className="h-4 w-4" aria-hidden />
                     </button>
-                  </motion.div>
+                  </div>
                 ))}
               </motion.div>
             )}
@@ -2355,61 +2361,63 @@ export function EnhancedAIChatInterface() {
           <ChatQuotaHeader />
           <ChatQuotaBanner />
 
-          <div className="flex items-center bg-card border border-border/60 rounded-full pl-2 pr-1.5 py-1.5 shadow-sm mb-3">
-            {/* Left: Attachment Icon */}
+          {/* Voice first: the mic is the largest control and sits under the thumb; photo is next; typing is the pill between them. */}
+          <div className="mb-3 flex items-center gap-2">
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              <Paperclip className="h-5 w-5" />
-            </button>
-
-            {/* Left: Camera Icon */}
-            <button
+              type="button"
+              aria-label={t('living.ask.photo')}
               onClick={() => setShowPhotoTool(true)}
-              className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors -ml-1"
+              className="grid shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
+              style={{ width: 'var(--lf-tap)', height: 'var(--lf-tap)' }}
             >
-              <Camera className="h-5 w-5" />
+              <Camera className="h-6 w-6" aria-hidden />
             </button>
 
-            {/* Center: Input Field */}
-            <input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t('chat.input.placeholder', 'Type your message...')}
-              className="flex-1 bg-transparent border-none outline-none px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground"
-              disabled={isLoading}
-            />
+            <div className="flex min-w-0 flex-1 items-center rounded-full border border-border bg-card pl-1 pr-3 shadow-sm" style={{ minHeight: 'var(--lf-tap)' }}>
+              <button
+                type="button"
+                aria-label={t('chat.input.attach_aria')}
+                onClick={() => fileInputRef.current?.click()}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground"
+              >
+                <Paperclip className="h-5 w-5" aria-hidden />
+              </button>
+              <input
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t('chat.input.placeholder', 'Type your message...')}
+                className="min-w-0 flex-1 border-none bg-transparent py-2 text-base text-foreground outline-none placeholder:text-muted-foreground"
+                disabled={isLoading}
+              />
+            </div>
 
-            {/* Right: Violet Mic/Send Button - INSIDE the pill */}
             {inputValue.trim() || attachedFiles.length > 0 ? (
-              <motion.button
-                initial={{ scale: 0.8 }}
-                animate={{ scale: 1 }}
-                whileTap={{ scale: 0.9 }}
+              <button
+                type="button"
+                aria-label={t('chat.input.send_aria')}
                 onClick={() => sendMessage()}
                 disabled={isLoading}
-                className="h-9 w-9 rounded-full flex items-center justify-center bg-primary hover:bg-primary text-white transition-colors"
+                className="grid shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg disabled:opacity-60"
+                style={{ width: 'calc(var(--lf-tap) + 8px)', height: 'calc(var(--lf-tap) + 8px)' }}
               >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </motion.button>
+                {isLoading ? <Loader2 className="h-6 w-6 animate-spin" aria-hidden /> : <Send className="h-6 w-6" aria-hidden />}
+              </button>
             ) : (
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                animate={isListening ? { scale: [1, 1.05, 1] } : {}}
-                transition={isListening ? { repeat: Infinity, duration: 1 } : {}}
+              <button
+                type="button"
+                aria-pressed={isListening}
+                aria-label={t(isListening ? 'living.stop' : 'chat.input.voice_aria')}
                 onClick={isListening ? stopListening : startListening}
                 className={cn(
-                  "h-9 w-9 rounded-full flex items-center justify-center transition-colors",
-                  isListening 
-                    ? "bg-destructive hover:bg-destructive text-white" 
-                    : "bg-primary hover:bg-primary text-white"
+                  'grid shrink-0 place-items-center rounded-full shadow-lg',
+                  isListening ? 'bg-destructive text-destructive-foreground ring-4 ring-destructive/25' : 'bg-primary text-primary-foreground',
                 )}
+                style={{ width: 'calc(var(--lf-tap) + 8px)', height: 'calc(var(--lf-tap) + 8px)' }}
               >
-                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </motion.button>
+                {isListening ? <MicOff className="h-7 w-7" aria-hidden /> : <Mic className="h-7 w-7" aria-hidden />}
+              </button>
             )}
           </div>
         </div>

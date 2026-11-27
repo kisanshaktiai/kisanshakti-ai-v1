@@ -84,7 +84,22 @@ No data path changes. The decision reply still arrives from `ai-agriculture-chat
 
 **Found, not fixed (needs new wording, so it is your call):** four more components ask for namespaces that do not exist and their keys are not in any bundle, so they show English or raw keys today: `ChatQuotaHeader.tsx` (`quota.used`, `quota.resets_in`), `ChatQuotaBanner.tsx` (`quota.exceeded_body`, `quota.upgrade_cta`), `TenantSuspendedScreen.tsx` (4 keys) and `LandLimitGuard.tsx` (2 keys).
 
-**Not done yet:** the voice-first composer (mic largest, photo second, keyboard third). The composer lives in the chat tab components, not in the message component, and carries upload, quota and voice logic; it needs its own audit before it is touched.
+## Companion, step 2: the composer (`src/components/chat/EnhancedAIChatInterface.tsx`)
+
+Markup only. Every control calls the handler it called before.
+
+| Control | Handler (unchanged) | Change |
+|---|---|---|
+| Photo | `setShowPhotoTool(true)` | Moved out of the pill to the left, 48–58 px, tonal. |
+| Attach picture | `fileInputRef.current?.click()` | Inside the pill, 44 px. |
+| Text | `inputValue`, `handleKeyDown` | 16 px text (14 px made iPhones zoom the page on focus). |
+| Mic / stop | `startListening` / `stopListening` | Largest control, at the right under the thumb; a still ring while listening instead of an endless pulse. |
+| Send | `sendMessage()` | Replaces the mic when there is text or an attachment, as before. |
+| Attached pictures before sending | `attachedFiles`, `setAttachedFiles` | Thumbnails 72–96 px (were 48), a 32 px remove button (was 16), file name for non-pictures. Preview addresses are made once per list and released, instead of a new one on every render. |
+
+Labels use the existing `chat.input.*_aria` keys; one new key, `living.chat.remove_attachment`. The quota header and banner sit where they were. `text-white` on the buttons is replaced by the theme's foreground tokens.
+
+**Seen, not changed:** in a sent message, a picture that fails to load is hidden (`ModernChatUI.tsx`, `onError` sets `display: none`), so the farmer sees nothing where the picture should be.
 
 ## Shared pieces
 

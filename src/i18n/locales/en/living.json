@@ -72,6 +72,9 @@
       "all_lands": "All my lands",
       "satellite": "Satellite view",
       "edit": "Edit this land"
+    },
+    "chat": {
+      "remove_attachment": "Remove this picture"
     }
   }
 }
