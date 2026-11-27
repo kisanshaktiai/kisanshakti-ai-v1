@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Camera, Check, ZoomIn, ZoomOut, Loader2, User } from 'lucide-react';
-import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { farmerAuthService } from '@/services/farmerAuthService';
@@ -156,10 +156,6 @@ export function AvatarUpload({
         throw new Error('Not authenticated. Please log in again.');
       }
       
-      console.log('🔐 Using authenticated client with:', { farmerId, tenantId });
-      
-      // Create authenticated Supabase client with custom headers
-      const authClient = supabaseWithAuth(farmerId, tenantId);
       
       // Crop and compress the image
       const croppedImageBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
@@ -168,45 +164,17 @@ export function AvatarUpload({
       const fileSizeMB = croppedImageBlob.size / (1024 * 1024);
       console.log('Compressed image size:', fileSizeMB.toFixed(2), 'MB');
       
-      // Create file name with farmer ID for RLS
-      const fileName = `${farmerId}/avatar-${Date.now()}.jpg`;
-      console.log('Uploading to path:', fileName);
-      
-      // Delete old avatar if exists
-      if (currentAvatarUrl) {
-        try {
-          const oldPath = currentAvatarUrl.split('/').slice(-2).join('/');
-          console.log('Deleting old avatar:', oldPath);
-          await authClient.storage.from('avatars').remove([oldPath]);
-        } catch (error) {
-          console.warn('Failed to delete old avatar:', error);
-          // Continue even if deletion fails
-        }
-      }
-
-      // Upload to Supabase Storage with authenticated client
-      console.log('Starting upload with authenticated client...');
-      const { data: uploadData, error: uploadError } = await authClient.storage
+      // Upload through a server-signed slot bound to the verified session;
+      // direct storage writes are refused since the privilege lockdown.
+      const slot = await farmerAuthService.avatarUploadSign();
+      const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, croppedImageBlob, {
-          contentType: 'image/jpeg',
-          upsert: true,
-          cacheControl: '3600'
-        });
-
+        .uploadToSignedUrl(slot.path, slot.token, croppedImageBlob, { contentType: 'image/jpeg' });
       if (uploadError) {
         console.error('Upload error:', uploadError);
         throw uploadError;
       }
-
-      console.log('Upload successful:', uploadData);
-
-      // Get public URL
-      const { data: { publicUrl } } = authClient.storage
-        .from('avatars')
-        .getPublicUrl(uploadData.path);
-
-      console.log('Public URL:', publicUrl);
+      const publicUrl = slot.publicUrl;
 
       // The verified-session service owns the profile write; no farmer ID or
       // tenant ID from the browser is accepted as write authorization.

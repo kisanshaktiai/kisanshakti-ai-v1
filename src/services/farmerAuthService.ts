@@ -250,6 +250,12 @@ export const farmerAuthService = {
       action: 'updateFarmerProfile', profile, sessionToken: getSessionToken() ?? undefined,
     });
   },
+  /** Signed upload slot for the verified farmer's profile picture. */
+  async avatarUploadSign() {
+    return call<{ path: string; token: string; signedUrl: string; publicUrl: string }>({
+      action: 'avatarUploadSign', sessionToken: getSessionToken() ?? undefined,
+    });
+  },
   // ── Farmer activation: actions authenticated by the session token ────────
   /** Asks the server whether the signed-in farmer still has to redeem a code. */
   async activationStatus() {

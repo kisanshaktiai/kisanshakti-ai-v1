@@ -602,7 +602,7 @@ async function handleFarmerProfile(
 /** Session-authenticated actions. Returns null when `action` is not one of them. */
 async function handleSessionAction(action: string, req: Request, body: any): Promise<Response | null> {
   if (!["sessionInfo", "switchRole", "addRole", "updateAccount", "getFarmerProfile", "updateFarmerProfile",
-        "nurseryPhotoSign", "nurseryPhotoConfirm", "activationStatus", "activate"].includes(action)) return null;
+        "nurseryPhotoSign", "nurseryPhotoConfirm", "activationStatus", "activate", "avatarUploadSign"].includes(action)) return null;
 
   const ctx = await sessionAccount(req, body);
   if (!ctx) return json({ error: "session_required" }, 401);
@@ -615,6 +615,21 @@ async function handleSessionAction(action: string, req: Request, body: any): Pro
   // Farmer activation does not depend on the multi-role flag.
   if (action === "activationStatus" || action === "activate") {
     return await handleActivation(action, ctx, req, body);
+  }
+
+  if (action === "avatarUploadSign") {
+    // Profile picture: the folder is the verified farmer id, never a client value.
+    if (await liveSessionRole(ctx) !== "FARMER") return json({ error: "role_not_active" }, 403);
+    const limited = await rateLimited(ctx.account.id, "avatarUploadSign", FARMER_PROFILE_UPDATE_LIMIT);
+    if (limited) return limited;
+    const path = `${ctx.account.id}/avatar-${Date.now()}.jpg`;
+    const { data, error } = await admin.storage.from("avatars").createSignedUploadUrl(path);
+    if (error || !data) {
+      console.error("[farmer-auth] avatar sign failed", error?.message);
+      return json({ error: "server_error" }, 500);
+    }
+    const { data: pub } = admin.storage.from("avatars").getPublicUrl(path);
+    return json({ path, token: data.token, signedUrl: data.signedUrl, publicUrl: pub.publicUrl });
   }
 
   if (action === "getFarmerProfile" || action === "updateFarmerProfile") {
