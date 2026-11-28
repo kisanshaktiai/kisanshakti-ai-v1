@@ -67,3 +67,6 @@
 
 /* Sheet list height: the vh line is for browsers older than dvh support. */
 .lf-sheet-scroll { max-height: 60vh; max-height: 60dvh; }
+
+/* Voice-navigation button on one-screen pages: out of the way until it is listening or showing its panel. */
+.lf-voice-tucked:not([data-active]) { visibility: hidden; pointer-events: none; }

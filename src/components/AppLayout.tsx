@@ -44,7 +44,8 @@ export function AppLayout() {
     /^\/app\/lands\/[^/]+\/edit$/.test(location.pathname);
 
   const isFullScreenRoute = isAIChat || isCommunityChat || isLandMapRoute;
-  // Field, Day and Land fit one screen with nothing to scroll out from under a floating button; voice is on the dock there.
+  // Field, Day and Land fit one screen, so nothing can scroll out from under a floating button. There the voice-navigation
+  // button stays mounted but tucked away until it is started from the dock's Ask sheet.
   const isFieldHome = /^\/app\/?(home|day|land)?$/.test(location.pathname);
 
   return (
@@ -106,9 +107,9 @@ export function AppLayout() {
             <VoiceIndicator />
 
             {/* Native Voice Navigation Button - Floating (hidden on full-screen routes) */}
-            {!isFullScreenRoute && !isFieldHome && (
+            {!isFullScreenRoute && (
               <NativeVoiceButton
-                className="right-4 bottom-[calc(var(--lf-dock-h)+env(safe-area-inset-bottom,0px)+0.75rem)]"
+                className={`right-4 bottom-[calc(var(--lf-dock-h)+env(safe-area-inset-bottom,0px)+0.75rem)] ${isFieldHome ? 'lf-voice-tucked' : ''}`}
                 size="md"
                 showTranscript={true}
                 showExamples={true}

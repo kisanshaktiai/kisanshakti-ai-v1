@@ -182,3 +182,8 @@ No data call is involved in any of these.
 - The floating voice-navigation button is hidden on Day and Land as it already was on Field; those pages fit one screen, so it sat on top of text that cannot be scrolled out from under it.
 - `FieldScene.tsx`: the shadow is drawn under the block's real bottom edge, and the day and water labels sit below the block, so a long thin field no longer has labels on top of it and a shadow far below it.
 - `FieldHome.tsx`: while the sun is in the left part of its path (before about 42 % of the day) the temperature moves to the right and the clouds to the left, so the sun does not sit on the number.
+
+## Features kept reachable in the new shell (voice navigation, first-run tour)
+
+- **Voice navigation** (`NativeVoiceButton`, `useNativeVoiceNavigation`): on Field, Day and Land the floating button is mounted but hidden while idle (`lf-voice-tucked`), because those pages fit one screen and it covered text. The dock's Ask sheet has a fourth way, "Go by voice", shown only when the button exists; it sends the window event `voice-navigation:start`, which the button answers with its own click handler. While listening or showing its panel the button is visible as before. On every other page it floats as before.
+- **First-run tour** (`FeatureWalkthrough`): its steps point at `data-tour` names that lived on the old home page. The new shell carries them: `weather` on the temperature, `schedule` on Day, `ndvi` on Land, `chat scan mic` on the centre button, `market community` on All, `nav` on the dock. The tour's selector matches one name within a list (`~=`), so one control can answer to several steps.

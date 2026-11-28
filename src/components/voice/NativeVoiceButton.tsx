@@ -4,7 +4,7 @@
  * Shows real-time feedback: listening, processing, speaking states
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Loader2, Volume2, X, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -45,6 +45,14 @@ export function NativeVoiceButton({
 
   const [showPanel, setShowPanel] = useState(false);
 
+  // The dock's Ask sheet can start voice navigation on pages where this button is tucked away.
+  const clickRef = useRef<() => void | Promise<void>>(() => undefined);
+  useEffect(() => {
+    const start = () => { void clickRef.current(); };
+    window.addEventListener('voice-navigation:start', start);
+    return () => window.removeEventListener('voice-navigation:start', start);
+  }, []);
+
   if (!isSupported) {
     return null;
   }
@@ -73,10 +81,12 @@ export function NativeVoiceButton({
     }
   };
 
+  clickRef.current = handleClick;
+
   const examples = getExamples();
 
   return (
-    <div data-tour="mic" className={cn('fixed z-50', className)}>
+    <div data-voice-nav data-active={isActive || showPanel ? 'true' : undefined} className={cn('fixed z-50', className)}>
       {/* Expanded Panel */}
       <AnimatePresence>
         {showPanel && (isActive || partialTranscript || error) && (

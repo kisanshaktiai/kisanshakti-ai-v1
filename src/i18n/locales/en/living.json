@@ -12,7 +12,8 @@
       "title": "How do you want to ask?",
       "speak": "Speak",
       "photo": "Photo",
-      "type": "Type"
+      "type": "Type",
+      "go": "Go by voice"
     },
     "brief": {
       "who": "Your farm companion",

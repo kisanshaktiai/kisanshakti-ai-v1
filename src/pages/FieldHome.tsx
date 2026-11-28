@@ -113,7 +113,7 @@ export default function FieldHome() {
       <LandBar lands={lands} land={land} onChoose={choose} />
 
       <div className={`lf-scene ${night ? 'lf-scene-night' : ''}`}>
-        <button type="button" className="lf-now" style={readingRight ? { insetInlineStart: 'auto', left: 'auto', right: 'var(--lf-gut)', textAlign: 'right' } : undefined} onClick={() => navigate('/app/weather')} aria-label={t('home.weather')}>
+        <button type="button" className="lf-now" data-tour="weather" style={readingRight ? { insetInlineStart: 'auto', left: 'auto', right: 'var(--lf-gut)', textAlign: 'right' } : undefined} onClick={() => navigate('/app/weather')} aria-label={t('home.weather')}>
           {currentWeather?.temp != null
             ? <div className="lf-stat">{Math.round(Number(currentWeather.temp))}°</div>
             : <div className="lf-stat text-muted-foreground">{weatherLoading ? '…' : '–'}</div>}

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Sprout, SunMedium, Layers, LayoutGrid, Mic, Camera, Keyboard } from 'lucide-react';
+import { Sprout, SunMedium, Layers, LayoutGrid, Mic, Camera, Keyboard, Navigation } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
@@ -11,13 +11,13 @@ import './living.css';
 // The photo flow carries the camera and QR code; it is fetched the first time the farmer opens it, not with the app shell.
 const InstaScanFlow = lazy(() => import('@/components/InstaScan/InstaScanFlow').then((m) => ({ default: m.InstaScanFlow })));
 
-interface DockItem { path: string; icon: LucideIcon; labelKey: string; match: (pathname: string) => boolean }
+interface DockItem { path: string; icon: LucideIcon; labelKey: string; tour?: string; match: (pathname: string) => boolean }
 
 const ITEMS: DockItem[] = [
   { path: '/app', icon: Sprout, labelKey: 'living.dock.field', match: (p) => p === '/app' || p === '/app/' || p === '/app/home' },
-  { path: '/app/day', icon: SunMedium, labelKey: 'living.dock.day', match: (p) => p.startsWith('/app/day') || p.startsWith('/app/schedule') },
-  { path: '/app/land', icon: Layers, labelKey: 'living.dock.land', match: (p) => p.startsWith('/app/land') },
-  { path: '/app/all', icon: LayoutGrid, labelKey: 'living.dock.all', match: (p) => p.startsWith('/app/all') },
+  { path: '/app/day', icon: SunMedium, labelKey: 'living.dock.day', tour: 'schedule', match: (p) => p.startsWith('/app/day') || p.startsWith('/app/schedule') },
+  { path: '/app/land', icon: Layers, labelKey: 'living.dock.land', tour: 'ndvi', match: (p) => p.startsWith('/app/land') },
+  { path: '/app/all', icon: LayoutGrid, labelKey: 'living.dock.all', tour: 'market community', match: (p) => p.startsWith('/app/all') },
 ];
 
 /**
@@ -52,17 +52,20 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
     const Icon = it.icon;
     const active = it.match(pathname);
     return (
-      <button key={it.path} type="button" className="lf-dock-item" aria-current={active ? 'page' : undefined} onClick={() => go(it.path)}>
+      <button key={it.path} type="button" className="lf-dock-item" data-tour={it.tour} aria-current={active ? 'page' : undefined} onClick={() => go(it.path)}>
         <Icon size={24} aria-hidden />
         <span>{t(it.labelKey)}</span>
       </button>
     );
   };
 
+  const voiceNav = askOpen && typeof document !== 'undefined' && !!document.querySelector('[data-voice-nav]');
   const ways: Array<{ key: string; icon: LucideIcon; primary?: boolean; run: () => void }> = [
     { key: 'photo', icon: Camera, run: () => { setAskOpen(false); setScanOpen(true); } },
     { key: 'speak', icon: Mic, primary: true, run: () => { setAskOpen(false); if (isVoiceModeActive) hideVoiceMode(); else showVoiceMode(); } },
     { key: 'type', icon: Keyboard, run: () => { setAskOpen(false); go('/app/chat'); } },
+    // Voice navigation ("show my lands"): starts the app's existing voice-navigation button. Offered only where that button exists.
+    ...(voiceNav ? [{ key: 'go', icon: Navigation, run: () => { setAskOpen(false); window.dispatchEvent(new Event('voice-navigation:start')); } }] : []),
   ];
 
   return (
@@ -72,7 +75,7 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
           {item(ITEMS[0])}
           {item(ITEMS[1])}
           <div className="lf-orb-wrap">
-            <button type="button" className="lf-orb" aria-label={t('living.dock.ask')} aria-haspopup="dialog" onClick={() => setAskOpen(true)}>
+            <button type="button" className="lf-orb" data-tour="chat scan mic" aria-label={t('living.dock.ask')} aria-haspopup="dialog" onClick={() => setAskOpen(true)}>
               <Mic size={30} strokeWidth={2.2} aria-hidden />
             </button>
           </div>
@@ -86,16 +89,16 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
           <DrawerHeader>
             <DrawerTitle className="lf-head text-center">{t('living.ask.title')}</DrawerTitle>
           </DrawerHeader>
-          <div className="flex items-end justify-around px-4 pt-2" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="flex items-end justify-around gap-1 px-3 pt-2" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
             {ways.map(({ key, icon: Icon, primary, run }) => (
-              <button key={key} type="button" onClick={run} className="flex flex-col items-center gap-2 min-w-0">
+              <button key={key} type="button" onClick={run} className="flex min-w-0 flex-1 flex-col items-center gap-2">
                 <span
                   className={primary ? 'grid place-items-center rounded-full bg-primary text-primary-foreground shadow-lg' : 'grid place-items-center rounded-full bg-primary/10 text-primary'}
                   style={{ width: primary ? 'calc(var(--lf-orb) + 14px)' : 'calc(var(--lf-tap) + 6px)', height: primary ? 'calc(var(--lf-orb) + 14px)' : 'calc(var(--lf-tap) + 6px)' }}
                 >
                   <Icon size={primary ? 36 : 26} aria-hidden />
                 </span>
-                <span className={primary ? 'lf-lab text-primary' : 'lf-cap'}>{t(`living.ask.${key}`)}</span>
+                <span className={`${primary ? 'lf-lab text-primary' : 'lf-cap'} max-w-full text-center leading-tight`} style={{ overflowWrap: 'anywhere' }}>{t(`living.ask.${key}`)}</span>
               </button>
             ))}
           </div>

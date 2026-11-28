@@ -281,12 +281,12 @@ export function FeatureWalkthrough() {
         setRect(null);
         return;
       }
-      const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+      const el = document.querySelector<HTMLElement>(`[data-tour~="${step.target}"]`);
       setRect(el ? el.getBoundingClientRect() : null);
     };
 
     const el = step.target
-      ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`)
+      ? document.querySelector<HTMLElement>(`[data-tour~="${step.target}"]`)
       : null;
     if (el) {
       try {
