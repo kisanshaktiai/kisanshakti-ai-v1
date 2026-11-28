@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MapPin } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useGoogleMaps } from '@/contexts/GoogleMapsContext';
 
 interface LandThumbnailProps {
@@ -68,6 +69,7 @@ function generateBoundarySvg(coordinates: number[][]): string {
 }
 
 export function LandThumbnail({ boundary, centerPoint, landName, className = '' }: LandThumbnailProps) {
+  const { t } = useTranslation();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -210,7 +212,7 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
       <div className={`bg-muted flex items-center justify-center ${className}`}>
         <div className="text-center text-muted-foreground">
           <MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="text-xs">No boundary</p>
+          <p className="text-xs">{t('living.land.no_boundary')}</p>
         </div>
       </div>
     );
@@ -225,8 +227,8 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
           alt={`${landName} boundary`}
           className="w-full h-full object-cover"
         />
-        <div className="absolute bottom-1 right-1 bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5">
-          <span className="text-xs text-muted-foreground">Loading...</span>
+        <div className="absolute bottom-1 right-1 bg-background/80 rounded px-1.5 py-0.5">
+          <span className="text-xs text-muted-foreground">{t('common.loading')}</span>
         </div>
       </div>
     );
@@ -261,8 +263,8 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
 
       {/* Offline indicator */}
       {!isOnline && (
-        <div className="absolute bottom-1 right-1 bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5">
-          <span className="text-xs text-muted-foreground">Offline</span>
+        <div className="absolute bottom-1 right-1 bg-background/80 rounded px-1.5 py-0.5">
+          <span className="text-xs text-muted-foreground">{t('common.offline')}</span>
         </div>
       )}
     </div>

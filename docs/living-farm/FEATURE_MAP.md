@@ -19,7 +19,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/schemes` | old look, working | All |
 | `/app/profile` | old look, working | All |
 | `/app/profile/edit` | old look, working | from its parent page, as before |
-| `/app/lands` | old look, working | Land: "All my lands"; All |
+| `/app/lands` | new look; same data calls | Land: "All my lands"; All |
 | `/app/lands/add` | old look, working | + on Field home; Land page |
 | `/app/lands/:id/edit` | old look, working | from its parent page, as before |
 | `/app/lands/:id` | old look, working | land chip on Field home (one land); Land page |

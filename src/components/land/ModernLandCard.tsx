@@ -1,7 +1,5 @@
 import React, { useState, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { useCropNames } from '@/hooks/useCropNames';
 import { landAttributeLabel } from '@/lib/landLabels';
@@ -20,9 +18,6 @@ import {
   Activity,
   Percent
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,8 +29,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LandThumbnail } from './LandThumbnail';
+import '@/living/living.css';
 import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
 
 interface ModernLandCardProps {
@@ -70,7 +65,7 @@ interface ModernLandCardProps {
 export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -132,201 +127,109 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   }, [land.name, t, toast]);
   
   const formatArea = useCallback(() => {
-    let areaText = `${land.area_acres.toFixed(2)} acres`;
+    let areaText = `${land.area_acres.toFixed(2)} ${t('common.acres')}`;
     if (land.area_guntas && land.area_guntas > 0) {
-      areaText += ` ${land.area_guntas} guntas`;
+      areaText += ` ${land.area_guntas} ${t('living.land.guntas')}`;
     }
     return areaText;
-  }, [land.area_acres, land.area_guntas]);
-  
+  }, [land.area_acres, land.area_guntas, t]);
+
+  const updatedOn = land.updated_at
+    ? new Date(land.updated_at).toLocaleDateString(`${i18n.language || 'en'}-IN-u-nu-latn`, { day: 'numeric', month: 'short' })
+    : null;
+  const place = joinPlace(land, ['village', 'district', 'state']);
+  const openDetails = () => navigate(`/app/lands/${land.id}`);
+  const action = 'lf-cap flex min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-border bg-card px-2 font-bold text-foreground';
+  const iconAction = 'grid shrink-0 place-items-center rounded-2xl border border-border bg-card';
+  const tap = { minHeight: 'var(--lf-tap)' } as const;
+  const tapSquare = { width: 'var(--lf-tap)', height: 'var(--lf-tap)' } as const;
+
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        whileHover={{ scale: 1.02, y: -5 }}
-        whileTap={{ scale: 0.98 }}
-        transition={{ duration: 0.2 }}
-        className="h-full"
-      >
-        <Card className="overflow-hidden cursor-pointer group relative bg-card hover:shadow-2xl transition-all duration-300 border-border/50 h-full flex flex-col">
-          {/* Map Image Section */}
-          <div className="relative h-40 sm:h-48 overflow-hidden bg-muted">
-            <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-background/20 to-transparent z-10 pointer-events-none" />
-            
-            <LandThumbnail
-              boundary={land.boundary_polygon_old}
-              centerPoint={land.center_point_old}
-              landName={land.name}
-              className="w-full h-full group-hover:scale-110 transition-transform duration-500"
-            />
-            
-            {/* Direct Action Icons */}
-            <div className="absolute top-2 right-2 flex gap-1 z-20">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="secondary"
-                      className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEdit();
-                      }}
-                    >
-                      <Edit3 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="secondary"
-                      className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteDialogOpen(true);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Delete</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            
-            {/* Utilized Percentage Badge */}
-            <Badge className="absolute top-2 left-2 bg-black/70 text-white border-white/20 backdrop-blur-sm shadow-lg z-20 text-xs sm:text-sm">
-              <Percent className="h-3 w-3 mr-1" />
-              {t('lands.card.utilized', { percent: land.current_crop ? 85 : 0 })}
-            </Badge>
-            
-            {/* Area Badge */}
-            <Badge className="absolute bottom-2 left-2 bg-black/70 text-white border-white/20 backdrop-blur-sm shadow-lg z-20 text-xs sm:text-sm">
-              <Mountain className="h-3 w-3 mr-1" />
-              {formatArea()}
-            </Badge>
-          </div>
-          
-          {/* Content Section */}
-          <CardContent 
-            className="p-3 sm:p-4 space-y-3 flex-1 flex flex-col"
-            onClick={() => navigate(`/app/lands/${land.id}`)}
-          >
-            {/* Land Name and Survey Number */}
-            <div className="space-y-1">
-              <h3 className="font-bold text-base sm:text-lg tracking-tight flex items-center gap-1 line-clamp-1">
-                {land.name}
-                <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-              </h3>
+      <article className="flex h-full flex-col overflow-hidden rounded-[var(--lf-r)] border border-border bg-card shadow-sm">
+        {/* The farmer's own field from above */}
+        <button type="button" onClick={openDetails} aria-label={t('lands.card.view_details')} className="relative block w-full overflow-hidden bg-muted" style={{ height: 'clamp(120px, 36vw, 190px)' }}>
+          <LandThumbnail
+            boundary={land.boundary_polygon_old}
+            centerPoint={land.center_point_old}
+            landName={land.name}
+            className="h-full w-full"
+          />
+          <span className="lf-pill lf-pill-sm absolute bottom-2 left-2 bg-card text-foreground shadow-sm">
+            <Mountain size={14} aria-hidden />
+            {formatArea()}
+          </span>
+        </button>
+
+        <div className="flex flex-1 flex-col gap-3" style={{ padding: 'clamp(12px, 3.6vw, 18px)' }}>
+          <button type="button" onClick={openDetails} className="flex w-full items-start gap-2 text-start">
+            <span className="min-w-0 flex-1">
+              <span className="lf-head block" style={{ overflowWrap: 'anywhere' }}>{land.name}</span>
               {land.survey_number && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
+                <span className="lf-cap mt-0.5 flex items-center gap-1 text-muted-foreground">
+                  <MapPin size={14} className="shrink-0" aria-hidden />
                   {t('lands.card.survey_no', { number: land.survey_number })}
-                </p>
+                </span>
+              )}
+              {place && <span className="lf-cap mt-0.5 block text-muted-foreground" style={{ overflowWrap: 'anywhere' }}>{place}</span>}
+            </span>
+            <ChevronRight size={22} className="mt-1 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden />
+          </button>
+
+          {(land.current_crop || land.previous_crop) && (
+            <div className="grid grid-cols-2 gap-2">
+              {land.current_crop && (
+                <div className="min-w-0 rounded-2xl bg-primary/10 px-3 py-2">
+                  <p className="lf-cap text-muted-foreground">{t('lands.card.current')}</p>
+                  <p className="lf-lab flex items-center gap-1.5"><Wheat size={18} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0 truncate">{cropNameOf(land.current_crop, land.current_crop_id)}</span></p>
+                </div>
+              )}
+              {land.previous_crop && (
+                <div className="min-w-0 rounded-2xl bg-muted px-3 py-2">
+                  <p className="lf-cap text-muted-foreground">{t('lands.card.previous')}</p>
+                  <p className="lf-lab flex items-center gap-1.5 font-normal"><TreePine size={18} className="shrink-0 text-muted-foreground" aria-hidden /><span className="min-w-0 truncate">{cropNameOf(land.previous_crop, land.previous_crop_id)}</span></p>
+                </div>
               )}
             </div>
-            
-            {/* Crop Information - Mobile optimized */}
-            {(land.current_crop || land.previous_crop) && (
-              <div className="grid grid-cols-2 gap-2">
-                {land.current_crop && (
-                  <div className="space-y-0.5">
-                    <p className="text-xs text-muted-foreground">{t('lands.card.current')}</p>
-                    <div className="flex items-center gap-1">
-                      <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
-                      <span className="text-xs sm:text-sm font-medium truncate">{cropNameOf(land.current_crop, land.current_crop_id)}</span>
-                    </div>
-                  </div>
-                )}
-                
-                {land.previous_crop && (
-                  <div className="space-y-0.5">
-                    <p className="text-xs text-muted-foreground">{t('lands.card.previous')}</p>
-                    <div className="flex items-center gap-1">
-                      <TreePine className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-xs sm:text-sm truncate">{cropNameOf(land.previous_crop, land.previous_crop_id)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Smart Action Buttons */}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-8 text-xs font-medium"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/app/lands/${land.id}/soil`);
-                }}
-              >
-                <Activity className="h-3 w-3 mr-1" />
-                {t('lands.card.soil_health')}
-              </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-8 text-xs font-medium"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/app/lands/${land.id}/ndvi`);
-                }}
-              >
-                <Satellite className="h-3 w-3 mr-1" />
-                {t('lands.card.ndvi_data')}
-              </Button>
-            </div>
-            
-            {/* Land Details Tags */}
+          )}
+
+          {(land.irrigation_type || land.soil_type || land.ownership_type) && (
             <div className="flex flex-wrap gap-1.5">
               {land.irrigation_type && (
-                <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                  <Droplets className="h-2.5 w-2.5 mr-1" />
-                  {landAttributeLabel(t, 'irrigation_type', land.irrigation_type)}
-                </Badge>
+                <span className="lf-pill lf-pill-sm bg-info/15 text-foreground"><Droplets size={14} className="text-info" aria-hidden />{landAttributeLabel(t, 'irrigation_type', land.irrigation_type)}</span>
               )}
-              
               {land.soil_type && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5">
-                  <Globe className="h-2.5 w-2.5 mr-1" />
-                  {landAttributeLabel(t, 'soil_type', land.soil_type)}
-                </Badge>
+                <span className="lf-pill lf-pill-sm bg-muted text-foreground"><Globe size={14} aria-hidden />{landAttributeLabel(t, 'soil_type', land.soil_type)}</span>
               )}
-              
               {land.ownership_type && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5">
-                  {landAttributeLabel(t, 'ownership_type', land.ownership_type)}
-                </Badge>
+                <span className="lf-pill lf-pill-sm bg-muted text-foreground">{landAttributeLabel(t, 'ownership_type', land.ownership_type)}</span>
               )}
             </div>
-            
-            {/* Location Footer */}
-            {(land.village || land.district) && (
-              <div className="pt-2 border-t border-border/50">
-                <p className="text-xs text-muted-foreground truncate">
-                  {joinPlace(land, ['village','district','state']) || t('profile.info.not_set', 'Location not set')}
-                </p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                  <Clock className="h-2.5 w-2.5" />
-                  {t('lands.card.updated', { date: land.updated_at ? format(new Date(land.updated_at), 'MMM d') : 'Never' })}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
-      
+          )}
+
+          <div className="mt-auto grid grid-cols-2 gap-2">
+            <button type="button" className={action} style={tap} onClick={() => navigate(`/app/lands/${land.id}/soil`)}>
+              <Activity size={18} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0 leading-tight" style={{ overflowWrap: 'anywhere' }}>{t('lands.card.soil_health')}</span>
+            </button>
+            <button type="button" className={action} style={tap} onClick={() => navigate(`/app/lands/${land.id}/ndvi`)}>
+              <Satellite size={18} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0 leading-tight" style={{ overflowWrap: 'anywhere' }}>{t('lands.card.ndvi_data')}</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <p className="lf-cap flex min-w-0 flex-1 items-center gap-1 text-muted-foreground">
+              {updatedOn && <><Clock size={14} className="shrink-0" aria-hidden /><span className="min-w-0 truncate">{t('lands.card.updated', { date: updatedOn })}</span></>}
+            </p>
+            <button type="button" className={`${iconAction} text-foreground`} style={tapSquare} onClick={handleEdit} aria-label={t('lands.card.edit')}>
+              <Edit3 size={20} aria-hidden />
+            </button>
+            <button type="button" className={`${iconAction} text-destructive`} style={tapSquare} onClick={() => setDeleteDialogOpen(true)} aria-label={t('lands.card.delete')}>
+              <Trash2 size={20} aria-hidden />
+            </button>
+          </div>
+        </div>
+      </article>
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent className="max-w-[90vw] sm:max-w-md">

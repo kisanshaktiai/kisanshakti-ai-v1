@@ -157,3 +157,19 @@ What changed is drawing and wording only:
 2. `addToCart` writes `unit_price: 0` and `cart_id: user.id` on every cart row.
 3. `PriceComparisonChart.tsx:83` prints the state name of Maharashtra as fixed text under every crop.
 4. `MarketPriceCard.tsx` picks the category emoji from a table keyed by Marathi category names.
+
+## Lands list (`src/pages/LandManagement.tsx`, `src/components/land/ModernLandCard.tsx`)
+
+Same route (`/app/lands`). Data still comes only from `useLands()`; delete still calls `landsApi.deleteLand(id)` then `onRefresh`; the search, filter, sort, view-mode, export and soil-colour rules are the lines that were there. Card buttons go to the same routes: `/app/lands/:id`, `/soil`, `/ndvi`, `/edit`, and `/app/lands/add`.
+
+Drawing changes:
+
+- Filter is three chips under the search box; sort and view mode stay in the sheet as large buttons. Export stays a wide-screen action, as before.
+- The card's edit and delete moved from two 32 px buttons on top of the picture to 48 px buttons in the card; their labels come from `lands.card.edit` / `lands.card.delete` (were English tooltips).
+- Area units use `common.acres` and the new `living.land.guntas`; the "updated" date follows the app language and is hidden when the land has no date (it printed "Never").
+- `LandThumbnail`: "No boundary", "Loading..." and "Offline" come from keys; blur removed. Its picture source is unchanged.
+- Entry animations and hover scaling removed.
+
+**Removed because it was not data:** the card's "85% Utilized" badge. The code printed 85 for any land with a crop and 0 otherwise (`land.current_crop ? 85 : 0`); no table holds that number.
+
+**Seen, not changed:** `crop_stage` is printed as the raw database word in the list view.

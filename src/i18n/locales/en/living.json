@@ -71,7 +71,9 @@
       "next_stage": "Next: {{stage}}",
       "all_lands": "All my lands",
       "satellite": "Satellite view",
-      "edit": "Edit this land"
+      "edit": "Edit this land",
+      "guntas": "guntas",
+      "no_boundary": "No boundary drawn"
     },
     "chat": {
       "remove_attachment": "Remove this picture"

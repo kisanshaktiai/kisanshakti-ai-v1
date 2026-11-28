@@ -71,7 +71,9 @@
       "next_stage": "पुढे: {{stage}}",
       "all_lands": "माझ्या सर्व जमिनी",
       "satellite": "उपग्रहातून पहा",
-      "edit": "या जमिनीत बदल करा"
+      "edit": "या जमिनीत बदल करा",
+      "guntas": "गुंठे",
+      "no_boundary": "सीमा आखलेली नाही"
     },
     "chat": {
       "remove_attachment": "हा फोटो काढा"
