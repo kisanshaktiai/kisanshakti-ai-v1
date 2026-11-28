@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +6,9 @@ import { useLandEnvState, useLandEnvTimeline } from '@/hooks/useFarmIntelligence
 import { IrrigationGauge } from './IrrigationGauge';
 import { SprayWindowStrip } from './SprayWindowStrip';
 import { RiskEpisodeChips } from './RiskEpisodeChips';
-import { EtoRainMiniTimeline } from './EtoRainMiniTimeline';
+
+// The timeline is the only part that needs the chart library; it arrives after the card's own numbers.
+const EtoRainMiniTimeline = lazy(() => import('./EtoRainMiniTimeline').then((m) => ({ default: m.EtoRainMiniTimeline })));
 
 /**
  * Farm Intelligence card — additive surface on the Land Detail screen.
@@ -46,7 +48,9 @@ export function FarmIntelligenceCard({ landId }: { landId: string }) {
         />
         <SprayWindowStrip window={s.spray_window} score={s.spray_score} />
         <RiskEpisodeChips landId={landId} episodes={data.active_episodes} />
-        <EtoRainMiniTimeline series={timeline.data?.series} isLoading={timeline.isLoading} />
+        <Suspense fallback={null}>
+          <EtoRainMiniTimeline series={timeline.data?.series} isLoading={timeline.isLoading} />
+        </Suspense>
       </CardContent>
     </Card>
   );
