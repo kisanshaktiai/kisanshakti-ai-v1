@@ -16,6 +16,8 @@ interface FieldSceneProps {
   /** true only when the sun times are known and it is night */
   night?: boolean;
   cloudy: boolean;
+  /** draw clouds and rain on the left, for when the temperature is shown on the right */
+  mirrorSky?: boolean;
   raining: boolean;
   pins: FieldPin[];
   stageLabel: string | null;
@@ -32,7 +34,7 @@ const TONE_PILL: Record<FieldPin['tone'], string> = {
 };
 
 /** The farmer's field as a tilted block: crop on top, soil and water on the edge, sky above. Static SVG, no animation. */
-export const FieldScene = memo(function FieldScene({ ring, stageProgress, irrigationNeeded, sun, night = false, cloudy, raining, pins, stageLabel, waterLabel, ariaLabel }: FieldSceneProps) {
+export const FieldScene = memo(function FieldScene({ ring, stageProgress, irrigationNeeded, sun, night = false, cloudy, mirrorSky = false, raining, pins, stageLabel, waterLabel, ariaLabel }: FieldSceneProps) {
   const slab = useMemo(
     () => buildSlab(ring ?? DEFAULT_RING, irrigationNeeded == null ? null : irrigationNeeded ? 0.22 : 0.7),
     [ring, irrigationNeeded],
@@ -40,6 +42,11 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
   const plantHeight = stageProgress == null ? 0 : 6 + Math.max(0, Math.min(1, stageProgress)) * 16;
   const sunAt = sun == null ? null : sunPoint(sun);
   const shown = pins.slice(0, slab.anchors.length);
+  // Ground line just under the block; the two labels sit below it so they never cover the field.
+  const groundY = Math.min(SCENE_H - 8, slab.bounds.bottom + 6);
+  const labelY = Math.min(SCENE_H - 14, groundY + 24);
+  // The sun's weather drawings move to the other side when the reading is shown on the right.
+  const flip = mirrorSky ? `translate(${SCENE_W} 0) scale(-1 1)` : undefined;
 
   return (
     <div className="lf-stage">
@@ -59,18 +66,19 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
           </g>
         )}
         {cloudy && (
-          <g fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5">
+          <g fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth="1.5" transform={flip}>
             <path d="M312 84 a16 16 0 0 1 30 -8 a13 13 0 0 1 24 8 a10 10 0 0 1 -4 19 h-46 a11 11 0 0 1 -4 -19z" />
             <path d="M176 40 a11 11 0 0 1 21 -5 a9 9 0 0 1 16 5 a7 7 0 0 1 -3 13 h-31 a8 8 0 0 1 -3 -13z" />
           </g>
         )}
         {raining && (
-          <g stroke="hsl(var(--info))" strokeWidth="2.5" strokeLinecap="round">
+          <g stroke="hsl(var(--info))" strokeWidth="2.5" strokeLinecap="round" transform={flip}>
             {[318, 332, 346, 184, 196].map((x, i) => <path key={x} d={`M${x} ${i < 3 ? 112 : 62} l-4 10`} />)}
           </g>
         )}
 
-        <ellipse cx={SCENE_W / 2} cy="322" rx="176" ry="13" fill="hsl(var(--foreground) / 0.10)" />
+        {/* The shadow sits under the block itself, whatever the field's shape */}
+        <ellipse cx={(slab.bounds.minX + slab.bounds.maxX) / 2} cy={groundY} rx={Math.max(60, (slab.bounds.maxX - slab.bounds.minX) / 2 + 12)} ry="11" fill="hsl(var(--foreground) / 0.10)" />
         {slab.sides.map((s, i) => (
           <g key={i}>
             <polygon points={s.soil} fill={`hsl(var(--tertiary, var(--secondary)) / ${s.facingLeft ? 0.55 : 0.8})`} />
@@ -112,14 +120,14 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
           </button>
         );
       })}
-      {waterLabel && (
-        <div className="lf-at" style={{ left: 'auto', insetInlineEnd: 0, top: pct(slab.lowest.y - 6, SCENE_H), transform: 'translateY(-50%)' }}>
-          <span className="lf-pill lf-pill-sm bg-card text-info border-[1.5px] border-info">{waterLabel}</span>
+      {stageLabel && (
+        <div className="lf-at" style={{ left: 0, top: pct(labelY, SCENE_H), transform: 'translateY(-50%)', maxWidth: '48%' }}>
+          <span className="lf-pill lf-pill-sm bg-card text-primary border-[1.5px] border-primary" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stageLabel}</span>
         </div>
       )}
-      {stageLabel && (
-        <div className="lf-at" style={{ left: 0, top: pct(Math.min(SCENE_H - 14, slab.lowest.y + 8), SCENE_H), transform: 'translateY(-50%)' }}>
-          <span className="lf-pill lf-pill-sm bg-card text-primary border-[1.5px] border-primary">{stageLabel}</span>
+      {waterLabel && (
+        <div className="lf-at" style={{ left: 'auto', insetInlineEnd: 0, top: pct(labelY, SCENE_H), transform: 'translateY(-50%)', maxWidth: '48%' }}>
+          <span className="lf-pill lf-pill-sm bg-card text-info border-[1.5px] border-info" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{waterLabel}</span>
         </div>
       )}
     </div>

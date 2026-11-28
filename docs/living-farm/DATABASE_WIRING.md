@@ -173,3 +173,12 @@ Drawing changes:
 **Removed because it was not data:** the card's "85% Utilized" badge. The code printed 85 for any land with a crop and 0 otherwise (`land.current_crop ? 85 : 0`); no table holds that number.
 
 **Seen, not changed:** `crop_stage` is printed as the raw database word in the list view.
+
+## App bar on notched phones, and the field scene for long fields (fix)
+
+No data call is involved in any of these.
+
+- `AppLayout.tsx`: the app bar was a fixed 56 px box with the phone's top inset added as padding inside it, so on a phone with a notch its row was squeezed out of the box and drawn on top of the page. Measured with a 59 px inset: bar box 0–60 px, bar contents 41–77 px. The bar is now 56 px plus the inset (`--app-header-h`, defined in `living.css`), and the banner and the page offset use the same value. Measured after: bar box 0–115 px, contents 69–105 px.
+- The floating voice-navigation button is hidden on Day and Land as it already was on Field; those pages fit one screen, so it sat on top of text that cannot be scrolled out from under it.
+- `FieldScene.tsx`: the shadow is drawn under the block's real bottom edge, and the day and water labels sit below the block, so a long thin field no longer has labels on top of it and a shadow far below it.
+- `FieldHome.tsx`: while the sun is in the left part of its path (before about 42 % of the day) the temperature moves to the right and the clouds to the left, so the sun does not sit on the number.

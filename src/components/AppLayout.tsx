@@ -44,8 +44,8 @@ export function AppLayout() {
     /^\/app\/lands\/[^/]+\/edit$/.test(location.pathname);
 
   const isFullScreenRoute = isAIChat || isCommunityChat || isLandMapRoute;
-  // The Field home keeps its sentence card clear; voice is on the dock there.
-  const isFieldHome = /^\/app\/?(home)?$/.test(location.pathname);
+  // Field, Day and Land fit one screen with nothing to scroll out from under a floating button; voice is on the dock there.
+  const isFieldHome = /^\/app\/?(home|day|land)?$/.test(location.pathname);
 
   return (
     <ModernVoiceProvider>
@@ -54,7 +54,11 @@ export function AppLayout() {
           <div className="flex flex-col h-mobile-screen bg-background">
             {/* 2030-ready compact glass header — 56px tall, single StatusPill */}
             {!isFullScreenRoute && (
-              <header className="glass-header fixed top-0 left-0 right-0 h-14 z-40 flex items-center gap-1.5 px-3 pt-safe">
+              <header
+                className="glass-header fixed top-0 left-0 right-0 z-40 flex items-center gap-1.5 px-3"
+                // The bar is 56px plus the phone's top inset, so its row never spills onto the page on notched phones.
+                style={{ height: 'var(--app-header-h)', paddingTop: 'env(safe-area-inset-top, 0px)' }}
+              >
                 <BrandBlock />
                 <div className="flex items-center gap-1.5 shrink-0">
                   <SpeakPageButton />
@@ -67,7 +71,7 @@ export function AppLayout() {
             {/* Subscription Status Banner — only renders when warning state.
                 Publishes its measured height to --banner-h so <main> offsets precisely. */}
             {!isFullScreenRoute && (
-              <div className="fixed top-14 left-0 right-0 z-30">
+              <div className="fixed left-0 right-0 z-30" style={{ top: 'var(--app-header-h)' }}>
                 <SubscriptionStatusBanner />
               </div>
             )}
@@ -85,7 +89,7 @@ export function AppLayout() {
               style={
                 isFullScreenRoute
                   ? undefined
-                  : { paddingTop: 'calc(3.5rem + var(--banner-h, 0px))' }
+                  : { paddingTop: 'calc(var(--app-header-h) + var(--banner-h, 0px))' }
               }
             >
               <AppBootGate>

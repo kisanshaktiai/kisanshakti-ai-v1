@@ -82,6 +82,8 @@ export default function FieldHome() {
   const sunAt = sunProgress(now.getTime(), currentWeather?.sunrise, currentWeather?.sunset);
   // Night is said only when the sun times are known and now is outside them.
   const night = sunAt == null && currentWeather?.sunrise != null && currentWeather?.sunset != null;
+  // Before mid-morning the sun is drawn on the left, where the temperature normally sits; the reading moves right until it has passed.
+  const readingRight = sunAt != null && sunAt < 0.42;
   const weatherMain = String(currentWeather?.main ?? '');
   const raining = /rain|drizzle|thunder/i.test(weatherMain);
   const cloudy = raining || Number(currentWeather?.clouds ?? 0) >= 40;
@@ -111,7 +113,7 @@ export default function FieldHome() {
       <LandBar lands={lands} land={land} onChoose={choose} />
 
       <div className={`lf-scene ${night ? 'lf-scene-night' : ''}`}>
-        <button type="button" className="lf-now" onClick={() => navigate('/app/weather')} aria-label={t('home.weather')}>
+        <button type="button" className="lf-now" style={readingRight ? { insetInlineStart: 'auto', left: 'auto', right: 'var(--lf-gut)', textAlign: 'right' } : undefined} onClick={() => navigate('/app/weather')} aria-label={t('home.weather')}>
           {currentWeather?.temp != null
             ? <div className="lf-stat">{Math.round(Number(currentWeather.temp))}°</div>
             : <div className="lf-stat text-muted-foreground">{weatherLoading ? '…' : '–'}</div>}
@@ -126,6 +128,7 @@ export default function FieldHome() {
           sun={sunAt}
           night={night}
           cloudy={cloudy}
+          mirrorSky={readingRight}
           raining={raining}
           pins={pins}
           stageLabel={sky.cropActive && sky.stage.das != null ? t('living.scene.day', { day: sky.stage.das }) : null}

@@ -16,6 +16,8 @@
   --lf-r: calc(var(--radius-lg, 0.75rem) + 0.5rem);
 }
 
+/* App bar height: 56px plus the phone's top inset (notch, status bar). Used by the bar, the banner under it and the page offset. */
+:root { --app-header-h: calc(3.5rem + env(safe-area-inset-top, 0px)); }
 .lf-pb-dock { padding-bottom: calc(var(--lf-dock-h) + env(safe-area-inset-bottom, 0px)); }
 
 /* ---- dock ---- */
@@ -32,7 +34,7 @@
 .lf-orb:active { transform: translate(-50%, -62%) scale(0.96); }
 
 /* ---- field home ---- */
-.lf-home { min-height: calc(100vh - 3.5rem - var(--banner-h, 0px) - var(--lf-dock-h) - env(safe-area-inset-bottom, 0px)); min-height: calc(100dvh - 3.5rem - var(--banner-h, 0px) - var(--lf-dock-h) - env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; font-size: var(--lf-fs-body); line-height: 1.55; }
+.lf-home { min-height: calc(100vh - var(--app-header-h) - var(--banner-h, 0px) - var(--lf-dock-h) - env(safe-area-inset-bottom, 0px)); min-height: calc(100dvh - var(--app-header-h) - var(--banner-h, 0px) - var(--lf-dock-h) - env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; font-size: var(--lf-fs-body); line-height: 1.55; }
 .lf-top { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px var(--lf-gut) 4px; }
 .lf-landsel { flex: 1; min-width: 0; min-height: var(--lf-tap); padding: 6px 14px; border-radius: 999px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 8px; font-size: var(--lf-fs-lab); font-weight: 700; line-height: 1.35; box-shadow: var(--shadow-sm); text-align: start; }
 .lf-landsel span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

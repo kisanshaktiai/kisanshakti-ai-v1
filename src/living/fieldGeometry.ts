@@ -62,6 +62,8 @@ const poly = (pts: Pt[]) => pts.map((p) => `${f(p.x)},${f(p.y)}`).join(' ');
 
 export interface SlabSide { soil: string; water: string | null; waterLine: [Pt, Pt] | null; facingLeft: boolean }
 export interface Slab {
+  /** left edge, right edge and lowest drawn point of the block, in scene units */
+  bounds: { minX: number; maxX: number; bottom: number };
   top: string;
   sides: SlabSide[];
   rows: Array<[Pt, Pt]>;
@@ -108,7 +110,9 @@ export function buildSlab(ring: Pt[], waterFraction: number | null): Slab {
   const anchors = (candidates.length ? candidates : [{ x: cx, y: cy }]).map((p) => project(p));
 
   const lowest = P.reduce((m, p) => (p.y > m.y ? p : m), P[0]);
-  return { top: poly(P), sides, rows, plants, anchors, lowest: { x: lowest.x, y: lowest.y + SLAB_DEPTH } };
+  const pxs = P.map((p) => p.x);
+  const bounds = { minX: Math.min(...pxs), maxX: Math.max(...pxs), bottom: lowest.y + SLAB_DEPTH };
+  return { top: poly(P), sides, rows, plants, anchors, lowest: { x: lowest.x, y: lowest.y + SLAB_DEPTH }, bounds };
 }
 
 /** Where the sun is on its path: 0 at sunrise, 1 at sunset, null before sunrise, after sunset or when the times are unknown. */
