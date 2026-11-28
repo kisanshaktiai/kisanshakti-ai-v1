@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Cloud, CloudRain, Sun, Wind, Droplets, Eye, Gauge, Thermometer, CloudSnow, CloudLightning, CloudDrizzle,
@@ -11,6 +11,7 @@ import { FarmingRecommendations } from '@/components/weather/FarmingRecommendati
 import { PageShell } from '@/components/layout/PageShell';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
+import { useChosenLand } from '@/living/useChosenLand';
 import { useLandWeatherState } from '@/hooks/useLandWeatherState';
 import { LandAgronomyPanel } from '@/components/weather/LandAgronomyPanel';
 import { toastManager } from '@/utils/ToastManager';
@@ -31,18 +32,17 @@ const gut = { padding: '0 var(--lf-gut)' } as const;
 export default function Weather() {
   const { t, i18n } = useTranslation();
   const numLocale = `${i18n.language || 'en'}-u-nu-latn`;
+  // Every land has its own context: the page shows the weather of the land the farmer has chosen
+  // (the same choice as Field, Day and Land), and picking another land here changes it everywhere.
+  const { lands } = useLands();
+  const { land: chosenLand, choose: setSelectedLandId } = useChosenLand((lands ?? []) as Array<{ id: string; is_active?: boolean | null }>);
+  const selectedLandId = chosenLand?.id;
   const {
     currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated,
     locationSource, regionalFallbackLabel, weatherDistanceKm, weatherStationName, isStale,
-  } = useWeather();
+  } = useWeather(undefined, selectedLandId);
 
-  // MODEL B — land-scoped agronomy. Display weather may borrow a nearby cell;
-  // irrigation/GDD/disease never may, so they are keyed to one selected land.
-  const { lands } = useLands();
-  const [selectedLandId, setSelectedLandId] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (!selectedLandId && lands?.length) setSelectedLandId(lands[0].id);
-  }, [lands, selectedLandId]);
+  // MODEL B — land-scoped agronomy: irrigation/GDD/disease are keyed to the same land.
   const { state: landState, isToday: landStateIsToday, isLoading: landStateLoading } =
     useLandWeatherState(selectedLandId);
   const selectedLand = lands?.find((l: any) => l.id === selectedLandId);
@@ -116,7 +116,8 @@ export default function Weather() {
         tone: 'bg-info/15 text-info',
       };
     }
-    if (locationSource === 'farm') return { label: t('weather.provenance.your_field'), tone: 'bg-success/15 text-success' };
+    // With a land chosen the reading is asked for that land itself.
+    if (selectedLandId || locationSource === 'farm') return { label: t('weather.provenance.your_field'), tone: 'bg-success/15 text-success' };
     if (locationSource === 'gps') return { label: t('weather.provenance.your_location'), tone: 'bg-success/15 text-success' };
     return null;
   })();

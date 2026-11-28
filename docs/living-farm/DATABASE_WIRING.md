@@ -116,7 +116,7 @@ Chat header: the title block may now shrink and the action group may not, so the
 
 ## Weather (`src/pages/Weather.tsx`)
 
-Same route (`/app/weather`) and the same three data calls as before: `useWeather()`, `useLands()`, `useLandWeatherState(selectedLandId)`. The land selection rule (first land until the farmer picks another), the refresh handler and its toasts, the pull-to-refresh controller, the field panel (`LandAgronomyPanel`), the farming advice (`FarmingRecommendations`), read-aloud (`VoiceWeatherSummary`) and the seven-day list (`SevenDayForecast`) are the same components with the same inputs.
+Same route (`/app/weather`) and the same three hooks: `useWeather`, `useLands`, `useLandWeatherState(selectedLandId)`. **Since 2026-11-28 (owner's yes): `useWeather(undefined, selectedLandId)`** — the page asks for the chosen land's weather, the call Field, Day and Land already make. With a land id the `weather` edge function reads the land's own centre point and refreshes that land's weather metrics; the function itself is not changed. The land shown is the shared choice (`useChosenLand`): the last land picked on any Living Farm page, else the first active land (it was always the first land in the list). Picking a land on this page changes the choice for the other pages too. The refresh handler and its toasts, the pull-to-refresh controller, the field panel (`LandAgronomyPanel`), the farming advice (`FarmingRecommendations`), read-aloud (`VoiceWeatherSummary`) and the seven-day list (`SevenDayForecast`) are the same components with the same inputs.
 
 | Part | Fields read (unchanged) | Change |
 |---|---|---|
