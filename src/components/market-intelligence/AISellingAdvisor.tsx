@@ -43,8 +43,8 @@ export function AISellingAdvisor({
           colorClass: 'text-success',
           bgClass: 'bg-success/10',
           borderClass: 'border-success/30',
-          labelMr: 'आता विका',
-          description: 'बाजार चांगला आहे',
+          labelMr: t('market.ui.sell_now'),
+          description: t('market.ui.sell_now_why'),
         };
       case 'WAIT':
         return {
@@ -52,8 +52,8 @@ export function AISellingAdvisor({
           colorClass: 'text-warning',
           bgClass: 'bg-warning/10',
           borderClass: 'border-warning/30',
-          labelMr: 'थांबा',
-          description: 'चांगले भाव अपेक्षित',
+          labelMr: t('market.ui.wait'),
+          description: t('market.ui.wait_why'),
         };
       case 'HOLD':
         return {
@@ -61,8 +61,8 @@ export function AISellingAdvisor({
           colorClass: 'text-warning',
           bgClass: 'bg-warning/10',
           borderClass: 'border-warning/30',
-          labelMr: 'धरून ठेवा',
-          description: 'बाजारावर लक्ष ठेवा',
+          labelMr: t('market.ui.hold'),
+          description: t('market.ui.hold_why'),
         };
       default:
         return null;
@@ -81,10 +81,7 @@ export function AISellingAdvisor({
     return (
       <div className="text-center py-8">
         <Brain className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
-        <p className="text-sm font-semibold mb-1">AI सल्ल्यासाठी पीक निवडा</p>
-        <p className="text-xs text-muted-foreground">
-          Choose a crop above to get AI selling advice
-        </p>
+        <p className="text-sm font-semibold mb-1">{t('market.ui.pick_crop')}</p>
       </div>
     );
   }
@@ -95,7 +92,7 @@ export function AISellingAdvisor({
         <div className="p-3 rounded-lg bg-muted w-fit mx-auto mb-3">
           <Brain className="w-8 h-8 text-primary" />
         </div>
-        <p className="text-sm font-semibold mb-2">AI विक्री सल्ला मिळवा</p>
+        <p className="text-sm font-semibold mb-2">{t('market.ui.get_advice')}</p>
         <Button
           variant="filter"
           onClick={onGetAdvice}
@@ -107,7 +104,7 @@ export function AISellingAdvisor({
           ) : (
             <Brain className="w-4 h-4 mr-2" />
           )}
-          विश्लेषण करा
+          {t('market.ui.analyse')}
         </Button>
       </div>
     );
@@ -138,8 +135,8 @@ export function AISellingAdvisor({
             <p className="text-xs text-muted-foreground">{rc?.description}</p>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              विश्वास
+            <p className="lf-cap text-muted-foreground uppercase tracking-wide">
+              {t('market.ui.confidence')}
             </p>
             <p className={cn('text-lg font-extrabold tabular-nums', rc?.colorClass)}>
               {analysis.confidence}%
@@ -156,7 +153,7 @@ export function AISellingAdvisor({
         <div className="min-w-0 p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-1.5 mb-1.5">
             {getOutlookIcon()}
-            <h4 className="text-xs font-semibold">किंमत अंदाज</h4>
+            <h4 className="text-xs font-semibold">{t('market.ui.price_outlook')}</h4>
           </div>
           {analysis.expectedPriceRange && (
             <p className="text-sm font-bold tabular-nums break-words">
@@ -164,22 +161,22 @@ export function AISellingAdvisor({
               {analysis.expectedPriceRange.max?.toLocaleString('en-IN')}
             </p>
           )}
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="lf-cap text-muted-foreground mt-0.5">
             {analysis.priceOutlook === 'up'
-              ? 'वाढ अपेक्षित'
+              ? t('market.ui.rise_expected')
               : analysis.priceOutlook === 'down'
-                ? 'घट अपेक्षित'
-                : 'स्थिर'}
+                ? t('market.ui.fall_expected')
+                : t('market.ui.steady')}
           </p>
         </div>
 
         <div className="min-w-0 p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-1.5 mb-1.5">
             <Clock className="w-4 h-4 text-primary" />
-            <h4 className="text-xs font-semibold">विक्रीची वेळ</h4>
+            <h4 className="text-xs font-semibold">{t('market.ui.when_to_sell')}</h4>
           </div>
           <p className="text-sm font-bold break-words">
-            {analysis.bestTimeToSell || 'लवकरात लवकर'}
+            {analysis.bestTimeToSell || t('market.ui.asap')}
           </p>
         </div>
       </div>
@@ -189,7 +186,7 @@ export function AISellingAdvisor({
         <div className="border-t border-border pt-3">
           <div className="flex items-center gap-1.5 mb-2">
             <MapPin className="w-4 h-4 text-primary" />
-            <h4 className="text-xs font-semibold">सर्वोत्तम बाजार</h4>
+            <h4 className="text-xs font-semibold">{t('market.ui.best_markets')}</h4>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {analysis.bestMarkets.map((m, i) => (
@@ -209,7 +206,7 @@ export function AISellingAdvisor({
         <div className="border-t border-border pt-3">
           <div className="flex items-center gap-1.5 mb-2">
             <Lightbulb className="w-4 h-4 text-primary" />
-            <h4 className="text-xs font-semibold">टिप्स</h4>
+            <h4 className="text-xs font-semibold">{t('market.ui.tips')}</h4>
           </div>
           <ul className="space-y-2">
             {analysis.tips.map((tip, i) => (
@@ -235,7 +232,7 @@ export function AISellingAdvisor({
         ) : (
           <Brain className="w-4 h-4 mr-2" />
         )}
-        पुन्हा विश्लेषण
+        {t('market.ui.analyse_again')}
       </Button>
     </div>
   );

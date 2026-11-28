@@ -124,7 +124,7 @@ export function PriceComparisonChart({
         <div className="grid grid-cols-3 gap-2">
           <div className="min-w-0 p-2 rounded-lg bg-muted/50">
             <p className="text-xs text-muted-foreground mb-0.5">
-              सरासरी
+              {t('market.ui.average')}
             </p>
             <p className="text-sm font-bold tabular-nums break-words">
               ₹{Math.round(stats.avgPrice || 0).toLocaleString('en-IN')}
@@ -132,7 +132,7 @@ export function PriceComparisonChart({
           </div>
           <div className="min-w-0 p-2 rounded-lg bg-muted/50">
             <p className="text-xs text-muted-foreground mb-0.5">
-              बदल
+              {t('market.ui.change')}
             </p>
             <div className="flex flex-wrap items-center gap-1">
               {getTrendIcon()}
@@ -141,7 +141,7 @@ export function PriceComparisonChart({
           </div>
           <div className="min-w-0 p-2 rounded-lg bg-muted/50">
             <p className="text-xs text-muted-foreground mb-0.5">
-              नोंदी
+              {t('market.ui.records')}
             </p>
             <p className="text-sm font-bold tabular-nums">{stats.dataPoints}</p>
           </div>

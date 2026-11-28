@@ -24,15 +24,16 @@ function getGroupIcon(category: string | undefined): string {
   return icons[category || ''] || '🌱';
 }
 
-function formatDate(d?: string) {
+function formatDate(d: string | undefined, language: string) {
   if (!d) return '';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return d;
-  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  // Farmer's language for the month, Latin digits as elsewhere on the card.
+  return dt.toLocaleDateString(`${language || 'en'}-IN-u-nu-latn`, { day: '2-digit', month: 'short' });
 }
 
 export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const modalPrice = price.modal_price || price.price_per_unit || 0;
   const minPrice = price.min_price || modalPrice;
   const maxPrice = price.max_price || modalPrice;
@@ -57,7 +58,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
               {price.crop_name}
             </h3>
             {price.variety && (
-              <p className="text-[11px] font-normal text-muted-foreground break-words leading-snug">
+              <p className="lf-cap font-normal text-muted-foreground break-words leading-snug">
                 {price.variety}
               </p>
             )}
@@ -84,7 +85,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
       {/* Row 3: min/max range */}
       {spread > 0 && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3 tabular-nums">
-          <span>कमी ₹{minPrice.toLocaleString('en-IN')}</span>
+          <span>{t('market.ui.low')} ₹{minPrice.toLocaleString('en-IN')}</span>
           <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full bg-primary"
@@ -93,7 +94,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
               }}
             />
           </div>
-          <span>जास्त ₹{maxPrice.toLocaleString('en-IN')}</span>
+          <span>{t('market.ui.high')} ₹{maxPrice.toLocaleString('en-IN')}</span>
         </div>
       )}
 
@@ -108,13 +109,13 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
             <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-4 text-xs">
               {price.distance !== undefined && (
                 <span className="py-0.5 text-muted-foreground font-medium tabular-nums">
-                  {price.distanceKind === 'road' ? '' : '~'}{price.distance} किमी
-                  {price.distanceKind === 'road' ? ' रस्ता' : ''}
-                  {price.travelMinutes !== undefined && ` · ${price.travelMinutes >= 60 ? `${Math.floor(price.travelMinutes / 60)} तास ${price.travelMinutes % 60} मि` : `${price.travelMinutes} मि`}`}
+                  {price.distanceKind === 'road' ? '' : '~'}{price.distance} {t('market.ui.km')}
+                  {price.distanceKind === 'road' ? ` ${t('market.ui.by_road')}` : ''}
+                  {price.travelMinutes !== undefined && ` · ${price.travelMinutes >= 60 ? t('market.ui.hours_minutes', { h: Math.floor(price.travelMinutes / 60), m: price.travelMinutes % 60 }) : t('market.ui.minutes', { m: price.travelMinutes })}`}
                 </span>
               )}
               {price.is_major_market && (
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-foreground font-medium">मोठा बाजार</span>
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-foreground font-medium">{t('market.ui.major_market')}</span>
               )}
             </div>
           )}
@@ -122,7 +123,7 @@ export function MarketPriceCard({ price, onClick }: MarketPriceCardProps) {
         {price.price_date && (
           <span className="flex items-center gap-1 flex-shrink-0 pt-1 text-xs text-muted-foreground">
             <CalendarDays className="w-3 h-3" />
-            {formatDate(price.price_date)}
+            {formatDate(price.price_date, i18n.language)}
           </span>
         )}
       </div>

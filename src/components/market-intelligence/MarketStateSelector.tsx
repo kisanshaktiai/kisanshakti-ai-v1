@@ -26,7 +26,7 @@ export function MarketStateSelector({
 
   return (
     <Select value={selectedState} onValueChange={onStateChange}>
-      <SelectTrigger className="h-12 rounded-2xl bg-card/50 backdrop-blur border-border/50">
+      <SelectTrigger className="h-12 rounded-2xl bg-card/50 border-border/50">
         <MapPin className="w-4 h-4 mr-2 text-muted-foreground" />
         <SelectValue placeholder={t('market.intelligence.selectState', 'Select State')} />
       </SelectTrigger>

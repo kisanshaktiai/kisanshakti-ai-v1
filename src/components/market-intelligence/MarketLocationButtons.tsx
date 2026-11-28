@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,7 @@ export function MarketLocationButtons({
   onSelectMarket,
   isLoading = false,
 }: MarketLocationButtonsProps) {
+  const { t } = useTranslation();
   if (markets.length === 0) return null;
 
   const chip = (name: string, label: string, count: number, active: boolean) => (
@@ -48,7 +50,7 @@ export function MarketLocationButtons({
       {count > 0 && (
         <span
           className={cn(
-            'text-[10px] font-bold px-1.5 py-0.5 rounded-md',
+            'lf-cap font-bold px-1.5 py-0.5 rounded-md',
             active ? 'bg-primary-foreground/20' : 'bg-muted',
           )}
         >
@@ -62,12 +64,12 @@ export function MarketLocationButtons({
     <div className="w-full">
       <div className="flex items-center justify-between mb-2 px-1">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          बाजार
+          {t('market.ui.markets')}
         </h3>
       </div>
       <div className="-mx-4 px-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
         <div className="flex gap-2 pb-1 pr-4">
-          {chip('all', 'सर्व बाजार', 0, selectedMarket === 'all' || !selectedMarket)}
+          {chip('all', t('market.ui.all_markets'), 0, selectedMarket === 'all' || !selectedMarket)}
           {markets.map((m) => chip(m.name, m.name, m.count, selectedMarket === m.name))}
         </div>
       </div>

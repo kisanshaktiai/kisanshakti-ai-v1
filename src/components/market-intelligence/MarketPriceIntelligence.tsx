@@ -1,15 +1,13 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { useMarketPriceIntelligence } from '@/hooks/useMarketPriceIntelligence';
 import { MarketPriceCard } from './MarketPriceCard';
-import { PriceComparisonChart } from './PriceComparisonChart';
 import { AISellingAdvisor } from './AISellingAdvisor';
 import { CropGroupButtons } from './CropGroupButtons';
 import { landsApi } from '@/services/landsApi';
 import { CropChips } from './CropChips';
-import { MarketCropDetailSheet } from './MarketCropDetailSheet';
 import type { MarketPrice, MarketScope } from '@/hooks/useMarketPriceIntelligence';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,6 +25,10 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+
+// The two chart views carry the chart library; they are fetched when the farmer first opens them.
+const PriceComparisonChart = lazy(() => import('./PriceComparisonChart').then((m) => ({ default: m.PriceComparisonChart })));
+const MarketCropDetailSheet = lazy(() => import('./MarketCropDetailSheet').then((m) => ({ default: m.MarketCropDetailSheet })));
 
 type Section = 'today' | 'trend' | 'ai';
 type Corridor = 'all' | 'near' | 'regional' | 'major';
@@ -48,6 +50,8 @@ export function MarketPriceIntelligence() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [detail, setDetail] = useState<MarketPrice | null>(null);
+  const [detailLoaded, setDetailLoaded] = useState(false);
+  useEffect(() => { if (detail) setDetailLoaded(true); }, [detail]);
   const [openSections, setOpenSections] = useState<Record<Section, boolean>>({
     today: true,
     trend: false,
@@ -294,12 +298,12 @@ export function MarketPriceIntelligence() {
       {scope === 'produce' && <>
       {/* Section: Trend */}
       <Section
-        title="किंमत प्रवृत्ती"
-        subtitle="Price trend"
+        title={t('market.ui.trend_title')}
         icon={<BarChart3 className="w-4 h-4 text-primary" />}
         open={openSections.trend}
         onToggle={() => toggle('trend')}
       >
+        <Suspense fallback={<div className="flex h-32 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}>
         <PriceComparisonChart
           historicalData={historicalCrop === (selectedCrop || null) ? historicalData : {}}
           selectedCrop={selectedCrop}
@@ -312,12 +316,12 @@ export function MarketPriceIntelligence() {
             })
           }
         />
+        </Suspense>
       </Section>
 
       {/* Section: AI advice */}
       <Section
-        title="AI विक्री सल्ला"
-        subtitle="AI selling advice"
+        title={t('market.ui.ai_title')}
         icon={<Brain className="w-4 h-4 text-primary" />}
         open={openSections.ai}
         onToggle={() => toggle('ai')}
@@ -331,6 +335,8 @@ export function MarketPriceIntelligence() {
         />
       </Section>
       </>}
+      {detailLoaded && (
+      <Suspense fallback={null}>
       <MarketCropDetailSheet
         open={!!detail}
         onOpenChange={(o) => !o && setDetail(null)}
@@ -346,6 +352,8 @@ export function MarketPriceIntelligence() {
           await getAIAnalysis({ crop, currentPrice: detail ? (detail.modal_price || detail.price_per_unit) : undefined, historicalData });
         }}
       />
+      </Suspense>
+      )}
     </div>
   );
 }
@@ -384,7 +392,7 @@ function Section({
   children,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   icon: React.ReactNode;
   open: boolean;
   onToggle: () => void;
@@ -403,12 +411,14 @@ function Section({
           <div className="text-sm font-bold text-foreground leading-tight truncate">
             {title}
           </div>
-          <div className="mt-1 text-[11px] font-normal text-muted-foreground leading-snug whitespace-normal">
-            {subtitle}
-          </div>
+          {subtitle && (
+            <div className="lf-cap mt-1 font-normal text-muted-foreground leading-snug whitespace-normal">
+              {subtitle}
+            </div>
+          )}
         </div>
         {count !== undefined && count > 0 && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+          <span className="lf-cap font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary">
             {count}
           </span>
         )}

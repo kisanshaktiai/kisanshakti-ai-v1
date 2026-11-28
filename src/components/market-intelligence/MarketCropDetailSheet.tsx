@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription,
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 type Period = 'week' | 'month' | 'year';
-const PERIOD_LABEL: Record<Period, string> = { week: '७ दिवस', month: '३० दिवस', year: '१ वर्ष' };
+const PERIOD_LABEL: Record<Period, string> = { week: 'market.ui.days_7', month: 'market.ui.days_30', year: 'market.ui.year_1' };
 
 const rupee = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 const modalOf = (p: Partial<MarketPrice>) => Number(p.modal_price || p.price_per_unit || 0);
@@ -58,6 +59,7 @@ const EMPTY_HISTORY: HistoricalComparison = {};
 export function MarketCropDetailSheet({
   open, onOpenChange, price, allPrices, historicalData, historicalCrop, aiAnalysis, isLoading, onLoadHistory, onGetAdvice,
 }: Props) {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState<Period>('month');
   const crop = price?.crop_name || '';
   // Never render another crop's history under this crop's name.
@@ -99,11 +101,11 @@ export function MarketCropDetailSheet({
   const lo = Number(price.min_price || modal);
   const hi = Number(price.max_price || modal);
   const pos = hi > lo ? ((modal - lo) / (hi - lo)) * 100 : 50;
-  const unit = price.unit || 'क्विंटल';
+  const unit = price.unit || t('market.ui.quintal');
 
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus;
   const trendCls = trend === 'up' ? 'bg-success/15 text-success' : trend === 'down' ? 'bg-destructive/15 text-destructive' : 'bg-muted text-muted-foreground';
-  const trendText = trend === 'up' ? 'भाव वाढत आहेत' : trend === 'down' ? 'भाव कमी होत आहेत' : 'भाव स्थिर आहेत';
+  const trendText = trend === 'up' ? t('market.ui.trend_up') : trend === 'down' ? t('market.ui.trend_down') : t('market.ui.trend_flat');
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -120,12 +122,12 @@ export function MarketCropDetailSheet({
           <div className="border-b border-border pb-4 space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">सर्वसाधारण दर</p>
+                <p className="text-xs text-muted-foreground">{t('market.ui.modal_rate')}</p>
                 <p className="flex flex-wrap items-baseline gap-1 text-3xl font-extrabold tabular-nums text-foreground">{rupee(modal)}<span className="text-sm font-medium text-muted-foreground"> / {unit}</span></p>
               </div>
               {price.arrival != null && (
                 <div className="text-right">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end"><Package className="w-3.5 h-3.5" /> आवक</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end"><Package className="w-3.5 h-3.5" /> {t('market.ui.arrivals')}</p>
                   <p className="text-base font-bold tabular-nums">{Number(price.arrival).toLocaleString('en-IN')} {unit}</p>
                 </div>
               )}
@@ -135,8 +137,8 @@ export function MarketCropDetailSheet({
                 <div className="absolute -top-1 h-[18px] w-[18px] rounded-full bg-primary border-2 border-background shadow" style={{ left: `calc(${pos}% - 9px)` }} />
               </div>
               <div className="flex justify-between text-xs mt-1.5 tabular-nums">
-                <span className="text-muted-foreground">किमान <b className="text-foreground">{rupee(lo)}</b></span>
-                <span className="text-muted-foreground">कमाल <b className="text-foreground">{rupee(hi)}</b></span>
+                <span className="text-muted-foreground">{t('market.ui.min')} <b className="text-foreground">{rupee(lo)}</b></span>
+                <span className="text-muted-foreground">{t('market.ui.max')} <b className="text-foreground">{rupee(hi)}</b></span>
               </div>
             </div>
           </div>
@@ -144,7 +146,7 @@ export function MarketCropDetailSheet({
           {/* Trend chart */}
           <div className="mt-4 border-b border-border pb-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h3 className="text-sm font-bold">भावाचा आलेख</h3>
+              <h3 className="text-sm font-bold">{t('market.ui.chart_title')}</h3>
               {series.length > 1 && (
                 <span className={cn('flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold', trendCls)}>
                   <TrendIcon className="w-3.5 h-3.5" /> {change > 0 ? '+' : ''}{change.toFixed(1)}%
@@ -155,14 +157,14 @@ export function MarketCropDetailSheet({
               {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
                 <Button variant="quiet" key={p} type="button" onClick={() => setPeriod(p)} aria-pressed={period === p}
                   className={cn('h-10 rounded-md px-2 text-xs font-semibold', period === p ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
-                  {PERIOD_LABEL[p]}
+                  {t(PERIOD_LABEL[p])}
                 </Button>
               ))}
             </div>
             {isLoading && series.length === 0 ? (
               <div className="h-48 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
             ) : series.length < 2 ? (
-              <p className="h-32 flex items-center justify-center text-sm text-muted-foreground text-center">या कालावधीसाठी पुरेशी माहिती नाही</p>
+              <p className="h-32 flex items-center justify-center text-sm text-muted-foreground text-center">{t('market.ui.not_enough')}</p>
             ) : (
               <>
                 <div className="h-52">
@@ -181,14 +183,14 @@ export function MarketCropDetailSheet({
                       <Tooltip
                         contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 12, fontSize: 12, color: 'hsl(var(--foreground))' }}
                         formatter={(v: number | number[], name: string) =>
-                          name === 'band' && Array.isArray(v) ? [`${rupee(v[0])} – ${rupee(v[1])}`, 'किमान–कमाल'] : [rupee(v as number), 'सरासरी']}
+                          name === 'band' && Array.isArray(v) ? [`${rupee(v[0])} – ${rupee(v[1])}`, t('market.ui.min_max')] : [rupee(v as number), t('market.ui.average')]}
                       />
                       <Area dataKey="band" stroke="none" fill="url(#mktBand)" />
                       <Line dataKey="price" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">{trendText} • रेषा = सरासरी दर, छटा = किमान–कमाल</p>
+                <p className="text-xs text-muted-foreground mt-2">{trendText} • {t('market.ui.chart_legend')}</p>
               </>
             )}
           </div>
@@ -196,8 +198,8 @@ export function MarketCropDetailSheet({
           {/* Mandi comparison */}
           {mandis.length > 1 && (
             <div className="mt-4 border-b border-border pb-4">
-              <h3 className="text-sm font-bold mb-1">कोणत्या बाजारात जास्त भाव?</h3>
-              <p className="text-xs text-muted-foreground mb-3">सर्वात वरचा बाजार = सर्वोत्तम दर</p>
+              <h3 className="text-sm font-bold mb-1">{t('market.ui.which_market')}</h3>
+              <p className="text-xs text-muted-foreground mb-3">{t('market.ui.top_is_best')}</p>
               <div style={{ height: mandis.length * 40 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={mandis.map((m) => ({ name: m.market_location, price: modalOf(m) }))} layout="vertical" margin={{ left: 0, right: 56 }}>

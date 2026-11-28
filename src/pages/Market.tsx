@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { MarketplaceHeader } from '@/components/marketplace/MarketplaceHeader';
 import { CategoryFilter } from '@/components/marketplace/CategoryFilter';
@@ -10,7 +9,6 @@ import { ShoppingCart } from '@/components/marketplace/ShoppingCart';
 import { SellerDashboard } from '@/components/marketplace/SellerDashboard';
 import { OrderManagement } from '@/components/marketplace/OrderManagement';
 import { MarketPriceIntelligence } from '@/components/market-intelligence';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   TrendingUp,
@@ -22,7 +20,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { MarketSkeleton } from '@/components/skeletons';
-import { cn } from '@/lib/utils';
+import '@/living/living.css';
 
 export default function Market() {
   const { t } = useTranslation();
@@ -166,63 +164,46 @@ export default function Market() {
   }
 
   const tabs = [
-    { id: 'prices', icon: TrendingUp, label: 'भाव', labelEn: 'Prices' },
-    { id: 'browse', icon: ShoppingBag, label: 'खरेदी', labelEn: 'Shop' },
-    { id: 'orders', icon: Package, label: 'ऑर्डर', labelEn: 'Orders' },
-    { id: 'sell', icon: Store, label: 'विक्री', labelEn: 'Sell' },
+    { id: 'prices', icon: TrendingUp, label: t('market.ui.tab_prices') },
+    { id: 'browse', icon: ShoppingBag, label: t('market.ui.tab_shop') },
+    { id: 'orders', icon: Package, label: t('market.ui.tab_orders') },
+    { id: 'sell', icon: Store, label: t('market.ui.tab_sell') },
   ];
 
   return (
-    <div className="min-h-full bg-background pb-nav-safe">
+    <div className="min-h-full bg-background" style={{ fontSize: 'var(--lf-fs-body)' }}>
       {/* Sticky header: title + cart */}
-      <header className="sticky top-0 z-30 bg-background border-b border-border/60">
-        <div className="flex items-center justify-between px-4 py-3 max-w-screen-md mx-auto">
-          <div>
-            <h1 className="text-base font-bold text-foreground leading-tight">
-              बाजारपेठ
-            </h1>
-            <p className="text-[11px] text-muted-foreground leading-tight">
-              Market • {tabs.find((t) => t.id === activeTab)?.labelEn}
-            </p>
-          </div>
-          <Button
-            variant="quiet"
-            size="icon"
+      <header className="sticky top-0 z-30 border-b border-border bg-background">
+        <div className="mx-auto flex max-w-screen-md items-center justify-between gap-3 py-2" style={{ padding: '8px var(--lf-gut)' }}>
+          <h1 className="lf-head min-w-0 truncate">{t('market.ui.title')}</h1>
+          <button
+            type="button"
             onClick={() => setCartOpen(true)}
-            className="relative h-10 w-10 rounded-lg"
-            aria-label="Open cart"
+            className="lf-round relative border border-border bg-card text-foreground"
+            aria-label={t('market.ui.open_cart')}
           >
-            <CartIcon className="w-5 h-5" />
+            <CartIcon size={22} aria-hidden />
             {cartItems.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+              <span className="lf-cap absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1 font-bold text-primary-foreground">
                 {cartItems.length}
               </span>
             )}
-          </Button>
+          </button>
         </div>
 
-        {/* Equal-weight 4-tab pill bar */}
-        <div className="px-4 pb-3 max-w-screen-md mx-auto">
+        {/* Four equal tabs, icon over word */}
+        <div className="mx-auto max-w-screen-md" style={{ padding: '0 var(--lf-gut) 10px' }}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList
-              className={cn(
-                'grid grid-cols-4 w-full h-14 rounded-lg p-1 gap-1',
-                'bg-muted border border-border/60'
-              )}
-            >
+            <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-[var(--lf-r)] border border-border bg-muted p-1">
               {tabs.map((tab) => (
                 <TabsTrigger
                   key={tab.id}
                   value={tab.id}
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-1 rounded-md h-full',
-                    'text-xs font-medium transition-colors',
-                    'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground',
-                    'data-[state=active]:shadow-sm'
-                  )}
+                  className="lf-cap flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                  style={{ minHeight: 'var(--lf-tap)' }}
                 >
-                  <tab.icon className="w-4 h-4" />
-                  <span className="text-xs leading-none">{tab.label}</span>
+                  <tab.icon size={20} aria-hidden />
+                  <span className="w-full truncate leading-tight">{tab.label}</span>
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -230,7 +211,7 @@ export default function Market() {
         </div>
       </header>
 
-      <div className="max-w-screen-md mx-auto px-4 py-3">
+      <div className="mx-auto max-w-screen-md py-3" style={{ padding: '12px var(--lf-gut)' }}>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsContent value="prices" className="mt-0 focus-visible:outline-none">
             <MarketPriceIntelligence />
@@ -260,13 +241,7 @@ export default function Market() {
                 />
               </>
             ) : (
-              <EmptyStateCard
-                icon={ShoppingBag}
-                title="बाजारपेठ लवकरच"
-                titleEn="Marketplace Coming Soon"
-                description="शेतकऱ्यांसाठी उत्पादने लवकरच उपलब्ध होतील"
-                descriptionEn="Products for farmers will be available soon"
-              />
+              <EmptyStateCard icon={ShoppingBag} title={t('market.ui.soon_title')} description={t('market.ui.soon_body')} />
             )}
           </TabsContent>
 
@@ -274,13 +249,7 @@ export default function Market() {
             {user ? (
               <OrderManagement userId={user.id} />
             ) : (
-              <EmptyStateCard
-                icon={Package}
-                title="लॉगिन आवश्यक"
-                titleEn="Login Required"
-                description="ऑर्डर पाहण्यासाठी कृपया लॉगिन करा"
-                descriptionEn="Please login to view your orders"
-              />
+              <EmptyStateCard icon={Package} title={t('market.ui.login_title')} description={t('market.ui.login_orders')} />
             )}
           </TabsContent>
 
@@ -288,13 +257,7 @@ export default function Market() {
             {user ? (
               <SellerDashboard sellerId={user.id} />
             ) : (
-              <EmptyStateCard
-                icon={Store}
-                title="विक्रेता व्हा"
-                titleEn="Become a Seller"
-                description="आपली उत्पादने विकण्यासाठी लॉगिन करा"
-                descriptionEn="Login to start selling your products"
-              />
+              <EmptyStateCard icon={Store} title={t('market.ui.seller_title')} description={t('market.ui.login_sell')} />
             )}
           </TabsContent>
         </Tabs>
@@ -327,35 +290,12 @@ export default function Market() {
   );
 }
 
-function EmptyStateCard({
-  icon: Icon,
-  title,
-  titleEn,
-  description,
-  descriptionEn,
-}: {
-  icon: React.ElementType;
-  title: string;
-  titleEn: string;
-  description: string;
-  descriptionEn: string;
-}) {
+function EmptyStateCard({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description: string }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={cn(
-        'text-center py-16 px-6',
-        'border-t border-border/60'
-      )}
-    >
-      <div className="p-5 rounded-2xl bg-primary/10 w-fit mx-auto mb-4">
-        <Icon className="w-12 h-12 text-primary" />
-      </div>
-      <h3 className="text-xl font-bold mb-1 text-foreground">{title}</h3>
-      <p className="text-sm text-muted-foreground mb-3">{titleEn}</p>
-      <p className="text-sm text-muted-foreground max-w-xs mx-auto">{description}</p>
-      <p className="text-xs text-muted-foreground/70 mt-1">{descriptionEn}</p>
-    </motion.div>
+    <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+      <span className="grid h-20 w-20 place-items-center rounded-[32%] bg-primary/10 text-primary"><Icon className="h-10 w-10" aria-hidden /></span>
+      <h2 className="lf-head mt-2">{title}</h2>
+      <p className="lf-lab max-w-xs font-normal text-muted-foreground">{description}</p>
+    </div>
   );
 }

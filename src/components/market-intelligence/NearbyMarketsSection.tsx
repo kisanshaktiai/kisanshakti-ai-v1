@@ -85,7 +85,7 @@ export function NearbyMarketsSection({
       )}
 
       {embedded && (
-        <p className="text-[11px] text-muted-foreground px-1">
+        <p className="lf-cap text-muted-foreground px-1">
           📍 {joinPlace(farmerLocation, ['district','state'])}
         </p>
       )}

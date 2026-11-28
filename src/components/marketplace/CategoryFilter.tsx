@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface Category {
@@ -19,6 +20,7 @@ export function CategoryFilter({
   selectedCategory,
   onCategorySelect,
 }: CategoryFilterProps) {
+  const { t } = useTranslation();
   const chip = (id: string | null, label: string, icon?: string) => {
     const active = selectedCategory === id;
     return (
@@ -43,7 +45,7 @@ export function CategoryFilter({
   return (
     <div className="-mx-4 px-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
       <div className="flex gap-2 pb-1 pr-4">
-        {chip(null, 'सर्व', '🛒')}
+        {chip(null, t('market.ui.all'), '🛒')}
         {categories.map((c) => chip(c.id, c.name, c.icon))}
       </div>
     </div>

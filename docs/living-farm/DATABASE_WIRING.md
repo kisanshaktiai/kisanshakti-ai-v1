@@ -139,3 +139,21 @@ Measured on the built app, phone-sized browser, processor slowed 6x, 1.6 Mbit/s 
 | `living-farm-ui` | 2.3 s | 623 kB | 10.3 MB |
 
 The photo scan flow is now fetched when first opened instead of with the app shell (shell script 660 kB to 608 kB uncompressed). Screen-height units in `living.css` have a `vh` line before each `dvh` line for browsers older than Chrome 108.
+
+## Market (`src/pages/Market.tsx`)
+
+Same route (`/app/market`). Every query and write in the page is byte-for-byte the code that was there: `marketplace_categories`, `marketplace_products` (with `farmers` and category joins), `cart_items` (select, upsert, update, delete), `wishlist_items` (select, insert, delete). The prices tab still uses `useMarketPriceIntelligence(user.id, scope)` and `landsApi.fetchLands()`.
+
+What changed is drawing and wording only:
+
+- Page header, four tabs and the three empty states use the shared sizes and theme tokens.
+- 57 lines of Marathi written in code across the page and eight market components now come from `market.ui.*` keys in `en`, `hi` and `mr` (`market.json`). The Marathi values are the strings that were in the code. Other languages fall back to English, where before they saw Marathi.
+- `PriceComparisonChart` and `MarketCropDetailSheet` (the two users of the chart library) are fetched when the farmer opens the trend section or taps a price card, not when the page opens.
+- Price card date uses the app language.
+
+**Seen, not changed (logic or data, outside UI scope):**
+
+1. `fetchWishlist` reads `wishlist_items` by `farmer_id`, but `toggleWishlist` inserts and deletes by `user_id`.
+2. `addToCart` writes `unit_price: 0` and `cart_id: user.id` on every cart row.
+3. `PriceComparisonChart.tsx:83` prints the state name of Maharashtra as fixed text under every crop.
+4. `MarketPriceCard.tsx` picks the category emoji from a table keyed by Marathi category names.
