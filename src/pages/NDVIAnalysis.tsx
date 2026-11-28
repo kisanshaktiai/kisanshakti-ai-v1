@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,8 +17,8 @@ import { SkyCard } from '@/components/land/sky/SkyCard';
 import { AskCard } from '@/components/land/sky/AskCard';
 import { AttentionCard } from '@/components/land/sky/AttentionCard';
 import { DetailsCard } from '@/components/land/sky/DetailsCard';
-import { SeasonCard } from '@/components/land/sky/SeasonCard';
-import { FieldSkyMap } from '@/components/land/sky/FieldSkyMap';
+import { rememberChosenLand, readChosenLand } from '@/living/useChosenLand';
+import '@/living/living.css';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +30,9 @@ import { cn } from '@/lib/utils';
 interface LandRow { id: string; name: string; area_acres: number; current_crop?: string; current_crop_id?: string | null; stage_uuid?: string | null; boundary_polygon_old?: { coordinates?: number[][][] } | null; center_point_old?: { coordinates?: number[] } | null; last_ndvi_value?: number; ndvi_thumbnail_url?: string | null; last_ndvi_calculation?: string | null; }
 // Every satellite query the screen is built from (see useFieldSky); the refresh button reloads all of them.
 const SKY_QUERY_KEYS = ['ndvi-analysis', 'field-sky-intel', 'field-sky-radar', 'field-sky-schedule', 'land-weather-state'];
+// The map and the season chart carry the map and chart libraries; each is fetched when its tab is first opened.
+const FieldSkyMap = lazy(() => import('@/components/land/sky/FieldSkyMap').then((m) => ({ default: m.FieldSkyMap })));
+const SeasonCard = lazy(() => import('@/components/land/sky/SeasonCard').then((m) => ({ default: m.SeasonCard })));
 // One short sequence when a field's cards arrive (and again when the farmer picks another field).
 const CARD_SEQUENCE = { hidden: {}, shown: { transition: { staggerChildren: 0.06 } } };
 const CARD_ITEM = { hidden: { opacity: 0, y: 10 }, shown: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' as const } } };
@@ -57,7 +60,9 @@ export default function NDVIAnalysis() {
   const { data: lands = [], isLoading: landsLoading, refetch: refetchLands } = useQuery({ queryKey: ['lands', session?.farmerId, tenantId], queryFn: async () => ((await landsApi.fetchLands()) || []) as LandRow[], enabled: !!session?.farmerId && !!tenantId });
   const hasSatellite = (l: LandRow) => l.last_ndvi_value != null || !!l.last_ndvi_calculation;
   const landsWithData = useMemo(() => lands.filter(hasSatellite), [lands]);
-  useEffect(() => { if (!selectedLandId && lands.length) setSelectedLandId((landsWithData[0] ?? lands[0]).id); }, [lands, landsWithData, selectedLandId]);
+  // Every land has its own context: open on the land the farmer last chose anywhere in the app, and remember a choice made here.
+  useEffect(() => { if (!selectedLandId && lands.length) { const chosen = readChosenLand(); setSelectedLandId((lands.find(l => l.id === chosen) ?? landsWithData[0] ?? lands[0]).id); } }, [lands, landsWithData, selectedLandId]);
+  useEffect(() => { if (selectedLandId) rememberChosenLand(selectedLandId); }, [selectedLandId]);
   const selectedLand = lands.find(l => l.id === selectedLandId) || null;
   // each land's crop icon comes from the crops master (crops.icon), not from a crop list in code
   const cropIcons = useLandCropIcons(lands);
@@ -82,27 +87,26 @@ export default function NDVIAnalysis() {
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <span className="relative h-8 w-8 rounded-full bg-primary/15 grid place-items-center shrink-0">
             <Satellite className="h-4 w-4 text-primary" />
-            {!reduceMotion && <span className="absolute inset-0 rounded-full border border-primary/40 animate-ping" />}
           </span>
-          <div className="min-w-0"><h1 className="text-sm font-bold truncate leading-tight">{t('sky.title', 'My field from the sky')}</h1>
-            {selectedLand && <p className="text-[11px] text-muted-foreground truncate leading-tight">{selectedLand.name} · {selectedLand.area_acres} ac</p>}</div>
+          <div className="min-w-0"><h1 className="lf-lab truncate leading-tight">{t('sky.title', 'My field from the sky')}</h1>
+            {selectedLand && <p className="lf-fs-cap text-muted-foreground truncate leading-tight">{selectedLand.name} · {selectedLand.area_acres} ac</p>}</div>
         </div>
         <Button variant="ghost" size="icon" aria-label={t('ndvi.refresh.button', 'Refresh')} onClick={onRefresh} disabled={isRefreshing} className="h-10 w-10 rounded-full shrink-0"><RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} /></Button>
       </div>
       <div className="flex gap-2 px-3 py-1.5 mb-1 scroll-px-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x">
         {landsLoading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-24 rounded-full shrink-0" />) : lands.map(land => {
           const active = land.id === selectedLandId;
-          return <button key={land.id} onClick={() => setSelectedLandId(land.id)} aria-pressed={active} className={cn('snap-start shrink-0 flex items-center gap-1.5 pl-1 pr-3 h-9 rounded-full border text-xs font-semibold transition active:scale-95', active ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-card border-border/50 text-muted-foreground')}>
+          return <button key={land.id} ref={active ? (el) => el?.scrollIntoView({ inline: 'nearest', block: 'nearest' }) : undefined} onClick={() => setSelectedLandId(land.id)} aria-pressed={active} className={cn('snap-start shrink-0 flex items-center gap-1.5 pl-1 pr-3 h-9 rounded-full border text-xs font-semibold transition active:scale-95', active ? 'bg-primary text-primary-foreground border-primary shadow-md' : 'bg-card border-border/50 text-muted-foreground')}>
             <span className={cn('h-6 w-6 rounded-full grid place-items-center text-sm', active ? 'bg-primary-foreground/20' : 'bg-muted')}>{cropIds[land.id] ? <CropImage cropId={cropIds[land.id]} cropName={land.name || ''} fallbackIcon={cropIcons[land.id]} className="h-6 w-6 rounded-full bg-transparent text-sm" /> : (cropIcons[land.id] ?? <Sprout className="h-3.5 w-3.5" aria-hidden />)}</span>
             <span className="truncate max-w-[110px]">{land.name}</span>
             {hasSatellite(land) && <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-primary-foreground' : 'bg-success')} aria-hidden />}
           </button>;
         })}
       </div>
-      <div className="px-3 pb-2.5"><TabsList className="w-full grid grid-cols-3 h-10 rounded-full bg-muted/60 p-1">
-        <TabsTrigger value="today" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><Sun className="h-3.5 w-3.5" />{t('sky.tab.today', 'Today')}</TabsTrigger>
-        <TabsTrigger value="map" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><MapIcon className="h-3.5 w-3.5" />{t('sky.tab.map', 'Map')}</TabsTrigger>
-        <TabsTrigger value="season" className="rounded-full text-xs gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
+      <div className="px-3 pb-2.5"><TabsList className="w-full grid grid-cols-3 h-12 rounded-full bg-muted/60 p-1">
+        <TabsTrigger value="today" className="h-full rounded-full lf-fs-cap gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><Sun className="h-3.5 w-3.5" />{t('sky.tab.today', 'Today')}</TabsTrigger>
+        <TabsTrigger value="map" className="h-full rounded-full lf-fs-cap gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><MapIcon className="h-3.5 w-3.5" />{t('sky.tab.map', 'Map')}</TabsTrigger>
+        <TabsTrigger value="season" className="h-full rounded-full lf-fs-cap gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow"><LineChart className="h-3.5 w-3.5" />{t('sky.tab.season', 'Season')}</TabsTrigger>
       </TabsList></div>
     </header>
 
@@ -122,11 +126,11 @@ export default function NDVIAnalysis() {
 
       {/* forceMount: Radix unmounts inactive tabs, and every remount of the Google map is a billable load. Keep it alive, hide it. */}
       <TabsContent value="map" forceMount className={cn('px-0 pt-2 pb-0 mt-0', tab !== 'map' && 'hidden')}>
-        {mapOpened && selectedLandId && <FieldSkyMap sky={sky} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} />}
+        {mapOpened && selectedLandId && <Suspense fallback={<Skeleton className="mx-3 h-64 rounded-3xl" />}><FieldSkyMap sky={sky} landId={selectedLandId} farmerId={session?.farmerId} tenantId={tenantId} boundary={boundary} centerLat={centerPoint.lat} centerLng={centerPoint.lng} /></Suspense>}
       </TabsContent>
 
       <TabsContent value="season" className="flex-1 px-3 pt-3 pb-24 space-y-3 mt-0">
-        {sky.loading ? <Skeleton className="h-56 rounded-3xl" /> : <><SeasonCard sky={sky} /><SkyCard sky={sky} /></>}
+        {sky.loading ? <Skeleton className="h-56 rounded-3xl" /> : <><Suspense fallback={<Skeleton className="h-56 rounded-3xl" />}><SeasonCard sky={sky} /></Suspense><SkyCard sky={sky} /></>}
       </TabsContent>
     </Tabs>
   </div>;

@@ -17,8 +17,7 @@ import { SoilReportHeader } from '@/components/soil/SoilReportHeader';
 import { SoilRecordView } from '@/components/soil/SoilRecordView';
 import { SOIL_SOURCE_ICON, SOIL_SOURCE_ORDER } from '@/components/soil/soilSourceMeta';
 import { SoilHealthSkeleton } from '@/components/skeletons';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+// html2canvas and jsPDF are needed only to export the report; they are fetched when the farmer taps download or share.
 
 
 export default function SoilHealthReport() {
@@ -69,6 +68,7 @@ export default function SoilHealthReport() {
     
     try {
       setExporting(true);
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
       const canvas = await html2canvas(reportRef.current, {
         scale: 2,
         useCORS: true,
@@ -110,6 +110,7 @@ export default function SoilHealthReport() {
     
     try {
       setExporting(true);
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(reportRef.current, {
         scale: 2,
         useCORS: true,
@@ -139,6 +140,7 @@ export default function SoilHealthReport() {
     if (!reportRef.current) return;
     
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(reportRef.current, { 
         scale: 2,
         windowHeight: reportRef.current.scrollHeight,

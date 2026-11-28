@@ -256,3 +256,15 @@ Measured after, same 59 px inset:
 |---|---|---|---|
 | Top-level page | 0–115 px | 69–105 px | 809 / 852 |
 | Inside a frame | 0–56 px | 10–46 px | 693 / 702 |
+
+## Satellite page (`src/pages/NDVIAnalysis.tsx`) and Soil report (`src/pages/SoilHealthReport.tsx`)
+
+**Satellite page.** Same data: `landsApi.fetchLands()`, `useFieldSky(selectedLandId, reloadKey)`, the same eight cards with the same inputs, the same refresh. Changes:
+
+- Opens on the land the farmer last chose anywhere in the app (`readChosenLand`), then on the first land with satellite data as before; a land picked here becomes the chosen land for the other pages. A land in the address (`/app/lands/:id/ndvi`) still wins.
+- The chosen land's chip scrolls into view (it could sit off the right edge).
+- The map and the season chart are fetched when their tab is first opened, so the map library (202 kB) and chart library (577 kB) no longer load with the page. The map still stays mounted after its first opening, so it is not billed again.
+- The endless pulse on the satellite icon is removed; the three tabs are 40 px high (were 28 px).
+- `ndvi.error.load_failed` and `ndvi.error.retry` were missing from the language files (English fallback for everyone); added in `en`, `hi`, `mr`.
+
+**Soil report.** Only loading changed: `html2canvas` and `jsPDF` are fetched when the farmer taps download or share. The page's own script went from 619 kB to the size shown in the build. The report body could not be rendered in the test (it needs a signed-in session), so nothing in it was changed.

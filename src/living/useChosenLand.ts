@@ -21,3 +21,8 @@ export function useChosenLand<T extends ChoosableLand>(lands: T[]): { land: T | 
 export function rememberChosenLand(id: string): void {
   try { sessionStorage.setItem(KEY, id); } catch { /* nothing to remember without session storage */ }
 }
+
+/** The chosen land's id, for pages that keep their own land state. */
+export function readChosenLand(): string | null {
+  try { return sessionStorage.getItem(KEY); } catch { return null; }
+}

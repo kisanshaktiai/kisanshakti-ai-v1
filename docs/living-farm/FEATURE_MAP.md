@@ -23,8 +23,8 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/lands/add` | old look, working | + on Field home; Land page |
 | `/app/lands/:id/edit` | old look, working | from its parent page, as before |
 | `/app/lands/:id` | new look; same data calls, one land per page | land chip on Field home (one land); Land page |
-| `/app/lands/:id/soil` | old look, working | from its parent page, as before |
-| `/app/lands/:id/ndvi` | old look, working | from its parent page, as before |
+| `/app/lands/:id/soil` | lighter loading only; body unchanged | from its parent page, as before |
+| `/app/lands/:id/ndvi` | refined: chosen land, lighter loading, larger tabs; cards unchanged | from its parent page, as before |
 | `/app/diagnostics/environment` | old look, working | from its parent page, as before |
 | `/app/ai-chat` | old look, working | same page as chat |
 | `/app/chat` | reply card, reply actions and composer in the new look; rest old look, working | voice button → Type; All |
@@ -32,7 +32,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/analytics` | old look, working | All |
 | `/app/schedule` | land step and schedule view refined; crop input step still as before | Day: "Full schedule" and "Make a schedule"; task pin and chip on Field; All |
 | `/app/ai-dashboard` | old look, working | from its parent page, as before |
-| `/app/ndvi` | old look, working | All |
+| `/app/ndvi` | refined: chosen land, lighter loading, larger tabs; cards unchanged | All |
 | `/app/videos` | old look, working | All |
 | `/app/reels` | old look, working | video card on All |
 | `/app/videos/legacy` | old look, working | from its parent page, as before |

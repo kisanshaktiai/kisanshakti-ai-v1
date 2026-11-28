@@ -186,6 +186,10 @@
       "stable_msg": "Stable conditions",
       "stable_detail": "Crop health is expected to remain steady. Continue current care.",
       "not_available": "Predictions available after more data is collected"
+    },
+    "error": {
+      "load_failed": "Could not load satellite data. Please try again.",
+      "retry": "Retry"
     }
   },
   "__qa": {
