@@ -49,8 +49,8 @@ export function LandSelectorRail({ perLand, selectedId, onSelect, totalAreaAcres
           <div className="w-full h-14 rounded-lg bg-primary/15 flex items-center justify-center mb-1">
             <Layers className="w-5 h-5" />
           </div>
-          <p className="text-[11px] font-bold leading-tight">{t('analytics.all_farm', 'All Farm')}</p>
-          <p className="text-[10px] opacity-80">{totalAreaAcres.toFixed(1)} ac</p>
+          <p className="lf-fs-cap font-bold leading-tight">{t('analytics.all_farm', 'All Farm')}</p>
+          <p className="lf-fs-cap opacity-80">{totalAreaAcres.toFixed(1)} ac</p>
         </button>
         {perLand.map((a) => {
           const active = a.land.id === selectedId;
@@ -70,8 +70,8 @@ export function LandSelectorRail({ perLand, selectedId, onSelect, totalAreaAcres
                 <MapPin className="w-5 h-5 opacity-60" />
                 <LandSatelliteThumb landId={a.land.id} path={a.land.ndvi_thumbnail_url} />
               </div>
-              <p className="text-[11px] font-bold leading-tight truncate">{a.land.name || '—'}</p>
-              <p className="text-[10px] opacity-80 truncate">
+              <p className="lf-fs-cap font-bold leading-tight truncate">{a.land.name || '—'}</p>
+              <p className="lf-fs-cap opacity-80 truncate">
                 {(a.land.area_acres ?? 0).toFixed(1)} {t('analytics.units.acre', 'ac')} · {a.land.current_crop ? cropNameOf(a.land.current_crop, (a.land as { current_crop_id?: string | null }).current_crop_id) : t('analytics.no_crop_short', 'fallow')}
               </p>
             </button>

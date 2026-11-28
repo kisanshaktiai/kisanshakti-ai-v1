@@ -157,11 +157,11 @@ export default function CropGrowthTracking() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="overview">
+              <TabsList className="grid h-12 w-full grid-cols-2">
+                <TabsTrigger value="overview" className="h-full">
                   {t('cropGrowth.overview', 'Overview')}
                 </TabsTrigger>
-                <TabsTrigger value="history">
+                <TabsTrigger value="history" className="h-full">
                   {t('cropGrowth.history', 'History')}
                 </TabsTrigger>
               </TabsList>

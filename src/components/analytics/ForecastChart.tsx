@@ -64,7 +64,7 @@ export function ForecastChart({ landId }: Props) {
             <h3 className="text-sm font-bold text-foreground">
               {t('analytics.forecast.title', '6-Month Forecast')}
             </h3>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="lf-fs-cap text-muted-foreground">
               {t('analytics.forecast.notReady', 'Your income and expense forecast is being prepared. It will appear here once it is ready.')}
             </p>
           </div>
@@ -89,12 +89,12 @@ export function ForecastChart({ landId }: Props) {
             <h3 className="text-sm font-bold text-foreground">
               {t('analytics.forecast.title', '6-Month Forecast')}
             </h3>
-            <Badge variant="secondary" className="text-[9px] h-4 px-1.5 bg-primary/10 text-primary border-0">
+            <Badge variant="secondary" className="lf-fs-cap h-4 px-1.5 bg-primary/10 text-primary border-0">
               <Sparkles className="w-2.5 h-2.5 mr-0.5" />
               AI
             </Badge>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="lf-fs-cap text-muted-foreground">
             {t('analytics.forecast.subtitle', 'Income vs expense projection — refreshed monthly')}
             {lastUpdated && ` · ${new Date(lastUpdated).toLocaleDateString(i18n.language, { month: 'short', year: 'numeric' })}`}
           </p>
@@ -111,12 +111,12 @@ export function ForecastChart({ landId }: Props) {
       </div>
 
       {refresh.data?.status === 'paused' && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="lf-fs-cap text-muted-foreground">
           {t('analytics.forecast.notReady', 'Your income and expense forecast is being prepared. It will appear here once it is ready.')}
         </p>
       )}
       {refresh.data?.status === 'unauthenticated' && (
-        <p className="text-[11px] text-destructive">
+        <p className="lf-fs-cap text-destructive">
           {t('analytics.forecast.sessionExpired', 'Please sign in again to refresh the forecast.')}
         </p>
       )}
@@ -124,15 +124,15 @@ export function ForecastChart({ landId }: Props) {
       {/* KPI strip */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="bg-primary/10 rounded-lg p-2">
-          <p className="text-[9px] text-muted-foreground uppercase">{t('analytics.forecast.income', 'Income')}</p>
+          <p className="lf-fs-cap text-muted-foreground uppercase">{t('analytics.forecast.income', 'Income')}</p>
           <p className="text-xs font-bold text-primary truncate">{formatINR(totalIncome)}</p>
         </div>
         <div className="bg-muted/50 rounded-lg p-2">
-          <p className="text-[9px] text-muted-foreground uppercase">{t('analytics.forecast.expense', 'Expense')}</p>
+          <p className="lf-fs-cap text-muted-foreground uppercase">{t('analytics.forecast.expense', 'Expense')}</p>
           <p className="text-xs font-bold text-foreground truncate">{formatINR(totalExpense)}</p>
         </div>
         <div className={cn('rounded-lg p-2', totalProfit >= 0 ? 'bg-primary/15' : 'bg-destructive/15')}>
-          <p className="text-[9px] text-muted-foreground uppercase">{t('analytics.forecast.profit', 'Profit')}</p>
+          <p className="lf-fs-cap text-muted-foreground uppercase">{t('analytics.forecast.profit', 'Profit')}</p>
           <p className={cn('text-xs font-bold truncate', totalProfit >= 0 ? 'text-primary' : 'text-destructive')}>
             {formatINR(totalProfit)}
           </p>
@@ -223,7 +223,7 @@ export function ForecastChart({ landId }: Props) {
       {aiNote && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-2 flex gap-2">
           <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-          <p className="text-[11px] text-foreground leading-snug">{aiNote}</p>
+          <p className="lf-fs-cap text-foreground leading-snug">{aiNote}</p>
         </div>
       )}
     </Card>

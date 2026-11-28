@@ -30,7 +30,7 @@ export function SectionCard({ icon, title, subtitle, children, tone = 'default' 
         <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">{icon}</div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-bold text-foreground leading-tight">{title}</h3>
-          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="lf-fs-cap text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
       </div>
       {children}
@@ -45,7 +45,7 @@ function Hint({ children }: { children: React.ReactNode }) {
 function Chip({ label, state }: { label: string; state: 'good' | 'warn' | 'none' }) {
   return (
     <span className={cn(
-      'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium',
+      'inline-flex items-center px-2 py-0.5 rounded-full lf-fs-cap font-medium',
       state === 'good' && 'bg-primary/10 text-primary',
       state === 'warn' && 'bg-destructive/10 text-destructive',
       state === 'none' && 'bg-muted text-muted-foreground',
@@ -92,20 +92,20 @@ export function MoneyHarvestCard({ a }: { a: LandAnalytics }) {
         <>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[11px] text-muted-foreground">{t('analytics.economics.spent_so_far', 'Spent so far')}</p>
+              <p className="lf-fs-cap text-muted-foreground">{t('analytics.economics.spent_so_far', 'Spent so far')}</p>
               <p className="text-base font-bold text-foreground">
                 {e!.spent_rows > 0 ? formatMoney(e!.spent_confirmed, locale) : t('analytics.economics.nothing_recorded', 'nothing recorded yet')}
               </p>
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground">{t('analytics.economics.more_till_harvest', 'More till harvest')}</p>
+              <p className="lf-fs-cap text-muted-foreground">{t('analytics.economics.more_till_harvest', 'More till harvest')}</p>
               <p className="text-base font-bold text-foreground">
                 {e!.estimate_rows > 0 ? formatMoney(e!.estimated_remaining, locale) : t('analytics.economics.not_available', 'not available yet')}
               </p>
             </div>
           </div>
           <div className="rounded-xl bg-primary/5 p-3 space-y-1">
-            <p className="text-[11px] text-muted-foreground">{t('analytics.economics.expected_harvest', 'Expected harvest')}</p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.economics.expected_harvest', 'Expected harvest')}</p>
             <div className="flex items-baseline gap-2">
               <p className="text-xl font-bold text-foreground">
                 {formatRange(e!.predicted_total_low_qtl, e!.predicted_total_high_qtl, 1, locale)}{' '}
@@ -113,7 +113,7 @@ export function MoneyHarvestCard({ a }: { a: LandAnalytics }) {
               </p>
               {trend && <TrendIcon className={cn('w-4 h-4', trend === 'trend_down' ? 'text-destructive' : 'text-primary')} />}
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="lf-fs-cap text-muted-foreground">
               {t('analytics.economics.expected_income', 'Expected income')}:{' '}
               <span className="font-semibold text-foreground">
                 {e!.income_low != null
@@ -162,17 +162,17 @@ export function FieldConditionCard({ a }: { a: LandAnalytics }) {
       ) : (
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t('analytics.field.stage', 'Stage')}</p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.field.stage', 'Stage')}</p>
             <p className="text-sm font-bold text-foreground truncate">{stageLabel ?? '—'}</p>
-            {fs.das != null && <p className="text-[10px] text-muted-foreground">{t('analytics.field.days_since_sowing', '{{n}} days', { n: fs.das })}</p>}
+            {fs.das != null && <p className="lf-fs-cap text-muted-foreground">{t('analytics.field.days_since_sowing', '{{n}} days', { n: fs.das })}</p>}
           </div>
           <div className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t('analytics.field.growth', 'Growth')}</p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.field.growth', 'Growth')}</p>
             <p className={cn('text-sm font-bold', c?.vs_expected === 'below' ? 'text-destructive' : 'text-foreground')}>{canopyWord ?? '—'}</p>
-            {c?.date && <p className="text-[10px] text-muted-foreground">{t('analytics.field.satellite_on', 'satellite {{date}}', { date: new Date(c.date).toLocaleDateString(i18n.language) })}</p>}
+            {c?.date && <p className="lf-fs-cap text-muted-foreground">{t('analytics.field.satellite_on', 'satellite {{date}}', { date: new Date(c.date).toLocaleDateString(i18n.language) })}</p>}
           </div>
           <div className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t('analytics.field.harvest', 'Harvest')}</p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.field.harvest', 'Harvest')}</p>
             <p className="text-sm font-bold text-foreground">
               {a.economics?.expected_harvest_date ? new Date(a.economics.expected_harvest_date).toLocaleDateString(i18n.language) : '—'}
             </p>
@@ -213,16 +213,16 @@ export function WaterCard({ a }: { a: LandAnalytics }) {
       ) : (
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t('analytics.water.crop_use_today', 'Crop used today')}</p>
-            <p className="text-sm font-bold text-foreground">{formatNumber(w.etc_mm, 1, i18n.language)} <span className="text-[10px] font-normal">{t('analytics.units.mm', 'mm')}</span></p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.water.crop_use_today', 'Crop used today')}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(w.etc_mm, 1, i18n.language)} <span className="lf-fs-cap font-normal">{t('analytics.units.mm', 'mm')}</span></p>
           </div>
           <div className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t('analytics.water.rain_today', 'Rain today')}</p>
-            <p className="text-sm font-bold text-foreground">{formatNumber(w.total_rainfall_mm, 1, i18n.language)} <span className="text-[10px] font-normal">{t('analytics.units.mm', 'mm')}</span></p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.water.rain_today', 'Rain today')}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(w.total_rainfall_mm, 1, i18n.language)} <span className="lf-fs-cap font-normal">{t('analytics.units.mm', 'mm')}</span></p>
           </div>
           <div className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t('analytics.water.soil_short_by', 'Soil short by')}</p>
-            <p className="text-sm font-bold text-foreground">{formatNumber(w.root_depletion_mm, 0, i18n.language)} <span className="text-[10px] font-normal">{t('analytics.units.mm', 'mm')}</span></p>
+            <p className="lf-fs-cap text-muted-foreground">{t('analytics.water.soil_short_by', 'Soil short by')}</p>
+            <p className="text-sm font-bold text-foreground">{formatNumber(w.root_depletion_mm, 0, i18n.language)} <span className="lf-fs-cap font-normal">{t('analytics.units.mm', 'mm')}</span></p>
           </div>
         </div>
       )}
@@ -270,7 +270,7 @@ export function TaskPerfCard({ a }: { a: LandAnalytics }) {
             <span className="text-sm font-bold text-foreground">{a.tasks.completionRate.toFixed(0)}%</span>
           </div>
           <Progress value={a.tasks.completionRate} className="h-2" />
-          <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div className="grid grid-cols-3 gap-2 text-center lf-fs-cap">
             <div><p className="text-muted-foreground">{t('analytics.on_time', 'On time')}</p><p className="font-bold text-foreground">{a.tasks.onTimeRate.toFixed(0)}%</p></div>
             <div><p className="text-muted-foreground">{t('analytics.delayed', 'Delayed')}</p><p className="font-bold text-destructive">{a.tasks.delayed}</p></div>
             <div><p className="text-muted-foreground">{t('analytics.pending', 'Pending')}</p><p className="font-bold text-foreground">{a.tasks.pending}</p></div>
@@ -301,7 +301,7 @@ export function SoilHealthCard({ a }: { a: LandAnalytics }) {
       <div className="grid grid-cols-4 gap-2 text-center">
         {([['ph', s.ph_level, 1], ['n', s.nitrogen_kg_per_ha, 0], ['p', s.phosphorus_kg_per_ha, 0], ['k', s.potassium_kg_per_ha, 0]] as const).map(([k, v, d]) => (
           <div key={k} className="rounded-lg bg-muted/40 p-2">
-            <p className="text-[10px] text-muted-foreground">{t(`analytics.soil.${k}`, k.toUpperCase())}</p>
+            <p className="lf-fs-cap text-muted-foreground">{t(`analytics.soil.${k}`, k.toUpperCase())}</p>
             <p className="text-sm font-bold text-foreground">{formatNumber(v, d, i18n.language)}</p>
           </div>
         ))}
@@ -315,7 +315,7 @@ export const DisclaimerCard = forwardRef<HTMLDivElement>(function DisclaimerCard
   const { t } = useTranslation();
   return (
     <Card ref={ref} className="bg-muted/40 border-border/60 p-3">
-      <p className="text-[11px] text-muted-foreground leading-relaxed">{t('analytics.disclaimer.body', '')}</p>
+      <p className="lf-fs-cap text-muted-foreground leading-relaxed">{t('analytics.disclaimer.body', '')}</p>
     </Card>
   );
 });

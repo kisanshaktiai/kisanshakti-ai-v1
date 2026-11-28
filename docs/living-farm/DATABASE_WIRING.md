@@ -284,3 +284,15 @@ Measured after, same 59 px inset:
 The close-button change is in the shared `src/components/ui/dialog.tsx`, so every dialog in the app gets the larger touch target; the icon does not move. No save, location or crop logic in the confirm card is touched.
 
 **Seen, not changed (logic):** `SmartLandConfirmCard.tsx:172-174` reads the ownership type from the farmer's spoken words by matching English, Hindi and Marathi words in code.
+
+## Analytics, Alerts and Crop growth (refined 2026-11-28)
+
+Each page was rendered at 320 px (Marathi) with stub data and measured before and after. No query, hook, table or handler is changed on any of the three.
+
+| Page | Before | After |
+|---|---|---|
+| Analytics (`Analytics.tsx`, `AnalyticsSections.tsx`, `LandSelectorRail.tsx`, `ForecastChart.tsx`) | 38 texts under 12 px; 4 range buttons 32 px high; header blur | no text under 12 px; range buttons 40 px; no blur |
+| Alerts (`ProactiveAlerts.tsx`) | 15 labels under 12 px; history button 32 px; action row in one line | no text under 12 px; history button 40 px; action row wraps, Dismiss and Done stay together on the right |
+| Crop growth (`CropGrowthTracking.tsx`) | tabs 32 px high | tabs 48 px high |
+
+Advisory, Schemes, Reels, Notifications and Subscription were rendered with empty data in the same sweep and passed the same measurements; they are unchanged. They were not checked with real rows.

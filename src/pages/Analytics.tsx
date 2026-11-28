@@ -10,6 +10,7 @@ import { useCropNames } from '@/hooks/useCropNames';
 import { ArrowLeft, RefreshCw, Layers, Sprout, Wallet, TrendingUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import '@/living/living.css';
 import { AnalyticsSkeleton } from '@/components/skeletons';
 import { useAnalyticsData, type DateRange } from '@/hooks/useAnalyticsData';
 import { LandSelectorRail } from '@/components/analytics/LandSelectorRail';
@@ -60,7 +61,7 @@ export default function Analytics() {
 
   return (
     <div className="min-h-full bg-background">
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60">
+      <header className="sticky top-0 z-20 bg-background border-b border-border/60">
         <div className="px-3 pt-[var(--safe-top)] pb-2 flex items-center gap-2">
           <button type="button" onClick={() => navigate(-1)} aria-label={t('common.back', 'Back')}
             className="w-11 h-11 rounded-full bg-muted flex items-center justify-center text-foreground">
@@ -68,7 +69,7 @@ export default function Analytics() {
           </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-base font-bold text-foreground leading-tight truncate">{t('analytics.title', 'Farm Analytics')}</h1>
-            <p className="text-[11px] text-muted-foreground leading-tight truncate">
+            <p className="lf-fs-cap text-muted-foreground leading-tight truncate">
               {scope ? scope.land.name : t('analytics.all_farm', 'All Farm')} · {areaValue}
               {data?.computedAt && ` · ${t('analytics.economics.updated_on', 'Updated {{date}}', { date: new Date(data.computedAt).toLocaleDateString(locale) })}`}
             </p>
@@ -116,7 +117,7 @@ export default function Analytics() {
             <div className="px-1 pb-1 flex gap-1.5">
               {RANGES.map((r) => (
                 <button key={r} type="button" onClick={() => setRangeAndUrl(r)}
-                  className={cn('flex-1 h-8 rounded-full text-xs font-semibold transition-colors', range === r ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
+                  className={cn('flex-1 h-10 rounded-full lf-fs-cap font-semibold transition-colors', range === r ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>
                   {t(`analytics.range.${r === '1y' ? 'year' : r}`, r)}
                 </button>
               ))}
@@ -132,18 +133,18 @@ export default function Analytics() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground truncate">{a.land.name}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">
+                      <p className="lf-fs-cap text-muted-foreground truncate">
                         {a.land.current_crop ? cropNameOf(a.land.current_crop, (a.land as { current_crop_id?: string | null }).current_crop_id) : t('analytics.no_crop_short', 'fallow')} · {formatNumber(a.land.area_acres ?? 0, 1, locale)} {t('analytics.units.acre', 'ac')}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-muted-foreground">{t('analytics.economics.expected_harvest', 'Expected harvest')}</p>
+                      <p className="lf-fs-cap text-muted-foreground">{t('analytics.economics.expected_harvest', 'Expected harvest')}</p>
                       <p className="text-sm font-bold text-foreground">
                         {e?.predicted_total_qtl != null ? `${formatRange(e.predicted_total_low_qtl, e.predicted_total_high_qtl, 1, locale)} ${t('analytics.units.quintal', 'q')}` : t('analytics.economics.preparing', 'preparing…')}
                       </p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-3 text-center text-[10px]">
+                  <div className="grid grid-cols-3 gap-2 mt-3 text-center lf-fs-cap">
                     <Mini label={t('analytics.field.growth', 'Growth')}
                       value={c?.vs_expected === 'below' ? t('analytics.canopy.below', 'less than normal') : c?.vs_expected ? t('analytics.canopy.within', 'normal') : '—'}
                       warn={c?.vs_expected === 'below'} />
@@ -166,7 +167,7 @@ function KpiTile({ icon, label, value }: { icon: React.ReactNode; label: string;
     <Card className="p-3 bg-card border-border/60">
       <div className="flex items-center gap-2 mb-1">
         <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center">{icon}</div>
-        <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
+        <p className="lf-fs-cap text-muted-foreground leading-tight">{label}</p>
       </div>
       <p className="text-base font-bold leading-tight text-foreground">{value}</p>
     </Card>

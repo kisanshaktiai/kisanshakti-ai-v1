@@ -479,15 +479,15 @@ export default function ProactiveAlerts() {
                           </div>
 
                           {/* Meta: priority • land • time • status */}
-                          <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-2 flex-wrap mt-1.5 lf-fs-cap text-muted-foreground">
                             <Badge variant="outline" className={cn('h-5 px-1.5 gap-1 border-transparent', toneBg[railTone])}>
                               <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[alert.priority] || 'bg-muted-foreground')} />
-                              <span className="text-[10px] font-medium uppercase tracking-wide">
+                              <span className="lf-fs-cap font-medium uppercase tracking-wide">
                                 {t(`proactive.priority.${alert.priority.toLowerCase()}`, alert.priority)}
                               </span>
                             </Badge>
                             {alert.land ? (
-                              <LandRef land={alert.land} showArea className="text-[11px]" />
+                              <LandRef land={alert.land} showArea className="lf-fs-cap" />
                             ) : alert.land_id ? (
                               <span className="italic">🌾 {alert.land_name || t('alerts.unknown_land', '(unknown land)')}</span>
                             ) : null}
@@ -496,7 +496,7 @@ export default function ProactiveAlerts() {
                               {relativeTime(alert.created_at, lang)}
                             </span>
                             {isHistorical && (
-                              <Badge variant="outline" className="h-5 px-1.5 text-[10px] border-border bg-muted">
+                              <Badge variant="outline" className="h-5 px-1.5 lf-fs-cap border-border bg-muted">
                                 {t(`alerts.status.${alert.status.toLowerCase()}`, alert.status)}
                               </Badge>
                             )}
@@ -573,31 +573,30 @@ export default function ProactiveAlerts() {
                         </Button>
                       )}
 
-                      <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border/60">
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 mt-3 pt-2.5 border-t border-border/60">
                         <ChipButton onClick={(e) => { e.stopPropagation(); handleAskAI(alert); }} icon={<MessageCircle className="h-3.5 w-3.5" />}>
                           {t('proactive.askAI', 'Ask AI')}
                         </ChipButton>
                         <ChipButton onClick={(e) => { e.stopPropagation(); handleShare(alert); }} icon={<Share2 className="h-3.5 w-3.5" />}>
                           {t('alerts.share', 'Share')}
                         </ChipButton>
-                        <div className="flex-1" />
                         {!isHistorical && (
-                          <ChipButton
-                            onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}
-                            icon={<X className="h-3.5 w-3.5" />}
-                            variant="ghost"
-                          >
-                            {t('alerts.dismiss', 'Dismiss')}
-                          </ChipButton>
-                        )}
-                        {!isHistorical && (
-                          <ChipButton
-                            onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}
-                            icon={<CheckCircle className="h-3.5 w-3.5" />}
-                            variant="primary"
-                          >
-                            {t('proactive.done', 'Done')}
-                          </ChipButton>
+                          <div className="ml-auto flex items-center gap-1.5">
+                            <ChipButton
+                              onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}
+                              icon={<X className="h-3.5 w-3.5" />}
+                              variant="ghost"
+                            >
+                              {t('alerts.dismiss', 'Dismiss')}
+                            </ChipButton>
+                            <ChipButton
+                              onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}
+                              icon={<CheckCircle className="h-3.5 w-3.5" />}
+                              variant="primary"
+                            >
+                              {t('proactive.done', 'Done')}
+                            </ChipButton>
+                          </div>
                         )}
                       </div>
                     </CardContent>
@@ -630,13 +629,13 @@ function NdviChip({ reading, lang, tone, reduceMotion }: {
 }) {
   const { t } = useTranslation();
   if (!reading) {
-    return <p className="mt-1 text-[11px] text-muted-foreground">🛰️ {t('alerts.ndvi_none', 'No recent satellite picture')}</p>;
+    return <p className="mt-1 lf-fs-cap text-muted-foreground">🛰️ {t('alerts.ndvi_none', 'No recent satellite picture')}</p>;
   }
   const date = new Date(`${reading.date}T00:00:00`).toLocaleDateString(lang === 'en' ? 'en-IN' : lang, { day: 'numeric', month: 'short' });
   const label = t('alerts.ndvi_chip', { value: formatNdviValue(reading.ndvi), date, defaultValue: 'Satellite {{value}} · {{date}}' });
   return (
     <div className="mt-1.5 space-y-1">
-      <p className="inline-flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+      <p className="inline-flex flex-wrap items-center gap-1 lf-fs-cap text-muted-foreground">
         <Satellite className="h-3 w-3" style={tone ? { color: tone.color } : undefined} />
         <span className="font-semibold text-foreground">{label}</span>
         {!reading.isFresh && <span className="rounded-full bg-muted px-1.5 py-0.5">{t('alerts.ndvi_old', 'old picture')}</span>}
@@ -679,13 +678,13 @@ function Header({
             {t('proactive.title', 'Proactive Alerts')}
           </h1>
           {unreadCount > 0 && (
-            <Badge className="bg-destructive text-destructive-foreground text-[10px] h-4 px-1.5 shrink-0">{unreadCount}</Badge>
+            <Badge className="bg-destructive text-destructive-foreground lf-fs-cap h-4 px-1.5 shrink-0">{unreadCount}</Badge>
           )}
         </div>
         <Button
           variant={showHistory ? 'default' : 'outline'}
           size="sm"
-          className="h-8 text-[11px] gap-1 rounded-full px-2.5 shrink-0"
+          className="h-10 lf-fs-cap gap-1 rounded-full px-3 shrink-0"
           onClick={() => setShowHistory(!showHistory)}
         >
           {showHistory ? <RotateCcw className="h-3 w-3" /> : <History className="h-3 w-3" />}
@@ -710,12 +709,12 @@ function ReportSummary({ summary }: { summary: any }) {
     <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
       <div className="flex items-baseline gap-1 shrink-0">
         <span className="text-xl font-bold leading-none">{total}</span>
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+        <span className="lf-fs-cap text-muted-foreground uppercase tracking-wide">
           {t('alerts.alerts_count', { count: total, defaultValue: 'alerts' })}
         </span>
       </div>
       <span className="text-muted-foreground/40 text-xs">·</span>
-      <div className="text-[11px] text-muted-foreground shrink-0">
+      <div className="lf-fs-cap text-muted-foreground shrink-0">
         {t('alerts.land_count', { count: summary.lands || 0, defaultValue: '{{count}} lands' })}
       </div>
       <div className="flex-1 min-w-0">
@@ -729,7 +728,7 @@ function ReportSummary({ summary }: { summary: any }) {
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         {segments.map(s => (
-          <span key={s.key} className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground">
+          <span key={s.key} className="inline-flex items-center gap-0.5 lf-fs-cap font-semibold text-muted-foreground">
             <span className={cn('w-1.5 h-1.5 rounded-full', toneRail[s.tone])} />
             {s.value}
           </span>
@@ -781,7 +780,7 @@ function LandCard({
       <div className="flex items-center justify-between gap-1.5">
         <span className="text-base leading-none" aria-hidden>{displayEmoji}</span>
         <span className={cn(
-          'min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold inline-flex items-center justify-center leading-none',
+          'min-w-[20px] h-5 px-1.5 rounded-full lf-fs-cap font-bold inline-flex items-center justify-center leading-none',
           count === 0 ? 'bg-muted text-muted-foreground' :
           topPriority === 'CRITICAL' ? 'bg-destructive text-destructive-foreground' :
           topPriority === 'HIGH' ? 'bg-warning text-warning-foreground' :
@@ -792,21 +791,21 @@ function LandCard({
       </div>
       <div className="min-w-0">
         <div className="text-[12px] font-semibold text-foreground truncate leading-tight">{name}</div>
-        {subtitle && <div className="text-[10px] text-muted-foreground truncate leading-tight">{subtitle}</div>}
+        {subtitle && <div className="lf-fs-cap text-muted-foreground truncate leading-tight">{subtitle}</div>}
       </div>
       {dotSegs.length > 0 && (
         <div className="flex items-center gap-1 -mt-0.5">
           {dotSegs.map(s => (
             <span key={s.k} className="inline-flex items-center gap-0.5">
               <span className={cn('w-1 h-1 rounded-full', PRIORITY_DOT[s.k])} />
-              <span className="text-[9px] text-muted-foreground font-medium leading-none">{s.v}</span>
+              <span className="lf-fs-cap text-muted-foreground font-medium leading-none">{s.v}</span>
             </span>
           ))}
         </div>
       )}
       {ndvi && (
         <div className="space-y-1">
-          <div className="flex items-center gap-1 text-[9px] leading-none text-muted-foreground">
+          <div className="flex items-center gap-1 lf-fs-cap leading-none text-muted-foreground">
             <Satellite className="h-2.5 w-2.5" style={health ? { color: health.color } : undefined} />
             <span className={cn('font-semibold', ndvi.isFresh ? 'text-foreground' : 'text-muted-foreground')}>NDVI {formatNdviValue(ndvi.ndvi)}</span>
           </div>

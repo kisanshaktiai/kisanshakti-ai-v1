@@ -29,7 +29,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/ai-chat` | old look, working | same page as chat |
 | `/app/chat` | reply card, reply actions and composer in the new look; rest old look, working | voice button → Type; All |
 | `/app/community` | old look, working | All |
-| `/app/analytics` | old look, working | All |
+| `/app/analytics` | refined 2026-11-28 (text size, touch targets), working | All |
 | `/app/schedule` | land step and schedule view refined; crop input step still as before | Day: "Full schedule" and "Make a schedule"; task pin and chip on Field; All |
 | `/app/ai-dashboard` | old look, working | from its parent page, as before |
 | `/app/ndvi` | refined: chosen land, lighter loading, larger tabs; cards unchanged | All |
@@ -37,9 +37,9 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/reels` | old look, working | video card on All |
 | `/app/videos/legacy` | old look, working | from its parent page, as before |
 | `/app/notifications/settings` | old look, working | All |
-| `/app/crop-growth` | old look, working | All |
+| `/app/crop-growth` | refined 2026-11-28 (text size, touch targets), working | All |
 | `/app/growth-tracking` | old look, working | from its parent page, as before |
-| `/app/proactive-alerts` | old look, working | alert pin and chip; All |
+| `/app/proactive-alerts` | refined 2026-11-28 (text size, touch targets), working | alert pin and chip; All |
 | `/app/subscription` | old look, working | All; any locked item |
 | `/`, `/language-selection`, `/permissions`, `/auth`, `/mobile-auth`, `/pin`, `/pin-auth`, `/set-pin`, `/forgot-pin`, `/activate`, `/choose-roles`, `/welcome`, `/roles`, `/install`, not-found | old look, working | entry flow, unchanged |
 | `/provider` and its 10 children, `/customer` and `/customer/profile` | old look, working | role switcher, unchanged (separate shell) |
