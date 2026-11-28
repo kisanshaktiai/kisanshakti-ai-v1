@@ -45,11 +45,12 @@ const RailButton = ({
       onClick();
     }}
     aria-label={ariaLabel}
-    className="flex flex-col items-center gap-1 select-none"
+    className="flex flex-col items-center gap-0.5 select-none"
   >
     <div
       className={cn(
-        'w-14 h-14 rounded-full bg-black/55 flex items-center justify-center transition-colors',
+        // sized from the screen height so all six fit on a short phone; 56px on a tall one
+        'w-[clamp(44px,7.6dvh,56px)] h-[clamp(44px,7.6dvh,56px)] rounded-full bg-black/55 flex items-center justify-center transition-colors',
         'shadow-[0_2px_12px_rgba(0,0,0,0.4)]',
         active && activeClass
       )}
@@ -57,7 +58,7 @@ const RailButton = ({
       {children}
     </div>
     {typeof count === 'number' && (
-      <span className="text-white text-[11px] font-semibold drop-shadow-md tabular-nums">
+      <span className="text-white lf-fs-cap font-semibold drop-shadow-md tabular-nums">
         {fmt(count)}
       </span>
     )}
@@ -77,7 +78,11 @@ export function ReelActionRail({
   onToggleMute,
 }: ReelActionRailProps) {
   return (
-    <div className="absolute right-2 bottom-28 z-20 flex flex-col gap-4">
+    <div
+      className="absolute right-2 z-20 flex flex-col gap-[clamp(4px,1.4dvh,16px)]"
+      // clear of the dock on every phone, and never lower than before
+      style={{ bottom: 'max(7rem, calc(var(--lf-dock-h) + var(--safe-bottom) + 1rem))' }}
+    >
       <RailButton onClick={onLike} active={liked} count={reel.total_likes} ariaLabel="Like">
         <Heart
           className={cn('w-7 h-7 text-white', liked && 'fill-destructive text-destructive')}

@@ -1,3 +1,4 @@
+import '@/living/living.css';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -326,7 +327,11 @@ export default function ReelsPage() {
               )}
 
               {/* Bottom info */}
-              <div className="absolute left-0 right-16 bottom-0 p-4 pb-6 z-20 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none">
+              {/* The dock stays on top of this page, so the caption ends above it. */}
+              <div
+                className="absolute left-0 right-16 bottom-0 p-4 z-20 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none"
+                style={{ paddingBottom: 'calc(var(--lf-dock-h) + var(--safe-bottom) + 1rem)' }}
+              >
                 <div className="space-y-1.5">
                   <h2 className="text-white text-base font-bold leading-snug drop-shadow-md line-clamp-2">
                     {reel.title}
@@ -340,7 +345,7 @@ export default function ReelsPage() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); openCurrentOnYouTube(); }}
-                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#FF0000]/95 active:bg-[#cc0000] text-white text-xs font-semibold shadow-md"
+                      className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[#FF0000]/95 active:bg-[#cc0000] text-white text-xs font-semibold shadow-md"
                     >
                       <Youtube className="w-4 h-4" />
                       {t('reels.watch_on_channel', 'Watch on YouTube')}
@@ -348,15 +353,15 @@ export default function ReelsPage() {
                   </div>
                   <div className="flex items-center gap-2 pt-1 flex-wrap">
                     {reel.is_featured && (
-                      <Badge className="bg-yellow-500/90 text-black border-0 text-[10px] h-5">
+                      <Badge className="bg-yellow-500/90 text-black border-0 lf-fs-cap h-6">
                         ★ {t('reels.featured', 'Featured')}
                       </Badge>
                     )}
-                    <Badge variant="secondary" className="bg-white/15 text-white border-0 text-[10px] h-5">
+                    <Badge variant="secondary" className="bg-white/15 text-white border-0 lf-fs-cap h-6">
                       {reel.language_code.toUpperCase()}
                     </Badge>
                     {reel.visibility_scope === 'tenant' && (
-                      <Badge variant="secondary" className="bg-primary/80 text-primary-foreground border-0 text-[10px] h-5">
+                      <Badge variant="secondary" className="bg-primary/80 text-primary-foreground border-0 lf-fs-cap h-6">
                         {t('reels.from_org', 'From your organization')}
                       </Badge>
                     )}

@@ -331,3 +331,21 @@ Rendered at 320 px (Marathi) and 393 px (English) inside a layout shaped like th
 - `Advisory.tsx` shows three fixed texts from the language files with fixed times ("2 hours ago"). It reads no table.
 - `Schemes.tsx` shows three fixed schemes from the language files. The "Apply now" button has no action.
 - Community has its own header (back, language, search, bell) under the app header, so three bars (181 px) stay at the top while scrolling.
+
+## Reels, Subscription, Notification settings, AI dashboard (2026-11-28)
+
+Rendered inside a layout shaped like the app (fixed header, scrolling main, dock) at 320x568, 360x640 and 393x852 with a 47/34 px notch. Reels used a test answer for the `weather` function's `youtube_feed` action; Subscription used plan rows copied in shape from the live `subscription_plans` farmer rows (read-only query). No query, mutation or hook is changed.
+
+| Page | Before | After |
+|---|---|---|
+| Reels (`ReelsPage.tsx`, `ReelActionRail.tsx`) | the page is a full-screen layer under the dock, so the caption's last lines and the Watch on YouTube button were behind the dock; on a 568 px high screen the six side buttons ran up into the top bar | caption ends above the dock (`--lf-dock-h` + bottom inset); side buttons sized from screen height (44 to 56 px) so all six fit; Watch button 40 px; no text under 12 px |
+| Subscription (`SubscriptionPage.tsx`) | a plan with no limit showed the word "unlimited", a plan with no value showed an empty box | ∞ (the sign the usage meter already uses) and — |
+| Notification settings | passes | unchanged |
+
+**Seen, not changed (logic or data):**
+- Subscription: live plan rows carry feature codes that have no name in the language files (`ecommerce`, `basic_analytics`, `inventory_management`, `payment_gateway`, `iot_integration`, `webhook_support`); they show as raw English. Live limits also carry `max_dealers`, `max_farmers`, `max_products`, `max_storage_gb`, `max_api_calls_per_day`.
+- Subscription: the soil-report meter reads `limits.soil_reports_per_month`; the live Shakti and AI PRO rows have no such key, so the meter shows "/ 0" in red. `subscription_usage_logs` had no rows at the time of the check.
+- Subscription: every plan that is not the current one says "Upgrade to", including cheaper plans and Free. Payment status and currency are shown as stored (English).
+- Notification settings: `notificationService.initialize()` waits on `navigator.serviceWorker.ready`, which never answers when no service worker is registered; the page then stays on "Loading".
+- Reels: side-button names for screen readers are English words in code (`ariaLabel="Like"` etc.). `reels.watch_on_channel` is read with an English fallback.
+- `AIScheduleDashboard.tsx` (`/app/ai-dashboard`) is English only, names an AI model and has a "Marketing Insights" tab. No link to it was found in the app. Same for `/app/videos/legacy`.

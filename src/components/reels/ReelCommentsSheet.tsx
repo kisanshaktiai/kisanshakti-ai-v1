@@ -94,7 +94,7 @@ export function ReelCommentsSheet({ reelId, open, onOpenChange }: ReelCommentsSh
                 </div>
                 <div className="flex-1">
                   <p className="text-sm text-foreground whitespace-pre-wrap break-words">{c.body}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="lf-fs-cap text-muted-foreground mt-0.5">
                     {new Date(c.created_at).toLocaleString()}
                   </p>
                 </div>

@@ -41,6 +41,10 @@ const PLAN_ICONS: Record<string, typeof Leaf> = {
   'AI PRO': Crown,
 };
 
+/** A plan limit as shown on a plan card: the same sign the usage meter uses for no limit, a dash when the plan row has none. */
+const limitText = (value: number | string | undefined | null): string | number =>
+  value === 'unlimited' ? '∞' : value ?? '—';
+
 /** Feature codes from the plan row are named in profile.subscription.feature.<code>. */
 const FEATURE_CODES = ['ai_chat', 'satellite_imagery', 'weather_forecast', 'soil_testing', 'community_forum', 'marketplace', 'advanced_analytics', 'custom_reports', 'drone_monitoring', 'predictive_analytics', 'white_label_mobile_app', 'api_access'];
 
@@ -285,11 +289,11 @@ export default function SubscriptionPage() {
                     <div className="grid grid-cols-2 gap-2 border-t border-border pt-3 text-sm">
                       <div className="rounded-xl bg-muted/50 px-3 py-2">
                         <p className="text-xs leading-snug text-muted-foreground">{t('profile.subscription.ai_queries')}</p>
-                        <p className="font-semibold text-foreground">{plan.limits.ai_queries_per_month}</p>
+                        <p className="font-semibold text-foreground">{limitText(plan.limits.ai_queries_per_month)}</p>
                       </div>
                       <div className="rounded-xl bg-muted/50 px-3 py-2">
                         <p className="text-xs leading-snug text-muted-foreground">{t('profile.subscription.lands')}</p>
-                        <p className="font-semibold text-foreground">{plan.limits.land_limit}</p>
+                        <p className="font-semibold text-foreground">{limitText(plan.limits.land_limit)}</p>
                       </div>
                     </div>
 

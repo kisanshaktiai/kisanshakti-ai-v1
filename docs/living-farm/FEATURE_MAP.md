@@ -31,16 +31,16 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/community` | refined 2026-11-28 (one bottom bar, tabs, action row, translated labels), working | All |
 | `/app/analytics` | refined 2026-11-28 (text size, touch targets), working | All |
 | `/app/schedule` | land step and schedule view refined; crop input step still as before | Day: "Full schedule" and "Make a schedule"; task pin and chip on Field; All |
-| `/app/ai-dashboard` | old look, working | from its parent page, as before |
+| `/app/ai-dashboard` | old look, English only, no link to it found in the app | route only |
 | `/app/ndvi` | refined: chosen land, lighter loading, larger tabs; cards unchanged | All |
-| `/app/videos` | old look, working | All |
-| `/app/reels` | old look, working | video card on All |
-| `/app/videos/legacy` | old look, working | from its parent page, as before |
-| `/app/notifications/settings` | old look, working | All |
+| `/app/videos` | refined 2026-11-28 (caption and buttons clear of the dock), working | All |
+| `/app/reels` | refined 2026-11-28 (caption and buttons clear of the dock), working | video card on All |
+| `/app/videos/legacy` | old look, no link to it found in the app | route only |
+| `/app/notifications/settings` | checked 2026-11-28 with a service worker present, unchanged, working | All |
 | `/app/crop-growth` | refined 2026-11-28 (text size, touch targets), working | All |
 | `/app/growth-tracking` | old look, working | from its parent page, as before |
 | `/app/proactive-alerts` | refined 2026-11-28 (text size, touch targets), working | alert pin and chip; All |
-| `/app/subscription` | old look, working | All; any locked item |
+| `/app/subscription` | checked 2026-11-28 with the live plan shape; plan limits show ∞ / —; working | All; any locked item |
 | `/`, `/language-selection`, `/permissions`, `/auth`, `/mobile-auth`, `/pin`, `/pin-auth`, `/set-pin`, `/forgot-pin`, `/activate`, `/choose-roles`, `/welcome`, `/roles`, `/install`, not-found | old look, working | entry flow, unchanged |
 | `/provider` and its 10 children, `/customer` and `/customer/profile` | old look, working | role switcher, unchanged (separate shell) |
 
