@@ -238,7 +238,7 @@ export default function Weather() {
           {hours.length > 0 && (
             <section style={gut} aria-label={t('weather.aria.hourly_chart')}>
               <div className={card} style={pad}>
-                <h2 className="lf-head flex items-center gap-2"><Clock size={20} className="text-primary" aria-hidden />{t('weather.hourly.title')}</h2>
+                <div className="flex items-baseline justify-between gap-2"><h2 className="lf-head flex min-w-0 items-center gap-2"><Clock size={20} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0 truncate">{t('weather.hourly.title')}</span></h2><span className="lf-cap shrink-0 text-muted-foreground">{t('weather.hourly.next_12h')}</span></div>
                 <ul className="mt-2 flex gap-1 overflow-x-auto pb-1">
                   {hours.map((hour, index) => {
                     const chance = Math.round((hour.pop || 0) * 100);
@@ -246,6 +246,7 @@ export default function Weather() {
                       <li key={hour.dt} className={`flex shrink-0 flex-col items-center gap-1 rounded-2xl px-2 py-2 ${index === 0 ? 'bg-primary/10' : ''}`} style={{ minWidth: 'clamp(56px, 16vw, 72px)' }}>
                         <span className="lf-cap text-muted-foreground">{index === 0 ? t('weather.hourly.now') : new Date(hour.dt * 1000).toLocaleTimeString(numLocale, { hour: 'numeric' })}</span>
                         <b className="lf-head" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{Math.round(hour.temp)}°</b>
+                        <span className="lf-cap text-muted-foreground">{t('weather.hourly.feels')} {Math.round(hour.feels_like)}°</span>
                         <span className="flex h-10 w-2.5 items-end overflow-hidden rounded-full bg-muted" aria-hidden><span className="w-full rounded-full bg-info" style={{ height: `${chance}%` }} /></span>
                         <span className={`lf-cap flex items-center gap-0.5 ${chance > 0 ? 'text-info' : 'text-muted-foreground'}`}><Droplets size={12} aria-hidden /><span className="sr-only">{t('weather.hourly.rain')}</span>{chance}{t('weather.units.percent')}</span>
                       </li>

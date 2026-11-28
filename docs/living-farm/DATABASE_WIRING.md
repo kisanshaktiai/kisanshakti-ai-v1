@@ -122,8 +122,8 @@ Same route (`/app/weather`) and the same three data calls as before: `useWeather
 |---|---|---|
 | Now | `currentWeather.temp/description/feels_like/main/location/provider`, `locationSource`, `regionalFallbackLabel`, `weatherDistanceKm`, `weatherStationName`, `isStale`, `lastUpdated` | Drawn in the page instead of `WeatherHeroCard`. Same provenance rule. "Old reading", "Updated", "Feels like" now come from existing keys (were English in code). |
 | Six readings | `wind_speed`, `humidity`, `visibility`, `pressure`, `uv_index`, `dew_point` | One 3-column grid, same colour thresholds. |
-| Hour by hour | `hourlyForecast[0..11].dt/temp/pop` | Plain scrolling strip; the chart library is no longer loaded for this page. `feels_like` per hour is no longer shown. |
-| Rain | `forecast[0..6].rain` | Today and week totals as before; seven plain bars. The cumulative line is no longer drawn. |
+| Hour by hour | `hourlyForecast[0..11].dt/temp/pop` | Plain scrolling strip; the chart library is no longer loaded for this page. `feels_like` per hour is shown under each temperature (it was in the chart's tap tooltip). |
+| Rain | `forecast[0..6].rain` | Today and week totals as before; seven plain bars. The old chart drew the same daily rainfall values as an area. |
 
 Removed from this page: the moving background (`AnimatedWeatherBackground`), three endless animations and all blur. Those component files are left in the repo, unused by this page.
 
