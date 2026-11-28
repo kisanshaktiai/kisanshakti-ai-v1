@@ -2,6 +2,9 @@
 -- 20261128150000_service_two_way_ratings.sql
 -- REPO: kisanshaktiai/kisanshakti-ai-v1  (farmer app)
 -- STATUS: DRAFT FOR REVIEW. Not applied to the shared database.
+-- Kept under docs/living-farm/drafts/ so that no tool picks it up as a migration.
+-- When approved it moves to supabase/migrations/ under the same file name.
+-- The SQL has not been run anywhere, not even in a rolled-back transaction.
 --
 -- Services near me: two-way ratings. Today only the farmer rates the provider
 -- (1 to 5 stars). This file adds, for a job that is DONE:

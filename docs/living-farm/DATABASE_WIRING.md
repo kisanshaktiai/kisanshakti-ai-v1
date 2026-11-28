@@ -349,3 +349,11 @@ Rendered inside a layout shaped like the app (fixed header, scrolling main, dock
 - Notification settings: `notificationService.initialize()` waits on `navigator.serviceWorker.ready`, which never answers when no service worker is registered; the page then stays on "Loading".
 - Reels: side-button names for screen readers are English words in code (`ariaLabel="Like"` etc.). `reels.watch_on_channel` is read with an English fallback.
 - `AIScheduleDashboard.tsx` (`/app/ai-dashboard`) is English only, names an AI model and has a "Marketing Insights" tab. No link to it was found in the app. Same for `/app/videos/legacy`.
+
+## Two-way ratings (approved as a design 2026-11-28, backend drafted, nothing applied)
+
+Design boards 14 to 20 on the proposal canvas. Decisions approved: blind period 7 days, "New" below 3 ratings, picture words instead of typed text.
+
+Live state read on 2026-11-28: `service_requests` has `farmer_rating` and `rated_at` only; 2 requests, 0 done, 0 rated; `farm_services_policy` has no rating keys; no `service_rating_tags` table. The customer workspace has no tables, so customer and produce ratings are not drafted.
+
+Draft: `docs/living-farm/drafts/20261128150000_service_two_way_ratings.sql`. It adds the provider's stars for the farmer, picture words on both sides, the blind rule and the "New" rule for the service side. It replaces four live functions with bodies taken from the live database the same day (`farm_service_refresh_provider_stats`, `farm_service_requests_mine`, `farm_service_request_rate`, `provider_request_card`) and removes nothing. It has not been run.
