@@ -220,3 +220,22 @@ Drawing changes: header buttons 48 px with labels; four facts in a 2x2 grid; the
 Rendered at 320 px (Marathi) and 393 px (English) with a filled profile: no sideways overflow, no text under 12 px, no endless animation, theme tokens throughout. The only control under 40 px is the read-aloud switch (44 x 24 px, the standard switch). Nothing was changed.
 
 **Seen, not changed (affects every page):** the default `Button` style is `bg-gradient-primary`, and `--gradient-primary` in `src/index.css` (lines 207 and 401) is a fixed blue-to-cyan gradient that tenant themes do not set. Every default button in the app is therefore blue whatever the tenant's colour.
+
+## Default button colour (`src/index.css`)
+
+`--gradient-primary` and `--shadow-glow` were fixed blue values that tenant themes do not set, so the default `Button` was blue for every tenant. Both now derive from `--primary`, the pattern `--gradient-secondary` already used. This recolours default buttons on every page and workspace.
+
+## Schedule (`src/pages/Schedule.tsx`) — first step only
+
+Nothing in the schedule flow's logic is touched: land choice, crop and date input, review drafts, generation, consent dialog and the schedule view are the same code. Changed so far:
+
+- Page header: back and refresh are 48 px with labels from `common.back` / `common.refresh`; the title uses the shared heading size; the step dots' label no longer contains English words.
+- `LandSelector`: the land name starts below the status badge (the badge sat on top of a long name); blur removed; one 10 px line enlarged; the sparkle icon no longer pulses.
+
+Not done: the crop input and schedule view screens (`CropDateInput`, `CropScheduleView`, task cards). A first pass that enlarged 69 small text spots there was undone because the schedule view could not be rendered in the test to confirm nothing overlaps.
+
+**Seen, not changed (logic):**
+
+1. `Schedule.tsx:102` sends weather for the phone's current location (`useWeather(deviceLocation)`) into schedule generation, not the weather of the land the schedule is for.
+2. `CropScheduleView.tsx:515-516` recognises a harvest task by Hindi and Marathi words in the task name.
+3. `ProductRecommendationCard`, `MultiIntercropSelector`, `IntercropSelector` and `WeatherScheduleAlerts` carry their own translation tables in code for five languages or fewer (about 130 lines); other languages get English.

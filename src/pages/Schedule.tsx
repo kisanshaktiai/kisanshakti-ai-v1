@@ -27,6 +27,7 @@ import { beginPwaWork } from '@/utils/pwaActivity';
 import { useLocation } from '@/hooks/useLocation';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
+import '@/living/living.css';
 
 interface Land {
   id: string;
@@ -599,11 +600,12 @@ export default function Schedule() {
             variant="ghost"
             size="icon"
             onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-            className="h-8 w-8 rounded-lg shrink-0"
+            aria-label={t('common.back')}
+            className="h-12 w-12 rounded-full shrink-0"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
           </Button>
-          <h1 className="text-sm font-semibold text-foreground truncate">
+          <h1 className="lf-head text-foreground truncate">
             {t('schedule.title')}
           </h1>
         </div>
@@ -621,14 +623,15 @@ export default function Schedule() {
                   className: 'border-accent bg-accent text-accent-foreground',
                 });
               }}
-              className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all"
+              aria-label={t('common.refresh')}
+              className="h-12 w-12 rounded-full bg-background/50 hover:bg-primary/10"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-5 w-5" />
             </Button>
           )}
 
           {/* Compact step indicator dots only */}
-          {flowStep !== 'schedule-view' && <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
+          {flowStep !== 'schedule-view' && <div className="flex items-center gap-1.5" role="img" aria-label={`${currentStepIndex + 1} / ${STEPS.length}`}>
             {STEPS.map((step, index) => (
               <div
                 key={step}
