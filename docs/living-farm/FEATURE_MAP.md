@@ -18,9 +18,9 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/advisory` | old look, working | All |
 | `/app/schemes` | old look, working | All |
 | `/app/profile` | checked 2026-11-28: fits 320 and 393 px, no small text, tokens only; left as it is | All |
-| `/app/profile/edit` | old look, working | from its parent page, as before |
+| `/app/profile/edit` | checked 2026-11-28: fits, readable, tokens only; left as it is | from its parent page, as before |
 | `/app/lands` | new look; same data calls | Land: "All my lands"; All |
-| `/app/lands/add` | old look, working | + on Field home; Land page |
+| `/app/lands/add` | instructions and confirm card refined; map-drawing screen unchanged | + on Field home; Land page |
 | `/app/lands/:id/edit` | old look, working | from its parent page, as before |
 | `/app/lands/:id` | new look; same data calls, one land per page | land chip on Field home (one land); Land page |
 | `/app/lands/:id/soil` | lighter loading only; body unchanged | from its parent page, as before |

@@ -84,7 +84,7 @@ export function LandVoiceCapture({ language, onTranscript, className }: LandVoic
       >
         {isListening ? <Loader2 className="h-6 w-6 animate-spin" /> : <Mic className="h-6 w-6" />}
       </button>
-      <span className="text-[11px] text-muted-foreground">
+      <span className="lf-fs-cap text-muted-foreground">
         {isListening
           ? (partial || t('lands.smartConfirm.listening', { defaultValue: 'Listening…' }))
           : t('lands.smartConfirm.holdToTalk', { defaultValue: 'Hold to talk' })}

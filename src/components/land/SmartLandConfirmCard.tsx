@@ -374,8 +374,8 @@ export function SmartLandConfirmCard({
             {t('lands.smartConfirm.title', { defaultValue: 'Confirm your land' })}
           </h1>
           {inference.isPending && (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
-              <Sparkles className="h-3 w-3 animate-pulse" />
+            <div className="flex items-center gap-1 lf-fs-cap text-muted-foreground shrink-0">
+              <Sparkles className="h-3 w-3" />
               {t('lands.smartConfirm.thinking', { defaultValue: 'AI…' })}
             </div>
           )}
@@ -391,7 +391,7 @@ export function SmartLandConfirmCard({
               className="h-11 rounded-xl text-sm font-semibold"
               aria-label={t('lands.smartConfirm.name', { defaultValue: 'Land name' })}
             />
-            <p className="text-[11px] text-muted-foreground mt-1 truncate">
+            <p className="lf-fs-cap text-muted-foreground mt-1 truncate">
               {area.acres.toFixed(2)} ac · {area.guntha.toFixed(1)} guntha
               {typeof form.elevation_meters === 'number' && (
                 <span className="inline-flex items-center gap-0.5 ml-2">
@@ -447,7 +447,7 @@ export function SmartLandConfirmCard({
             <button
               type="button"
               onClick={() => setShowCountryPicker(true)}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground mt-1"
+              className="inline-flex min-h-10 items-center gap-1.5 lf-fs-cap text-muted-foreground"
             >
               <Globe className="h-3 w-3" />
               {t('lands.smartConfirm.outsideIndia', { defaultValue: 'Outside India?' })}
@@ -735,7 +735,7 @@ export function SmartLandConfirmCard({
               {/* AI suggestions strip — one-tap shortcut to the crops inferred for this land */}
               {crops.length > 0 && (
                 <div className="px-4 pb-2">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1">
+                  <div className="lf-fs-cap uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1">
                     <Sparkles className="h-3 w-3" />
                     {t('lands.smartConfirm.suggestedCrops', { defaultValue: 'Suggested for your field' })}
                   </div>
@@ -787,7 +787,7 @@ export function SmartLandConfirmCard({
                   className="rounded-2xl border border-border bg-card px-3 py-3.5 text-sm text-left active:scale-[0.97] min-h-[60px]"
                 >
                   <div className="font-medium truncate">{it.label}</div>
-                  {it.meta && <div className="text-[11px] text-muted-foreground mt-0.5">{it.meta}</div>}
+                  {it.meta && <div className="lf-fs-cap text-muted-foreground mt-0.5">{it.meta}</div>}
                 </button>
               ))}
               {pickerItems.length === 0 && (

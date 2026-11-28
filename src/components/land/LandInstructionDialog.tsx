@@ -111,18 +111,19 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
+          <DialogTitle className="flex items-center justify-between gap-2 pr-8">
             {t('lands.add_land.instructions_title')}
             <Button
               variant="ghost"
               size="icon"
               onClick={handleReadInstructions}
-              className="h-8 w-8"
+              aria-label={isSpeaking ? t('living.stop') : t('living.listen')}
+              className="h-11 w-11 shrink-0 rounded-full"
             >
               {isSpeaking ? (
-                <VolumeX className="h-4 w-4" />
+                <VolumeX className="h-5 w-5" />
               ) : (
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="h-5 w-5" />
               )}
             </Button>
           </DialogTitle>

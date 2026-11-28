@@ -64,13 +64,13 @@ export function ReviewCard({
             <h3 className="text-sm font-semibold truncate">{title}</h3>
             {required && <span className="text-destructive text-sm leading-none">*</span>}
             {state === 'confirmed' && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-success dark:text-success bg-success-soft dark:bg-success/40 rounded-full px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-0.5 lf-fs-cap font-medium text-success dark:text-success bg-success-soft dark:bg-success/40 rounded-full px-1.5 py-0.5">
                 <Check className="h-2.5 w-2.5" />
                 {t('lands.smartConfirm.confirmed', { defaultValue: 'Confirmed' })}
               </span>
             )}
             {state === 'ai' && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-warning dark:text-warning bg-warning-soft dark:bg-warning/40 rounded-full px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-0.5 lf-fs-cap font-medium text-warning dark:text-warning bg-warning-soft dark:bg-warning/40 rounded-full px-1.5 py-0.5">
                 <Sparkles className="h-2.5 w-2.5" />
                 AI
               </span>
@@ -125,7 +125,7 @@ export function ReviewCard({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onEdit ? onEdit() : setOpen(true); }}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-primary font-medium"
+          className="mt-1 inline-flex min-h-10 items-center gap-1.5 lf-fs-cap text-primary font-medium"
         >
           <Pencil className="h-3 w-3" />
           {t('common.edit', { defaultValue: 'Edit' })}

@@ -268,3 +268,19 @@ Measured after, same 59 px inset:
 - `ndvi.error.load_failed` and `ndvi.error.retry` were missing from the language files (English fallback for everyone); added in `en`, `hi`, `mr`.
 
 **Soil report.** Only loading changed: `html2canvas` and `jsPDF` are fetched when the farmer taps download or share. The page's own script went from 619 kB to the size shown in the build. The report body could not be rendered in the test (it needs a signed-in session), so nothing in it was changed.
+
+## Profile edit and Add land (checked and refined 2026-11-28)
+
+**Profile edit (`src/pages/ProfileEdit.tsx`).** Rendered at 320 px (Marathi) and 393 px (English) with every section opened: no overflow, no text under 12 px, no control under 36 px. Nothing changed.
+
+**Add land.** The map-drawing screen needs Google Maps and could not be rendered in the test; it is unchanged. The first-screen instructions and the confirm card were rendered and measured:
+
+| | Before | After |
+|---|---|---|
+| Instruction dialog | read-aloud button 32 px, drawn under the close button; close button 16 px | read-aloud 44 px beside the close button, with a label; close target 40 px |
+| Confirm card | 10 labels at 11 px; three text links 16-17 px high; a pulsing icon | no text under 12 px; links 40 px high; no pulse |
+| Field placeholder | "Tap to set" in English in every language (`FieldChip.tsx`) | from the existing key `lands.smartConfirm.tapToSet` |
+
+The close-button change is in the shared `src/components/ui/dialog.tsx`, so every dialog in the app gets the larger touch target; the icon does not move. No save, location or crop logic in the confirm card is touched.
+
+**Seen, not changed (logic):** `SmartLandConfirmCard.tsx:172-174` reads the ownership type from the farmer's spoken words by matching English, Hindi and Marathi words in code.

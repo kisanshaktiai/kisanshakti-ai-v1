@@ -125,7 +125,7 @@ export function SeasonMonthPicker({
       <button
         type="button"
         onClick={() => setExactMode(s => !s)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1"
+        className="flex min-h-10 items-center gap-1.5 lf-fs-cap text-muted-foreground"
       >
         <Calendar className="h-3.5 w-3.5" />
         {t('lands.smartConfirm.exactDate', { defaultValue: 'Exact date (optional)' })}
