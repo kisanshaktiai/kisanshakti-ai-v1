@@ -831,15 +831,15 @@ button, a, [role="button"], input, select, textarea, label,
 
   /* Safe Area Padding Utilities */
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-bottom: var(--safe-bottom);
   }
   
   .pt-safe {
-    padding-top: env(safe-area-inset-top, 0);
+    padding-top: var(--safe-top);
   }
   
   .pb-nav-safe {
-    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0));
+    padding-bottom: calc(5rem + var(--safe-bottom));
   }
   
   /* Mobile Scroll Containers */
@@ -864,7 +864,7 @@ button, a, [role="button"], input, select, textarea, label,
   
   /* Safe area padding for mobile devices */
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-bottom: var(--safe-bottom);
   }
   
   /* Fade in animation */
@@ -912,11 +912,11 @@ button, a, [role="button"], input, select, textarea, label,
   
   /* Safe area padding for mobile notches */
   .pb-safe {
-    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    padding-bottom: max(0.75rem, var(--safe-bottom));
   }
   
   .pt-safe {
-    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-top: max(0.75rem, var(--safe-top));
   }
   
   /* Chat scroll area improvements */
@@ -975,3 +975,20 @@ button, a, [role="button"], input, select, textarea, label,
   }
 }
 
+
+/* Safe-area space (notch, status bar, home bar). Every screen reads these four values instead of
+   env() directly. Inside another page's frame (an editor preview, an embed) env() reports the
+   OUTER page's insets, which do not apply to the frame's own box, so they are zeroed there:
+   index.html adds `in-frame` to <html> when the app is not the top-level page. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+html.in-frame {
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+  --safe-left: 0px;
+  --safe-right: 0px;
+}

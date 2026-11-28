@@ -109,7 +109,7 @@ export default function ActivationQrScanner({ read, onCode, onCancel, onUnavaila
         <div className="aspect-square w-[72%] max-w-xs rounded-3xl border-4 border-primary-foreground/80 shadow-[0_0_0_100vmax_hsl(var(--foreground)/0.45)]" />
       </div>
 
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-foreground/70 to-transparent px-4 pb-10 pt-[max(1rem,env(safe-area-inset-top))]">
+      <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-foreground/70 to-transparent px-4 pb-10 pt-[max(1rem,var(--safe-top))]">
         <h2 className="text-lg font-semibold text-primary-foreground">{tr('scanner.title')}</h2>
         <Button
           type="button"
@@ -123,7 +123,7 @@ export default function ActivationQrScanner({ read, onCode, onCancel, onUnavaila
         </Button>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 space-y-4 bg-gradient-to-t from-foreground/80 to-transparent px-6 pt-12 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center">
+      <div className="absolute inset-x-0 bottom-0 space-y-4 bg-gradient-to-t from-foreground/80 to-transparent px-6 pt-12 pb-[max(1.5rem,var(--safe-bottom))] text-center">
         <p
           role="status"
           aria-live="polite"

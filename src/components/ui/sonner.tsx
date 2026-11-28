@@ -12,8 +12,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group"
       position="bottom-center"
       // clears the bottom navigation: its h-20 bar plus its pb-safe padding (max(0.75rem, safe area))
-      offset="calc(5rem + max(0.75rem, env(safe-area-inset-bottom, 0px)) + 0.5rem)"
-      mobileOffset="calc(5rem + max(0.75rem, env(safe-area-inset-bottom, 0px)) + 0.5rem)"
+      offset="calc(5rem + max(0.75rem, var(--safe-bottom)) + 0.5rem)"
+      mobileOffset="calc(5rem + max(0.75rem, var(--safe-bottom)) + 0.5rem)"
       toastOptions={{
         classNames: {
           toast:

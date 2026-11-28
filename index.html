@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+    <script>
+      // Inside another page's frame the phone's safe-area insets belong to the outer page, not to us (see index.css).
+      try { if (window.self !== window.top) document.documentElement.classList.add('in-frame'); }
+      catch (e) { document.documentElement.classList.add('in-frame'); }
+    </script>
     <title>KisanShakti - Empowering Farmers</title>
     <meta name="description" content="Digital platform empowering Indian farmers with weather updates, market prices, advisory services, and government schemes" />
     <meta name="author" content="KisanShakti" />

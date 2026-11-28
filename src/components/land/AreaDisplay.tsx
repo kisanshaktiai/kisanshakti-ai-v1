@@ -31,7 +31,7 @@ export function AreaDisplay({ area, pointsCount, title, onBack, mapType, onToggl
   return (
     <div
       className="pointer-events-none absolute left-0 right-0 z-30 flex flex-col items-center gap-2 px-3"
-      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+      style={{ top: 'calc(var(--safe-top) + 12px)' }}
     >
       <div className="pointer-events-auto flex w-full max-w-md items-center gap-2">
         <Button variant="outline" size="icon" onClick={onBack} aria-label={t('common.back')} className={round}>

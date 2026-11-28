@@ -239,3 +239,18 @@ Not done: the crop input and schedule view screens (`CropDateInput`, `CropSchedu
 1. `Schedule.tsx:102` sends weather for the phone's current location (`useWeather(deviceLocation)`) into schedule generation, not the weather of the land the schedule is for.
 2. `CropScheduleView.tsx:515-516` recognises a harvest task by Hindi and Marathi words in the task name.
 3. `ProductRecommendationCard`, `MultiIntercropSelector`, `IntercropSelector` and `WeatherScheduleAlerts` carry their own translation tables in code for five languages or fewer (about 130 lines); other languages get English.
+
+## Safe-area space inside a preview frame (fix, 2026-11-28)
+
+No data call is involved.
+
+**Cause.** `env(safe-area-inset-*)` describes the top-level page. When the app is shown inside another page's frame (the Lovable editor preview on a phone), it still reports the outer page's notch and home-bar space, although the frame already sits inside the safe area. The app then left that space empty a second time: a blank band above the app bar and a gap under the dock. Measured in a frame with a 59 px top inset: `env(safe-area-inset-top)` read 59 px inside the frame.
+
+**Fix.** All 36 reads of `env(safe-area-inset-*)` in 21 files now read four shared values, `--safe-top`, `--safe-bottom`, `--safe-left`, `--safe-right` (`src/index.css`). They equal `env()` when the app is the top-level page, so nothing changes on a phone, in the installed app or in a browser tab. `index.html` adds the class `in-frame` to `<html>` when the app is not the top-level page, and there the four values are 0.
+
+Measured after, same 59 px inset:
+
+| Case | App bar box | App bar contents | Dock bottom / screen height |
+|---|---|---|---|
+| Top-level page | 0–115 px | 69–105 px | 809 / 852 |
+| Inside a frame | 0–56 px | 10–46 px | 693 / 702 |

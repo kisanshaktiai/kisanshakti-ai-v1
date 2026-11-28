@@ -112,7 +112,7 @@ export function ProviderPage({
       {footer && !pending && (
         <div
           className="sticky -mx-4 mt-4 px-4 pt-3 pb-3 bg-background/90 backdrop-blur-md border-t border-border/40"
-          style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(5rem + var(--safe-bottom))' }}
         >
           {footer}
         </div>

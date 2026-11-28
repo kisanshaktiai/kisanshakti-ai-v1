@@ -725,7 +725,7 @@ export function GoogleMapBoundaryDrawer({
         onClick={handleCenterOnLocation}
         aria-label={t('lands.map.loading.center_me')}
         className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
+        style={{ bottom: 'calc(var(--safe-bottom) + 220px)' }}
         disabled={isCentering}
       >
         {isCentering ? (

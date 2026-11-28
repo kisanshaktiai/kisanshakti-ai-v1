@@ -362,7 +362,7 @@ export function SmartLandConfirmCard({
   return (
     <div
       className="fixed inset-0 z-40 bg-background flex flex-col"
-      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      style={{ paddingTop: 'var(--safe-top)' }}
     >
       {/* ───────── Sticky header with map thumb ───────── */}
       <div className="border-b border-border bg-background">
@@ -686,7 +686,7 @@ export function SmartLandConfirmCard({
       {/* ───────── Floating voice mic FAB ───────── */}
       <div
         className="absolute right-3 z-[5] rounded-full bg-background/90 shadow-lg p-1.5"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 92px)' }}
+        style={{ bottom: 'calc(var(--safe-bottom) + 92px)' }}
       >
         <LandVoiceCapture
           language={i18n.language?.split('-')[0] || 'en'}
@@ -697,7 +697,7 @@ export function SmartLandConfirmCard({
       {/* ───────── Sticky save bar ───────── */}
       <div
         className="absolute bottom-0 inset-x-0 border-t border-border bg-background px-3 pt-3"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
+        style={{ paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}
       >
         <Button
           onClick={handleSave}

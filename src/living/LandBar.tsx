@@ -34,7 +34,7 @@ export function LandBar({ lands, land, onChoose }: { lands: BarLand[]; land: Bar
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent>
           <DrawerHeader><DrawerTitle className="lf-head">{t('home.myLand')}</DrawerTitle></DrawerHeader>
-          <div className="lf-sheet-scroll flex flex-col gap-2 overflow-y-auto px-4" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="lf-sheet-scroll flex flex-col gap-2 overflow-y-auto px-4" style={{ paddingBottom: 'calc(1rem + var(--safe-bottom))' }}>
             {lands.map((l) => {
               const selected = l.id === land?.id;
               return (

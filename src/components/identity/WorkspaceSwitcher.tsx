@@ -112,7 +112,7 @@ export function WorkspaceSwitcher({ variant }: WorkspaceSwitcherProps) {
           aria-label={t('identity.switcher.open', { role: t(`identity.roles.${current}.name`) })}
           className={cn(
             'relative flex shrink-0 items-center justify-center rounded-full border border-primary/30 bg-card shadow-sm transition-transform active:scale-95',
-            variant === 'header' ? 'h-11 w-11' : 'fixed left-4 bottom-[calc(var(--lf-dock-h)+env(safe-area-inset-bottom,0px)+0.75rem)] z-40 h-12 w-12 shadow-lg',
+            variant === 'header' ? 'h-11 w-11' : 'fixed left-4 bottom-[calc(var(--lf-dock-h)+var(--safe-bottom)+0.75rem)] z-40 h-12 w-12 shadow-lg',
           )}
         >
           <RolePicture role={current} className={variant === 'floating' ? 'h-9 w-9' : undefined} />

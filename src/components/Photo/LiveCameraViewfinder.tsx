@@ -77,7 +77,7 @@ export default function LiveCameraViewfinder({ onCapture, onCancel, onUnavailabl
           </div>
         )}
       </div>
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-foreground/70 to-transparent px-6 pt-10 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-foreground/70 to-transparent px-6 pt-10 pb-[max(1.5rem,var(--safe-bottom))]">
         <Button type="button" variant="outline" size="icon" className="h-12 w-12 rounded-full border-primary-foreground/40 bg-foreground/40 text-primary-foreground hover:bg-foreground/60" onClick={onCancel} aria-label={t('common.cancel', 'Cancel')}>
           <X className="h-5 w-5" />
         </Button>

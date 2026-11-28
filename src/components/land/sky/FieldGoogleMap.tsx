@@ -273,7 +273,7 @@ export function FieldGoogleMap(p: FieldGoogleMapProps) {
       {/* full screen only: the day chips + legend card, floated above the bottom edge — high enough
           that Google's logo and "Map Data" line under it stay visible */}
       {p.footer && (
-        <div className="absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+2rem)] z-[4] px-3">
+        <div className="absolute inset-x-0 bottom-[calc(var(--safe-bottom)+2rem)] z-[4] px-3">
           {p.footer}
         </div>
       )}

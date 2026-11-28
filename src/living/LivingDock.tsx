@@ -89,7 +89,7 @@ export function LivingDock({ hidden = false }: { hidden?: boolean }) {
           <DrawerHeader>
             <DrawerTitle className="lf-head text-center">{t('living.ask.title')}</DrawerTitle>
           </DrawerHeader>
-          <div className="flex items-end justify-around gap-1 px-3 pt-2" style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="flex items-end justify-around gap-1 px-3 pt-2" style={{ paddingBottom: 'calc(1.5rem + var(--safe-bottom))' }}>
             {ways.map(({ key, icon: Icon, primary, run }) => (
               <button key={key} type="button" onClick={run} className="flex min-w-0 flex-1 flex-col items-center gap-2">
                 <span

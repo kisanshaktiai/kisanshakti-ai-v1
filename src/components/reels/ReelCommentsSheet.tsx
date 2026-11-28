@@ -103,7 +103,7 @@ export function ReelCommentsSheet({ reelId, open, onOpenChange }: ReelCommentsSh
           )}
         </div>
 
-        <div className="border-t p-3 flex gap-2 items-end pb-[env(safe-area-inset-bottom,12px)]">
+        <div className="border-t p-3 flex gap-2 items-end pb-[var(--safe-bottom)]">
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}

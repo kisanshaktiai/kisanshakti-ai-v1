@@ -61,7 +61,7 @@ export default function Analytics() {
   return (
     <div className="min-h-full bg-background">
       <header className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border/60">
-        <div className="px-3 pt-[env(safe-area-inset-top,8px)] pb-2 flex items-center gap-2">
+        <div className="px-3 pt-[var(--safe-top)] pb-2 flex items-center gap-2">
           <button type="button" onClick={() => navigate(-1)} aria-label={t('common.back', 'Back')}
             className="w-11 h-11 rounded-full bg-muted flex items-center justify-center text-foreground">
             <ArrowLeft className="w-4 h-4" />

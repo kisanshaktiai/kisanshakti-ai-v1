@@ -60,7 +60,7 @@ export function MapControls({
       {/* Bottom action sheet — glass card, safe-area aware */}
       <div
         className="absolute left-0 right-0 bottom-0 z-30 pointer-events-none"
-        style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)' }}
+        style={{ paddingBottom: 'max(var(--safe-bottom), 8px)' }}
       >
         <div className="pointer-events-auto mx-3 mb-2 rounded-3xl bg-background/92 backdrop-blur-xl shadow-2xl border border-border/60 p-3 space-y-2.5">
           {/* Segmented mode switcher */}

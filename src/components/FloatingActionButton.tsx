@@ -47,7 +47,7 @@ export function FloatingActionButton() {
     console.log('🔄 [FAB] Loading features...');
     // Show loading spinner while features are being fetched
     return (
-      <div className="fixed right-4 z-50" style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0))' }}>
+      <div className="fixed right-4 z-50" style={{ bottom: 'calc(5.5rem + var(--safe-bottom))' }}>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -85,7 +85,7 @@ export function FloatingActionButton() {
       )}
 
       {/* FAB Container */}
-      <div className="fixed right-4 z-50" style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0))' }}>
+      <div className="fixed right-4 z-50" style={{ bottom: 'calc(5.5rem + var(--safe-bottom))' }}>
         {/* Expanded Menu Items with Glassmorphism */}
         <div className={cn(
           "absolute bottom-16 right-0 transition-all duration-300",

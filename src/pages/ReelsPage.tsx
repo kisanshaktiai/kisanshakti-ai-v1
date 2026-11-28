@@ -237,7 +237,7 @@ export default function ReelsPage() {
   return (
     <div className="fixed inset-0 z-40 bg-black overflow-hidden">
       {/* Top bar */}
-      <div className="absolute top-0 inset-x-0 z-30 flex items-center gap-2 px-3 pt-[env(safe-area-inset-top,12px)] pb-2 bg-gradient-to-b from-black/70 to-transparent">
+      <div className="absolute top-0 inset-x-0 z-30 flex items-center gap-2 px-3 pt-[var(--safe-top)] pb-2 bg-gradient-to-b from-black/70 to-transparent">
         <button
           type="button"
           onClick={handleBack}

@@ -378,7 +378,7 @@ export const VarietyDetailSheet: React.FC<VarietyDetailSheetProps> = ({
         {onSelect && (
           <div
             className="absolute inset-x-0 bottom-0 p-3 bg-background border-t border-border/60"
-            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+            style={{ paddingBottom: 'calc(0.75rem + var(--safe-bottom))' }}
           >
             <Button
               className="w-full h-12 rounded-xl text-sm font-semibold"

@@ -58,7 +58,7 @@ export function AppLayout() {
               <header
                 className="glass-header fixed top-0 left-0 right-0 z-40 flex items-center gap-1.5 px-3"
                 // The bar is 56px plus the phone's top inset, so its row never spills onto the page on notched phones.
-                style={{ height: 'var(--app-header-h)', paddingTop: 'env(safe-area-inset-top, 0px)' }}
+                style={{ height: 'var(--app-header-h)', paddingTop: 'var(--safe-top)' }}
               >
                 <BrandBlock />
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -109,7 +109,7 @@ export function AppLayout() {
             {/* Native Voice Navigation Button - Floating (hidden on full-screen routes) */}
             {!isFullScreenRoute && (
               <NativeVoiceButton
-                className={`right-4 bottom-[calc(var(--lf-dock-h)+env(safe-area-inset-bottom,0px)+0.75rem)] ${isFieldHome ? 'lf-voice-tucked' : ''}`}
+                className={`right-4 bottom-[calc(var(--lf-dock-h)+var(--safe-bottom)+0.75rem)] ${isFieldHome ? 'lf-voice-tucked' : ''}`}
                 size="md"
                 showTranscript={true}
                 showExamples={true}
