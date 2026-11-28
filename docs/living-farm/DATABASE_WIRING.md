@@ -214,3 +214,9 @@ Drawing changes: header buttons 48 px with labels; four facts in a 2x2 grid; the
 2. The Gallery tab always shows "no photos"; it reads nothing.
 3. The History chart's revenue line is always 0 (`revenue: 0` in code).
 4. `activity_type` and `growth_stage` are printed as the stored words.
+
+## Profile (`src/pages/Profile.tsx`) — checked, not changed
+
+Rendered at 320 px (Marathi) and 393 px (English) with a filled profile: no sideways overflow, no text under 12 px, no endless animation, theme tokens throughout. The only control under 40 px is the read-aloud switch (44 x 24 px, the standard switch). Nothing was changed.
+
+**Seen, not changed (affects every page):** the default `Button` style is `bg-gradient-primary`, and `--gradient-primary` in `src/index.css` (lines 207 and 401) is a fixed blue-to-cyan gradient that tenant themes do not set. Every default button in the app is therefore blue whatever the tenant's colour.
