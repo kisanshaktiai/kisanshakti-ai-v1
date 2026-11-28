@@ -530,11 +530,11 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           actions={<div className="relative flex rounded-full border border-border/60 bg-muted/60 p-0.5 shadow-inner" role="group" aria-label={t('schedule.graphical.view_label')}>
             {(['basic', 'graphical'] as const).map((view) => (
               <button key={view} type="button" aria-pressed={displayView === view} aria-label={t(`schedule.graphical.${view}`)} onClick={() => setDisplayView(view)}
-                className={`relative flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold transition-colors duration-300 ${displayView === view ? 'text-foreground' : 'text-muted-foreground'}`}>
+                className={`relative flex h-10 min-w-10 items-center justify-center gap-1 rounded-full px-3 lf-fs-cap font-semibold transition-colors duration-300 ${displayView === view ? 'text-foreground' : 'text-muted-foreground'}`}>
                 {displayView === view && <motion.span layoutId="schedule-view-pill" className="absolute inset-0 rounded-full border border-border/60 bg-background shadow-sm" transition={{ type: 'spring', stiffness: 420, damping: 32 }} />}
                 <span className="relative flex items-center gap-1">
-                  {view === 'basic' ? <Calendar className="size-3.5" /> : <Sprout className="size-3.5" />}
-                  {view === 'graphical' && <span className="rounded-full bg-primary/15 px-1 text-[8px] font-bold leading-3 text-primary">β</span>}
+                  {view === 'basic' ? <Calendar className="size-4" /> : <Sprout className="size-4" />}
+                  {view === 'graphical' && <span className="rounded-full bg-primary/15 px-1 lf-fs-cap font-bold leading-tight text-primary">β</span>}
                 </span>
               </button>
             ))}
@@ -576,7 +576,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             ].map((s) => (
               <div key={s.l} className="flex flex-col items-center justify-center py-1.5">
                 <span className={cn('text-lg font-bold leading-6', s.v ? s.c : 'text-muted-foreground')}>{s.v}</span>
-                <span className="truncate px-1 text-[11px] font-medium text-muted-foreground">{s.l}</span>
+                <span className="truncate px-1 lf-fs-cap font-medium text-muted-foreground">{s.l}</span>
               </div>
             ))}
           </div>

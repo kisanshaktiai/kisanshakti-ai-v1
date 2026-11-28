@@ -181,7 +181,7 @@ export function TaskStatisticsWidget({ scheduleId, className, refreshKey }: Task
                   className={cn(
                     "text-xs px-1.5 py-0",
                     stats.completionRate >= 70 ? "bg-success/20 text-success" : 
-                    stats.completionRate >= 40 ? "bg-warning/20 text-warning" : "bg-muted"
+                    stats.completionRate >= 40 ? "bg-warning/20 text-warning" : "bg-muted text-foreground"
                   )}
                 >
                   {stats.completionRate}%
@@ -242,7 +242,7 @@ export function TaskStatisticsWidget({ scheduleId, className, refreshKey }: Task
                   <div className="rounded-lg bg-success/10 border border-success/20 p-2.5">
                     <div className="flex items-center gap-1.5 mb-1">
                       <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                      <span className="text-[10px] font-medium text-success uppercase">
+                      <span className="lf-fs-cap font-medium text-success uppercase">
                         {t('schedule.task_statistics.completed')}
                       </span>
                     </div>
@@ -261,7 +261,7 @@ export function TaskStatisticsWidget({ scheduleId, className, refreshKey }: Task
                         stats.currentStreak >= 3 ? "text-primary" : "text-muted-foreground"
                       )} />
                       <span className={cn(
-                        "text-[10px] font-medium uppercase",
+                        "lf-fs-cap font-medium uppercase",
                         stats.currentStreak >= 3 ? "text-primary" : "text-muted-foreground"
                       )}>
                         {t('schedule.task_statistics.streak')}
@@ -269,10 +269,10 @@ export function TaskStatisticsWidget({ scheduleId, className, refreshKey }: Task
                     </div>
                     <div className="flex items-baseline gap-1">
                       <p className="text-xl font-bold text-foreground">{stats.currentStreak}</p>
-                      <span className="text-[10px] text-muted-foreground">{t('schedule.task_statistics.days')}</span>
+                      <span className="lf-fs-cap text-muted-foreground">{t('schedule.task_statistics.days')}</span>
                     </div>
                     {stats.longestStreak > stats.currentStreak && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                      <p className="lf-fs-cap text-muted-foreground mt-0.5">
                         {t('schedule.task_statistics.best_streak', { days: stats.longestStreak })}
                       </p>
                     )}

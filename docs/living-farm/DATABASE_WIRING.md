@@ -232,7 +232,9 @@ Nothing in the schedule flow's logic is touched: land choice, crop and date inpu
 - Page header: back and refresh are 48 px with labels from `common.back` / `common.refresh`; the title uses the shared heading size; the step dots' label no longer contains English words.
 - `LandSelector`: the land name starts below the status badge (the badge sat on top of a long name); blur removed; one 10 px line enlarged; the sparkle icon no longer pulses.
 
-Not done: the crop input and schedule view screens (`CropDateInput`, `CropScheduleView`, task cards). A first pass that enlarged 69 small text spots there was undone because the schedule view could not be rendered in the test to confirm nothing overlaps.
+**Schedule view (done 2026-11-28).** Rendered with one schedule and nine tasks in the shape of a real one, at 320 px (Marathi) and 393 px (English), in the Today and All lists, an opened task, and the graphical view. Before: text at 8, 10 and 11 px in 10 to 16 places per view, and the Basic/Graphical toggle 28 px high. After: no text under 12 px, no control under 36 px, no sideways overflow, no clipped text. Changed files: `ScheduleSummaryBar` (label sizes; dates in the app language), `TaskStatisticsWidget` (label sizes; the under-40 % pill had light text on a light fill), `CropScheduleView` (toggle 40 px), `ModernTaskCard`, `ProductRecommendationCard`, `CropStageTimeline` (label sizes only). Sizes use `lf-fs-cap`, which sets the size and leaves each label's weight alone. No handler, query or task rule is touched.
+
+Not done: the crop input step (`CropDateInput` and the intercrop pickers). In the test it drew only its header, because its crop list comes from the database, so its labels were left as they are.
 
 **Seen, not changed (logic):**
 

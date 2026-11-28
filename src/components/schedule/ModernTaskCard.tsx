@@ -184,23 +184,23 @@ export default function ModernTaskCard({
                     <StagePhaseBadge phase={stagePhase} />
                   </div>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <Badge variant="outline" className={cn("text-[10px] px-2 py-0.5 font-semibold", dateLabel.badge)}>
+                    <Badge variant="outline" className={cn("lf-fs-cap px-2 py-0.5 font-semibold", dateLabel.badge)}>
                       <Calendar className="h-3 w-3 mr-1" />
                       {dateLabel.text}
                     </Badge>
                     {task.priority === 'high' && (
-                      <Badge className="bg-gradient-to-r from-destructive to-warning text-white text-[10px] px-2 py-0.5 border-0">
+                      <Badge className="bg-gradient-to-r from-destructive to-warning text-white lf-fs-cap px-2 py-0.5 border-0">
                         🔥 {t('schedule.task_card.high_priority')}
                       </Badge>
                     )}
                     {recurrence && (
-                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-semibold border-primary/30 text-primary bg-primary/5">
+                      <Badge variant="outline" className="lf-fs-cap px-2 py-0.5 font-semibold border-primary/30 text-primary bg-primary/5">
                         🔁 {t('schedule.task_card.repeats', { days: recurrence.interval_days })}
                       </Badge>
                     )}
                   </div>
                   {recurrence && (
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-1 lf-fs-cap text-muted-foreground">
                       {t('schedule.task_card.repeats_window', {
                         start: recurrence.window_start,
                         end: recurrence.window_end,
@@ -253,18 +253,18 @@ export default function ModernTaskCard({
             {/* Farmer-first preview: What / How / How much. Values come only from task data. */}
             <div className="space-y-2 rounded-xl bg-primary/5 border border-primary/15 p-3">
               <div>
-                <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">{t('schedule.farmer_task.what')}</p>
+                <p className="lf-fs-cap font-semibold text-primary uppercase tracking-wide">{t('schedule.farmer_task.what')}</p>
                 <p className="text-sm font-semibold text-foreground mt-0.5">{farmerTask.what}</p>
               </div>
               {farmerTask.how[0] && (
                 <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.farmer_task.how')}</p>
+                  <p className="lf-fs-cap font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.farmer_task.how')}</p>
                   <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{farmerTask.how[0]}</p>
                 </div>
               )}
               {farmerTask.howMuch[0] && (
                 <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.farmer_task.how_much')}</p>
+                  <p className="lf-fs-cap font-semibold text-muted-foreground uppercase tracking-wide">{t('schedule.farmer_task.how_much')}</p>
                   <p className="text-xs font-medium text-foreground mt-0.5">{farmerTask.howMuch[0]}</p>
                 </div>
               )}
@@ -274,7 +274,7 @@ export default function ModernTaskCard({
             {task.confidence_score != null && (
               <div className="flex items-center gap-2">
                 <div className={cn(
-                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold",
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full lf-fs-cap font-semibold",
                   Math.round(task.confidence_score * 100) >= 80 ? "bg-success/10 border border-success/30 text-success dark:text-success" :
                   Math.round(task.confidence_score * 100) >= 60 ? "bg-warning/10 border border-warning/30 text-warning dark:text-warning" :
                   "bg-destructive/10 border border-destructive/30 text-destructive dark:text-destructive"
@@ -374,7 +374,7 @@ export default function ModernTaskCard({
                     <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.based_on', 'Based on')}</span>
                     <div className="flex flex-wrap gap-1.5">
                       {task.based_on.map((factor: string, idx: number) => (
-                        <Badge key={idx} variant="outline" className="text-[10px] px-2 py-0.5 bg-background/50">
+                        <Badge key={idx} variant="outline" className="lf-fs-cap px-2 py-0.5 bg-background/50">
                           {factor}
                         </Badge>
                       ))}
@@ -396,7 +396,7 @@ export default function ModernTaskCard({
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
                       <div>
-                        <span className="text-[10px] font-semibold text-destructive">{t('schedule.task_card.risk_if_ignored', 'Risk if ignored')}</span>
+                        <span className="lf-fs-cap font-semibold text-destructive">{t('schedule.task_card.risk_if_ignored', 'Risk if ignored')}</span>
                         <p className="text-xs text-destructive/80">{task.risk_if_ignored}</p>
                       </div>
                     </div>

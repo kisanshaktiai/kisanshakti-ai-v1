@@ -75,3 +75,6 @@
 .lf-scene-land { flex: none; height: clamp(140px, 24vh, 230px); height: clamp(140px, 24dvh, 230px); min-height: 0; }
 .lf-scene-land .lf-stage { aspect-ratio: 390 / 212; }
 @supports (width: 1cqw) { .lf-scene-land .lf-stage { width: min(100cqw, calc(100cqh * 390 / 212)); } }
+
+/* Size only, for small labels inside existing components that keep their own weight and line height. */
+.lf-fs-cap { font-size: var(--lf-fs-cap); }

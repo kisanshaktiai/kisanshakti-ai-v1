@@ -30,7 +30,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/chat` | reply card, reply actions and composer in the new look; rest old look, working | voice button → Type; All |
 | `/app/community` | old look, working | All |
 | `/app/analytics` | old look, working | All |
-| `/app/schedule` | first step refined (header, land cards); crop input and schedule view still old look | Day: "Full schedule" and "Make a schedule"; task pin and chip on Field; All |
+| `/app/schedule` | land step and schedule view refined; crop input step still as before | Day: "Full schedule" and "Make a schedule"; task pin and chip on Field; All |
 | `/app/ai-dashboard` | old look, working | from its parent page, as before |
 | `/app/ndvi` | old look, working | All |
 | `/app/videos` | old look, working | All |

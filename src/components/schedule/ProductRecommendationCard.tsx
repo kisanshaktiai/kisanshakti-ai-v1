@@ -319,7 +319,7 @@ export default function ProductRecommendationCard({
                       <h5 className="font-semibold text-sm leading-tight">{getLocalizedProductName(product.product_name)}</h5>
                       <Badge
                         variant="outline" 
-                        className={cn("mt-1 text-[10px] px-2 py-0", config.bgColor, config.borderColor, config.color)}
+                        className={cn("mt-1 lf-fs-cap px-2 py-0", config.bgColor, config.borderColor, config.color)}
                       >
                         {getLabel(config.label)}
                       </Badge>
@@ -332,7 +332,7 @@ export default function ProductRecommendationCard({
                         <IndianRupee className="h-3.5 w-3.5" />
                         <span>₹{totalPrice.toLocaleString('en-IN')}</span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="lf-fs-cap text-muted-foreground">
                         {lang === 'hi' ? 'अंदाजे' : lang === 'mr' ? 'अंदाजे' : 'approx'}
                       </span>
                     </div>
@@ -355,7 +355,7 @@ export default function ProductRecommendationCard({
                     {/* Chemical Class & Regulatory Status */}
                     <div className="flex flex-wrap gap-1.5">
                       {product.chemical_class && (
-                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-info/10 border-info/30 text-info dark:text-info">
+                        <Badge variant="outline" className="lf-fs-cap px-1.5 py-0 bg-info/10 border-info/30 text-info dark:text-info">
                           {product.chemical_class}
                         </Badge>
                       )}
@@ -363,7 +363,7 @@ export default function ProductRecommendationCard({
                         <Badge 
                           variant="outline" 
                           className={cn(
-                            "text-[9px] px-1.5 py-0",
+                            "lf-fs-cap px-1.5 py-0",
                             product.regulatory_status === 'approved' && "bg-success/10 border-success/30 text-success dark:text-success",
                             product.regulatory_status === 'restricted' && "bg-warning/10 border-warning/30 text-warning dark:text-warning",
                             product.regulatory_status === 'banned' && "bg-destructive/10 border-destructive/30 text-destructive dark:text-destructive",
@@ -381,7 +381,7 @@ export default function ProductRecommendationCard({
                     
                     {/* Dosage Reasoning */}
                     {product.dosage_reasoning && (
-                      <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+                      <p className="lf-fs-cap text-muted-foreground italic leading-relaxed">
                         💡 {product.dosage_reasoning}
                       </p>
                     )}
@@ -498,7 +498,7 @@ export default function ProductRecommendationCard({
                   <span className="text-sm font-medium">
                     {lang === 'hi' ? 'मजदूरी खर्च' : lang === 'mr' ? 'मजुरी खर्च' : 'Labor Cost'}
                   </span>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="lf-fs-cap text-muted-foreground">
                     {laborDescription || (lang === 'hi' ? 'MGNREGA दर आधारित' : lang === 'mr' ? 'MGNREGA दर आधारित' : 'Based on MGNREGA rates')}
                   </p>
                 </div>
@@ -512,7 +512,7 @@ export default function ProductRecommendationCard({
             </div>
             
             {/* FIXED: Display REALISTIC labor breakdown - Worker × Days model */}
-            <div className="text-[10px] text-muted-foreground bg-primary/5 p-2 rounded-lg space-y-1">
+            <div className="lf-fs-cap text-muted-foreground bg-primary/5 p-2 rounded-lg space-y-1">
               {laborDays > 0 && laborWorkers > 0 ? (
                 <>
                   <div className="font-medium text-primary dark:text-primary">
@@ -557,7 +557,7 @@ export default function ProductRecommendationCard({
                 <span className="text-sm font-bold">
                   {lang === 'hi' ? 'कुल अनुमानित खर्च' : lang === 'mr' ? 'एकूण अंदाजे खर्च' : 'Total Estimated Cost'}
                 </span>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="lf-fs-cap text-muted-foreground">
                   {lang === 'hi' 
                     ? `उत्पाद: ₹${totalProductCost.toLocaleString('en-IN')} + मजदूरी: ₹${laborCost.toLocaleString('en-IN')}` 
                     : lang === 'mr'

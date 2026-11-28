@@ -53,7 +53,7 @@ export default function CropStageTimeline({ savedStages, landStage, onCropPhoto,
           <Button variant="quiet" size="icon" className="size-9 shrink-0 rounded-full" disabled={index <= 0} aria-label={t('schedule.graphical.previous')} onClick={() => setSelection(stages[index - 1]?.id ?? null)}><ChevronLeft className="size-4" /></Button>
           <div className="min-w-0 flex-1 text-center">
             <h4 className="truncate text-sm font-bold text-foreground">{selected ? labelOf(selected, index) : t('schedule.graphical.title')}</h4>
-            <p className="text-[11px] text-muted-foreground">{t('schedule.graphical.completed_count', { completed, total })}{selected?.current ? ` · ${t('schedule.graphical.current')}` : ''}</p>
+            <p className="lf-fs-cap text-muted-foreground">{t('schedule.graphical.completed_count', { completed, total })}{selected?.current ? ` · ${t('schedule.graphical.current')}` : ''}</p>
           </div>
           <Button variant="quiet" size="icon" className="size-9 shrink-0 rounded-full" disabled={index >= stages.length - 1} aria-label={t('schedule.graphical.next')} onClick={() => setSelection(stages[index + 1]?.id ?? null)}><ChevronRight className="size-4" /></Button>
           <Button variant="quiet" size="icon" className="size-9 shrink-0 rounded-full" title={t('schedule.crop_growth.upload_photo')} aria-label={t('schedule.crop_growth.upload_photo')} onClick={onCropPhoto}><Camera className="size-4" /></Button>
@@ -73,7 +73,7 @@ export default function CropStageTimeline({ savedStages, landStage, onCropPhoto,
                   {done ? <Check className="size-3" /> : position === 0 ? <Sprout className="size-3" /> : <Leaf className="size-3" />}
                 </motion.span>
                 <span className="whitespace-nowrap text-xs font-semibold">{labelOf(stage, position)}</span>
-                {stage.dasFrom != null && stage.dasTo != null && <span className="whitespace-nowrap text-[10px] text-muted-foreground">{stage.dasFrom}–{stage.dasTo} {t('schedule.units.day')}</span>}
+                {stage.dasFrom != null && stage.dasTo != null && <span className="whitespace-nowrap lf-fs-cap text-muted-foreground">{stage.dasFrom}–{stage.dasTo} {t('schedule.units.day')}</span>}
               </button>
             );
           })}
