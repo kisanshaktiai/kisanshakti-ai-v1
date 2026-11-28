@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCropNames } from '@/hooks/useCropNames';
@@ -7,9 +7,6 @@ import {
   Droplets, Mountain, Sprout, Calendar, Camera, Activity,
   AlertTriangle, TrendingUp, History, FileText, Plus
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { LandSoilSummary } from '@/components/soil/LandSoilSummary';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -17,7 +14,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { landsApi } from '@/services/landsApi';
 import { isolatedSupabase } from '@/services/dataIsolationService';
 import { supabase } from '@/integrations/supabase/client';
-import { Progress } from '@/components/ui/progress';
 import { LandDetailsSkeleton } from '@/components/skeletons';
 import { FarmIntelligenceCard } from '@/components/farm-intelligence/FarmIntelligenceCard';
 import {
@@ -30,11 +26,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, Legend, ResponsiveContainer, RadialBarChart, RadialBar
-} from 'recharts';
 import { useLocalizedPlace } from '@/hooks/useLocalizedPlace';
+import { useFieldSky } from '@/hooks/useFieldSky';
+import { landAttributeLabel } from '@/lib/landLabels';
+import { FieldScene } from '@/living/FieldScene';
+import { normaliseRing, ringFromBoundary } from '@/living/fieldGeometry';
+import { rememberChosenLand } from '@/living/useChosenLand';
+import '@/living/living.css';
+
+// The charts carry the chart library; they are fetched when their tab is first opened.
+const LandActivityChart = lazy(() => import('@/components/land/LandDetailsCharts').then((m) => ({ default: m.LandActivityChart })));
+const LandYieldChart = lazy(() => import('@/components/land/LandDetailsCharts').then((m) => ({ default: m.LandYieldChart })));
 
 interface Land {
   id: string;
@@ -91,7 +93,8 @@ interface CropHistory {
 
 export default function LandDetails() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const numLocale = `${i18n.language || 'en'}-IN-u-nu-latn`;
   const cropNameOf = useCropNames();
   const { join: joinPlace, place: placeName } = useLocalizedPlace();
   const navigate = useNavigate();
@@ -104,6 +107,11 @@ export default function LandDetails() {
   const [loading, setLoading] = useState(true);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // This page is one land's own context: the same land stays chosen on Field, Day and Land afterwards.
+  useEffect(() => { if (id) rememberChosenLand(id); }, [id]);
+  // Crop stage and water for this land, from the same hook the Field home uses.
+  const sky = useFieldSky(id ?? null);
 
   useEffect(() => {
     if (id) {
@@ -280,7 +288,7 @@ export default function LandDetails() {
   
 
   const activityData = activities.reduce((acc: any[], activity) => {
-    const date = new Date(activity.activity_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const date = new Date(activity.activity_date).toLocaleDateString(numLocale, { month: 'short', day: 'numeric' });
     const existing = acc.find(item => item.date === date);
     
     if (existing) {
@@ -303,527 +311,300 @@ export default function LandDetails() {
     revenue: 0, // Revenue data not available in current schema
   }));
 
+  const ring = useMemo(() => {
+    const raw = ringFromBoundary((land as { boundary_polygon_old?: unknown } | null)?.boundary_polygon_old);
+    return raw ? normaliseRing(raw) : null;
+  }, [land]);
+
   if (loading) {
     return <LandDetailsSkeleton />;
   }
 
   if (!land) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">{t('lands.details.not_found')}</p>
-        <Button onClick={() => navigate('/app/lands')} className="mt-4">
+      <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+        <p className="lf-lab font-normal text-muted-foreground">{t('lands.details.not_found')}</p>
+        <button type="button" onClick={() => navigate('/app/lands')} className="lf-lab rounded-full bg-primary px-6 text-primary-foreground" style={{ minHeight: 'var(--lf-tap)' }}>
           {t('lands.details.back_to_lands')}
-        </Button>
+        </button>
       </div>
     );
   }
 
+  const day = (value: string, withYear = false) =>
+    new Date(value).toLocaleDateString(numLocale, withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+  const stageProgress = sky.cropActive && sky.stage.index != null && sky.stage.ladder.length > 1
+    ? sky.stage.index / (sky.stage.ladder.length - 1)
+    : null;
+  const irrigationNeeded = sky.cropActive ? sky.water.irrigationNeeded : null;
+  const place = joinPlace({ village: land.village, taluka: land.taluka || undefined, district: land.taluka ? undefined : land.district }, ['village','taluka','district']);
+
+  const card = 'rounded-[var(--lf-r)] border border-border bg-card shadow-sm';
+  const pad = { padding: 'clamp(12px, 3.6vw, 18px)' } as const;
+  const gut = { padding: '0 var(--lf-gut)' } as const;
+  const tap = { minHeight: 'var(--lf-tap)' } as const;
+  const round = 'lf-round shrink-0 border border-border bg-card';
+  const solid = 'lf-lab flex shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-4 text-primary-foreground';
+  const tabs: Array<{ id: string; icon: typeof FileText; label: string }> = [
+    { id: 'overview', icon: FileText, label: t('lands.details.tabs.overview') },
+    { id: 'soil', icon: Mountain, label: t('lands.details.tabs.soil') },
+    { id: 'activities', icon: Activity, label: t('lands.details.tabs.activities') },
+    { id: 'history', icon: History, label: t('lands.details.tabs.history') },
+    { id: 'gallery', icon: Camera, label: t('lands.details.tabs.gallery') },
+  ];
+  const info: Array<{ label: string; value: string }> = [
+    { label: t('lands.details.survey_number_label'), value: land.survey_number || t('lands.details.not_available') },
+    { label: t('lands.details.ownership_type_label'), value: landAttributeLabel(t, 'ownership_type', land.ownership_type) || t('lands.details.not_specified') },
+    { label: t('lands.details.soil_type_label'), value: landAttributeLabel(t, 'soil_type', land.soil_type) || t('lands.details.not_specified') },
+    { label: t('lands.details.location_label'), value: joinPlace(land) || t('lands.details.not_specified') },
+    ...(land.last_sowing_date ? [{ label: t('lands.details.last_sowing'), value: day(land.last_sowing_date, true) }] : []),
+    ...(land.expected_harvest_date ? [{ label: t('lands.details.expected_harvest'), value: day(land.expected_harvest_date, true) }] : []),
+  ];
+  const empty = (Icon: typeof FileText, text: string, more?: string) => (
+    <div className="flex flex-col items-center gap-2 py-8 text-center">
+      <span className="grid h-16 w-16 place-items-center rounded-[32%] bg-muted text-muted-foreground"><Icon className="h-8 w-8" aria-hidden /></span>
+      <p className="lf-lab font-normal text-muted-foreground">{text}</p>
+      {more && <p className="lf-cap text-muted-foreground">{more}</p>}
+    </div>
+  );
+  const chartWait = <div className="h-[260px] rounded-2xl bg-muted" aria-hidden />;
+
   return (
-    <div className="min-h-full bg-background pb-20 md:pb-6">
-      {/* Modern Mobile-First Header */}
-      <div className="sticky top-0 z-20 glassmorphism-strong border-b">
-        <div className="container max-w-7xl">
-          <div className="flex items-center justify-between py-3">
-            {/* Back Button - Compact Touch Target */}
-            <Button
-              variant="ghost"
-              size="default"
-              onClick={() => navigate('/app/lands')}
-              className="min-h-[40px] min-w-[40px] rounded-xl"
+    <div className="flex min-h-full flex-col gap-3 bg-background pb-4" style={{ fontSize: 'var(--lf-fs-body)', lineHeight: 1.55 }}>
+      {/* This land: its name, and its own shape with today's crop and water */}
+      <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background py-2" style={gut}>
+        <button type="button" onClick={() => navigate('/app/lands')} aria-label={t('common.back')} className={`${round} text-foreground`}>
+          <ArrowLeft size={22} className="rtl:rotate-180" aria-hidden />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="lf-head truncate">{land.name}</h1>
+          {place && <p className="lf-cap flex items-center gap-1 text-muted-foreground"><MapPin size={14} className="shrink-0" aria-hidden /><span className="min-w-0 truncate">{place}</span></p>}
+        </div>
+        <button type="button" onClick={() => navigate(`/app/lands/${id}/edit`)} aria-label={t('lands.card.edit')} className={`${round} text-primary`}>
+          <Edit size={20} aria-hidden />
+        </button>
+        <button type="button" onClick={() => setShowDeleteDialog(true)} aria-label={t('lands.card.delete')} className={`${round} text-destructive`}>
+          <Trash2 size={20} aria-hidden />
+        </button>
+      </div>
+
+      <div className="lf-scene lf-scene-land">
+        <FieldScene
+          ring={ring}
+          stageProgress={stageProgress}
+          irrigationNeeded={irrigationNeeded}
+          sun={null}
+          cloudy={false}
+          raining={false}
+          showSunPath={false}
+          pins={[]}
+          stageLabel={sky.cropActive && sky.stage.das != null ? t('living.scene.day', { day: sky.stage.das }) : null}
+          waterLabel={irrigationNeeded == null ? null : t(irrigationNeeded ? 'living.scene.water_low' : 'living.scene.water_ok')}
+          ariaLabel={t('living.scene.label', { land: land.name })}
+        />
+      </div>
+
+      {/* Four facts about this land */}
+      <section className="grid grid-cols-2 gap-2" style={gut}>
+        <div className={`${card} min-w-0`} style={pad}>
+          <p className="lf-cap flex items-center gap-1.5 text-muted-foreground"><MapPin size={16} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0 truncate">{t('lands.details.total_area')}</span></p>
+          <p className="lf-stat mt-1" style={{ fontSize: 'var(--lf-fs-head)' }}>{land.area_acres}</p>
+          <p className="lf-cap text-muted-foreground">{t('lands.map.area.acres')}{land.area_guntas ? ` · ${land.area_guntas} ${t('lands.map.area.guntha')}` : ''}</p>
+        </div>
+
+        <div className={`${card} min-w-0`} style={pad}>
+          <p className="lf-cap flex items-center gap-1.5 text-muted-foreground"><Sprout size={16} className="shrink-0 text-success" aria-hidden /><span className="min-w-0 truncate">{t('lands.details.current_crop')}</span></p>
+          <p className="lf-head mt-1" style={{ overflowWrap: 'anywhere' }}>
+            {land.current_crop ? cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id) : t('lands.details.no_crop')}
+          </p>
+          {land.crop_stage && (
+            <span className="lf-pill lf-pill-sm mt-1 bg-success/15 text-success">
+              {t(`schedule.graphical.stages.${String(land.crop_stage).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, { defaultValue: land.crop_stage })}
+            </span>
+          )}
+        </div>
+
+        <div className={`${card} min-w-0`} style={pad}>
+          <p className="lf-cap flex items-center gap-1.5 text-muted-foreground"><Mountain size={16} className="shrink-0 text-warning" aria-hidden /><span className="min-w-0 truncate">{t('lands.details.soil_health')}</span></p>
+          {soilHealthScore === null ? (
+            <button type="button" onClick={() => navigate(`/app/lands/${id}/soil`)} className="mt-1 block w-full text-start" style={tap}>
+              <span className="lf-lab block" style={{ overflowWrap: 'anywhere' }}>{t(soilIsEstimate ? 'soil.sourceTypes.satellite' : 'lands.details.not_tested')}</span>
+              <span className="lf-cap block font-bold text-primary">{t(soilIsEstimate ? 'soil.needsLab' : 'lands.details.add_soil_test')} →</span>
+            </button>
+          ) : (
+            <>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><span className="block h-full rounded-full bg-success" style={{ width: `${soilHealthScore}%` }} /></span>
+                <span className="lf-head" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{soilHealthScore}%</span>
+              </div>
+              <p className="lf-cap text-muted-foreground">
+                {soilHealthScore >= 70 ? t('lands.details.health_good') : soilHealthScore >= 40 ? t('lands.details.health_fair') : t('lands.details.health_needs_care')}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className={`${card} min-w-0`} style={pad}>
+          <p className="lf-cap flex items-center gap-1.5 text-muted-foreground"><Droplets size={16} className="shrink-0 text-info" aria-hidden /><span className="min-w-0 truncate">{t('lands.details.irrigation')}</span></p>
+          <p className="lf-head mt-1" style={{ overflowWrap: 'anywhere' }}>
+            {land.irrigation_source ? t(`lands.irrigation_sources.${String(land.irrigation_source).toLowerCase()}`, { defaultValue: land.irrigation_source }) : t('lands.details.not_set')}
+          </p>
+          {land.water_source && (
+            <p className="lf-cap text-muted-foreground">{t(`lands.irrigation_sources.${String(land.water_source).toLowerCase()}`, { defaultValue: land.water_source })}</p>
+          )}
+        </div>
+      </section>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-3">
+        <TabsList className="flex h-auto w-full justify-start gap-2 overflow-x-auto rounded-none bg-transparent" style={{ padding: '4px var(--lf-gut)' }}>
+          {tabs.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="lf-pill lf-pill-sm shrink-0 rounded-full border border-border bg-card font-bold text-foreground data-[state=active]:border-primary data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+              style={{ minHeight: 44 }}
             >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
+              <tab.icon size={18} aria-hidden />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-            {/* Land Info */}
-            <div className="flex-1 px-3 min-w-0">
-              <h1 className="text-lg md:text-xl font-bold truncate text-foreground">
-                {land.name}
-              </h1>
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-                <p className="truncate">
-                  {joinPlace({ village: land.village, taluka: land.taluka || undefined, district: land.taluka ? undefined : land.district }, ['village','taluka','district'])}
-                </p>
-              </div>
+        <TabsContent value="overview" className="mt-0 flex flex-col gap-3" style={gut}>
+          {/* Farm Intelligence (environmental spine) */}
+          {id && <FarmIntelligenceCard landId={id} />}
+
+          <section className={card} style={pad}>
+            <h2 className="lf-head flex items-center gap-2"><MapPin size={20} className="shrink-0 text-primary" aria-hidden />{t('lands.details.land_info')}</h2>
+            <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {info.map((item) => (
+                <div key={item.label} className="rounded-2xl bg-muted px-3 py-2">
+                  <dt className="lf-cap text-muted-foreground">{item.label}</dt>
+                  <dd className="lf-lab" style={{ overflowWrap: 'anywhere' }}>{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+
+          <section className={card} style={pad}>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="lf-head flex min-w-0 items-center gap-2"><Activity size={20} className="shrink-0 text-primary" aria-hidden /><span className="min-w-0" style={{ overflowWrap: 'anywhere' }}>{t('lands.details.recent_activities')}</span></h2>
+              <button type="button" onClick={() => navigate(`/app/lands/${id}/activities/add`)} className={solid} style={tap}>
+                <Plus size={20} aria-hidden />{t('lands.details.add')}
+              </button>
             </div>
-
-            {/* Action Buttons - Compact Touch Targets */}
-            <div className="flex gap-2">
-              <Button 
-                variant="outline"
-                size="icon"
-                onClick={() => navigate(`/app/lands/${id}/edit`)}
-                className="min-h-[40px] min-w-[40px] rounded-xl bg-primary/5 border-primary/20 hover:bg-primary/10"
-              >
-                <Edit className="h-4 w-4 text-primary" />
-              </Button>
-              <Button 
-                variant="outline"
-                size="icon"
-                onClick={() => setShowDeleteDialog(true)}
-                className="min-h-[40px] min-w-[40px] rounded-xl bg-destructive/5 border-destructive/20 hover:bg-destructive/10"
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Stats - Mobile-First Grid */}
-      <div className="container max-w-7xl mt-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Total Area Card */}
-          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-4 relative">
-              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-primary/5 blur-2xl" />
-              <div className="relative space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <MapPin className="h-4 w-4 text-primary" />
-                  </div>
-                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.total_area')}</p>
-                </div>
-                <div>
-                  <p className="text-2xl md:text-3xl font-bold text-foreground">
-                    {land.area_acres}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {t('lands.map.area.acres')} {land.area_guntas && `· ${land.area_guntas} ${t('lands.map.area.guntha')}`}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Current Crop Card */}
-          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-4 relative">
-              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-success/5 blur-2xl" />
-              <div className="relative space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-success/10">
-                    <Sprout className="h-4 w-4 text-success" />
-                  </div>
-                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.current_crop')}</p>
-                </div>
-                <div>
-                  <p className="text-xl md:text-2xl font-bold text-foreground line-clamp-1">
-                    {land.current_crop ? cropNameOf(land.current_crop, (land as { current_crop_id?: string | null }).current_crop_id) : t('lands.details.no_crop')}
-                  </p>
-                  {land.crop_stage && (
-                    <Badge variant="secondary" className="mt-1.5 text-xs bg-success/10 text-success border-success/20">
-                      {t(`schedule.graphical.stages.${String(land.crop_stage).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, { defaultValue: land.crop_stage })}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Soil Health Card */}
-          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-4 relative">
-              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-warning/5 blur-2xl" />
-              <div className="relative space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-warning/10">
-                    <Mountain className="h-4 w-4 text-warning" />
-                  </div>
-                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.soil_health')}</p>
-                </div>
-                {soilHealthScore === null ? (
-                  <button type="button" onClick={() => navigate(`/app/lands/${id}/soil`)} className="text-left">
-                    <p className="text-lg font-bold text-foreground">{t(soilIsEstimate ? 'soil.sourceTypes.satellite' : 'lands.details.not_tested')}</p>
-                    <p className="text-xs text-primary font-medium mt-1">{t(soilIsEstimate ? 'soil.needsLab' : 'lands.details.add_soil_test')} →</p>
-                  </button>
-                ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-warning to-success transition-all duration-500" style={{ width: `${soilHealthScore}%` }} />
+            {activities.length === 0 ? empty(Activity, t('lands.details.no_activities'), t('lands.details.start_tracking')) : (
+              <ul className="mt-2 flex flex-col gap-2">
+                {activities.slice(0, 5).map(activity => (
+                  <li key={activity.id} className="flex items-center justify-between gap-3 rounded-2xl bg-muted px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="lf-lab" style={{ overflowWrap: 'anywhere' }}>{activity.activity_type}</p>
+                      {activity.description && <p className="lf-cap line-clamp-1 text-muted-foreground">{activity.description}</p>}
                     </div>
-                    <span className="text-xl font-bold text-foreground">{soilHealthScore}%</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {soilHealthScore >= 70 ? t('lands.details.health_good') : soilHealthScore >= 40 ? t('lands.details.health_fair') : t('lands.details.health_needs_care')}
-                  </p>
-                </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Irrigation Card */}
-          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-4 relative">
-              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-info/5 blur-2xl" />
-              <div className="relative space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-info/10">
-                    <Droplets className="h-4 w-4 text-info" />
-                  </div>
-                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.irrigation')}</p>
-                </div>
-                <div>
-                  <p className="text-lg md:text-xl font-bold text-foreground line-clamp-1">
-                    {land.irrigation_source ? t(`lands.irrigation_sources.${String(land.irrigation_source).toLowerCase()}`, { defaultValue: land.irrigation_source }) : t('lands.details.not_set')}
-                  </p>
-                  {land.water_source && (
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                      {t(`lands.irrigation_sources.${String(land.water_source).toLowerCase()}`, { defaultValue: land.water_source })}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Modern Tabs - Large Touch Targets */}
-      <div className="container max-w-7xl mt-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <div className="relative">
-            <TabsList className="w-full h-auto p-1.5 bg-muted/30 rounded-2xl grid grid-cols-5 gap-1">
-              <TabsTrigger 
-                value="overview" 
-                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <FileText className="h-4 w-4" />
-                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.overview')}</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="soil" 
-                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <Mountain className="h-4 w-4" />
-                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.soil')}</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="activities" 
-                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <Activity className="h-4 w-4" />
-                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.activities')}</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="history" 
-                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <History className="h-4 w-4" />
-                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.history')}</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="gallery" 
-                className="min-h-[52px] px-1 text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <Camera className="h-4 w-4" />
-                  <span className="text-[10px] sm:text-sm leading-none">{t('lands.details.tabs.gallery')}</span>
-                </div>
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <TabsContent value="overview" className="space-y-4">
-            {/* Farm Intelligence (environmental spine) */}
-            {id && <FarmIntelligenceCard landId={id} />}
-
-            {/* Land Information Card */}
-            <Card className="border-border/50 shadow-lg">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  {t('lands.details.land_info')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Info Item */}
-                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.survey_number_label')}</p>
-                    <p className="text-base font-semibold text-foreground">{land.survey_number || t('lands.details.not_available')}</p>
-                  </div>
-                  
-                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.ownership_type_label')}</p>
-                    <p className="text-base font-semibold text-foreground">{land.ownership_type || t('lands.details.not_specified')}</p>
-                  </div>
-                  
-                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.soil_type_label')}</p>
-                    <p className="text-base font-semibold text-foreground">{land.soil_type || t('lands.details.not_specified')}</p>
-                  </div>
-                  
-                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.location_label')}</p>
-                    <p className="text-base font-semibold text-foreground">
-                      {joinPlace(land) || t('lands.details.not_specified')}
-                    </p>
-                  </div>
-                  
-                  {land.last_sowing_date && (
-                    <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.last_sowing')}</p>
-                      <p className="text-base font-semibold text-foreground">
-                        {new Date(land.last_sowing_date).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric'
-                        })}
-                      </p>
+                    <div className="shrink-0 text-end">
+                      <p className="lf-cap text-foreground">{day(activity.activity_date)}</p>
+                      {activity.cost && <p className="lf-lab text-primary">₹{activity.cost}</p>}
                     </div>
-                  )}
-                  
-                  {land.expected_harvest_date && (
-                    <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.expected_harvest')}</p>
-                      <p className="text-base font-semibold text-foreground">
-                        {new Date(land.expected_harvest_date).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Activities Card */}
-            <Card className="border-border/50 shadow-lg">
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-primary" />
-                    {t('lands.details.recent_activities')}
-                  </CardTitle>
-                  <Button 
-                    size="lg"
-                    onClick={() => navigate(`/app/lands/${id}/activities/add`)}
-                    className="min-h-[44px] rounded-xl bg-primary hover:bg-primary-hover"
-                  >
-                    <Plus className="h-5 w-5 mr-2" />
-                    <span className="font-medium">{t('lands.details.add')}</span>
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {activities.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <div className="mx-auto w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                      <Activity className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <p className="text-base font-medium text-muted-foreground">
-                      {t('lands.details.no_activities')}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {t('lands.details.start_tracking')}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {activities.slice(0, 5).map(activity => (
-                      <div 
-                        key={activity.id} 
-                        className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/30 hover:border-primary/30 hover:bg-primary/5 transition-all"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-base text-foreground">{activity.activity_type}</p>
-                          {activity.description && (
-                            <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                              {activity.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right ml-4">
-                          <p className="text-sm font-medium text-foreground">
-                            {new Date(activity.activity_date).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short'
-                            })}
-                          </p>
-                          {activity.cost && (
-                            <p className="text-sm font-semibold text-primary mt-0.5">₹{activity.cost}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="soil" className="space-y-4">
-            {id && <LandSoilSummary landId={id} />}
-          </TabsContent>
-
-        <TabsContent value="activities" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{t('lands.details.activity_log')}</CardTitle>
-              <Button onClick={() => navigate(`/app/lands/${id}/activities/add`)}>
-                <Plus className="h-4 w-4 mr-2" />
-                {t('lands.details.log_activity')}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {activityData.length > 0 && (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={activityData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="activities" fill="hsl(var(--primary))" name={t('lands.details.activities_count')} />
-                    <Bar yAxisId="right" dataKey="cost" fill="hsl(var(--destructive))" name={t('lands.details.cost_label')} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-              
-              <div className="mt-6 space-y-2">
-                {activities.map(activity => (
-                  <div key={activity.id} className="flex items-start justify-between p-4 rounded-lg border">
-                    <div className="flex gap-3">
-                      <div className="mt-1">
-                        <Activity className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{activity.activity_type}</p>
-                        {activity.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {activity.description}
-                          </p>
-                        )}
-                        {activity.notes && (
-                          <p className="text-sm text-muted-foreground mt-2">
-                            {t('lands.details.note')}: {activity.notes}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(activity.activity_date).toLocaleDateString()}
-                      </p>
-                      {activity.quantity && (
-                        <p className="text-sm">
-                          {activity.quantity} {activity.unit}
-                        </p>
-                      )}
-                      {activity.cost && (
-                        <p className="font-medium">₹{activity.cost}</p>
-                      )}
-                    </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
-            </CardContent>
-          </Card>
+              </ul>
+            )}
+          </section>
         </TabsContent>
 
-        <TabsContent value="history" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{t('lands.details.crop_history')}</CardTitle>
-              <Button onClick={() => navigate(`/app/lands/${id}/crop-history/add`)}>
-                <Plus className="h-4 w-4 mr-2" />
-                {t('lands.details.add_crop_record')}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {yieldData.length > 0 && (
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={yieldData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="crop" />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
-                    <Tooltip />
-                    <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="yield" stroke="hsl(var(--primary))" name={t('lands.details.yield_label')} />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--success))" name={t('lands.details.revenue_label')} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-              
-              {cropHistory.length === 0 ? (
-                <div className="text-center py-12">
-                  <History className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">{t('lands.details.no_crop_history')}</p>
-                </div>
-              ) : (
-                <div className="mt-6 space-y-2">
-                  {cropHistory.map(crop => (
-                    <div key={crop.id} className="p-4 rounded-lg border">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium text-lg">{crop.crop_name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {t('lands.details.sown')}: {new Date(crop.planting_date).toLocaleDateString()}
-                            {crop.harvest_date && ` • ${t('lands.details.harvested')}: ${new Date(crop.harvest_date).toLocaleDateString()}`}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          {crop.yield_kg_per_acre && (
-                            <p className="font-medium">
-                              {crop.yield_kg_per_acre} {t('lands.details.kg_acre')}
-                            </p>
-                          )}
-                          {crop.growth_stage && (
-                            <Badge variant="outline" className="mt-1">
-                              {crop.growth_stage}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+        <TabsContent value="soil" className="mt-0 flex flex-col gap-3" style={gut}>
+          {id && <LandSoilSummary landId={id} />}
+        </TabsContent>
+
+        <TabsContent value="activities" className="mt-0" style={gut}>
+          <section className={card} style={pad}>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="lf-head min-w-0" style={{ overflowWrap: 'anywhere' }}>{t('lands.details.activity_log')}</h2>
+              <button type="button" onClick={() => navigate(`/app/lands/${id}/activities/add`)} className={solid} style={tap}>
+                <Plus size={20} aria-hidden />{t('lands.details.log_activity')}
+              </button>
+            </div>
+            {activityData.length > 0 && (
+              <div className="mt-3">
+                <Suspense fallback={chartWait}>
+                  <LandActivityChart data={activityData} countLabel={t('lands.details.activities_count')} costLabel={t('lands.details.cost_label')} />
+                </Suspense>
+              </div>
+            )}
+            <ul className="mt-3 flex flex-col gap-2">
+              {activities.map(activity => (
+                <li key={activity.id} className="flex items-start justify-between gap-3 rounded-2xl border border-border px-3 py-2">
+                  <div className="flex min-w-0 flex-1 gap-2">
+                    <Activity size={18} className="mt-1 shrink-0 text-primary" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="lf-lab" style={{ overflowWrap: 'anywhere' }}>{activity.activity_type}</p>
+                      {activity.description && <p className="lf-cap text-muted-foreground">{activity.description}</p>}
+                      {activity.notes && <p className="lf-cap mt-1 text-muted-foreground">{t('lands.details.note')}: {activity.notes}</p>}
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                  <div className="shrink-0 text-end">
+                    <p className="lf-cap text-muted-foreground">{day(activity.activity_date, true)}</p>
+                    {activity.quantity && <p className="lf-cap text-foreground">{activity.quantity} {activity.unit}</p>}
+                    {activity.cost && <p className="lf-lab">₹{activity.cost}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         </TabsContent>
 
-        <TabsContent value="gallery" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{t('lands.details.photo_gallery')}</CardTitle>
-              <Button onClick={() => navigate(`/app/lands/${id}/gallery/upload`)}>
-                <Camera className="h-4 w-4 mr-2" />
-                {t('lands.details.upload_photos')}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">{t('lands.details.no_photos')}</p>
-                <Button 
-                  variant="outline" 
-                  className="mt-4"
-                  onClick={() => navigate(`/app/lands/${id}/gallery/upload`)}
-                >
-                  {t('lands.details.upload_first_photo')}
-                </Button>
+        <TabsContent value="history" className="mt-0" style={gut}>
+          <section className={card} style={pad}>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="lf-head min-w-0" style={{ overflowWrap: 'anywhere' }}>{t('lands.details.crop_history')}</h2>
+              <button type="button" onClick={() => navigate(`/app/lands/${id}/crop-history/add`)} className={solid} style={tap}>
+                <Plus size={20} aria-hidden /><span className="min-w-0">{t('lands.details.add_crop_record')}</span>
+              </button>
+            </div>
+            {yieldData.length > 0 && (
+              <div className="mt-3">
+                <Suspense fallback={chartWait}>
+                  <LandYieldChart data={yieldData} yieldLabel={t('lands.details.yield_label')} revenueLabel={t('lands.details.revenue_label')} />
+                </Suspense>
               </div>
-            </CardContent>
-          </Card>
+            )}
+            {cropHistory.length === 0 ? empty(History, t('lands.details.no_crop_history')) : (
+              <ul className="mt-3 flex flex-col gap-2">
+                {cropHistory.map(crop => (
+                  <li key={crop.id} className="flex items-start justify-between gap-3 rounded-2xl border border-border px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="lf-lab" style={{ overflowWrap: 'anywhere' }}>{crop.crop_name}</p>
+                      <p className="lf-cap text-muted-foreground">
+                        {t('lands.details.sown')}: {day(crop.planting_date, true)}
+                        {crop.harvest_date && ` • ${t('lands.details.harvested')}: ${day(crop.harvest_date, true)}`}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-end">
+                      {crop.yield_kg_per_acre && <p className="lf-lab">{crop.yield_kg_per_acre} {t('lands.details.kg_acre')}</p>}
+                      {crop.growth_stage && <span className="lf-pill lf-pill-sm mt-1 border border-border bg-card text-foreground">{crop.growth_stage}</span>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </TabsContent>
-        </Tabs>
-      </div>
+
+        <TabsContent value="gallery" className="mt-0" style={gut}>
+          <section className={card} style={pad}>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="lf-head min-w-0" style={{ overflowWrap: 'anywhere' }}>{t('lands.details.photo_gallery')}</h2>
+              <button type="button" onClick={() => navigate(`/app/lands/${id}/gallery/upload`)} className={solid} style={tap}>
+                <Camera size={20} aria-hidden /><span className="min-w-0">{t('lands.details.upload_photos')}</span>
+              </button>
+            </div>
+            {empty(Camera, t('lands.details.no_photos'))}
+            <button type="button" onClick={() => navigate(`/app/lands/${id}/gallery/upload`)} className="lf-lab mx-auto flex items-center justify-center rounded-full border border-border bg-card px-6" style={tap}>
+              {t('lands.details.upload_first_photo')}
+            </button>
+          </section>
+        </TabsContent>
+      </Tabs>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

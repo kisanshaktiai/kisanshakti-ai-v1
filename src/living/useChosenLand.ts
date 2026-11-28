@@ -16,3 +16,8 @@ export function useChosenLand<T extends ChoosableLand>(lands: T[]): { land: T | 
   const land = lands.find((l) => l.id === chosenId) ?? lands.find((l) => l.is_active !== false) ?? lands[0] ?? null;
   return { land, choose };
 }
+
+/** Makes a land the chosen one from outside the Living Farm screens, e.g. when its details page is opened. */
+export function rememberChosenLand(id: string): void {
+  try { sessionStorage.setItem(KEY, id); } catch { /* nothing to remember without session storage */ }
+}

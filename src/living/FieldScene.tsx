@@ -20,11 +20,15 @@ interface FieldSceneProps {
   mirrorSky?: boolean;
   raining: boolean;
   pins: FieldPin[];
+  /** false on pages that show the field without the day's sky */
+  showSunPath?: boolean;
   stageLabel: string | null;
   waterLabel: string | null;
   ariaLabel: string;
 }
 
+/** First scene row drawn when the sky is left out (the block's highest possible point is 139). */
+const LAND_ONLY_TOP = 118;
 const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(1)}%`;
 const TONE_FILL: Record<FieldPin['tone'], string> = { do: 'hsl(var(--primary))', warn: 'hsl(var(--warning))', stop: 'hsl(var(--destructive))' };
 const TONE_PILL: Record<FieldPin['tone'], string> = {
@@ -34,7 +38,7 @@ const TONE_PILL: Record<FieldPin['tone'], string> = {
 };
 
 /** The farmer's field as a tilted block: crop on top, soil and water on the edge, sky above. Static SVG, no animation. */
-export const FieldScene = memo(function FieldScene({ ring, stageProgress, irrigationNeeded, sun, night = false, cloudy, mirrorSky = false, raining, pins, stageLabel, waterLabel, ariaLabel }: FieldSceneProps) {
+export const FieldScene = memo(function FieldScene({ ring, stageProgress, irrigationNeeded, sun, night = false, cloudy, mirrorSky = false, showSunPath = true, raining, pins, stageLabel, waterLabel, ariaLabel }: FieldSceneProps) {
   const slab = useMemo(
     () => buildSlab(ring ?? DEFAULT_RING, irrigationNeeded == null ? null : irrigationNeeded ? 0.22 : 0.7),
     [ring, irrigationNeeded],
@@ -42,6 +46,10 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
   const plantHeight = stageProgress == null ? 0 : 6 + Math.max(0, Math.min(1, stageProgress)) * 16;
   const sunAt = sun == null ? null : sunPoint(sun);
   const shown = pins.slice(0, slab.anchors.length);
+  // Without the day's sky the picture starts just above the block, so the field fills its frame.
+  const y0 = showSunPath ? 0 : LAND_ONLY_TOP;
+  const viewH = SCENE_H - y0;
+  const top = (y: number) => pct(y - y0, viewH);
   // Ground line just under the block; the two labels sit below it so they never cover the field.
   const groundY = Math.min(SCENE_H - 8, slab.bounds.bottom + 6);
   const labelY = Math.min(SCENE_H - 14, groundY + 24);
@@ -50,8 +58,8 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
 
   return (
     <div className="lf-stage">
-      <svg viewBox={`0 0 ${SCENE_W} ${SCENE_H}`} role="img" aria-label={ariaLabel}>
-        <path d="M24 120 Q195 -60 366 120" fill="none" stroke="hsl(var(--foreground) / 0.22)" strokeWidth="2" strokeDasharray="2 8" strokeLinecap="round" />
+      <svg viewBox={`0 ${y0} ${SCENE_W} ${viewH}`} role="img" aria-label={ariaLabel}>
+        {showSunPath && <path d="M24 120 Q195 -60 366 120" fill="none" stroke="hsl(var(--foreground) / 0.22)" strokeWidth="2" strokeDasharray="2 8" strokeLinecap="round" />}
         {sunAt && (
           <g>
             <circle cx={sunAt.x} cy={sunAt.y} r="40" fill="hsl(var(--accent) / 0.22)" />
@@ -115,18 +123,18 @@ export const FieldScene = memo(function FieldScene({ ring, stageProgress, irriga
         const a = slab.anchors[i];
         const stem = i === 0 ? 34 : 26;
         return (
-          <button key={pin.key} type="button" onClick={pin.onSelect} className="lf-at" style={{ left: pct(a.x, SCENE_W), top: pct(a.y - stem - 30, SCENE_H), minWidth: 'var(--lf-tap)', minHeight: 'var(--lf-tap)', display: 'grid', placeItems: 'start center' }}>
+          <button key={pin.key} type="button" onClick={pin.onSelect} className="lf-at" style={{ left: pct(a.x, SCENE_W), top: top(a.y - stem - 30), minWidth: 'var(--lf-tap)', minHeight: 'var(--lf-tap)', display: 'grid', placeItems: 'start center' }}>
             <span className={`lf-pill lf-pill-sm ${TONE_PILL[pin.tone]}`} style={{ transform: 'translateY(-70%)', maxWidth: '40vw', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pin.label}</span>
           </button>
         );
       })}
       {stageLabel && (
-        <div className="lf-at" style={{ left: 0, top: pct(labelY, SCENE_H), transform: 'translateY(-50%)', maxWidth: '48%' }}>
+        <div className="lf-at" style={{ left: 0, top: top(labelY), transform: 'translateY(-50%)', maxWidth: '48%' }}>
           <span className="lf-pill lf-pill-sm bg-card text-primary border-[1.5px] border-primary" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stageLabel}</span>
         </div>
       )}
       {waterLabel && (
-        <div className="lf-at" style={{ left: 'auto', insetInlineEnd: 0, top: pct(labelY, SCENE_H), transform: 'translateY(-50%)', maxWidth: '48%' }}>
+        <div className="lf-at" style={{ left: 'auto', insetInlineEnd: 0, top: top(labelY), transform: 'translateY(-50%)', maxWidth: '48%' }}>
           <span className="lf-pill lf-pill-sm bg-card text-info border-[1.5px] border-info" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{waterLabel}</span>
         </div>
       )}

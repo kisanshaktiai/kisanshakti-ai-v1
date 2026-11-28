@@ -187,3 +187,30 @@ No data call is involved in any of these.
 
 - **Voice navigation** (`NativeVoiceButton`, `useNativeVoiceNavigation`): on Field, Day and Land the floating button is mounted but hidden while idle (`lf-voice-tucked`), because those pages fit one screen and it covered text. The dock's Ask sheet has a fourth way, "Go by voice", shown only when the button exists; it sends the window event `voice-navigation:start`, which the button answers with its own click handler. While listening or showing its panel the button is visible as before. On every other page it floats as before.
 - **First-run tour** (`FeatureWalkthrough`): its steps point at `data-tour` names that lived on the old home page. The new shell carries them: `weather` on the temperature, `schedule` on Day, `ndvi` on Land, `chat scan mic` on the centre button, `market community` on All, `nav` on the dock. The tour's selector matches one name within a list (`~=`), so one control can answer to several steps.
+
+## Land details (`src/pages/LandDetails.tsx`) — one land's own context
+
+Same route (`/app/lands/:id`). Everything is read for the land in the address, as before:
+
+| Part | Source (unchanged) |
+|---|---|
+| Land row | `landsApi.fetchLandById(id)`; live updates on `lands` filtered `id=eq.<id>` |
+| Activities | `land_activities` where `land_id = id`, newest 10; live updates filtered `land_id=eq.<id>` |
+| Crop history | `crop_history` where `land_id = id` |
+| Field intelligence | `FarmIntelligenceCard landId={id}` |
+| Soil tab | `LandSoilSummary landId={id}` |
+| Delete | `landsApi.deleteLand(id)` then back to `/app/lands` |
+| Soil health score | the same pH / organic carbon / nitrogen rule, and no score for a soil-map estimate |
+
+Added, read-only, for the same land: `useFieldSky(id)` (the hook Field home and Land already use) feeds the picture of the field at the top — its saved boundary, crop stage day and the irrigation flag.
+
+Opening a land's details also makes it the chosen land for Field, Day and Land (`rememberChosenLand`, session storage only), so the farmer stays in that land's context.
+
+Drawing changes: header buttons 48 px with labels; four facts in a 2x2 grid; the five tabs are a scrolling row of pills (the fixed five-column row used 10 px labels); ownership and soil type use `landAttributeLabel` like the land card; all dates follow the app language; no blur. The two charts moved unchanged into `src/components/land/LandDetailsCharts.tsx` and are fetched when the Activities or History tab is opened.
+
+**Seen, not changed:**
+
+1. Five buttons open addresses that have no page in `App.tsx`, so they land on the not-found page: Add / Log activity (`/app/lands/:id/activities/add`), Add crop record (`/crop-history/add`), Upload photos and Upload first photo (`/gallery/upload`).
+2. The Gallery tab always shows "no photos"; it reads nothing.
+3. The History chart's revenue line is always 0 (`revenue: 0` in code).
+4. `activity_type` and `growth_stage` are printed as the stored words.

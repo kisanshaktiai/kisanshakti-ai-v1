@@ -52,7 +52,7 @@ export function LandSoilSummary({ landId }: { landId: string }) {
             const Icon = SOIL_SOURCE_ICON[key];
             const has = !!sources[key];
             return (
-              <span key={key} className={cn('flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+              <span key={key} className={cn('flex items-center gap-1 rounded-full border px-2.5 py-1 lf-cap font-medium',
                 has ? 'border-primary/30 bg-background text-foreground' : 'border-dashed border-border bg-background/60 text-muted-foreground')}>
                 <Icon className={cn('h-3.5 w-3.5', has ? 'text-primary' : 'text-muted-foreground')} />
                 {t(`soil.sourceTypes.${key}`)}
