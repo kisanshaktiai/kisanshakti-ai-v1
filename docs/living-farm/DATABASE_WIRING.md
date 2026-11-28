@@ -296,3 +296,18 @@ Each page was rendered at 320 px (Marathi) with stub data and measured before an
 | Crop growth (`CropGrowthTracking.tsx`) | tabs 32 px high | tabs 48 px high |
 
 Advisory, Schemes, Reels, Notifications and Subscription were rendered with empty data in the same sweep and passed the same measurements; they are unchanged. They were not checked with real rows.
+
+## Services near me (checked and refined 2026-11-28)
+
+The five pages (`src/pages/services/`) were rendered at 320 px (Marathi) and 393 px (English) with test answers for the same database functions the pages call (`farm_services_nearby`, `farm_services_providers`, `nursery_store`, `farm_service_requests_mine`) and the catalogue tables. Filled and empty states were both measured: no overflow, no text under 12 px, no control under 36 px, no looping animation. These pages already use theme tokens and large controls, so the look is kept.
+
+| | Before | After |
+|---|---|---|
+| Nursery store plant card | stock pill beside the photo, broken into three lines at 320 px | stock pill on its own row under the photo, one line |
+| Status pill (`StatusBadge` in `ProviderUi.tsx`) | long text touched the pill edge when it wrapped | wraps with inner spacing; one-line pills unchanged |
+| Sticky bottom action bar (`ProviderPage`) and sticky header (`PageShell`) | see-through with blur | solid background, no blur |
+| Ask for work: starting land | always the first located land | the land the farmer last chose in the app when it is located, else the first located land (`readChosenLand`) |
+
+No database function call, argument or store is changed. The request still sends the `land_id` the farmer sees selected.
+
+**Seen, not changed (logic):** `AskForWork.tsx` hides lands that have no `center_lat` / `center_lon`, with no line telling the farmer why a land is missing from the choice.

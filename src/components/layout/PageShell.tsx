@@ -64,7 +64,7 @@ export function PageShell({
       )}
     >
       {stickyHeader && (
-        <div className="sticky top-0 z-20 bg-background/85 backdrop-blur-md border-b border-border/40">
+        <div className="sticky top-0 z-20 bg-background border-b border-border/40">
           {stickyHeader}
         </div>
       )}

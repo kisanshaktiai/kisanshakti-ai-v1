@@ -126,18 +126,18 @@ export default function NurseryStorePage() {
                       {p.price != null ? formatMoney(Number(p.price), p.currency) : unitLabel(p.pricing_unit)}
                       {p.price != null && <span className="ml-1 text-sm font-semibold text-muted-foreground">{unitLabel(p.pricing_unit)}</span>}
                     </p>
-                    {p.available_qty > 0 ? (
-                      <StatusBadge tone="good">{t('farmServices.readyNow', { count: p.available_qty })}</StatusBadge>
-                    ) : nextBatch ? (
-                      <StatusBadge tone="busy">
-                        <Clock className="h-4 w-4" aria-hidden="true" />
-                        {t('farmServices.readyOn', { date: formatDay(nextBatch.ready_date), count: nextBatch.available_qty })}
-                      </StatusBadge>
-                    ) : (
-                      <StatusBadge tone="off">{t('farmServices.outOfStock')}</StatusBadge>
-                    )}
                   </div>
                 </div>
+                {p.available_qty > 0 ? (
+                  <StatusBadge tone="good">{t('farmServices.readyNow', { count: p.available_qty })}</StatusBadge>
+                ) : nextBatch ? (
+                  <StatusBadge tone="busy">
+                    <Clock className="h-4 w-4" aria-hidden="true" />
+                    {t('farmServices.readyOn', { date: formatDay(nextBatch.ready_date), count: nextBatch.available_qty })}
+                  </StatusBadge>
+                ) : (
+                  <StatusBadge tone="off">{t('farmServices.outOfStock')}</StatusBadge>
+                )}
                 {p.photo_paths.length > 1 && (
                   <div className="grid grid-cols-3 gap-2">
                     {p.photo_paths.slice(1).map((path) => (

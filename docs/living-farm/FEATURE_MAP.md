@@ -10,11 +10,11 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/day` | **New: Day** (sun path, week strip, the day's tasks) | dock: Day |
 | `/app/weather` | new look; same data calls | temperature on Field home; All |
 | `/app/market` | new look for the page and prices tab; same queries | All |
-| `/app/services-near-me` | old look, working | All (services block, when the flag is on) |
-| `/app/services-near-me/ask` | old look, working | from its parent page, as before |
-| `/app/services-near-me/requests` | old look, working | from its parent page, as before |
-| `/app/services-near-me/nursery/:accountId` | old look, working | from its parent page, as before |
-| `/app/services-near-me/:family` | old look, working | from its parent page, as before |
+| `/app/services-near-me` | checked and refined 2026-11-28, working | All (services block, when the flag is on) |
+| `/app/services-near-me/ask` | checked and refined 2026-11-28, working | from its parent page, as before |
+| `/app/services-near-me/requests` | checked and refined 2026-11-28, working | from its parent page, as before |
+| `/app/services-near-me/nursery/:accountId` | checked and refined 2026-11-28, working | from its parent page, as before |
+| `/app/services-near-me/:family` | checked and refined 2026-11-28, working | from its parent page, as before |
 | `/app/advisory` | old look, working | All |
 | `/app/schemes` | old look, working | All |
 | `/app/profile` | checked 2026-11-28: fits 320 and 393 px, no small text, tokens only; left as it is | All |

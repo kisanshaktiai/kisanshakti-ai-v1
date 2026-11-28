@@ -111,7 +111,7 @@ export function ProviderPage({
 
       {footer && !pending && (
         <div
-          className="sticky -mx-4 mt-4 px-4 pt-3 pb-3 bg-background/90 backdrop-blur-md border-t border-border/40"
+          className="sticky -mx-4 mt-4 px-4 pt-3 pb-3 bg-background border-t border-border/40"
           style={{ bottom: 'calc(5rem + var(--safe-bottom))' }}
         >
           {footer}
@@ -403,8 +403,8 @@ const TONE_DOT: Record<Tone, string> = {
 /** A pill that says a state with a colour dot and words. */
 export function StatusBadge({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
-    <span className={cn('inline-flex min-h-[36px] items-center gap-2 rounded-full px-3 text-sm font-bold', TONE_BADGE[tone])}>
-      <span className={cn('h-2.5 w-2.5 rounded-full', TONE_DOT[tone])} aria-hidden="true" />
+    <span className={cn('inline-flex min-h-[36px] items-center gap-2 rounded-full px-3 py-1 text-sm font-bold leading-tight', TONE_BADGE[tone])}>
+      <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', TONE_DOT[tone])} aria-hidden="true" />
       {children}
     </span>
   );

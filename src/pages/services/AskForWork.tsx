@@ -8,6 +8,7 @@ import {
   BigNumber, ChoiceChips, INPUT_CLASS, Panel, PrimaryAction, ProviderPage, Question, SaveError, TileGrid,
 } from '@/components/provider/ProviderUi';
 import { useLands } from '@/hooks/useLands';
+import { readChosenLand } from '@/living/useChosenLand';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useServiceCatalogue } from '@/hooks/useServiceCatalogue';
 import { useServiceIcons } from '@/hooks/useServiceIcons';
@@ -82,9 +83,12 @@ export default function AskForWork() {
     ? Math.round(((land.acres * landSqm) / unitSqm) * 100) / 100
     : null;
 
-  // The first located land is chosen for the farmer.
+  // A located land is chosen for the farmer: the one he is looking at in the app, else the first.
   useEffect(() => {
-    if (!landId && usable.length > 0) setLandId(usable[0].id);
+    if (landId || usable.length === 0) return;
+    // start on the land the farmer is already looking at in the app, when it can be used here
+    const chosen = readChosenLand();
+    setLandId(usable.find((l) => l.id === chosen)?.id ?? usable[0].id);
   }, [landId, usable]);
 
   // Until the farmer changes it, the amount follows the land (area work) or the smallest order (plants).
