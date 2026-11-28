@@ -54,7 +54,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ postId, isOpen, on
                     <span className="text-sm font-semibold text-foreground">
                       {c.farmer?.farmer_name || 'Farmer'}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="lf-fs-cap text-muted-foreground">
                       {c.created_at ? formatDistanceToNow(new Date(c.created_at), { addSuffix: true }) : ''}
                     </span>
                   </div>

@@ -31,10 +31,10 @@ interface PostCardProps {
   onHashtagTap?: (tag: string) => void;
 }
 
-const REACTIONS: { key: ReactionType; emoji: string; label: string }[] = [
-  { key: 'helpful', emoji: '🙏', label: 'Helpful' },
-  { key: 'tried', emoji: '🌾', label: 'Tried This' },
-  { key: 'thanks', emoji: '💚', label: 'Thank You' },
+const REACTIONS: { key: ReactionType; emoji: string }[] = [
+  { key: 'helpful', emoji: '🙏' },
+  { key: 'tried', emoji: '🌾' },
+  { key: 'thanks', emoji: '💚' },
 ];
 
 export const PostCard: React.FC<PostCardProps> = ({
@@ -177,14 +177,14 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {post.hasVoiceNote && (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 rounded-full">
                     <Mic className="w-3 h-3 text-primary" />
-                    <span className="text-[10px] text-primary font-medium">
+                    <span className="lf-fs-cap text-primary font-medium">
                       {t('social.post.voice') || 'Voice'}
                     </span>
                   </span>
                 )}
               </div>
               <p className="text-xs text-muted-foreground truncate">
-                {post.authorLocation} • {post.timestamp}
+                {[post.authorLocation, post.timestamp].filter(Boolean).join(' • ')}
               </p>
             </div>
           </div>
@@ -221,7 +221,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               ) : (
                 <button
                   onClick={() => setShowOriginal(!showOriginal)}
-                  className="flex items-center gap-1.5 text-xs text-primary"
+                  className="flex min-h-9 items-center gap-1.5 text-xs text-primary"
                 >
                   <Globe className="w-3.5 h-3.5" />
                   <span>
@@ -263,7 +263,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 <button
                   key={i}
                   onClick={() => onHashtagTap?.(tag)}
-                  className="px-2.5 py-1 bg-muted text-foreground text-xs rounded-full active:scale-95 transition-transform"
+                  className="min-h-9 max-w-full truncate px-3 py-1 bg-muted text-foreground text-xs rounded-full active:scale-95 transition-transform"
                 >
                   #{tag}
                 </button>
@@ -291,7 +291,7 @@ export const PostCard: React.FC<PostCardProps> = ({
 
         {/* Action Bar */}
         <div className="px-4 pb-3">
-          <div className="flex items-center justify-between py-2 border-t border-border gap-2">
+          <div className="flex flex-wrap items-center justify-between py-2 border-t border-border gap-x-2 gap-y-1">
             {/* Reactions */}
             <div className="flex items-center gap-1 flex-shrink min-w-0">
               {REACTIONS.map((reaction) => {
@@ -301,9 +301,9 @@ export const PostCard: React.FC<PostCardProps> = ({
                     key={reaction.key}
                     whileTap={{ scale: 0.92 }}
                     onClick={() => handleReaction(reaction.key)}
-                    aria-label={reaction.label}
+                    aria-label={t(`social.reactions.${reaction.key}`)}
                     className={cn(
-                      'flex items-center gap-1 px-2 py-1.5 rounded-full text-sm transition-colors',
+                      'flex min-h-9 items-center gap-1 px-2 py-1.5 rounded-full text-sm transition-colors',
                       active ? 'bg-primary/15 text-primary' : 'text-muted-foreground'
                     )}
                   >
@@ -315,7 +315,7 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-0.5 flex-shrink-0">
+            <div className="ml-auto flex items-center gap-0.5 flex-shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -335,7 +335,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   'rounded-full h-9 w-9',
                   isSpeaking ? 'text-primary' : 'text-muted-foreground'
                 )}
-                aria-label="Listen"
+                aria-label={t('social.post.listen')}
               >
                 {ttsLoading ? (
                   <Sparkles className="w-4 h-4 animate-spin" />
@@ -351,7 +351,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 size="icon"
                 onClick={handleShare}
                 className="rounded-full h-9 w-9 text-muted-foreground"
-                aria-label="Share"
+                aria-label={t('social.post.share')}
               >
                 <Share2 className="w-4 h-4" />
               </Button>
@@ -364,7 +364,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   'rounded-full h-9 w-9',
                   isSaved ? 'text-primary' : 'text-muted-foreground'
                 )}
-                aria-label="Save"
+                aria-label={t('social.post.save')}
               >
                 <Bookmark className={cn('w-4 h-4', isSaved && 'fill-current')} />
               </Button>

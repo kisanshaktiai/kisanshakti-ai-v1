@@ -67,7 +67,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
             transition={{ delay: index * 0.05 }}
             whileTap={{ scale: 0.98 }}
             className={cn(
-              "p-4 rounded-2xl bg-card/80 backdrop-blur-sm border border-border/50",
+              "p-4 rounded-2xl bg-card border border-border/50",
               "cursor-pointer transition-all duration-200 hover:bg-card"
             )}
           >
@@ -93,7 +93,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
                     {topic.isHot && (
                       <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-warning/10 rounded-full">
                         <Flame className="w-3 h-3 text-warning" />
-                        <span className="text-[10px] text-warning font-medium">Hot</span>
+                        <span className="lf-fs-cap text-warning font-medium">{t('social.trending.hot')}</span>
                       </span>
                     )}
                   </div>

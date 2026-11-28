@@ -6,7 +6,7 @@ import { PostCardSkeletonList } from './PostCardSkeleton';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCommunityPosts, useUserLikedPosts, useUserSavedPosts, SocialPost } from '@/hooks/useCommunityPosts';
-import { formatDistanceToNow } from 'date-fns';
+import { relativeTime } from '@/lib/relativeTime';
 import { CommunityPost } from '@/types/community';
 
 interface CommunityFeedProps {
@@ -15,21 +15,19 @@ interface CommunityFeedProps {
 }
 
 // Transform database post to UI-friendly format
-const transformPost = (post: SocialPost): CommunityPost => {
+const transformPost = (post: SocialPost, anonymousName: string, language: string): CommunityPost => {
   const mediaUrls = post.media_urls?.images || [];
   const imageUrl = mediaUrls[0] || undefined;
   
   // Create timestamp from created_at
-  const timestamp = post.created_at 
-    ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-    : 'Just now';
+  const timestamp = relativeTime(post.created_at, language);
 
   return {
     id: post.id,
     authorId: post.farmer_id,
-    authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
+    authorName: post.farmer?.farmer_name || anonymousName,
     authorAvatar: '',
-    authorLocation: post.farmer?.location || 'Unknown location',
+    authorLocation: post.farmer?.location || '',
     authorBadge: post.farmer?.is_verified ? 'verified' : null,
     originalLanguage: post.language_code || 'en',
     originalContent: post.content || '',
@@ -56,7 +54,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   viewLanguage,
   filterByUser = false
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   
   // Fetch real data from database
   const { 
@@ -74,7 +72,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   };
 
   // Transform posts to UI format
-  const transformedPosts = (posts || []).map(transformPost);
+  const transformedPosts = (posts || []).map((post) => transformPost(post, t('social.groups.anonymous'), i18n.language));
 
   if (isLoading) {
     return (
@@ -105,7 +103,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           size="sm"
           onClick={handleRefresh}
           disabled={isRefetching}
-          className="rounded-full gap-2 bg-card h-8 text-xs"
+          className="rounded-full gap-2 bg-card h-10 text-xs"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
           {t('social.feed.refresh')}

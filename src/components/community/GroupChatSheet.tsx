@@ -229,7 +229,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
                     )}
                     <p className="text-sm">{message.content}</p>
                     <p className={cn(
-                      "text-[10px] mt-1",
+                      "lf-fs-cap mt-1",
                       message.message_type === 'system'
                         ? "text-muted-foreground"
                         : isOwnMessage(message) 

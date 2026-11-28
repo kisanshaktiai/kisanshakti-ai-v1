@@ -311,3 +311,23 @@ The five pages (`src/pages/services/`) were rendered at 320 px (Marathi) and 393
 No database function call, argument or store is changed. The request still sends the `land_id` the farmer sees selected.
 
 **Seen, not changed (logic):** `AskForWork.tsx` hides lands that have no `center_lat` / `center_lon`, with no line telling the farmer why a land is missing from the choice.
+
+## Community (refined 2026-11-28)
+
+Rendered at 320 px (Marathi) and 393 px (English) inside a layout shaped like the app (fixed header, scrolling main, dock), with test rows for `social_posts`, `post_likes`, `post_saves`, `post_reactions`, `crop_groups`, `group_chats`, `group_chat_members`. All five tabs were opened, filled and empty. No query, mutation or hook is changed.
+
+| | Before | After |
+|---|---|---|
+| Bottom of the page | the old bottom bar (`BottomNavigation`, 93 px, blurred) was drawn behind the dock | only the dock; `CommunityPage` no longer renders `BottomNavigation` (the component file is kept) |
+| Tabs | 32 px high | 44 px high |
+| Post action row | reaction counts and the comment button ran into each other at 320 px | row wraps; comment, listen, share and save stay together on the right |
+| Small tap areas | Show original 16 px, hashtag chips 24 px, Refresh 32 px, reactions 28 px | 36 to 40 px |
+| Text under 12 px | 5 | 0 |
+| Words fixed in English | Anonymous Farmer, Unknown location, Just now, Hot, Listen, Share, Save, reaction names, "2 days ago" from date-fns | `social.groups.anonymous`, new keys `social.post.listen`, `social.trending.hot`, `social.reactions.*` (en/hi/mr); a missing location shows nothing; time comes from `src/lib/relativeTime.ts` (`Intl.RelativeTimeFormat` in the app language) |
+| Blur and looping animation | blur on group cards, group search, trending cards; create-post button pulsed forever | none |
+
+**Seen, not changed (logic or content):**
+- `TrendingTopics.tsx` shows `MOCK_TRENDING`, six fixed topics with fixed counts written in Hindi in the code, with "posts", "farmers" and the category in English. It reads no table.
+- `Advisory.tsx` shows three fixed texts from the language files with fixed times ("2 hours ago"). It reads no table.
+- `Schemes.tsx` shows three fixed schemes from the language files. The "Apply now" button has no action.
+- Community has its own header (back, language, search, bell) under the app header, so three bars (181 px) stay at the top while scrolling.

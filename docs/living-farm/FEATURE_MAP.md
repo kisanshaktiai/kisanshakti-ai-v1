@@ -15,8 +15,8 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/services-near-me/requests` | checked and refined 2026-11-28, working | from its parent page, as before |
 | `/app/services-near-me/nursery/:accountId` | checked and refined 2026-11-28, working | from its parent page, as before |
 | `/app/services-near-me/:family` | checked and refined 2026-11-28, working | from its parent page, as before |
-| `/app/advisory` | old look, working | All |
-| `/app/schemes` | old look, working | All |
+| `/app/advisory` | old look, working — fixed sample text, not database rows (see DATABASE_WIRING) | All |
+| `/app/schemes` | old look, working — fixed sample text, not database rows (see DATABASE_WIRING) | All |
 | `/app/profile` | checked 2026-11-28: fits 320 and 393 px, no small text, tokens only; left as it is | All |
 | `/app/profile/edit` | checked 2026-11-28: fits, readable, tokens only; left as it is | from its parent page, as before |
 | `/app/lands` | new look; same data calls | Land: "All my lands"; All |
@@ -28,7 +28,7 @@ Farmer-app repo, branch `living-farm-ui`. "Old look" means the page is untouched
 | `/app/diagnostics/environment` | old look, working | from its parent page, as before |
 | `/app/ai-chat` | old look, working | same page as chat |
 | `/app/chat` | reply card, reply actions and composer in the new look; rest old look, working | voice button → Type; All |
-| `/app/community` | old look, working | All |
+| `/app/community` | refined 2026-11-28 (one bottom bar, tabs, action row, translated labels), working | All |
 | `/app/analytics` | refined 2026-11-28 (text size, touch targets), working | All |
 | `/app/schedule` | land step and schedule view refined; crop input step still as before | Day: "Full schedule" and "Make a schedule"; task pin and chip on Field; All |
 | `/app/ai-dashboard` | old look, working | from its parent page, as before |

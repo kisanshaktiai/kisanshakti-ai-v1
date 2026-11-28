@@ -38,14 +38,14 @@ export const CommunityTabs: React.FC<CommunityTabsProps> = ({
               onClick={() => onTabChange(tab.id)}
               aria-label={t(tab.labelKey)}
               className={cn(
-                'relative flex items-center justify-center gap-1.5 py-2 rounded-xl',
+                'relative flex min-h-11 items-center justify-center gap-1.5 py-2 rounded-xl',
                 'text-sm font-medium transition-all duration-200',
                 isActive
                   ? 'flex-[2] bg-primary text-primary-foreground shadow-sm'
                   : 'flex-1 text-muted-foreground'
               )}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon className="w-5 h-5 flex-shrink-0" />
               {isActive && (
                 <motion.span
                   initial={{ opacity: 0, width: 0 }}

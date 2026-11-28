@@ -10,16 +10,16 @@ import { CommunityTabs } from '@/components/community/CommunityTabs';
 import { TrendingTopics } from '@/components/community/TrendingTopics';
 import { CommunityGroups } from '@/components/community/CommunityGroups';
 import { QuickPostCreator } from '@/components/community/QuickPostCreator';
-import { BottomNavigation } from '@/components/BottomNavigation';
 import { CommunityTab } from '@/types/community';
 import { useSavedPostsFull } from '@/hooks/useCommunityPosts';
 import { PostCard } from '@/components/community/PostCard';
 import { PostCardSkeletonList } from '@/components/community/PostCardSkeleton';
-import { formatDistanceToNow } from 'date-fns';
+import { relativeTime } from '@/lib/relativeTime';
+import '@/living/living.css';
 import { Bookmark } from 'lucide-react';
 
 const CommunityPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { currentLanguage } = useLanguageStore();
   const [activeTab, setActiveTab] = useState<CommunityTab>('feed');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
@@ -38,9 +38,9 @@ const CommunityPage: React.FC = () => {
   const transformedSavedPosts = savedPosts.map((post: any) => ({
     id: post.id,
     authorId: post.farmer_id,
-    authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
+    authorName: post.farmer?.farmer_name || t('social.groups.anonymous'),
     authorAvatar: '',
-    authorLocation: post.farmer?.location || 'Unknown location',
+    authorLocation: post.farmer?.location || '',
     authorBadge: post.farmer?.is_verified ? 'verified' : null,
     originalLanguage: post.language_code || 'en',
     originalContent: post.content || '',
@@ -55,9 +55,7 @@ const CommunityPage: React.FC = () => {
     commentCount: post.comments_count || 0,
     sharesCount: post.shares_count || 0,
     savesCount: post.saves_count || 0,
-    timestamp: post.created_at 
-      ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-      : 'Just now',
+    timestamp: relativeTime(post.created_at, i18n.language),
     createdAt: post.created_at || new Date().toISOString(),
     tags: post.hashtags || [],
     hasVoiceNote: post.metadata?.hasVoiceNote || false,
@@ -192,7 +190,6 @@ const CommunityPage: React.FC = () => {
         defaultLanguage={currentLanguage}
       />
 
-      <BottomNavigation onMenuOpen={() => {}} />
     </div>
   );
 };

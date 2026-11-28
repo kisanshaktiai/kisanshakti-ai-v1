@@ -85,7 +85,8 @@
       "add_text_or_image": "Add text or an image first",
       "hold_mic": "Hold 🎤 button to speak in your language",
       "release_to_stop": "🎤 Recording... Release to stop",
-      "converting": "✨ Converting voice to text..."
+      "converting": "✨ Converting voice to text...",
+      "listen": "Listen"
     },
     "groups": {
       "search": "Search groups...",
@@ -165,7 +166,8 @@
       "subtitle": "What farmers are discussing",
       "hashtag": "#{{tag}}",
       "posts_count": "{{count}} posts",
-      "view_all": "View all trending topics"
+      "view_all": "View all trending topics",
+      "hot": "Hot"
     },
     "profile": {
       "activity_feed_soon": "Activity feed coming soon"
@@ -187,6 +189,11 @@
       "abuse": "Abusive or unsafe",
       "other": "Something else",
       "thanks": "Reported. Thank you."
+    },
+    "reactions": {
+      "helpful": "Helpful",
+      "tried": "Tried this",
+      "thanks": "Thank you"
     }
   }
 }

@@ -114,7 +114,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={t('social.groups.search')}
-          className="pl-12 h-12 rounded-2xl bg-card/80 border-border/50 backdrop-blur-sm"
+          className="pl-12 h-12 rounded-2xl bg-card border-border/50"
         />
       </motion.div>
 
@@ -132,7 +132,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
           "shadow-xl shadow-primary/25"
         )}
       >
-        <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center backdrop-blur-sm">
+        <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center">
           <Plus className="w-6 h-6" />
         </div>
         <span>{t('social.groups.create')}</span>
@@ -154,7 +154,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
               transition={{ delay: index * 0.05 }}
               whileTap={{ scale: 0.98 }}
               className={cn(
-                "bg-card/80 backdrop-blur-xl rounded-3xl p-4",
+                "bg-card rounded-3xl p-4",
                 "border border-border/50 shadow-lg shadow-black/5",
                 "flex flex-col items-center text-center",
                 "hover:shadow-xl transition-shadow cursor-pointer"
@@ -213,7 +213,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
               className={cn(
-                "bg-card/80 backdrop-blur-xl rounded-3xl p-4",
+                "bg-card rounded-3xl p-4",
                 "border border-border/50 shadow-lg shadow-black/5",
                 "flex items-center gap-4"
               )}
