@@ -350,10 +350,14 @@ Rendered inside a layout shaped like the app (fixed header, scrolling main, dock
 - Reels: side-button names for screen readers are English words in code (`ariaLabel="Like"` etc.). `reels.watch_on_channel` is read with an English fallback.
 - `AIScheduleDashboard.tsx` (`/app/ai-dashboard`) is English only, names an AI model and has a "Marketing Insights" tab. No link to it was found in the app. Same for `/app/videos/legacy`.
 
-## Two-way ratings (approved as a design 2026-11-28, backend drafted, nothing applied)
+## Two-way ratings (design approved and backend applied 2026-11-28; screens not built yet)
 
 Design boards 14 to 20 on the proposal canvas. Decisions approved: blind period 7 days, "New" below 3 ratings, picture words instead of typed text.
 
 Live state read on 2026-11-28: `service_requests` has `farmer_rating` and `rated_at` only; 2 requests, 0 done, 0 rated; `farm_services_policy` has no rating keys; no `service_rating_tags` table. The customer workspace has no tables, so customer and produce ratings are not drafted.
 
-Draft: `docs/living-farm/drafts/20261128150000_service_two_way_ratings.sql`. It adds the provider's stars for the farmer, picture words on both sides, the blind rule and the "New" rule for the service side. It replaces four live functions with bodies taken from the live database the same day (`farm_service_refresh_provider_stats`, `farm_service_requests_mine`, `farm_service_request_rate`, `provider_request_card`) and removes nothing. It has not been run.
+Migration: `supabase/migrations/20261128150000_service_two_way_ratings.sql`, applied by the product owner on 2026-11-28. It adds the provider's stars for the farmer, picture words on both sides, the blind rule and the "New" rule for the service side. It replaced four live functions (`farm_service_refresh_provider_stats`, `farm_service_requests_mine`, `farm_service_request_rate`, `provider_request_card`) and removed nothing.
+
+Read-only checks after it was applied: policy holds 7 blind days and 3 minimum ratings; 4 picture words in each direction; 4 new columns on `service_requests`; the seven new functions exist; the internal helpers are closed to the `anon` role and the five app-facing functions are open; `farm_service_rating_shown` answers true for a rating 8 days old, false for 1 day old, true when both sides rated; 2 requests in the table as before.
+
+The app does not call the new functions yet. Screens to build: stars with picture words for the farmer (`farm_service_request_rate_with`), the provider's rating of the farmer (`provider_request_rate`), the farmer's score on provider request cards (`farmer_score`), and My rating (`farm_service_my_score`).
