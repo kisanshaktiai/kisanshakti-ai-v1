@@ -204,7 +204,8 @@ button, a, [role="button"], input, select, textarea, label,
     --uv-extreme: 280 85% 55%;
     
     /* AI-Inspired Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(180 100% 45%));
+    /* Follows the tenant's primary colour, like --gradient-secondary and --gradient-accent below. */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.82));
     --gradient-neural: linear-gradient(135deg, hsl(210 100% 56%), hsl(270 75% 60%));
     --gradient-earth: linear-gradient(180deg, hsl(142 76% 45%), hsl(45 95% 55%));
     --gradient-sunrise: linear-gradient(135deg, hsl(38 95% 58%), hsl(45 95% 55%));
@@ -238,7 +239,7 @@ button, a, [role="button"], input, select, textarea, label,
     --shadow-sm: 0 1px 3px 0 hsl(220 15% 12% / 0.08), 0 1px 2px 0 hsl(220 15% 12% / 0.06);
     --shadow-md: 0 4px 12px 0 hsl(220 15% 12% / 0.12), 0 2px 6px 0 hsl(220 15% 12% / 0.08);
     --shadow-lg: 0 20px 40px 0 hsl(220 15% 12% / 0.15), 0 8px 16px 0 hsl(220 15% 12% / 0.1);
-    --shadow-glow: 0 0 40px hsl(210 100% 56% / 0.3), 0 0 80px hsl(210 100% 56% / 0.15);
+    --shadow-glow: 0 0 40px hsl(var(--primary) / 0.3), 0 0 80px hsl(var(--primary) / 0.15);
     --shadow-neural: 0 8px 32px hsl(210 100% 56% / 0.2), 0 0 60px hsl(270 75% 60% / 0.15);
     
     /* Animations - Smooth Intelligence */
@@ -398,7 +399,7 @@ button, a, [role="button"], input, select, textarea, label,
     --ring: 210 100% 60%;
     
     /* Dark mode AI gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(210 100% 60%), hsl(180 100% 50%));
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.82));
     --gradient-neural: linear-gradient(135deg, hsl(210 100% 60%), hsl(270 75% 65%));
     --gradient-earth: linear-gradient(180deg, hsl(142 76% 50%), hsl(45 95% 60%));
     --gradient-sunrise: linear-gradient(135deg, hsl(38 95% 62%), hsl(45 95% 60%));
@@ -430,7 +431,7 @@ button, a, [role="button"], input, select, textarea, label,
     --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.3), 0 1px 2px 0 hsl(0 0% 0% / 0.2);
     --shadow-md: 0 4px 12px 0 hsl(0 0% 0% / 0.4), 0 2px 6px 0 hsl(0 0% 0% / 0.3);
     --shadow-lg: 0 20px 40px 0 hsl(0 0% 0% / 0.5), 0 8px 16px 0 hsl(0 0% 0% / 0.4);
-    --shadow-glow: 0 0 40px hsl(210 100% 60% / 0.4), 0 0 80px hsl(210 100% 60% / 0.2);
+    --shadow-glow: 0 0 40px hsl(var(--primary) / 0.4), 0 0 80px hsl(var(--primary) / 0.2);
     --shadow-neural: 0 8px 32px hsl(210 100% 60% / 0.3), 0 0 60px hsl(270 75% 65% / 0.2);
     
     --nav-background: 220 20% 10%;
